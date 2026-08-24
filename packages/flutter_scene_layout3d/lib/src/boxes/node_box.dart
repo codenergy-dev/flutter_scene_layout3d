@@ -5,7 +5,6 @@ import 'package:flutter_scene/scene.dart' show Node;
 import 'package:vector_math/vector_math.dart' show Aabb3, Matrix4;
 
 import '../geometry/alignment3d.dart';
-import '../geometry/constraints3d.dart';
 import '../geometry/offset3d.dart';
 import '../geometry/size3d.dart';
 import '../layout3d.dart';
@@ -119,6 +118,14 @@ class NodeBox3d extends Layout3d {
 
   Size3d _measuredSize = Size3d.zero;
   Offset3d _measuredCenter = Offset3d.zero;
+  Size3d _contentScale = const Size3d.cube(1);
+
+  /// The scale [fit] applied to the content in the most recent layout.
+  ///
+  /// One on every axis means the content is at its authored size. Handy when
+  /// a model comes out larger or smaller than expected and the question is
+  /// whether the fit or the measurement is responsible.
+  Size3d get contentScale => _contentScale;
 
   /// The content's own extent in layout space, before [fit] scales it.
   Size3d get intrinsicSize {
@@ -158,31 +165,23 @@ class NodeBox3d extends Layout3d {
   @override
   void performLayout() {
     _measure();
-    final measured = _explicitSize ?? _measuredSize;
-    final constraints = this.constraints;
+    final intrinsic = _explicitSize ?? _measuredSize;
 
-    final scale = switch (_fit) {
-      BoxFit3d.none => const Size3d.cube(1),
-      BoxFit3d.fill => Size3d(
-        _axisScale(measured.width, constraints.maxWidth),
-        _axisScale(measured.height, constraints.maxHeight),
-        _axisScale(measured.depth, constraints.maxDepth),
-      ),
-      BoxFit3d.contain => Size3d.cube(_uniformScale(measured, constraints)),
-      BoxFit3d.scaleDown => Size3d.cube(
-        math.min(1.0, _uniformScale(measured, constraints)),
-      ),
-    };
-
+    // The box takes its size the way any leaf does, from the constraints and
+    // what it measured; [fit] then decides how the content is scaled into
+    // that size. Doing it in this order is what keeps a loose parent from
+    // inflating the box, the same contract Flutter's FittedBox keeps.
+    size = constraints.constrain(intrinsic);
+    final scale = _scaleFor(intrinsic, size);
+    _contentScale = scale;
     final scaled = Size3d(
-      measured.width * scale.width,
-      measured.height * scale.height,
-      measured.depth * scale.depth,
+      intrinsic.width * scale.width,
+      intrinsic.height * scale.height,
+      intrinsic.depth * scale.depth,
     );
-    size = constraints.constrain(scaled);
 
-    // Place the content inside the box we just took, then undo the surface
-    // basis so the model keeps the orientation it was authored with.
+    // Place the content inside the box, then undo the surface basis so the
+    // model keeps the orientation it was authored with.
     final origin = _alignment.inscribe(scaled, size);
     final target = origin + scaled.center;
     _content.localTransform =
@@ -200,19 +199,42 @@ class NodeBox3d extends Layout3d {
             .multiplied(basis.toLayoutMatrix);
   }
 
-  static double _axisScale(double measured, double available) {
-    if (measured <= 0.0 || !available.isFinite) return 1.0;
-    return available / measured;
+  Size3d _scaleFor(Size3d intrinsic, Size3d box) => switch (_fit) {
+    BoxFit3d.none => const Size3d.cube(1),
+    BoxFit3d.fill => Size3d(
+      _axisScale(intrinsic.width, box.width),
+      _axisScale(intrinsic.height, box.height),
+      _axisScale(intrinsic.depth, box.depth),
+    ),
+    BoxFit3d.contain => Size3d.cube(_uniformScale(intrinsic, box)),
+    BoxFit3d.scaleDown => Size3d.cube(
+      math.min(1.0, _uniformScale(intrinsic, box)),
+    ),
+  };
+
+  /// The scale taking [from] to [to] on one axis.
+  ///
+  /// An axis with nothing to measure or no room to fill is left alone rather
+  /// than collapsed: a box squeezed to zero depth (a panel whose padding ate
+  /// its thickness, say) should still show its content, flat against the
+  /// plane, instead of scaling it out of existence.
+  static double _axisScale(double from, double to) {
+    if (from <= 0.0 || to <= 0.0 || !to.isFinite) return 1.0;
+    return to / from;
   }
 
-  static double _uniformScale(Size3d measured, Constraints3d constraints) {
+  /// The largest uniform scale that fits [intrinsic] inside [box].
+  ///
+  /// Degenerate axes are skipped for the same reason [_axisScale] leaves them
+  /// alone; a single zero-extent axis must not zero the whole scale.
+  static double _uniformScale(Size3d intrinsic, Size3d box) {
     var scale = double.infinity;
     for (final (extent, limit) in <(double, double)>[
-      (measured.width, constraints.maxWidth),
-      (measured.height, constraints.maxHeight),
-      (measured.depth, constraints.maxDepth),
+      (intrinsic.width, box.width),
+      (intrinsic.height, box.height),
+      (intrinsic.depth, box.depth),
     ]) {
-      if (extent <= 0.0 || !limit.isFinite) continue;
+      if (extent <= 0.0 || limit <= 0.0 || !limit.isFinite) continue;
       scale = math.min(scale, limit / extent);
     }
     return scale.isFinite ? scale : 1.0;

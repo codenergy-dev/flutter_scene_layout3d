@@ -230,6 +230,24 @@ void main() {
       expect(positioned.offset.x, 1);
     });
 
+    test('an unpinned axis is capped at the stack, not left unbounded', () {
+      // Flutter leaves it unconstrained; in 3D that lets a positioned child
+      // stand out of the plane by however deep its content happens to be,
+      // which is a trap when the caller pins left/top/width/height out of
+      // 2D habit and forgets depth entirely.
+      final child = TestBox(const Size3d(9, 9, 9));
+      laidOut(
+        Stack3d(
+          fit: StackFit3d.expand,
+          children: [
+            Positioned3d(left: 1, top: 1, width: 2, height: 2, child: child),
+          ],
+        ),
+        constraints: Constraints3d.tight(const Size3d(10, 10, 0.5)),
+      );
+      expect(child.size, const Size3d(2, 2, 0.5));
+    });
+
     test('depthStep pulls later children toward the viewer', () {
       final first = TestBox(const Size3d(2, 2, 0));
       final second = TestBox(const Size3d(2, 2, 0));

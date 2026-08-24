@@ -321,6 +321,16 @@ class Stack3d extends MultiChildLayout3d<ParentData3d> {
       }
       if (tight != null) {
         result = result.withAxis(axis, min: tight, max: tight);
+      } else {
+        // Flutter leaves an unpinned axis unconstrained, which in 2D means a
+        // too-large child simply overflows on screen. In 3D it means geometry
+        // poking out through the plane, and depth is the axis a caller
+        // reaching for a 2D habit forgets, so the stack caps it instead.
+        result = result.withAxis(
+          axis,
+          min: 0.0,
+          max: stackSize.alongAxis(axis),
+        );
       }
     }
     return result;

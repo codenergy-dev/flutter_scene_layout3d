@@ -19,6 +19,20 @@ import 'size3d.dart';
 /// plane can sit at any angle; note that a non-axis-aligned basis makes an
 /// element's measured size the size of its *enclosing* box in layout space.
 ///
+/// The built-in bases follow the engine's screen convention rather than a
+/// naive axis pairing. flutter_scene builds its view basis with
+/// `right = up x forward`, so for a camera in front of a plane the direction
+/// that appears to the *right* on screen is world `-x`, not `+x`. A basis
+/// mapping layout `x` to world `+x` would run every `Row3d` backwards, so
+/// [xy] and [xz] map "layout right" to the direction that actually reads as
+/// right when you look at the plane's front face.
+///
+/// That makes these bases orientation-reversing (the engine's world frame is
+/// left-handed as seen from the screen, while layout space is the ordinary
+/// right-handed screen frame). It does not mirror any content: a `NodeBox3d`
+/// applies the inverse basis to what it holds, so a model keeps the exact
+/// orientation it was authored with and only its *placement* is mapped.
+///
 /// This is only the plane's internal orientation. Moving, turning, or scaling
 /// the whole plane is done on the surface's [Node], and the children follow
 /// because they are its descendants.
@@ -38,21 +52,22 @@ class LayoutBasis3d {
     return LayoutBasis3d._(forward, inverse, debugLabel ?? 'custom');
   }
 
-  /// An upright plane facing the camera: layout `x` is scene `+x`, layout `y`
-  /// (down) is scene `-y`, layout `z` (away) is scene `-z`.
+  /// An upright plane facing the camera: layout `x` (right) is scene `-x`,
+  /// layout `y` (down) is scene `-y`, layout `z` (away) is scene `-z`.
   static final LayoutBasis3d xy = LayoutBasis3d._(
-    Matrix4.diagonal3Values(1, -1, -1),
-    Matrix4.diagonal3Values(1, -1, -1),
+    Matrix4.diagonal3Values(-1, -1, -1),
+    Matrix4.diagonal3Values(-1, -1, -1),
     'xy',
   );
 
-  /// A plane lying on the ground, seen from above: layout `x` is scene `+x`,
-  /// layout `y` (down the page) is scene `+z`, layout `z` (away from the
-  /// viewer, into the page) is scene `-y`.
+  /// A plane lying on the ground: layout `x` (right) is scene `-x`, layout
+  /// `y` (down the page, which on a floor runs toward the viewer) is scene
+  /// `+z`, and layout `z` (away from the viewer, into the page) is scene
+  /// `-y`, down into the ground.
   static final LayoutBasis3d xz = LayoutBasis3d.fromMatrix(
-    // Column major: layout x -> scene +x, layout y -> scene +z,
+    // Column major: layout x -> scene -x, layout y -> scene +z,
     // layout z -> scene -y.
-    Matrix4(1, 0, 0, 0, 0, 0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1),
+    Matrix4(-1, 0, 0, 0, 0, 0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1),
     debugLabel: 'xz',
   );
 

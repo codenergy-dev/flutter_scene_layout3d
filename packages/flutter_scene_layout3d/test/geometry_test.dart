@@ -117,16 +117,18 @@ void main() {
   });
 
   group('LayoutBasis3d', () {
-    test('xy stands the plane up, with y down mapping to scene up', () {
+    test('xy stands the plane up, and layout right reads as right', () {
       final scene = LayoutBasis3d.xy.offsetToScene(const Offset3d(1, 2, 3));
-      expect(scene.x, 1);
+      // Screen right is world -x for a camera in front of the plane, because
+      // the engine builds its view basis with right = up x forward.
+      expect(scene.x, -1);
       expect(scene.y, -2);
       expect(scene.z, -3);
     });
 
     test('xz lays the plane on the ground', () {
       final scene = LayoutBasis3d.xz.offsetToScene(const Offset3d(1, 2, 3));
-      expect(scene.x, 1);
+      expect(scene.x, -1);
       expect(scene.y, -3);
       expect(scene.z, 2);
     });

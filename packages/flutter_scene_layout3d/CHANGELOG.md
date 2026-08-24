@@ -18,3 +18,11 @@
 - A declarative widget layer in `package:flutter_scene_layout3d/widgets.dart`:
   `SceneLayout3d` plus a `Scene`-prefixed widget for every layout, reconciled
   through the Flutter element tree.
+- The built-in bases follow the engine's screen convention (flutter_scene
+  builds its camera basis with `right = up x forward`, so world `-x` is screen
+  right for a camera facing a plane), which is what makes a `Row3d` read left
+  to right on screen.
+- `BoxFit3d` follows `FittedBox`: the box takes the size the constraints and
+  the measurement give it, and the fit scales the content into that box, so a
+  loose parent never inflates the box and an axis with no room does not
+  collapse the content.

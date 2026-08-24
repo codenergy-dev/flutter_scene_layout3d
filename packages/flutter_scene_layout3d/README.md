@@ -46,21 +46,31 @@ The scene does not see those coordinates. A `LayoutBasis3d` on the surface
 maps them into the plane node's space, once, at the root:
 
 ```
-LayoutBasis3d.xy (default)          LayoutBasis3d.xz
-an upright panel facing you         a plane on the ground, seen from above
+LayoutBasis3d.xy (default)           LayoutBasis3d.xz
+an upright panel facing you          a plane on the ground
 
-       scene +Y                          +---------+--> +X
-          ^                              | [A][B]  |
-   +------|------+                       | [C][D]  |
-   |  [A]        |  Column3d runs         +---------+
-   |  [B]        |  down the plane         v  layout y  ->  scene +Z
-   |  [C]        |
-   +-------------+--> scene +X            layout z -> scene -Y
+   +-------------+                       +---------+
+   |  [A]        |  Column3d runs        | [A][B]  |   Row3d runs across
+   |  [B]        |  down the plane       | [C][D]  |   the floor
+   |  [C]        |                       +---------+
+   +-------------+                            v  layout y runs away
+        layout x runs right                      from the camera
 ```
+
+The axis signs are not the obvious ones, and this is worth knowing before you
+write a basis of your own. flutter_scene builds its camera basis with
+`right = up × forward`, so for a camera in front of a plane the direction that
+appears to the **right** on screen is world `-x`, not `+x`. The built-in bases
+map layout "right" to the direction that actually reads as right, which makes
+them orientation-reversing. That never mirrors content: a `NodeBox3d` applies
+the inverse basis to what it holds, so a model keeps the orientation it was
+authored with and only its *placement* is mapped.
 
 `LayoutBasis3d.fromMatrix` takes any invertible matrix if the plane should sit
 at some other angle. `Layout3dSurface.origin` says which point of the
-laid-out box sits at the plane node's origin, and defaults to the centre.
+laid-out box sits at the plane node's origin, and defaults to the centre. The
+plane node itself is an ordinary scene node: its `position` is in the
+engine's coordinates, not in layout space.
 
 ## Sizing real 3D content
 
@@ -79,12 +89,29 @@ NodeBox3d(
 
 * Content that cannot report bounds (skinned meshes, caller-managed geometry)
   measures as `fallbackSize`.
-* `explicitSize` states a size outright and skips measuring.
+* `explicitSize` states the content's extent outright and skips measuring. It
+  is a *measurement*, not a sizing request: to make a model occupy a
+  particular size, put it in a `SizedBox3d` and let `fit` scale it.
 * Override `readContentBounds` to measure content some other way.
 * The box owns the content node's `localTransform`, centring the measured
   bounds in the box and undoing the surface basis so the model keeps the
   orientation it was authored with. Content that needs an offset of its own
   belongs inside a wrapper `Node`.
+
+The fit rule is Flutter's, not a 3D invention. The box first takes the size
+any leaf would (`constraints.constrain(measured)`), and `fit` then scales the
+content *into* that box, exactly as `FittedBox` does. A loose parent therefore
+never inflates the box: `contain` scales up only when something above has
+fixed the size.
+
+```dart
+// A model, whatever its authored size, occupying 0.3 on a side.
+SizedBox3d.cube(0.3, child: NodeBox3d(content: model, fit: BoxFit3d.contain))
+```
+
+`contentScale` reports what the fit actually did, for when a model comes out
+larger or smaller than expected and the question is whether the fit or the
+measurement is responsible.
 
 ## What is in the box
 
@@ -170,6 +197,31 @@ input you have.
   equivalents and no baseline alignment.
 * **No painting.** These layouts arrange content; they never draw. A visible
   panel is a mesh in a `NodeBox3d`.
+* **A `Positioned3d` axis with nothing pinned is capped by the stack.** Flutter
+  leaves it unconstrained, which in 2D means an over-large child merely
+  overflows on screen; in 3D it means geometry standing out through the plane,
+  and depth is exactly the axis a 2D habit forgets.
+
+## Traps
+
+* **`EdgeInsets3d.all` insets the front and back faces too.** On a plane
+  thinner than the inset that leaves the content no depth at all. Panels
+  usually want `EdgeInsets3d.symmetric(horizontal: ..., vertical: ...)`.
+* **A plane needs depth for content to stand in.** Give the surface a real
+  thickness and pin the backing slab to its back face (`Positioned3d(back: 0,
+  depth: ...)`) rather than making the plane as thin as the slab.
+* **The plane node moves in scene coordinates.** `surface.plane.position` is
+  an ordinary engine transform; only what is *inside* the layout speaks layout
+  space.
+
+## Seeing it run
+
+Two scenes in `examples/smoke_render` (`layout3d_panel` and `layout3d_ground`)
+render a laid-out surface headlessly and assert a sane frame, so a layout that
+stops producing geometry fails in CI along with the rest of the render smoke
+matrix. `examples/flutter_app` has a live `Layout` example with an upright
+panel that turns on its axis, the same protocol on the ground plane, and a
+scrolling list built with the declarative widgets.
 
 ## Roadmap
 

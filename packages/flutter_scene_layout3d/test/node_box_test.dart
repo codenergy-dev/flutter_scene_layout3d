@@ -89,16 +89,39 @@ void main() {
   group('fit', () {
     final unitBounds = boundsOf(Vector3(-1, -1, -1), Vector3(1, 1, 1));
 
-    test('contain scales uniformly to the tightest axis', () {
+    test('a loose box is never inflated by a fit', () {
+      // Like Flutter's FittedBox, the box takes the size of what it holds
+      // when the parent leaves it a choice; a fit scales the content into
+      // that box, it does not grow the box to fill the room on offer.
+      for (final fit in BoxFit3d.values) {
+        final box = FakeContentBox(bounds: unitBounds, fit: fit);
+        laidOut(box, constraints: Constraints3d.loose(const Size3d(9, 9, 9)));
+        expect(box.size, const Size3d(2, 2, 2), reason: '$fit');
+        expect(box.contentScale, const Size3d.cube(1), reason: '$fit');
+      }
+    });
+
+    test('contain scales the content into a tight box, uniformly', () {
       final box = FakeContentBox(bounds: unitBounds, fit: BoxFit3d.contain);
-      laidOut(box, constraints: Constraints3d.loose(const Size3d(4, 8, 8)));
-      expect(box.size, const Size3d(4, 4, 4));
+      laidOut(box, constraints: Constraints3d.tight(const Size3d(4, 8, 8)));
+      // The box is what the parent demanded; the content is scaled by the
+      // tightest axis, so it fits without distortion.
+      expect(box.size, const Size3d(4, 8, 8));
+      expect(box.contentScale, const Size3d.cube(2));
     });
 
     test('fill scales each axis on its own', () {
       final box = FakeContentBox(bounds: unitBounds, fit: BoxFit3d.fill);
-      laidOut(box, constraints: Constraints3d.loose(const Size3d(4, 8, 2)));
+      laidOut(box, constraints: Constraints3d.tight(const Size3d(4, 8, 2)));
       expect(box.size, const Size3d(4, 8, 2));
+      expect(box.contentScale, const Size3d(2, 4, 1));
+    });
+
+    test('contain shrinks content that does not fit', () {
+      final box = FakeContentBox(bounds: unitBounds, fit: BoxFit3d.contain);
+      laidOut(box, constraints: Constraints3d.loose(const Size3d(1, 1, 1)));
+      expect(box.size, const Size3d(1, 1, 1));
+      expect(box.contentScale, const Size3d.cube(0.5));
     });
 
     test('scaleDown shrinks but never grows', () {
@@ -107,17 +130,32 @@ void main() {
         fit: BoxFit3d.scaleDown,
       );
       laidOut(shrunk, constraints: Constraints3d.loose(const Size3d(1, 1, 1)));
-      expect(shrunk.size, const Size3d(1, 1, 1));
+      expect(shrunk.contentScale, const Size3d.cube(0.5));
 
       final kept = FakeContentBox(bounds: unitBounds, fit: BoxFit3d.scaleDown);
-      laidOut(kept, constraints: Constraints3d.loose(const Size3d(9, 9, 9)));
-      expect(kept.size, const Size3d(2, 2, 2));
+      laidOut(kept, constraints: Constraints3d.tight(const Size3d(9, 9, 9)));
+      expect(kept.size, const Size3d(9, 9, 9));
+      expect(kept.contentScale, const Size3d.cube(1));
     });
 
-    test('none leaves the content alone', () {
+    test('none leaves the content alone, even when the box is smaller', () {
       final box = FakeContentBox(bounds: unitBounds);
-      laidOut(box, constraints: Constraints3d.loose(const Size3d(9, 9, 9)));
-      expect(box.size, const Size3d(2, 2, 2));
+      laidOut(box, constraints: Constraints3d.tight(const Size3d(1, 1, 1)));
+      expect(box.size, const Size3d(1, 1, 1));
+      expect(box.contentScale, const Size3d.cube(1));
+    });
+
+    test('an axis with no room does not collapse the content', () {
+      // A panel whose padding ate its thickness leaves zero depth to fit
+      // into. The content must stay visible and flat against the plane, not
+      // be scaled out of existence, which is what a naive uniform fit does.
+      for (final fit in BoxFit3d.values) {
+        final box = FakeContentBox(bounds: unitBounds, fit: fit);
+        laidOut(box, constraints: Constraints3d.tight(const Size3d(4, 4, 0)));
+        expect(box.size, const Size3d(4, 4, 0), reason: '$fit');
+        expect(box.contentScale.width, greaterThan(0.0), reason: '$fit');
+        expect(box.contentScale.depth, greaterThan(0.0), reason: '$fit');
+      }
     });
   });
 
@@ -215,8 +253,9 @@ void main() {
         content: meshNode(Vector3(-1, -1, -1), Vector3(1, 1, 1)),
         fit: BoxFit3d.contain,
       );
-      laidOut(box, constraints: Constraints3d.loose(const Size3d(4, 8, 8)));
-      expect(box.size, const Size3d(4, 4, 4));
+      laidOut(box, constraints: Constraints3d.tight(const Size3d(4, 8, 8)));
+      expect(box.size, const Size3d(4, 8, 8));
+      expect(box.contentScale, const Size3d.cube(2));
     });
 
     test('remeasure picks up geometry that changed size', () {

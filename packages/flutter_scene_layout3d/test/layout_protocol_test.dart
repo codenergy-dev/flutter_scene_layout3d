@@ -1,8 +1,12 @@
 // The protocol itself: constraints down, sizes up, the parent places the
 // child, and the placement lands on the scene node.
 
+import 'dart:ui' show Size;
+
+import 'package:flutter_scene/scene.dart' show PerspectiveCamera;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:vector_math/vector_math.dart' show Vector3;
 
 import 'support.dart';
 
@@ -29,9 +33,11 @@ void main() {
       final child = TestBox(const Size3d(4, 2, 1));
       laidOut(child);
       // The origin corner of a 4 x 2 x 1 box, centred, sits half an extent
-      // away on each axis; y and z flip on the way into the scene.
+      // away on each axis. Every axis flips on the way into the scene: the
+      // engine's screen right is world -x (see LayoutBasis3d), and layout y
+      // and z run opposite to the scene's.
       final corner = scenePositionOf(child.node);
-      expect(corner.x, -2);
+      expect(corner.x, 2);
       expect(corner.y, 1);
       expect(corner.z, 0.5);
     });
@@ -64,6 +70,70 @@ void main() {
     });
   });
 
+  group('screen direction', () {
+    // The bug this pins: flutter_scene builds its view basis with
+    // right = up x forward, so world +x is screen *left* for a camera in
+    // front of a plane. A basis that paired layout x with world +x laid
+    // every row out backwards on screen while every offset in the tree
+    // looked correct, which no amount of layout-space assertion catches.
+    PerspectiveCamera frontCamera() =>
+        PerspectiveCamera(position: Vector3(0, 0, 6), target: Vector3(0, 0, 0));
+
+    test('a row runs left to right on screen', () {
+      final first = TestBox(const Size3d(1, 1, 1));
+      final second = TestBox(const Size3d(1, 1, 1));
+      laidOut(Row3d(children: [first, second]));
+
+      const view = Size(512, 512);
+      final camera = frontCamera();
+      final firstScreen = camera.worldToScreen(
+        scenePositionOf(first.node),
+        view,
+      )!;
+      final secondScreen = camera.worldToScreen(
+        scenePositionOf(second.node),
+        view,
+      )!;
+      expect(firstScreen.dx, lessThan(secondScreen.dx));
+    });
+
+    test('a column runs top to bottom on screen', () {
+      final first = TestBox(const Size3d(1, 1, 1));
+      final second = TestBox(const Size3d(1, 1, 1));
+      laidOut(Column3d(children: [first, second]));
+
+      const view = Size(512, 512);
+      final camera = frontCamera();
+      final firstScreen = camera.worldToScreen(
+        scenePositionOf(first.node),
+        view,
+      )!;
+      final secondScreen = camera.worldToScreen(
+        scenePositionOf(second.node),
+        view,
+      )!;
+      expect(firstScreen.dy, lessThan(secondScreen.dy));
+    });
+
+    test('the front of a box is nearer the camera than its back', () {
+      final child = TestBox(const Size3d(1, 1, 1));
+      final surface = laidOut(
+        Padding3d(padding: const EdgeInsets3d.only(front: 1), child: child),
+        origin: Alignment3d.topLeftFront,
+      );
+      // Layout z grows away from the viewer, so a child pushed back by a
+      // front inset must end up further from a camera in front of the plane.
+      final camera = frontCamera();
+      final planeDistance = camera.position.distanceTo(
+        scenePositionOf(surface.node),
+      );
+      final childDistance = camera.position.distanceTo(
+        scenePositionOf(child.node),
+      );
+      expect(childDistance, greaterThan(planeDistance));
+    });
+  });
+
   group('placement', () {
     test('a parent offset becomes a node translation', () {
       final child = TestBox(const Size3d(1, 1, 1));
@@ -86,10 +156,10 @@ void main() {
         ),
         origin: Alignment3d.topLeftFront,
       );
-      // Layout offsets add up: 1 + 2 on each axis, then y and z flip into
-      // scene space.
+      // Layout offsets add up: 1 + 2 on each axis, then the basis maps the
+      // total into scene space.
       final position = scenePositionOf(child.node);
-      expect(position.x, 3);
+      expect(position.x, -3);
       expect(position.y, -3);
       expect(position.z, -3);
     });
