@@ -1,0 +1,64 @@
+/// Flutter's box layout protocol, in three dimensions, for flutter_scene.
+///
+/// Constraints go down, sizes come up, and the parent decides where the child
+/// sits, exactly as in Flutter; the difference is that a box has three
+/// extents, a position is a point in space, and the output of layout is a
+/// tree of scene [Node] transforms rather than a display list.
+///
+/// The pieces:
+///
+///  * [Layout3dSurface], the root. It owns the plane the elements are
+///    arranged on; mount its [Layout3dSurface.plane] node in the scene and
+///    transform that node to move, turn, or scale the whole layout.
+///  * [Layout3d], the box protocol itself ([Layout3d.layout],
+///    [Layout3d.performLayout], [Layout3d.place]), with
+///    [SingleChildLayout3d] and [MultiChildLayout3d] to build on.
+///  * [Constraints3d], [Size3d], [Offset3d], [Alignment3d], [EdgeInsets3d],
+///    the value types, each the 3D counterpart of a Flutter one.
+///  * [NodeBox3d], the leaf that puts engine content into a layout and
+///    measures its bounds to answer how big it is.
+///  * [Container3d], [Padding3d], [Align3d], [Center3d], [SizedBox3d],
+///    [ConstrainedBox3d], [Transform3d], [Row3d], [Column3d], [Depth3d],
+///    [Stack3d], [Positioned3d], [Viewport3d], [ListView3d], the layouts.
+///
+/// The declarative widget layer, which describes the same tree from a Flutter
+/// `build` method, is in `package:flutter_scene_layout3d/widgets.dart`.
+library;
+
+export 'src/boxes/container.dart' show Container3d;
+export 'src/boxes/flex.dart'
+    show
+        Column3d,
+        CrossAxisAlignment3d,
+        Depth3d,
+        Expanded3d,
+        Flex3d,
+        FlexFit3d,
+        Flexible3d,
+        MainAxisAlignment3d,
+        MainAxisSize3d,
+        Row3d,
+        Spacer3d;
+export 'src/boxes/node_box.dart' show BoxFit3d, NodeBox3d;
+export 'src/boxes/shifted.dart'
+    show Align3d, Center3d, Offset3dBox, Padding3d, ShiftedLayout3d;
+export 'src/boxes/sized.dart' show ConstrainedBox3d, SizedBox3d, Transform3d;
+export 'src/boxes/stack.dart' show Positioned3d, Stack3d, StackFit3d;
+export 'src/geometry/alignment3d.dart' show Alignment3d;
+export 'src/geometry/basis3d.dart' show LayoutBasis3d;
+export 'src/geometry/constraints3d.dart' show Constraints3d;
+export 'src/geometry/edge_insets3d.dart' show EdgeInsets3d;
+export 'src/geometry/offset3d.dart' show Axis3d, Offset3d;
+export 'src/geometry/size3d.dart' show Size3d;
+export 'src/layout3d.dart'
+    show
+        Layout3d,
+        Layout3dOwner,
+        MultiChildLayout3d,
+        ParentData3d,
+        ProxyLayout3d,
+        SingleChildLayout3d;
+export 'src/scroll/list_view.dart' show Layout3dItemBuilder, ListView3d;
+export 'src/scroll/scroll_controller.dart' show Scroll3dController;
+export 'src/scroll/viewport.dart' show Viewport3d;
+export 'src/surface.dart' show Layout3dSurface;

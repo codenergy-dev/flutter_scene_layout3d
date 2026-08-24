@@ -1,0 +1,613 @@
+import 'package:flutter/foundation.dart'
+    show VoidCallback, mustCallSuper, protected;
+import 'package:flutter_scene/scene.dart' show Node;
+import 'package:vector_math/vector_math.dart' show Matrix4;
+
+import 'geometry/basis3d.dart';
+import 'geometry/constraints3d.dart';
+import 'geometry/offset3d.dart';
+import 'geometry/size3d.dart';
+
+/// Data a parent layout stores on its child, the 3D analogue of [ParentData].
+///
+/// Every child carries at least its [offset], the position its parent gave
+/// it. Layouts that need more per-child state subclass this: `Flex3d` adds
+/// the flex factor, `Stack3d` adds the positioning fields.
+class ParentData3d {
+  /// The child's origin corner, in the parent's layout space.
+  ///
+  /// Written by the parent through [Layout3d.place], never by the child.
+  Offset3d offset = Offset3d.zero;
+
+  /// Called when the child is removed from its parent.
+  @mustCallSuper
+  void detach() {}
+
+  @override
+  String toString() => 'offset=$offset';
+}
+
+/// Drives layout for a tree of [Layout3d] objects, the 3D analogue of
+/// [PipelineOwner].
+///
+/// The owner collects the layouts that went dirty, and [flushLayout] relayouts
+/// them shallowest first. Everything downstream of layout, the scene node
+/// transforms, is written as layout happens, so there is no separate paint
+/// phase to flush.
+class Layout3dOwner {
+  /// Creates an owner, optionally reporting when a relayout is pending.
+  Layout3dOwner({this.onNeedVisualUpdate});
+
+  /// Called when a layout goes dirty, so a host can schedule [flushLayout].
+  ///
+  /// The widget layer wires this to the Flutter pipeline; imperative users
+  /// can leave it null and call [flushLayout] themselves.
+  VoidCallback? onNeedVisualUpdate;
+
+  /// The mapping from layout space to the surface node's scene space, owned
+  /// by the root and read by leaves when they place engine content.
+  LayoutBasis3d basis = LayoutBasis3d.xy;
+
+  final List<Layout3d> _nodesNeedingLayout = <Layout3d>[];
+
+  bool _doingLayout = false;
+
+  /// Whether [flushLayout] is running.
+  bool get debugDoingLayout => _doingLayout;
+
+  /// Whether any layout in this tree is waiting to be laid out.
+  bool get hasPendingLayout => _nodesNeedingLayout.isNotEmpty;
+
+  /// Requests that the host schedule a [flushLayout].
+  void requestVisualUpdate() => onNeedVisualUpdate?.call();
+
+  /// Lays out every dirty layout, shallowest first, until none are left.
+  ///
+  /// Relayouts started while flushing (a layout that dirtied a subtree deeper
+  /// than itself) are picked up by the same call.
+  void flushLayout() {
+    if (_doingLayout) return;
+    _doingLayout = true;
+    try {
+      while (_nodesNeedingLayout.isNotEmpty) {
+        final dirty = List<Layout3d>.of(_nodesNeedingLayout)
+          ..sort((a, b) => a.treeDepth - b.treeDepth);
+        _nodesNeedingLayout.clear();
+        for (final layout in dirty) {
+          if (layout._needsLayout && identical(layout._owner, this)) {
+            layout._layoutWithoutResize();
+          }
+        }
+      }
+    } finally {
+      _doingLayout = false;
+    }
+  }
+}
+
+/// A box in a 3D layout tree: Flutter's layout protocol, one axis richer.
+///
+/// The contract is the one every Flutter developer already knows. A parent
+/// hands down [Constraints3d]; the child picks a [Size3d] that satisfies them
+/// and reports it up; the parent then decides where the child sits and calls
+/// [place]. A child never reads its own position during [performLayout], and a
+/// parent never reads anything of the child's but its [size] (and only if it
+/// passed `parentUsesSize: true`).
+///
+/// What is new in 3D is the output. Each layout owns a scene [Node], and a
+/// child's node is a child of its parent's node, so [place] writing an offset
+/// *is* the placement: the transforms compose down the graph the same way the
+/// layout composes. Moving, rotating, or scaling the surface's node carries
+/// the whole tree with it.
+///
+/// Subclass [SingleChildLayout3d] or [MultiChildLayout3d] rather than this
+/// class directly unless the box is a leaf.
+abstract class Layout3d {
+  /// Creates a layout, optionally naming its scene [Node].
+  Layout3d({String? name}) : _node = Node() {
+    _node.name = name ?? '$runtimeType';
+  }
+
+  final Node _node;
+
+  /// The scene node this layout positions.
+  ///
+  /// Owned by the layout: its `localTransform` is rewritten on every
+  /// placement, so do not set the transform yourself. Reading it (to attach
+  /// components, or to hang extra content under it) is fine.
+  Node get node => _node;
+
+  Layout3d? _parent;
+
+  /// The layout that owns and positions this one, or null at the root.
+  Layout3d? get parent => _parent;
+
+  Layout3dOwner? _owner;
+
+  /// The owner driving layout for this tree, or null while detached.
+  Layout3dOwner? get owner => _owner;
+
+  /// Whether this layout is attached to an owner.
+  bool get attached => _owner != null;
+
+  /// The mapping from layout space to scene space in force for this tree.
+  ///
+  /// Falls back to [LayoutBasis3d.xy] while detached.
+  LayoutBasis3d get basis => _owner?.basis ?? LayoutBasis3d.xy;
+
+  int _depth = 0;
+
+  /// Distance from the root, used to relayout parents before children.
+  ///
+  /// Named `treeDepth` rather than Flutter's `depth`, which in this package
+  /// is an extent along `z`.
+  int get treeDepth => _depth;
+
+  /// The state this layout's parent keeps about it, including its [offset].
+  ///
+  /// Installed by the parent in [setupParentData]; null while unparented.
+  ParentData3d? parentData;
+
+  Size3d? _size;
+
+  /// The extent this layout chose in its most recent [performLayout].
+  ///
+  /// Reading this from anywhere but the layout itself or its parent (and only
+  /// when the parent passed `parentUsesSize: true`) breaks the protocol.
+  Size3d get size {
+    assert(
+      _size != null,
+      '$runtimeType has not been laid out yet, so it has no size.',
+    );
+    return _size ?? Size3d.zero;
+  }
+
+  /// Records the size chosen during [performLayout].
+  @protected
+  set size(Size3d value) {
+    assert(value.isNonNegative, '$runtimeType chose a negative size: $value.');
+    _size = value;
+  }
+
+  /// Whether this layout has been laid out at least once.
+  bool get hasSize => _size != null;
+
+  Constraints3d? _constraints;
+
+  /// The constraints most recently handed down by the parent.
+  Constraints3d get constraints {
+    assert(
+      _constraints != null,
+      '$runtimeType has not been laid out yet, so it has no constraints.',
+    );
+    return _constraints ?? const Constraints3d();
+  }
+
+  /// Whether the size depends only on the constraints.
+  ///
+  /// When true, [performResize] sets the size and [performLayout] only
+  /// positions children, which lets the tree skip resizing work the same way
+  /// Flutter's `sizedByParent` does.
+  bool get sizedByParent => false;
+
+  bool _needsLayout = true;
+
+  /// Whether this layout is waiting to be laid out.
+  bool get needsLayout => _needsLayout;
+
+  Layout3d? _relayoutBoundary;
+
+  /// Whether the child's own tree layer can pull the transform under the
+  /// parent's offset. Overridden by layouts that add a transform of their
+  /// own, such as `Transform3d` and `Container3d`.
+  @protected
+  Matrix4? get localTransform => null;
+
+  // ---------------------------------------------------------------- tree
+
+  /// Installs the [ParentData3d] subclass this layout keeps on its children.
+  ///
+  /// Called for each child as it is adopted.
+  @protected
+  void setupParentData(Layout3d child) {
+    child.parentData ??= ParentData3d();
+  }
+
+  /// Takes ownership of [child]: parents it here, hangs its node under this
+  /// one, and joins it to this tree's owner.
+  @protected
+  @mustCallSuper
+  void adoptChild(Layout3d child) {
+    assert(
+      child._parent == null,
+      'Cannot adopt $child, it already has a parent (${child._parent}).',
+    );
+    child.parentData = null;
+    setupParentData(child);
+    child._parent = this;
+    child._redepth(_depth + 1);
+    _node.add(child._node);
+    if (_owner != null) child.attach(_owner!);
+    markNeedsLayout();
+  }
+
+  /// Releases [child]: unparents it and unhooks its node.
+  @protected
+  @mustCallSuper
+  void dropChild(Layout3d child) {
+    assert(identical(child._parent, this));
+    _node.remove(child._node);
+    child.parentData?.detach();
+    child.parentData = null;
+    child._parent = null;
+    child._relayoutBoundary = null;
+    if (child._owner != null) child.detach();
+    markNeedsLayout();
+  }
+
+  void _redepth(int depth) {
+    if (_depth == depth) return;
+    _depth = depth;
+    visitChildren((child) => child._redepth(depth + 1));
+  }
+
+  /// Calls [visitor] for each child, in layout order.
+  void visitChildren(void Function(Layout3d child) visitor) {}
+
+  /// Joins this subtree to [owner].
+  @mustCallSuper
+  void attach(Layout3dOwner owner) {
+    _owner = owner;
+    if (_needsLayout && _relayoutBoundary != null) {
+      _needsLayout = false;
+      markNeedsLayout();
+    }
+    visitChildren((child) => child.attach(owner));
+  }
+
+  /// Detaches this subtree from its owner.
+  @mustCallSuper
+  void detach() {
+    _owner = null;
+    visitChildren((child) => child.detach());
+  }
+
+  /// Releases this subtree's scene resources.
+  ///
+  /// A layout only ever disposes what it created. Engine content handed to a
+  /// leaf (a model loaded by the application, say) is detached, never
+  /// disposed.
+  @mustCallSuper
+  void dispose() {
+    visitChildren((child) => child.dispose());
+    _node.removeAll();
+  }
+
+  // -------------------------------------------------------------- layout
+
+  /// Marks this layout as needing to be laid out again.
+  ///
+  /// Stops at the nearest relayout boundary: a tightly constrained ancestor
+  /// (or one that does not use its child's size) absorbs the dirt, so a deep
+  /// change does not relayout the whole plane.
+  void markNeedsLayout() {
+    if (_needsLayout) return;
+    final boundary = _relayoutBoundary;
+    if (boundary == null) {
+      _needsLayout = true;
+      if (_parent != null) markParentNeedsLayout();
+      return;
+    }
+    if (!identical(boundary, this)) {
+      markParentNeedsLayout();
+      return;
+    }
+    _needsLayout = true;
+    final owner = _owner;
+    if (owner != null) {
+      owner._nodesNeedingLayout.add(this);
+      owner.requestVisualUpdate();
+    }
+  }
+
+  /// Marks this layout dirty and pushes the dirt up to the parent, for
+  /// changes that alter the size this layout reports.
+  @protected
+  void markParentNeedsLayout() {
+    _needsLayout = true;
+    final parent = _parent;
+    if (parent == null) {
+      final owner = _owner;
+      if (owner != null) {
+        owner._nodesNeedingLayout.add(this);
+        owner.requestVisualUpdate();
+      }
+      return;
+    }
+    parent.markNeedsLayout();
+  }
+
+  /// Computes this layout's size and lays out its children.
+  ///
+  /// The entry point a parent calls. Pass `parentUsesSize: true` when the
+  /// parent's own size or child positions depend on the size this call
+  /// produces; that is what decides where relayout boundaries land.
+  void layout(Constraints3d constraints, {bool parentUsesSize = false}) {
+    assert(
+      constraints.isNormalized,
+      '$runtimeType was given non-normalized constraints: $constraints.',
+    );
+    final isBoundary =
+        !parentUsesSize ||
+        sizedByParent ||
+        constraints.isTight ||
+        _parent == null;
+    final relayoutBoundary = isBoundary ? this : _parent!._relayoutBoundary!;
+    if (!_needsLayout && constraints == _constraints) {
+      if (!identical(relayoutBoundary, _relayoutBoundary)) {
+        _relayoutBoundary = relayoutBoundary;
+        visitChildren(_propagateRelayoutBoundaryToChild);
+      }
+      return;
+    }
+    _constraints = constraints;
+    if (_relayoutBoundary != null &&
+        !identical(relayoutBoundary, _relayoutBoundary)) {
+      visitChildren(_cleanChildRelayoutBoundary);
+    }
+    _relayoutBoundary = relayoutBoundary;
+    if (sizedByParent) {
+      performResize();
+    }
+    performLayout();
+    _needsLayout = false;
+  }
+
+  void _layoutWithoutResize() {
+    assert(_relayoutBoundary != null && identical(_relayoutBoundary, this));
+    // A layout that has never been given constraints has nothing to redo;
+    // its first layout comes from its parent.
+    if (_constraints == null) return;
+    performLayout();
+    _needsLayout = false;
+  }
+
+  static void _propagateRelayoutBoundaryToChild(Layout3d child) {
+    if (identical(child._relayoutBoundary, child)) return;
+    final parentBoundary = child._parent!._relayoutBoundary;
+    if (identical(parentBoundary, child._relayoutBoundary)) return;
+    child._relayoutBoundary = parentBoundary;
+    child.visitChildren(_propagateRelayoutBoundaryToChild);
+  }
+
+  static void _cleanChildRelayoutBoundary(Layout3d child) {
+    if (!identical(child._relayoutBoundary, child)) {
+      child._relayoutBoundary = null;
+      child.visitChildren(_cleanChildRelayoutBoundary);
+    }
+  }
+
+  /// Sets [size] from the constraints alone, for layouts that are
+  /// [sizedByParent].
+  @protected
+  void performResize() {
+    assert(
+      !sizedByParent,
+      '$runtimeType is sizedByParent but does not implement performResize.',
+    );
+  }
+
+  /// Sizes this layout and positions its children.
+  ///
+  /// Lay each child out with the constraints it should honour, read its
+  /// [size] only if you asked for it, set this layout's [size], and call
+  /// [place] on each child.
+  @protected
+  void performLayout();
+
+  // ------------------------------------------------------------ placement
+
+  /// The offset this layout's parent gave it.
+  Offset3d get offset => parentData?.offset ?? Offset3d.zero;
+
+  /// Positions this layout's origin corner at [offset] in the parent's layout
+  /// space, and writes the corresponding scene transform.
+  ///
+  /// Called by the parent during [performLayout]. Because layout offsets are
+  /// expressed in layout space all the way down and the surface applies the
+  /// [LayoutBasis3d] once at the root, this is a plain translation.
+  void place(Offset3d offset) {
+    final data = parentData ??= ParentData3d();
+    data.offset = offset;
+    applyNodeTransform();
+  }
+
+  /// Rewrites this layout's node transform from its offset and
+  /// [localTransform].
+  ///
+  /// Call after changing anything [localTransform] depends on.
+  @protected
+  void applyNodeTransform() {
+    final position = offset;
+    final transform = Matrix4.translationValues(
+      position.x,
+      position.y,
+      position.z,
+    );
+    final local = localTransform;
+    if (local != null) {
+      transform.multiply(local);
+    }
+    _node.localTransform = transform;
+  }
+
+  @override
+  String toString() {
+    final sizeText = _size == null ? 'not laid out' : '$_size';
+    return '$runtimeType($sizeText)';
+  }
+}
+
+/// A layout with at most one child, the 3D analogue of
+/// [RenderObjectWithChildMixin].
+abstract class SingleChildLayout3d extends Layout3d {
+  /// Creates a layout wrapping [child].
+  SingleChildLayout3d({Layout3d? child, super.name}) {
+    this.child = child;
+  }
+
+  Layout3d? _child;
+
+  /// The wrapped layout, or null.
+  Layout3d? get child => _child;
+
+  set child(Layout3d? value) {
+    if (identical(_child, value)) return;
+    final old = _child;
+    if (old != null) {
+      dropChild(old);
+    }
+    _child = value;
+    if (value != null) {
+      adoptChild(value);
+    }
+    markNeedsLayout();
+  }
+
+  @override
+  void visitChildren(void Function(Layout3d child) visitor) {
+    final child = _child;
+    if (child != null) visitor(child);
+  }
+}
+
+/// A layout that sizes itself to its child and passes its constraints
+/// straight through, the 3D analogue of [RenderProxyBox].
+///
+/// The base for wrappers that change nothing about layout on their own.
+abstract class ProxyLayout3d extends SingleChildLayout3d {
+  /// Creates a pass-through layout around [child].
+  ProxyLayout3d({super.child, super.name});
+
+  @override
+  void performLayout() {
+    final child = this.child;
+    if (child == null) {
+      size = constraints.smallest;
+      return;
+    }
+    child.layout(constraints, parentUsesSize: true);
+    size = child.size;
+    child.place(Offset3d.zero);
+  }
+}
+
+/// A layout with an ordered list of children, the 3D analogue of
+/// [ContainerRenderObjectMixin].
+///
+/// [ParentDataType] is the per-child state this layout keeps; read it with
+/// [parentDataOf].
+abstract class MultiChildLayout3d<ParentDataType extends ParentData3d>
+    extends Layout3d {
+  /// Creates a layout holding [children], in order.
+  MultiChildLayout3d({List<Layout3d>? children, super.name}) {
+    if (children != null) {
+      addAll(children);
+    }
+  }
+
+  final List<Layout3d> _children = <Layout3d>[];
+
+  /// The children, in layout order.
+  List<Layout3d> get children => List<Layout3d>.unmodifiable(_children);
+
+  /// How many children this layout has.
+  int get childCount => _children.length;
+
+  /// The child at [index], in layout order.
+  Layout3d childAt(int index) => _children[index];
+
+  /// The per-child state this layout keeps on [child].
+  @protected
+  ParentDataType parentDataOf(Layout3d child) {
+    assert(identical(child.parent, this), '$child is not a child of $this.');
+    return child.parentData! as ParentDataType;
+  }
+
+  /// Appends [child].
+  void add(Layout3d child) => insert(child, index: _children.length);
+
+  /// Appends every child in [children], in order.
+  void addAll(Iterable<Layout3d> children) {
+    for (final child in children) {
+      add(child);
+    }
+  }
+
+  /// Inserts [child] at [index], appending when [index] is omitted.
+  void insert(Layout3d child, {int? index}) {
+    final at = index ?? _children.length;
+    assert(at >= 0 && at <= _children.length);
+    adoptChild(child);
+    _children.insert(at, child);
+    markNeedsLayout();
+  }
+
+  /// Removes [child].
+  void remove(Layout3d child) {
+    if (!_children.remove(child)) return;
+    dropChild(child);
+    markNeedsLayout();
+  }
+
+  /// Removes every child.
+  void removeAll() {
+    final removed = List<Layout3d>.of(_children);
+    _children.clear();
+    for (final child in removed) {
+      dropChild(child);
+    }
+    markNeedsLayout();
+  }
+
+  /// Replaces the child list with [children], adopting what is new, dropping
+  /// what is gone, and reordering the rest.
+  ///
+  /// The entry point the widget layer uses to mirror a reconciled element
+  /// list onto the layout tree; an unchanged list is a no-op.
+  void syncChildren(List<Layout3d> children) {
+    if (_listIdentical(_children, children)) return;
+    final incoming = Set<Layout3d>.identity()..addAll(children);
+    for (final child in List<Layout3d>.of(_children)) {
+      if (!incoming.contains(child)) {
+        _children.remove(child);
+        dropChild(child);
+      }
+    }
+    final existing = Set<Layout3d>.identity()..addAll(_children);
+    _children
+      ..clear()
+      ..addAll(children);
+    for (final child in children) {
+      if (!existing.contains(child)) {
+        adoptChild(child);
+      }
+    }
+    markNeedsLayout();
+  }
+
+  static bool _listIdentical(List<Layout3d> a, List<Layout3d> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (!identical(a[i], b[i])) return false;
+    }
+    return true;
+  }
+
+  @override
+  void visitChildren(void Function(Layout3d child) visitor) {
+    for (final child in List<Layout3d>.of(_children)) {
+      visitor(child);
+    }
+  }
+}
