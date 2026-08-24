@@ -1,11 +1,23 @@
 // NodeBox3d: how engine content reports a size, and where the box puts it.
 
-import 'package:flutter_scene/scene.dart' show Node;
+import 'package:flutter_scene/scene.dart'
+    show Mesh, Node, UnlitMaterial, UnskinnedGeometry;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:vector_math/vector_math.dart' show Aabb3, Vector3;
+import 'package:vector_math/vector_math.dart' show Aabb3, Matrix4, Vector3;
 
 import 'support.dart';
+
+/// A node carrying real engine geometry whose bounds are stated outright.
+///
+/// Building a primitive would need a GPU context, but the measuring path this
+/// package depends on, `Geometry.localBounds` to `Mesh.localBounds` to
+/// `Node.combinedLocalBounds`, is the real one either way.
+Node meshNode(Vector3 min, Vector3 max, {Matrix4? transform}) {
+  final geometry = UnskinnedGeometry()
+    ..setLocalBounds(Aabb3.minMax(min, max), null);
+  return Node(mesh: Mesh(geometry, UnlitMaterial()), localTransform: transform);
+}
 
 /// A [NodeBox3d] whose content reports [bounds], standing in for real
 /// geometry (which needs a GPU context to build).
@@ -163,6 +175,74 @@ void main() {
       );
       laidOut(box);
       expect(box.node.children, contains(content));
+    });
+  });
+
+  group('real engine content', () {
+    test('measures a node through combinedLocalBounds', () {
+      final box = NodeBox3d(
+        content: meshNode(Vector3(-1, -2, -3), Vector3(1, 2, 3)),
+      );
+      laidOut(box);
+      expect(box.size, const Size3d(2, 4, 6));
+    });
+
+    test('measures a whole subtree, transforms and all', () {
+      final content = Node()
+        ..add(meshNode(Vector3(-1, -1, -1), Vector3(1, 1, 1)))
+        ..add(
+          meshNode(
+            Vector3(-1, -1, -1),
+            Vector3(1, 1, 1),
+            transform: Matrix4.translationValues(4, 0, 0),
+          ),
+        );
+      final box = NodeBox3d(content: content);
+      laidOut(box);
+      // The union spans x from -1 to 5.
+      expect(box.size, const Size3d(6, 2, 2));
+
+      // And the union's centre, not the content node's origin, is what lands
+      // at the centre of the box.
+      final centre = box.content.localTransform.transformed3(Vector3(2, 0, 0));
+      expect(centre.x, closeTo(3, 1e-9));
+      expect(centre.y, closeTo(1, 1e-9));
+      expect(centre.z, closeTo(1, 1e-9));
+    });
+
+    test('scales real content to fit', () {
+      final box = NodeBox3d(
+        content: meshNode(Vector3(-1, -1, -1), Vector3(1, 1, 1)),
+        fit: BoxFit3d.contain,
+      );
+      laidOut(box, constraints: Constraints3d.loose(const Size3d(4, 8, 8)));
+      expect(box.size, const Size3d(4, 4, 4));
+    });
+
+    test('remeasure picks up geometry that changed size', () {
+      final geometry = UnskinnedGeometry()
+        ..setLocalBounds(Aabb3.minMax(Vector3.all(-1), Vector3.all(1)), null);
+      final content = Node(mesh: Mesh(geometry, UnlitMaterial()));
+      final box = NodeBox3d(content: content);
+      final surface = laidOut(box);
+      expect(box.size, const Size3d(2, 2, 2));
+
+      geometry.setLocalBounds(
+        Aabb3.minMax(Vector3.all(-2), Vector3.all(2)),
+        null,
+      );
+      box.remeasure();
+      surface.flush();
+      expect(box.size, const Size3d(4, 4, 4));
+    });
+
+    test('a node with no geometry falls back', () {
+      final box = NodeBox3d(
+        content: Node(),
+        fallbackSize: const Size3d(1, 1, 1),
+      );
+      laidOut(box);
+      expect(box.size, const Size3d(1, 1, 1));
     });
   });
 

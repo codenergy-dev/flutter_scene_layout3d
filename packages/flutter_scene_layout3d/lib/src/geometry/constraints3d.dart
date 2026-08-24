@@ -229,11 +229,9 @@ class Constraints3d {
   /// These constraints tightened toward the given extents, without leaving
   /// the range they already allow.
   Constraints3d tighten({double? width, double? height, double? depth}) {
-    final tightWidth = width == null ? null : width.clamp(minWidth, maxWidth);
-    final tightHeight = height == null
-        ? null
-        : height.clamp(minHeight, maxHeight);
-    final tightDepth = depth == null ? null : depth.clamp(minDepth, maxDepth);
+    final tightWidth = width?.clamp(minWidth, maxWidth);
+    final tightHeight = height?.clamp(minHeight, maxHeight);
+    final tightDepth = depth?.clamp(minDepth, maxDepth);
     return Constraints3d(
       minWidth: tightWidth ?? minWidth,
       maxWidth: tightWidth ?? maxWidth,
