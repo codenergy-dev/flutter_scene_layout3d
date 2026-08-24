@@ -1,12 +1,13 @@
 import 'package:flutter/foundation.dart' show VoidCallback;
 import 'package:flutter_scene/scene.dart' show Node;
-import 'package:vector_math/vector_math.dart' show Matrix4;
+import 'package:vector_math/vector_math.dart' show Matrix4, Ray, Vector3;
 
 import 'geometry/alignment3d.dart';
 import 'geometry/basis3d.dart';
 import 'geometry/constraints3d.dart';
 import 'geometry/offset3d.dart';
 import 'geometry/size3d.dart';
+import 'hit_test.dart';
 import 'layout3d.dart';
 
 /// The root of a 3D layout: the plane its children are arranged on.
@@ -127,6 +128,60 @@ class Layout3dSurface extends SingleChildLayout3d {
     layout(_configuration);
     _owner.flushLayout();
   }
+
+  // ------------------------------------------------------------ hit testing
+
+  /// What [worldRay] hits on this surface, deepest layout first.
+  ///
+  /// The bridge from the scene to the layout tree. Take the ray from the
+  /// camera and hand it here:
+  ///
+  /// ```dart
+  /// final ray = camera.screenPointToRay(event.localPosition, viewSize);
+  /// final hit = surface.hitTestRay(ray);
+  /// hit.firstOf<Scrollable3d>()?.controller.jumpBy(0.1);
+  /// ```
+  ///
+  /// The surface's own node carries the [basis] and the [origin] shift, so
+  /// inverting its world transform lands the ray directly in layout space;
+  /// everything below that is plain layout arithmetic. Returns an empty
+  /// result when the ray misses, and when the surface has not been laid out.
+  HitTestResult3d hitTestRay(Ray worldRay) {
+    final result = HitTestResult3d();
+    if (!hasSize) return result;
+    final worldToLayout = Matrix4.zero();
+    if (worldToLayout.copyInverse(node.globalTransform) == 0.0) return result;
+    final origin = worldToLayout.transformed3(Vector3.copy(worldRay.origin));
+    final direction = worldToLayout.rotated3(Vector3.copy(worldRay.direction));
+    hitTest(
+      result,
+      ray: Ray3d(
+        Offset3d(origin.x, origin.y, origin.z),
+        Offset3d(direction.x, direction.y, direction.z),
+      ),
+    );
+    return result;
+  }
+
+  /// What sits at [point] on the plane, looked at head on.
+  ///
+  /// The 2D-style question, for when the pointer has already been resolved
+  /// to a spot on the surface (a widget texture's local position, a test).
+  /// The line runs along the depth axis and extends both ways, so content in
+  /// front of the plane is found too.
+  HitTestResult3d hitTestAt(Offset3d point) {
+    final result = HitTestResult3d();
+    if (!hasSize) return result;
+    hitTest(result, ray: Ray3d.through(point));
+    return result;
+  }
+
+  /// The surface's basis is not a layout-space transform: it is the change of
+  /// space between the plane's node and layout space, and [hitTestRay] has
+  /// already undone it by the time the walk starts. The children below sit in
+  /// the same frame the surface measures itself in.
+  @override
+  Matrix4? get hitTestTransform => null;
 
   @override
   Matrix4? get localTransform {

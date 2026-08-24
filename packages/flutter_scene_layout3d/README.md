@@ -125,6 +125,8 @@ measurement is responsible.
 | `Row3d`, `Column3d`, `Depth3d`, `Flexible3d`, `Expanded3d`, `Spacer3d` | `Row`, `Column`, `Flexible`, `Expanded`, `Spacer` |
 | `Stack3d`, `Positioned3d` | `Stack`, `Positioned` |
 | `Viewport3d`, `ListView3d`, `Scroll3dController` | `SingleChildScrollView`, `ListView`, `ScrollController` |
+| `IgnorePointer3d`, `AbsorbPointer3d` | `IgnorePointer`, `AbsorbPointer` |
+| `Ray3d`, `HitTestResult3d`, `Layout3dPointer` | `hitTest`, `BoxHitTestResult`, `Listener` |
 | `NodeBox3d` | the leaf that holds content |
 
 `Depth3d` is the axis Flutter does not have: a flex that stacks children away
@@ -174,10 +176,69 @@ and without it items are measured once as they are first scrolled past, with
 the total extent estimated from the average, the same approximation
 `SliverList` makes.
 
-There is no scroll physics here. In a 3D scene the gesture that drives
-scrolling is the application's to choose (a drag on the `SceneView`, a
-raycast, a thumbstick), so drive `Scroll3dController.offset` from whatever
-input you have.
+There is no scroll physics here. `Scroll3dController` holds a position and
+clamps it to what the content allows, and `Layout3dPointer` drives it from a
+drag; anything else (a thumbstick, a wheel, an animation) drives
+`Scroll3dController.offset` directly.
+
+## Pointing at it
+
+Hit testing is the other half of the protocol, and it is where three
+dimensions change the shape of the question. Flutter walks the tree with a
+point, because a screen is flat. Here the pointer is a direction from the
+camera and the boxes stand at different depths, so what walks the tree is a
+**ray**:
+
+```dart
+final ray = camera.screenPointToRay(event.localPosition, viewSize);
+final hit = surface.hitTestRay(ray);
+
+hit.target;                    // the deepest box the ray reached
+hit.path;                      // it and its ancestors, out to the surface
+hit.firstOf<Scrollable3d>();   // the list the finger landed in, if any
+```
+
+The surface's node already carries the basis, so inverting its world
+transform lands the ray in layout space and everything below is plain layout
+arithmetic. `hitTestAt` asks the same question with a point on the plane, for
+when the pointer has already been resolved to a spot on it.
+
+The rules are Flutter's, one axis richer. Children are tested last-to-first,
+so the box on top wins. A ray that misses a box never reaches its children,
+and **the stretch of the ray inside a box is all its children can be found
+in** — the 3D form of the `size.contains(position)` gate, and what keeps a
+list item scrolled out of the window unreachable. A box that only arranges
+others is not itself a target; `NodeBox3d` and the scrolling views are.
+`IgnorePointer3d` takes a subtree out of reach, `AbsorbPointer3d` stands in
+front of it. A hidden node is never hit.
+
+`Transform3d` is the deliberate exception: it neither answers hits itself nor
+gates them on its own extent, because its size is measured in the frame
+*before* the transform. Flutter's `RenderTransform` makes the same choice for
+the same reason.
+
+### Dragging
+
+`Layout3dPointer` turns rays into scrolling:
+
+```dart
+final pointer = Layout3dPointer(surface);
+
+Listener(
+  onPointerDown: (event) => pointer.down(rayFor(event)),
+  onPointerMove: (event) => pointer.move(rayFor(event)),
+  onPointerUp: (_) => pointer.up(),
+  child: SceneView(scene, camera: camera),
+)
+```
+
+It measures where the pointer lands *on the grabbed view's own plane*, not
+how far it moved across the screen, so the content stays under the finger at
+any viewing angle and perspective is accounted for by construction. A grabbed
+view keeps the drag until release, so running off the end of a list does not
+drop it. There is still no fling: a release stops the movement dead, and an
+application that wants momentum can drive the controller from its own
+animation.
 
 ## How it differs from Flutter
 
@@ -193,6 +254,12 @@ input you have.
 * **List items are not stretched by default.** `ListView3d` centres its items
   across the cross axes; ask for `CrossAxisAlignment3d.stretch` for the
   Flutter behaviour.
+* **Hit testing walks with a ray, not a point**, so an entry reports where
+  the ray *entered* the box, and a box bounds the stretch of ray its children
+  can be found in.
+* **No gesture arena.** `Layout3dPointer` is a plain object driven from
+  whatever pointer events the application has; there is no recognizer team,
+  no arena, and no fling.
 * **No intrinsic sizing yet**, so no `IntrinsicWidth`/`IntrinsicHeight`
   equivalents and no baseline alignment.
 * **No painting.** These layouts arrange content; they never draw. A visible
@@ -221,21 +288,19 @@ render a laid-out surface headlessly and assert a sane frame, so a layout that
 stops producing geometry fails in CI along with the rest of the render smoke
 matrix. `examples/flutter_app` has a live `Layout` example with an upright
 panel that turns on its axis, the same protocol on the ground plane, and a
-scrolling list built with the declarative widgets.
+scrolling list built with the declarative widgets. It is wired for input: the
+cursor names what it is over, on all three surfaces and through the turning
+panel, and the list scrolls by dragging.
 
 ## Roadmap
 
 In the order the pieces depend on each other.
 
-**1. Hit-testing and input.** The half of the protocol that is missing.
-Flutter puts `hitTest` on `RenderBox` for a reason: it is what turns a laid-out
-tree into something a pointer can address. Here it means `Layout3d.hitTest`
-walking down the tree with the placement offsets, plus a pointer-to-plane
-mapping, which the pieces already present nearly give away — the engine's
-screen-to-ray, the inverse of the plane node's transform, and
-`LayoutBasis3d.toLayoutMatrix`. `ListView3d` is the immediate payoff, since
-today nothing drags it, but the same machinery is what any interactive layout
-above this package would build on.
+**1. Hit-testing and input.** ~~Done~~: `Layout3d.hitTest` walks the tree with
+a `Ray3d`, `Layout3dSurface.hitTestRay` brings a camera ray into layout space,
+and `Layout3dPointer` turns a drag into scrolling. See *Pointing at it* above.
+What is left for later is hover and press state on the boxes themselves (the
+groundwork any `Button3d` would need) and keyboard focus.
 
 **2. More layouts.** `Wrap3d`, which is cheap and fits the existing flex
 machinery, and `GridView3d` with a delegate that decides the cell size. This is

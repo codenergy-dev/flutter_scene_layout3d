@@ -1,3 +1,27 @@
+## 0.2.0
+
+- Hit testing, the other half of the layout protocol. `Layout3d.hitTest` walks
+  the tree with a `Ray3d` rather than a point, because in a scene the pointer
+  is a direction and the boxes stand at different depths; a box bounds the
+  stretch of ray its children can be found in, which is the 3D form of
+  Flutter's `size.contains(position)` gate.
+- `Layout3dSurface.hitTestRay` brings a camera ray into layout space (the
+  surface node already carries the basis, so its inverse world transform is
+  the whole conversion), and `hitTestAt` asks with a point on the plane.
+- `HitTestResult3d` reports the boxes hit, deepest first, with
+  `firstOf<T>()` to pick an ancestor such as the list a finger landed in.
+- `Layout3dPointer` turns pointer rays into scrolling. It measures the drag on
+  the grabbed view's own plane rather than across the screen, so content stays
+  under the finger at any viewing angle, and it keeps the grab until release.
+- `Scrollable3d`, implemented by `Viewport3d` and `ListView3d`, which are now
+  opaque to hits across their whole window so a drag can start on a gap.
+- `IgnorePointer3d` and `AbsorbPointer3d`, plus their `Scene`-prefixed
+  widgets. `NodeBox3d` answers hits on its own account; boxes that only
+  arrange others do not. `Transform3d` neither answers nor gates, matching
+  Flutter's `RenderTransform`.
+- `Layout3d.worldTransform`, the transform from a box's own frame to world
+  space.
+
 ## 0.1.0
 
 - Initial release. Flutter's box layout protocol in three dimensions, laid out

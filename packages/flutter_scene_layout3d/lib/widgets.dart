@@ -41,13 +41,17 @@ export 'src/geometry/constraints3d.dart' show Constraints3d;
 export 'src/geometry/edge_insets3d.dart' show EdgeInsets3d;
 export 'src/geometry/offset3d.dart' show Axis3d, Offset3d;
 export 'src/geometry/size3d.dart' show Size3d;
+export 'src/hit_test.dart' show HitTestEntry3d, HitTestResult3d, Ray3d;
+export 'src/input/pointer.dart' show Layout3dPointer;
 export 'src/layout3d.dart' show Layout3d;
 export 'src/scroll/scroll_controller.dart' show Scroll3dController;
+export 'src/scroll/scrollable.dart' show Scrollable3d;
 export 'src/surface.dart' show Layout3dSurface;
 export 'src/widgets/framework.dart'
     show Layout3dWidget, SingleChildLayout3dWidget;
 export 'src/widgets/layouts.dart'
     show
+        SceneAbsorbPointer3d,
         SceneAlign3d,
         SceneCenter3d,
         SceneColumn3d,
@@ -57,6 +61,7 @@ export 'src/widgets/layouts.dart'
         SceneExpanded3d,
         SceneFlex3d,
         SceneFlexible3d,
+        SceneIgnorePointer3d,
         SceneListView3d,
         SceneNodeBox3d,
         ScenePadding3d,

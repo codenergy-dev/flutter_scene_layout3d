@@ -7,7 +7,14 @@ import 'package:vector_math/vector_math.dart' show Vector3;
 /// A leaf that asks for [preferred] and settles for what the constraints
 /// allow, standing in for real content.
 class TestBox extends Layout3d {
-  TestBox(this._preferred, {super.name});
+  TestBox(this._preferred, {this.pointable = false, super.name});
+
+  /// Whether this box answers hit tests on its own account, the way a
+  /// [NodeBox3d] holding real content does.
+  final bool pointable;
+
+  @override
+  bool hitTestSelf(Offset3d position) => pointable;
 
   Size3d _preferred;
 

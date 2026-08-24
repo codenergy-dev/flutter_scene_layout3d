@@ -7,6 +7,7 @@ import 'geometry/basis3d.dart';
 import 'geometry/constraints3d.dart';
 import 'geometry/offset3d.dart';
 import 'geometry/size3d.dart';
+import 'hit_test.dart';
 
 /// Data a parent layout stores on its child, the 3D analogue of [ParentData].
 ///
@@ -441,6 +442,111 @@ abstract class Layout3d {
     _node.localTransform = transform;
   }
 
+  // ------------------------------------------------------------ hit testing
+
+  /// The layout-space transform between this box's own frame and the frame
+  /// its children are placed in.
+  ///
+  /// Defaults to [localTransform], which is what a `Transform3d` puts between
+  /// itself and its child. The box's own [size] is measured in the frame
+  /// *before* this transform, exactly as Flutter measures a
+  /// `RenderTransform`'s size in the untransformed frame, so a child rotated
+  /// out of its parent's box is not reachable.
+  @protected
+  Matrix4? get hitTestTransform => localTransform;
+
+  /// The transform taking this box's own frame to world space.
+  ///
+  /// The box's node carries `T(offset) * localTransform`, so the node's world
+  /// transform describes the frame this box's *children* sit in; undoing
+  /// [hitTestTransform] backs up one step to the frame this box measures
+  /// itself in, the one [HitTestEntry3d.localPosition] is expressed in.
+  ///
+  /// Only meaningful once the surface has been mounted in a scene and laid
+  /// out. Inverting it takes a world-space ray into this box's frame, which
+  /// is how a drag keeps tracking a box after the pointer has left it.
+  Matrix4 get worldTransform {
+    final world = Matrix4.copy(_node.globalTransform);
+    final local = hitTestTransform;
+    if (local == null) return world;
+    final inverse = Matrix4.zero();
+    if (inverse.copyInverse(local) == 0.0) return world;
+    return world.multiplied(inverse);
+  }
+
+  /// Whether [ray] reaches this box or anything below it, recording what it
+  /// found in [result].
+  ///
+  /// The 3D analogue of [RenderBox.hitTest], and the same contract: children
+  /// are asked first, front to back, so the box on top wins; the entry for
+  /// this layout is added after them, which leaves [result] ordered deepest
+  /// first. [ray] arrives in this box's own frame, where the origin corner is
+  /// `(0, 0, 0)`.
+  ///
+  /// A ray that misses this box's extent never reaches its children, and the
+  /// stretch of the ray inside the box is all a child can be found in. That
+  /// is what Flutter's `size.contains(position)` gate does in two dimensions.
+  /// A box carrying a [hitTestTransform] is the exception on both counts; see
+  /// there.
+  bool hitTest(HitTestResult3d result, {required Ray3d ray}) {
+    if (!hasSize) return false;
+    final transform = hitTestTransform;
+    if (transform != null) {
+      // A transforming box does not answer for itself, and does not gate its
+      // children on its own extent. Flutter's `RenderTransform` makes the
+      // same choice, for the same reason: its size is measured in the frame
+      // before the transform, so testing the two against each other compares
+      // quantities that do not live in the same space. The box maps the ray
+      // down and stays out of the result.
+      final inverse = Matrix4.zero();
+      if (inverse.copyInverse(transform) == 0.0) return false;
+      return hitTestChildren(result, ray: ray.transformed(inverse));
+    }
+    final range = ray.intersectBox(size);
+    if (range == null) return false;
+    final entry = ray.at(range.near);
+    // An unbounded box entered by a line has no entry point to speak of;
+    // rather than hand NaN coordinates down the tree, call it a miss.
+    if (!entry.isFinite) return false;
+    final inside = ray.clampedTo(range.near, range.far);
+    if (hitTestChildren(result, ray: inside) || hitTestSelf(entry)) {
+      result.add(HitTestEntry3d(this, entry));
+      return true;
+    }
+    return false;
+  }
+
+  /// Whether this box answers a hit at [position] on its own account.
+  ///
+  /// False by default, as in Flutter: a box that arranges other boxes is not
+  /// itself a target, so a ray through the gap between two items in a
+  /// `Column3d` passes through. Leaves that stand for something the user can
+  /// point at ([NodeBox3d]) and boxes that consume a gesture over their whole
+  /// extent (the scrolling views) return true.
+  @protected
+  bool hitTestSelf(Offset3d position) => false;
+
+  /// Whether any child is reached by [ray], which arrives in the frame this
+  /// box places its children in.
+  ///
+  /// Test children front to back and stop at the first hit.
+  @protected
+  bool hitTestChildren(HitTestResult3d result, {required Ray3d ray}) => false;
+
+  /// Hit-tests [child], moving [ray] into the child's own frame.
+  ///
+  /// Skips children whose node is hidden, so what a `ListView3d` culls out of
+  /// its window is out of reach as well: nothing invisible is pointable.
+  @protected
+  bool hitTestChild(
+    HitTestResult3d result,
+    Layout3d child, {
+    required Ray3d ray,
+  }) {
+    if (!child.node.visible) return false;
+    return child.hitTest(result, ray: ray.shifted(child.offset));
+  }
+
   @override
   String toString() {
     final sizeText = _size == null ? 'not laid out' : '$_size';
@@ -472,6 +578,12 @@ abstract class SingleChildLayout3d extends Layout3d {
       adoptChild(value);
     }
     markNeedsLayout();
+  }
+
+  @override
+  bool hitTestChildren(HitTestResult3d result, {required Ray3d ray}) {
+    final child = _child;
+    return child != null && hitTestChild(result, child, ray: ray);
   }
 
   @override
@@ -602,6 +714,16 @@ abstract class MultiChildLayout3d<ParentDataType extends ParentData3d>
       if (!identical(a[i], b[i])) return false;
     }
     return true;
+  }
+
+  /// Tests children back to front, so the one drawn last is found first,
+  /// which is what makes a later `Stack3d` child sit on top of an earlier one.
+  @override
+  bool hitTestChildren(HitTestResult3d result, {required Ray3d ray}) {
+    for (var i = _children.length - 1; i >= 0; i--) {
+      if (hitTestChild(result, _children[i], ray: ray)) return true;
+    }
+    return false;
   }
 
   @override

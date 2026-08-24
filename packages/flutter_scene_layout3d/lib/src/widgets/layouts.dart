@@ -4,6 +4,7 @@ import 'package:vector_math/vector_math.dart' show Matrix4;
 
 import '../boxes/container.dart';
 import '../boxes/flex.dart';
+import '../boxes/ignore_pointer.dart';
 import '../boxes/node_box.dart';
 import '../boxes/shifted.dart';
 import '../boxes/sized.dart';
@@ -176,6 +177,43 @@ class SceneSizedBox3d extends SingleChildLayout3dWidget {
       ..width = width
       ..height = height
       ..depth = depth;
+  }
+}
+
+/// Hides its subtree from hit testing, the widget form of [IgnorePointer3d].
+class SceneIgnorePointer3d extends SingleChildLayout3dWidget {
+  /// Creates a box that hides [child] from hit tests while [ignoring].
+  SceneIgnorePointer3d({super.key, this.ignoring = true, super.child});
+
+  /// Whether the subtree is out of reach.
+  final bool ignoring;
+
+  @override
+  IgnorePointer3d createLayout(BuildContext context) =>
+      IgnorePointer3d(ignoring: ignoring);
+
+  @override
+  void updateLayout(BuildContext context, IgnorePointer3d layout) {
+    layout.ignoring = ignoring;
+  }
+}
+
+/// Takes the hits its subtree would have taken, the widget form of
+/// [AbsorbPointer3d].
+class SceneAbsorbPointer3d extends SingleChildLayout3dWidget {
+  /// Creates a box that answers hits for [child] while [absorbing].
+  SceneAbsorbPointer3d({super.key, this.absorbing = true, super.child});
+
+  /// Whether this box swallows hits meant for its subtree.
+  final bool absorbing;
+
+  @override
+  AbsorbPointer3d createLayout(BuildContext context) =>
+      AbsorbPointer3d(absorbing: absorbing);
+
+  @override
+  void updateLayout(BuildContext context, AbsorbPointer3d layout) {
+    layout.absorbing = absorbing;
   }
 }
 

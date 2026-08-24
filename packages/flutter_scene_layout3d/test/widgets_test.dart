@@ -48,6 +48,67 @@ void main() {
     expect(boxes[1].offset, const Offset3d(3, 2, 4));
   });
 
+  testWidgets('a declarative tree is hit-testable through its surface', (
+    tester,
+  ) async {
+    final controller = Layout3dController();
+    await tester.pumpWidget(
+      SceneLayout3d(
+        parent: Node(),
+        size: const Size3d(4, 4, 1),
+        controller: controller,
+        child: SceneListView3d(
+          children: [
+            SceneNodeBox3d(
+              content: Node(),
+              explicitSize: const Size3d(4, 2, 1),
+            ),
+            SceneNodeBox3d(
+              content: Node(),
+              explicitSize: const Size3d(4, 2, 1),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    final hit = controller.surface!.hitTestAt(const Offset3d(2, 3, 0.5));
+
+    expect(hit.target, same(childrenOf(rootOf(controller))[1]));
+    expect(hit.firstOf<Scrollable3d>(), same(rootOf(controller)));
+  });
+
+  testWidgets('SceneIgnorePointer3d takes its subtree out of reach', (
+    tester,
+  ) async {
+    final controller = Layout3dController();
+
+    Widget build({required bool ignoring}) => SceneLayout3d(
+      parent: Node(),
+      size: const Size3d(2, 2, 1),
+      controller: controller,
+      child: SceneIgnorePointer3d(
+        ignoring: ignoring,
+        child: SceneNodeBox3d(
+          content: Node(),
+          explicitSize: const Size3d(2, 2, 1),
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(build(ignoring: false));
+    expect(
+      controller.surface!.hitTestAt(const Offset3d(1, 1, 0.5)).isNotEmpty,
+      isTrue,
+    );
+
+    await tester.pumpWidget(build(ignoring: true));
+    expect(
+      controller.surface!.hitTestAt(const Offset3d(1, 1, 0.5)).isEmpty,
+      isTrue,
+    );
+  });
+
   testWidgets('mounts the plane under the given parent', (tester) async {
     final parent = Node();
     final controller = Layout3dController();

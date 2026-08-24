@@ -6,6 +6,7 @@ import '../geometry/offset3d.dart';
 import '../geometry/size3d.dart';
 import '../layout3d.dart';
 import 'scroll_controller.dart';
+import 'scrollable.dart';
 
 /// Builds the layout for one item of a [ListView3d.builder].
 typedef Layout3dItemBuilder = Layout3d Function(int index);
@@ -30,7 +31,8 @@ typedef Layout3dItemBuilder = Layout3d Function(int index);
 /// instead, which is the more useful default when the items are objects
 /// rather than rows. Ask for [CrossAxisAlignment3d.stretch] to get the
 /// Flutter behaviour.
-class ListView3d extends MultiChildLayout3d<ParentData3d> {
+class ListView3d extends MultiChildLayout3d<ParentData3d>
+    implements Scrollable3d {
   /// Creates a list over an explicit set of children.
   ListView3d({
     Axis3d scrollDirection = Axis3d.vertical,
@@ -93,6 +95,9 @@ class ListView3d extends MultiChildLayout3d<ParentData3d> {
   /// The axis the list scrolls along.
   Axis3d get scrollDirection => _axis;
 
+  @override
+  Axis3d get scrollAxis => _axis;
+
   set scrollDirection(Axis3d value) {
     if (_axis == value) return;
     _axis = value;
@@ -103,6 +108,7 @@ class ListView3d extends MultiChildLayout3d<ParentData3d> {
   bool _ownsController;
 
   /// The scroll position, and the metrics this list measured.
+  @override
   Scroll3dController get controller => _controller;
 
   set controller(Scroll3dController value) {
@@ -295,6 +301,13 @@ class ListView3d extends MultiChildLayout3d<ParentData3d> {
       child.dispose();
     }
   }
+
+  /// Opaque to hits across the whole window, spacing between items included,
+  /// so a drag that starts on a gap still scrolls the list. Items culled out
+  /// of the window are hidden, and [hitTestChild] skips hidden nodes, so what
+  /// is out of view is out of reach.
+  @override
+  bool hitTestSelf(Offset3d position) => true;
 
   @override
   void performLayout() {

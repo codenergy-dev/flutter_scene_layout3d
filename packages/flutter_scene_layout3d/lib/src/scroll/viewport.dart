@@ -4,6 +4,7 @@ import '../geometry/offset3d.dart';
 import '../geometry/size3d.dart';
 import '../layout3d.dart';
 import 'scroll_controller.dart';
+import 'scrollable.dart';
 
 /// A window onto a child that may be longer than the window, the 3D analogue
 /// of [SingleChildScrollView].
@@ -12,7 +13,7 @@ import 'scroll_controller.dart';
 /// slice at [controller]'s offset. Nothing is culled and nothing is clipped:
 /// the child keeps its geometry, it simply slides. For long lists, prefer
 /// [ListView3d], which only builds what is near the window.
-class Viewport3d extends SingleChildLayout3d {
+class Viewport3d extends SingleChildLayout3d implements Scrollable3d {
   /// Creates a scrolling window along [axis].
   Viewport3d({
     Axis3d axis = Axis3d.vertical,
@@ -30,6 +31,9 @@ class Viewport3d extends SingleChildLayout3d {
   /// The axis the content scrolls along.
   Axis3d get axis => _axis;
 
+  @override
+  Axis3d get scrollAxis => _axis;
+
   set axis(Axis3d value) {
     if (_axis == value) return;
     _axis = value;
@@ -40,6 +44,7 @@ class Viewport3d extends SingleChildLayout3d {
   bool _ownsController;
 
   /// The scroll position, and the metrics this viewport measured.
+  @override
   Scroll3dController get controller => _controller;
 
   set controller(Scroll3dController value) {
@@ -58,6 +63,13 @@ class Viewport3d extends SingleChildLayout3d {
     if (_layingOut) return;
     markNeedsLayout();
   }
+
+  /// A scrolling window takes the hit across its whole extent, gaps between
+  /// items included, the way Flutter's `Scrollable` sits behind an opaque
+  /// hit-test behaviour. Without that, a drag that starts on empty space
+  /// inside the list would fall through to whatever is behind the plane.
+  @override
+  bool hitTestSelf(Offset3d position) => true;
 
   @override
   void performLayout() {

@@ -199,6 +199,17 @@ class NodeBox3d extends Layout3d {
             .multiplied(basis.toLayoutMatrix);
   }
 
+  /// The leaf answers hits on its own account: it is the box that stands for
+  /// something in the scene, so it is the one a pointer is aimed at. The hit
+  /// is against the *box*, not the geometry inside it, which is what makes a
+  /// model with a ragged silhouette still easy to point at. For a triangle
+  /// exact answer, raycast the content node with the engine's `raycastNode`.
+  ///
+  /// Wrap the box in an [IgnorePointer3d] for content that should not be
+  /// pointable at all.
+  @override
+  bool hitTestSelf(Offset3d position) => true;
+
   Size3d _scaleFor(Size3d intrinsic, Size3d box) => switch (_fit) {
     BoxFit3d.none => const Size3d.cube(1),
     BoxFit3d.fill => Size3d(

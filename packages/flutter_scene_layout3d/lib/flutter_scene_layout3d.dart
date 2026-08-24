@@ -17,6 +17,8 @@
 ///    the value types, each the 3D counterpart of a Flutter one.
 ///  * [NodeBox3d], the leaf that puts engine content into a layout and
 ///    measures its bounds to answer how big it is.
+///  * [Layout3dSurface.hitTestRay] and [Layout3dPointer], the input half:
+///    what a camera ray reaches, and the drag that scrolls it.
 ///  * [Container3d], [Padding3d], [Align3d], [Center3d], [SizedBox3d],
 ///    [ConstrainedBox3d], [Transform3d], [Row3d], [Column3d], [Depth3d],
 ///    [Stack3d], [Positioned3d], [Viewport3d], [ListView3d], the layouts.
@@ -39,6 +41,7 @@ export 'src/boxes/flex.dart'
         MainAxisSize3d,
         Row3d,
         Spacer3d;
+export 'src/boxes/ignore_pointer.dart' show AbsorbPointer3d, IgnorePointer3d;
 export 'src/boxes/node_box.dart' show BoxFit3d, NodeBox3d;
 export 'src/boxes/shifted.dart'
     show Align3d, Center3d, Offset3dBox, Padding3d, ShiftedLayout3d;
@@ -50,6 +53,8 @@ export 'src/geometry/constraints3d.dart' show Constraints3d;
 export 'src/geometry/edge_insets3d.dart' show EdgeInsets3d;
 export 'src/geometry/offset3d.dart' show Axis3d, Offset3d;
 export 'src/geometry/size3d.dart' show Size3d;
+export 'src/hit_test.dart' show HitTestEntry3d, HitTestResult3d, Ray3d;
+export 'src/input/pointer.dart' show Layout3dPointer;
 export 'src/layout3d.dart'
     show
         Layout3d,
@@ -60,5 +65,6 @@ export 'src/layout3d.dart'
         SingleChildLayout3d;
 export 'src/scroll/list_view.dart' show Layout3dItemBuilder, ListView3d;
 export 'src/scroll/scroll_controller.dart' show Scroll3dController;
+export 'src/scroll/scrollable.dart' show Scrollable3d;
 export 'src/scroll/viewport.dart' show Viewport3d;
 export 'src/surface.dart' show Layout3dSurface;
