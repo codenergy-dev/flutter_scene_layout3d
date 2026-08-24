@@ -109,6 +109,61 @@ void main() {
     );
   });
 
+  testWidgets('SceneWrap3d breaks its children into runs', (tester) async {
+    final controller = Layout3dController();
+    await tester.pumpWidget(
+      SceneLayout3d(
+        parent: Node(),
+        size: const Size3d(10, 10, 1),
+        controller: controller,
+        child: SceneWrap3d(
+          children: [
+            for (var index = 0; index < 3; index++)
+              SceneNodeBox3d(
+                content: Node(),
+                explicitSize: const Size3d(4, 2, 1),
+              ),
+          ],
+        ),
+      ),
+    );
+
+    final boxes = childrenOf(rootOf(controller));
+
+    expect(boxes[1].offset, const Offset3d(4, 0, 0));
+    expect(boxes[2].offset, const Offset3d(0, 2, 0));
+  });
+
+  testWidgets('SceneGridView3d keeps its cells on an unchanged delegate', (
+    tester,
+  ) async {
+    final controller = Layout3dController();
+
+    final cell = Node();
+    Widget build() => SceneLayout3d(
+      parent: Node(),
+      size: const Size3d(10, 10, 1),
+      controller: controller,
+      child: SceneGridView3d(
+        gridDelegate: const Grid3dDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+        ),
+        children: [
+          SceneNodeBox3d(content: cell, explicitSize: const Size3d(1, 1, 1)),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(build());
+    final grid = rootOf(controller) as GridView3d;
+    expect(grid.gridLayout!.cellCrossAxisExtent, 5);
+
+    await tester.pumpWidget(build());
+
+    // A fresh but equivalent delegate must not leave the tree dirty.
+    expect(controller.surface!.needsFlush, isFalse);
+  });
+
   testWidgets('mounts the plane under the given parent', (tester) async {
     final parent = Node();
     final controller = Layout3dController();

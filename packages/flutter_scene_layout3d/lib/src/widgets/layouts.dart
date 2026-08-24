@@ -9,11 +9,13 @@ import '../boxes/node_box.dart';
 import '../boxes/shifted.dart';
 import '../boxes/sized.dart';
 import '../boxes/stack.dart';
+import '../boxes/wrap.dart';
 import '../geometry/alignment3d.dart';
 import '../geometry/constraints3d.dart';
 import '../geometry/edge_insets3d.dart';
 import '../geometry/offset3d.dart';
 import '../geometry/size3d.dart';
+import '../scroll/grid_view.dart';
 import '../scroll/list_view.dart';
 import '../scroll/scroll_controller.dart';
 import '../scroll/viewport.dart';
@@ -690,6 +692,115 @@ class SceneListView3d extends Layout3dWidget {
       ..spacing = spacing
       ..itemExtent = itemExtent
       ..crossAxisAlignment = crossAxisAlignment
+      ..depthAxisAlignment = depthAxisAlignment
+      ..cacheExtent = cacheExtent;
+    final controller = this.controller;
+    if (controller != null) layout.controller = controller;
+  }
+}
+
+/// Lays children out in runs, the widget form of [Wrap3d].
+class SceneWrap3d extends Layout3dWidget {
+  /// Creates a wrapping box.
+  const SceneWrap3d({
+    super.key,
+    this.direction = Axis3d.horizontal,
+    this.alignment = WrapAlignment3d.start,
+    this.spacing = 0.0,
+    this.runAlignment = WrapAlignment3d.start,
+    this.runSpacing = 0.0,
+    this.crossAxisAlignment = WrapCrossAlignment3d.start,
+    this.depthAxisAlignment = WrapCrossAlignment3d.center,
+    super.children,
+  });
+
+  /// The axis a run advances along.
+  final Axis3d direction;
+
+  /// How the children of one run are distributed along it.
+  final WrapAlignment3d alignment;
+
+  /// The gap between adjacent children in a run.
+  final double spacing;
+
+  /// How the runs are distributed across the first cross axis.
+  final WrapAlignment3d runAlignment;
+
+  /// The gap between adjacent runs.
+  final double runSpacing;
+
+  /// How a child sits across its own run.
+  final WrapCrossAlignment3d crossAxisAlignment;
+
+  /// How a child sits on the axis that does not wrap.
+  final WrapCrossAlignment3d depthAxisAlignment;
+
+  @override
+  Wrap3d createLayout(BuildContext context) => Wrap3d(
+    direction: direction,
+    alignment: alignment,
+    spacing: spacing,
+    runAlignment: runAlignment,
+    runSpacing: runSpacing,
+    crossAxisAlignment: crossAxisAlignment,
+    depthAxisAlignment: depthAxisAlignment,
+  );
+
+  @override
+  void updateLayout(BuildContext context, Wrap3d layout) {
+    layout
+      ..direction = direction
+      ..alignment = alignment
+      ..spacing = spacing
+      ..runAlignment = runAlignment
+      ..runSpacing = runSpacing
+      ..crossAxisAlignment = crossAxisAlignment
+      ..depthAxisAlignment = depthAxisAlignment;
+  }
+}
+
+/// A scrollable grid of equal cells, the widget form of [GridView3d].
+class SceneGridView3d extends Layout3dWidget {
+  /// Creates a grid.
+  const SceneGridView3d({
+    super.key,
+    required this.gridDelegate,
+    this.scrollDirection = Axis3d.vertical,
+    this.controller,
+    this.depthAxisAlignment = CrossAxisAlignment3d.center,
+    this.cacheExtent = 0.0,
+    super.children,
+  });
+
+  /// Decides the cell grid from the room available.
+  final Grid3dDelegate gridDelegate;
+
+  /// The axis the grid scrolls along.
+  final Axis3d scrollDirection;
+
+  /// The scroll position. One is created and owned when this is null.
+  final Scroll3dController? controller;
+
+  /// How a cell's child sits on the depth axis.
+  final CrossAxisAlignment3d depthAxisAlignment;
+
+  /// How far beyond the window cells stay alive.
+  final double cacheExtent;
+
+  @override
+  GridView3d createLayout(BuildContext context) => GridView3d(
+    gridDelegate: gridDelegate,
+    scrollDirection: scrollDirection,
+    controller: controller,
+    depthAxisAlignment: depthAxisAlignment,
+    cacheExtent: cacheExtent,
+  );
+
+  @override
+  void updateLayout(BuildContext context, GridView3d layout) {
+    layout
+      ..gridDelegate = gridDelegate
+      ..scrollDirection = scrollDirection
       ..depthAxisAlignment = depthAxisAlignment
       ..cacheExtent = cacheExtent;
     final controller = this.controller;

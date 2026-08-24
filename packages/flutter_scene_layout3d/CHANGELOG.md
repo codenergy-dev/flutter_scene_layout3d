@@ -1,3 +1,19 @@
+## 0.3.0
+
+- `Wrap3d`, which breaks into runs where a flex would overflow. Runs stack on
+  the first cross axis only; the depth axis aligns children rather than
+  wrapping them, so a wrap of models stays a readable plane.
+- `GridView3d`, laying cells out on a grid a `Grid3dDelegate` decides from the
+  room across the scroll axis, with `Grid3dDelegateWithFixedCrossAxisCount`
+  and `Grid3dDelegateWithMaxCrossAxisExtent` provided.
+- `GridView3d.builder` is exactly lazy: cell positions are arithmetic, so the
+  total extent is known without building anything, and only the window (plus
+  `cacheExtent`) is ever built.
+- `Grid3dLayout` exposes that arithmetic on its own, for callers that want to
+  know where a cell lands without asking the view.
+- `SceneWrap3d` and `SceneGridView3d` in the declarative layer. An unchanged
+  grid delegate does not relayout, the way Flutter's `shouldRelayout` works.
+
 ## 0.2.0
 
 - Hit testing, the other half of the layout protocol. `Layout3d.hitTest` walks

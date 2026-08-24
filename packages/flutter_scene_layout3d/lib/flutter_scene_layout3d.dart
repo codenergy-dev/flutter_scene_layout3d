@@ -21,7 +21,8 @@
 ///    what a camera ray reaches, and the drag that scrolls it.
 ///  * [Container3d], [Padding3d], [Align3d], [Center3d], [SizedBox3d],
 ///    [ConstrainedBox3d], [Transform3d], [Row3d], [Column3d], [Depth3d],
-///    [Stack3d], [Positioned3d], [Viewport3d], [ListView3d], the layouts.
+///    [Stack3d], [Positioned3d], [Wrap3d], [Viewport3d], [ListView3d],
+///    [GridView3d], the layouts.
 ///
 /// The declarative widget layer, which describes the same tree from a Flutter
 /// `build` method, is in `package:flutter_scene_layout3d/widgets.dart`.
@@ -47,6 +48,7 @@ export 'src/boxes/shifted.dart'
     show Align3d, Center3d, Offset3dBox, Padding3d, ShiftedLayout3d;
 export 'src/boxes/sized.dart' show ConstrainedBox3d, SizedBox3d, Transform3d;
 export 'src/boxes/stack.dart' show Positioned3d, Stack3d, StackFit3d;
+export 'src/boxes/wrap.dart' show Wrap3d, WrapAlignment3d, WrapCrossAlignment3d;
 export 'src/geometry/alignment3d.dart' show Alignment3d;
 export 'src/geometry/basis3d.dart' show LayoutBasis3d;
 export 'src/geometry/constraints3d.dart' show Constraints3d;
@@ -63,6 +65,14 @@ export 'src/layout3d.dart'
         ParentData3d,
         ProxyLayout3d,
         SingleChildLayout3d;
+export 'src/scroll/grid_view.dart'
+    show
+        Grid3dDelegate,
+        Grid3dDelegateWithFixedCrossAxisCount,
+        Grid3dDelegateWithMaxCrossAxisExtent,
+        Grid3dItemBuilder,
+        Grid3dLayout,
+        GridView3d;
 export 'src/scroll/list_view.dart' show Layout3dItemBuilder, ListView3d;
 export 'src/scroll/scroll_controller.dart' show Scroll3dController;
 export 'src/scroll/scrollable.dart' show Scrollable3d;

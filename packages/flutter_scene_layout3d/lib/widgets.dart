@@ -35,6 +35,7 @@ export 'src/boxes/flex.dart'
     show CrossAxisAlignment3d, FlexFit3d, MainAxisAlignment3d, MainAxisSize3d;
 export 'src/boxes/node_box.dart' show BoxFit3d;
 export 'src/boxes/stack.dart' show StackFit3d;
+export 'src/boxes/wrap.dart' show WrapAlignment3d, WrapCrossAlignment3d;
 export 'src/geometry/alignment3d.dart' show Alignment3d;
 export 'src/geometry/basis3d.dart' show LayoutBasis3d;
 export 'src/geometry/constraints3d.dart' show Constraints3d;
@@ -44,6 +45,12 @@ export 'src/geometry/size3d.dart' show Size3d;
 export 'src/hit_test.dart' show HitTestEntry3d, HitTestResult3d, Ray3d;
 export 'src/input/pointer.dart' show Layout3dPointer;
 export 'src/layout3d.dart' show Layout3d;
+export 'src/scroll/grid_view.dart'
+    show
+        Grid3dDelegate,
+        Grid3dDelegateWithFixedCrossAxisCount,
+        Grid3dDelegateWithMaxCrossAxisExtent,
+        Grid3dLayout;
 export 'src/scroll/scroll_controller.dart' show Scroll3dController;
 export 'src/scroll/scrollable.dart' show Scrollable3d;
 export 'src/surface.dart' show Layout3dSurface;
@@ -61,6 +68,7 @@ export 'src/widgets/layouts.dart'
         SceneExpanded3d,
         SceneFlex3d,
         SceneFlexible3d,
+        SceneGridView3d,
         SceneIgnorePointer3d,
         SceneListView3d,
         SceneNodeBox3d,
@@ -71,5 +79,6 @@ export 'src/widgets/layouts.dart'
         SceneSpacer3d,
         SceneStack3d,
         SceneTransform3d,
-        SceneViewport3d;
+        SceneViewport3d,
+        SceneWrap3d;
 export 'src/widgets/surface.dart' show Layout3dController, SceneLayout3d;

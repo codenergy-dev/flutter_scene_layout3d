@@ -124,7 +124,9 @@ measurement is responsible.
 | `SizedBox3d`, `ConstrainedBox3d`, `Transform3d` | `SizedBox`, `ConstrainedBox`, `Transform` |
 | `Row3d`, `Column3d`, `Depth3d`, `Flexible3d`, `Expanded3d`, `Spacer3d` | `Row`, `Column`, `Flexible`, `Expanded`, `Spacer` |
 | `Stack3d`, `Positioned3d` | `Stack`, `Positioned` |
-| `Viewport3d`, `ListView3d`, `Scroll3dController` | `SingleChildScrollView`, `ListView`, `ScrollController` |
+| `Wrap3d` | `Wrap` |
+| `Viewport3d`, `ListView3d`, `GridView3d`, `Scroll3dController` | `SingleChildScrollView`, `ListView`, `GridView`, `ScrollController` |
+| `Grid3dDelegate`, `Grid3dLayout` | `SliverGridDelegate`, `SliverGridLayout` |
 | `IgnorePointer3d`, `AbsorbPointer3d` | `IgnorePointer`, `AbsorbPointer` |
 | `Ray3d`, `HitTestResult3d`, `Layout3dPointer` | `hitTest`, `BoxHitTestResult`, `Listener` |
 | `NodeBox3d` | the leaf that holds content |
@@ -166,6 +168,27 @@ Every layout has a widget with the same name under a `Scene` prefix
 Attach a `Layout3dController` to reach the surface imperatively, for measured
 sizes, scroll positions, or the plane node.
 
+## Wrapping
+
+`Wrap3d` is what a flex is not: given more children than fit, a `Row3d`
+overflows, a wrap breaks. Children run along `direction` until the next one
+would not fit and then a new run starts, offset across the first cross axis,
+which is Flutter's algorithm unchanged.
+
+The third axis is where 3D asks a question Flutter does not have to answer.
+A wrap could break into layers as well as runs; this one does not. The second
+cross axis is an *alignment* axis: every child sits in the depth the thickest
+of them needs, placed by `depthAxisAlignment`. Runs stack on one axis only,
+so a wrap of models stays a readable plane of them rather than a cloud.
+
+```dart
+Wrap3d(
+  spacing: 0.1,
+  runSpacing: 0.15,
+  children: [for (final model in models) SizedBox3d.cube(0.4, child: ...)],
+)
+```
+
 ## Scrolling
 
 `ListView3d` shows the window of its content at a `Scroll3dController`
@@ -175,6 +198,29 @@ builds items on demand: with `itemExtent` nothing off-screen is ever built,
 and without it items are measured once as they are first scrolled past, with
 the total extent estimated from the average, the same approximation
 `SliverList` makes.
+
+`GridView3d` lays cells out on a grid a `Grid3dDelegate` decides from the room
+across the scroll axis — `Grid3dDelegateWithFixedCrossAxisCount` for "three
+across", `Grid3dDelegateWithMaxCrossAxisExtent` for "as many as fit under this
+size". Because every cell position is arithmetic, `GridView3d.builder` is
+*exactly* lazy: it knows the total extent of ten thousand cells without
+building one, where a list of free-sized items can only estimate.
+
+```dart
+GridView3d.builder(
+  gridDelegate: const Grid3dDelegateWithFixedCrossAxisCount(
+    crossAxisCount: 3,
+    crossAxisSpacing: 0.08,
+    mainAxisSpacing: 0.08,
+  ),
+  itemCount: models.length,
+  itemBuilder: (index) => NodeBox3d(content: models[index], fit: BoxFit3d.contain),
+)
+```
+
+Cells are tight across both grid axes and take the depth available, with
+`depthAxisAlignment` placing a shallower child inside it — so models of
+different thicknesses line up on whichever face you pick.
 
 There is no scroll physics here. `Scroll3dController` holds a position and
 clamps it to what the content allows, and `Layout3dPointer` drives it from a
@@ -254,6 +300,10 @@ animation.
 * **List items are not stretched by default.** `ListView3d` centres its items
   across the cross axes; ask for `CrossAxisAlignment3d.stretch` for the
   Flutter behaviour.
+* **A wrap breaks into runs, never into layers.** The depth axis of a `Wrap3d`
+  aligns children rather than wrapping them.
+* **`GridView3d` is exactly lazy**, because a grid's cell positions are
+  arithmetic. It needs no slivers to know how long it is.
 * **Hit testing walks with a ray, not a point**, so an entry reports where
   the ray *entered* the box, and a box bounds the stretch of ray its children
   can be found in.
@@ -302,16 +352,19 @@ and `Layout3dPointer` turns a drag into scrolling. See *Pointing at it* above.
 What is left for later is hover and press state on the boxes themselves (the
 groundwork any `Button3d` would need) and keyboard focus.
 
-**2. More layouts.** `Wrap3d`, which is cheap and fits the existing flex
-machinery, and `GridView3d` with a delegate that decides the cell size. This is
-the breadth that makes real arrangements possible rather than demonstrations.
+**2. More layouts.** ~~Done~~: `Wrap3d` breaks into runs, and `GridView3d`
+lays cells out on a grid a `Grid3dDelegate` decides, with an exactly lazy
+builder. What is left in this direction is the rest of Flutter's catalogue
+(`Table`, `Flow`, aspect-ratio and fractionally-sized boxes), which is
+breadth rather than new machinery.
 
 **3. Slivers.** A genuine `Viewport3d` protocol with `SliverConstraints3d` and
 `SliverGeometry3d`, then `SliverList3d` and `SliverGrid3d` on top of it, and
 only then lazy building in the declarative layer, which needs a
 `RenderObjectElement` of its own and a build scope to create children during
 layout. The largest piece, and the one that gains the most from the rest being
-settled first.
+settled first. What it buys over what is here now is several scrolling
+sections sharing one scroll position, which the current views cannot do.
 
 **4. Intrinsic sizing.** `IntrinsicWidth3d`, `IntrinsicHeight3d`, and baseline
 alignment. Last, because it is where layout cost multiplies and because its
