@@ -225,9 +225,33 @@ scrolling list built with the declarative widgets.
 
 ## Roadmap
 
-Slivers (`SliverList3d`, `SliverGrid3d`, and a real `Viewport3d` protocol),
-`GridView3d`, `Wrap3d`, intrinsic sizing, lazy building in the declarative
-layer, and input-driven scrolling.
+In the order the pieces depend on each other.
+
+**1. Hit-testing and input.** The half of the protocol that is missing.
+Flutter puts `hitTest` on `RenderBox` for a reason: it is what turns a laid-out
+tree into something a pointer can address. Here it means `Layout3d.hitTest`
+walking down the tree with the placement offsets, plus a pointer-to-plane
+mapping, which the pieces already present nearly give away — the engine's
+screen-to-ray, the inverse of the plane node's transform, and
+`LayoutBasis3d.toLayoutMatrix`. `ListView3d` is the immediate payoff, since
+today nothing drags it, but the same machinery is what any interactive layout
+above this package would build on.
+
+**2. More layouts.** `Wrap3d`, which is cheap and fits the existing flex
+machinery, and `GridView3d` with a delegate that decides the cell size. This is
+the breadth that makes real arrangements possible rather than demonstrations.
+
+**3. Slivers.** A genuine `Viewport3d` protocol with `SliverConstraints3d` and
+`SliverGeometry3d`, then `SliverList3d` and `SliverGrid3d` on top of it, and
+only then lazy building in the declarative layer, which needs a
+`RenderObjectElement` of its own and a build scope to create children during
+layout. The largest piece, and the one that gains the most from the rest being
+settled first.
+
+**4. Intrinsic sizing.** `IntrinsicWidth3d`, `IntrinsicHeight3d`, and baseline
+alignment. Last, because it is where layout cost multiplies and because its
+value shows up mainly with content that sizes itself from its own contents,
+text above all, which this package does not have yet.
 
 ## License
 
