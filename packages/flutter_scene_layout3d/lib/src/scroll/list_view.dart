@@ -20,9 +20,10 @@ import 'scrollable.dart';
 ///  * [ListView3d.builder] builds items on demand and keeps only what is near
 ///    the window, disposing the rest. With [itemExtent] the offsets are
 ///    arithmetic and nothing off-screen is ever built; without it, items are
-///    measured once as they are first scrolled past, and the total extent is
-///    estimated from the average of what has been measured, the same
-///    approximation Flutter's `SliverList` makes.
+///    measured forward from the first and the rest of the extent is estimated
+///    from the average, the same approximation Flutter's `SliverList` makes.
+///    See [SliverList3d] for what that estimate costs — a scroll range that
+///    moves, and a deep jump that measures everything before it.
 ///
 /// Unlike Flutter's `ListView`, children are not stretched across the cross
 /// axes by default; [crossAxisAlignment] and [depthAxisAlignment] centre them

@@ -312,13 +312,20 @@ arithmetic. `scrollOffsetCorrection` is honoured: a sliver that discovers
 mid-layout that the content is not where the offset assumed can move the
 viewport and have the pass run again.
 
-That last one is a facility for slivers you write, and none of the built-in
-ones use it yet, which is worth knowing before you build a long list of unequal
-items. `SliverList3d.builder` without an `itemExtent` measures items as they
-are first scrolled past and reports the average as the total, so the length it
-claims changes as you scroll and whatever sits below it in the viewport shifts
-by the difference. Give the items a fixed `itemExtent` when they are uniform
-and the length becomes arithmetic instead of a guess.
+That last one is a facility for slivers you write; none of the built-in ones
+use it. They do not need to: a list here measures forward from its first item
+and keeps the running total, so where an item sits is always exact and nothing
+ever has to be walked back.
+
+What that costs is worth knowing before you build a long list of unequal items.
+`SliverList3d.builder` without an `itemExtent` knows the length of the part it
+has measured and guesses the rest from the average, so the *reachable range*
+moves as you scroll: the end recedes if the early items were short, and pulls
+in — taking the position with it — if they were long. And because the running
+total starts at the first item, scrolling straight to the middle of a long list
+measures everything before it in one pass. Give the items a fixed `itemExtent`
+when they are uniform: the length becomes arithmetic, the range stops moving,
+and jumping anywhere costs nothing.
 
 ## Measuring
 

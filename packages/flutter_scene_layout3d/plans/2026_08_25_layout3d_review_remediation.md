@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-08-25T03:32:15Z
-updated_at: 2026-08-25T06:58:00Z
+updated_at: 2026-08-25T15:21:54Z
 commit: 495b1ec4e93e3588c93612ef02862355d380933a
 ---
 
@@ -487,20 +487,26 @@ release.
 Everything in this plan has landed. The suite went from 239 tests to 249, all
 green, with `flutter analyze` clean throughout.
 
-**What it deliberately did not do**, each worth its own plan:
+**What it deliberately did not do.** Three of these now have plans of their
+own:
 
-- Route 2 of 2.1: rebuilding `ListView3d` and `GridView3d` on the sliver
-  protocol, as Flutter does, so one code path serves both.
-- A real `scrollOffsetCorrection` producer in `SliverList3d.builder` (2.3),
-  which currently revises its length estimate silently.
-- The fifth duplication cluster, found while doing 2.1 and phase 4 but out of
-  scope for both: `Viewport3d`, `ListView3d`, `GridView3d` and
+- [Extract the scroll-controller ownership](2026_08_25_scroll_controller_ownership.md)
+  — the fifth duplication cluster, found while doing 2.1 and phase 4 but out of
+  scope for both. `Viewport3d`, `ListView3d`, `GridView3d` and
   `CustomScrollView3d` each carry the same `_controller` / `_ownsController`
-  pair, the same setter, the same `_handleScrollChanged`, and the same dispose
-  handling. It wants a `Scroll3dHolderMixin` the way the built-children
-  bookkeeping wanted `Layout3dBuiltChildrenMixin`.
-- Lazily built child *widgets* in the declarative layer, and pinned or floating
-  sliver headers — both already on the README's roadmap.
+  pair, setter, `_handleScrollChanged` and dispose handling.
+- [Give a measured list a length it can stand behind](2026_08_25_measured_list_scroll_range.md)
+  — what 2.3 left open. Measuring the symptom showed that a
+  `scrollOffsetCorrection` producer is the *wrong* tool, and that the
+  documentation written for 2.3 described a symptom that does not occur; both
+  are recorded there, and the documentation is fixed.
+- [Views on the sliver protocol](2026_08_25_views_on_the_sliver_protocol.md) —
+  route 2 of 2.1, written as a decision rather than a task, because route 1
+  landing weakened the case for it.
+
+Not planned, because they are feature work already scoped on the README's
+roadmap rather than findings from this review: lazily built child *widgets* in
+the declarative layer, and pinned or floating sliver headers.
 
 Route 2 of 2.1 (rebuilding the views on the sliver protocol) and the real
 `scrollOffsetCorrection` producer in 2.3 each deserve a plan of their own.

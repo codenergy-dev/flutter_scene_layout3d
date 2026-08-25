@@ -63,9 +63,13 @@
 - `GridView3d.dispose` clears the map of built cells, as `ListView3d` already
   did.
 - Documented what was already true: a `SliverList3d.builder` with no
-  `itemExtent` revises its estimated length silently and issues no
-  `scrollOffsetCorrection`, so content after it shifts as items are measured;
-  `Viewport3d` neither culls nor clips, unlike the lists; the declarative layer
+  `itemExtent` guesses the part of its length it has not measured, so the
+  *reachable scroll range* moves as it is revised — taking the position with it
+  when the estimate shrinks past where the viewer is — and reaching an offset
+  deep in the list measures every item before it in one pass. (Item offsets
+  themselves are exact and never move, and neither does a following sliver;
+  an earlier draft of this entry said otherwise.) Also: `Viewport3d` neither
+  culls nor clips, unlike the lists; the declarative layer
   builds every child widget up front, and lazy *widgets* need a
   `RenderObjectElement` this layer does not have (the old note promised the
   sliver work would bring it, which it did not); `Layout3dController` reaches

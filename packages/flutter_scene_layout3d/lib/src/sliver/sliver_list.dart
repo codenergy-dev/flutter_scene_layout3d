@@ -28,13 +28,23 @@ typedef Sliver3dItemBuilder = Layout3dItemBuilder;
 /// rarely what was meant.
 ///
 /// Without an [itemExtent] the length of the list is a guess, and the guess
-/// changes. Items are measured as they are first scrolled past, and the total
-/// is the average of what has been measured so far, so a list of unequal items
-/// reports one `scrollExtent` early on and a different one later. Anything
-/// after it in the viewport moves when it does, and this sliver does not issue
-/// a [SliverGeometry3d.scrollOffsetCorrection] to absorb the difference.
-/// Giving every item the same [itemExtent] makes the length arithmetic and the
-/// problem disappear; it is worth doing whenever the items really are uniform.
+/// changes. Items are measured forward from the first, and the total is the
+/// measured part plus the average of it applied to the rest, so a list of
+/// unequal items reports one `scrollExtent` early on and a different one
+/// later. Two things follow, and neither is what a reader usually expects:
+///
+///  * Where an item sits is always exact — the running total is real
+///    measurement, not estimate — so items never move under the viewer, and
+///    this sliver never needs a [SliverGeometry3d.scrollOffsetCorrection].
+///    What moves is the *reachable range*: the end of the list recedes if the
+///    early items were shorter than the rest, and pulls in, taking the scroll
+///    position with it, if they were longer.
+///  * Because the running total starts at the first item, reaching an offset
+///    deep in the list measures everything before it in a single pass. Items
+///    outside the window are released again, but they were all built.
+///
+/// Both go away with a fixed [itemExtent], which makes the offsets arithmetic.
+/// Use one whenever the items really are uniform.
 class SliverList3d extends Sliver3d
     with
         Layout3dWithChildrenMixin<ParentData3d>,
