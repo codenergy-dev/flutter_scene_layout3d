@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import '../geometry/offset3d.dart';
 import '../geometry/size3d.dart';
 import '../layout3d.dart';
+import '../layout_pass.dart';
 import '../scroll/scroll_controller.dart';
 import '../scroll/scrollable.dart';
 import 'sliver.dart';
@@ -31,7 +32,7 @@ import 'sliver_constraints.dart';
 /// The window must be bounded along the scroll axis and across it: a viewport
 /// with no edges has no window to fill.
 class CustomScrollView3d extends MultiChildLayout3d<ParentData3d>
-    implements Scrollable3d {
+    with Layout3dLayoutPassMixin, Scroll3dHolderMixin {
   /// Creates a viewport over [slivers].
   CustomScrollView3d({
     Axis3d scrollDirection = Axis3d.vertical,
@@ -40,12 +41,10 @@ class CustomScrollView3d extends MultiChildLayout3d<ParentData3d>
     List<Sliver3d> slivers = const <Sliver3d>[],
     super.name,
   }) : _axis = scrollDirection,
-       _controller = controller ?? Scroll3dController(),
-       _ownsController = controller == null,
        _cacheExtent = cacheExtent,
        assert(cacheExtent >= 0.0),
        super(children: slivers) {
-    _controller.addListener(_handleScrollChanged);
+    initController(controller);
   }
 
   /// How many times the viewport will redo its layout for a sliver asking to
@@ -63,30 +62,6 @@ class CustomScrollView3d extends MultiChildLayout3d<ParentData3d>
   set scrollDirection(Axis3d value) {
     if (_axis == value) return;
     _axis = value;
-    markNeedsLayout();
-  }
-
-  Scroll3dController _controller;
-  bool _ownsController;
-
-  /// The scroll position shared by every sliver in this viewport.
-  @override
-  Scroll3dController get controller => _controller;
-
-  /// Sets the position, or hands ownership back with null.
-  ///
-  /// Null means "make one of your own", the same thing it means in the
-  /// constructor, so a declarative caller that stops passing a controller gets
-  /// a fresh one rather than keeping the last one it happened to pass. A
-  /// controller supplied from outside belongs to whoever supplied it and is
-  /// never disposed here; one this view made is.
-  set controller(Scroll3dController? value) {
-    if (identical(_controller, value)) return;
-    _controller.removeListener(_handleScrollChanged);
-    if (_ownsController) _controller.dispose();
-    _ownsController = value == null;
-    _controller = (value ?? Scroll3dController())
-      ..addListener(_handleScrollChanged);
     markNeedsLayout();
   }
 
@@ -129,19 +104,6 @@ class CustomScrollView3d extends MultiChildLayout3d<ParentData3d>
   /// Replaces the sliver list, adopting what is new and dropping what is gone.
   void syncSlivers(List<Sliver3d> slivers) => syncChildren(slivers);
 
-  bool _layingOut = false;
-
-  void _handleScrollChanged() {
-    if (_layingOut) return;
-    markNeedsLayout();
-  }
-
-  @override
-  void markNeedsLayout() {
-    if (_layingOut) return;
-    super.markNeedsLayout();
-  }
-
   /// Opaque across the whole window, so a drag that starts between two
   /// sections still scrolls the viewport.
   @override
@@ -156,14 +118,7 @@ class CustomScrollView3d extends MultiChildLayout3d<ParentData3d>
       noIntrinsicExtent(this, axis);
 
   @override
-  void performLayout() {
-    _layingOut = true;
-    try {
-      _performViewportLayout();
-    } finally {
-      _layingOut = false;
-    }
-  }
+  void performLayout() => runLayoutPass(_performViewportLayout);
 
   void _performViewportLayout() {
     final axis = _axis;
@@ -196,23 +151,23 @@ class CustomScrollView3d extends MultiChildLayout3d<ParentData3d>
     var cycles = 0;
     while (true) {
       final total = _layoutSliverSequence(
-        scrollOffset: _controller.offset,
+        scrollOffset: controller.offset,
         mainExtent: mainExtent,
         crossExtent: crossExtent,
         depthExtent: depthExtent,
       );
       if (total.correction != null) {
-        _controller.correctBy(total.correction!);
+        controller.correctBy(total.correction!);
       } else {
-        final before = _controller.offset;
-        _controller.applyViewportMetrics(
+        final before = controller.offset;
+        controller.applyViewportMetrics(
           maxScrollExtent: math.max(0.0, total.scrollExtent - mainExtent),
           viewportExtent: mainExtent,
           contentExtent: total.scrollExtent,
         );
         // Reporting the metrics can pull the offset back into range, and
         // then the pass that just ran was laid out at the wrong place.
-        if (_controller.offset == before) return;
+        if (controller.offset == before) return;
       }
       cycles++;
       assert(
@@ -295,12 +250,5 @@ class CustomScrollView3d extends MultiChildLayout3d<ParentData3d>
     }
 
     return (scrollExtent: precedingScrollExtent, correction: null);
-  }
-
-  @override
-  void dispose() {
-    _controller.removeListener(_handleScrollChanged);
-    if (_ownsController) _controller.dispose();
-    super.dispose();
   }
 }

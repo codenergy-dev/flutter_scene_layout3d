@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show protected;
 import 'boxes/flex.dart' show CrossAxisAlignment3d;
 import 'geometry/constraints3d.dart';
 import 'layout3d.dart';
+import 'layout_pass.dart';
 
 /// Where a child sits across an axis a scrolling view does not lay out on.
 ///
@@ -38,8 +39,12 @@ double scrollCrossOffset(
 /// [obtainChild], [releaseOutside] and [positionedChildren] from its own
 /// layout. What is left in the view is the part that is actually its own:
 /// where the children go.
+///
+/// [runLayoutPass] comes from [Layout3dLayoutPassMixin], which this depends
+/// on: building and releasing children edits the child list, and those edits
+/// must not re-dirty the view that is being laid out.
 mixin Layout3dBuiltChildrenMixin<ParentDataType extends ParentData3d>
-    on Layout3dWithChildrenMixin<ParentDataType> {
+    on Layout3dWithChildrenMixin<ParentDataType>, Layout3dLayoutPassMixin {
   /// Builds the child standing for an index, or null when this view was given
   /// an explicit list of children instead.
   ///
@@ -91,33 +96,6 @@ mixin Layout3dBuiltChildrenMixin<ParentDataType extends ParentData3d>
   /// Everything for an explicit view; the window plus whatever cache the view
   /// keeps for a built one.
   Iterable<int> get activeIndices => _active.keys;
-
-  bool _layingOut = false;
-
-  /// Whether a layout pass is running on this view.
-  @protected
-  bool get layingOut => _layingOut;
-
-  /// Runs [body] as this view's layout pass.
-  ///
-  /// Building and releasing children edits the child list, and those edits
-  /// must not re-dirty the view that is being laid out. Wrap `performLayout`
-  /// (or `performSliverLayout`) in this rather than setting a flag by hand.
-  @protected
-  void runLayoutPass(void Function() body) {
-    _layingOut = true;
-    try {
-      body();
-    } finally {
-      _layingOut = false;
-    }
-  }
-
-  @override
-  void markNeedsLayout() {
-    if (_layingOut) return;
-    super.markNeedsLayout();
-  }
 
   /// Refuses a child list edit from outside, which the bookkeeping would not
   /// survive.

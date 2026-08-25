@@ -1,4 +1,5 @@
-// Viewport3d and ListView3d: a window onto content longer than itself.
+// Viewport3d and ListView3d: a window onto content longer than itself, and
+// the controller ownership every scrolling view here shares.
 
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -265,5 +266,78 @@ void main() {
       surface.flush();
       expect(built, greaterThan(first));
     });
+  });
+
+  // Every scrolling view holds a Scroll3dController the same way, through
+  // Scroll3dHolderMixin, so the rule is checked on all four at once: content
+  // 10 long in a window 4 long, and the first box slides by whatever the
+  // controller in force says.
+  group('controller ownership', () {
+    final views =
+        <String, Scroll3dHolderMixin Function(Scroll3dController?, Layout3d)>{
+          'Viewport3d': (controller, probe) =>
+              Viewport3d(controller: controller, child: probe),
+          'ListView3d': (controller, probe) =>
+              ListView3d(controller: controller, children: [probe]),
+          'GridView3d': (controller, probe) => GridView3d(
+            gridDelegate: const Grid3dDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 5,
+              childAspectRatio: 0.2,
+            ),
+            controller: controller,
+            children: [probe],
+          ),
+          'CustomScrollView3d': (controller, probe) => CustomScrollView3d(
+            controller: controller,
+            slivers: [SliverToBoxAdapter3d(child: probe)],
+          ),
+        };
+
+    for (final entry in views.entries) {
+      final name = entry.key;
+      final build = entry.value;
+
+      test('$name disposes the controller it made, and only that one', () {
+        final made = build(null, TestBox(const Size3d(2, 10, 2)));
+        final own = made.controller;
+        made.dispose();
+        expect(isDisposed(own), isTrue);
+
+        final supplied = Scroll3dController();
+        build(supplied, TestBox(const Size3d(2, 10, 2))).dispose();
+        expect(isDisposed(supplied), isFalse);
+        supplied.dispose();
+      });
+
+      test('$name takes a fresh controller back when given null', () {
+        final supplied = Scroll3dController();
+        final probe = TestBox(const Size3d(2, 10, 2));
+        final view = build(supplied, probe);
+        final surface = laidOut(view, constraints: window);
+
+        supplied.jumpTo(3);
+        surface.flush();
+        expect(probe.offset.y, -3);
+
+        view.controller = null;
+        surface.flush();
+        final held = view.controller;
+        expect(identical(held, supplied), isFalse);
+        // The one that was handed in belongs to whoever handed it in.
+        expect(isDisposed(supplied), isFalse);
+
+        // The fresh one starts at the top and drives the view; the old one
+        // no longer does.
+        expect(probe.offset.y, 0);
+        supplied.jumpTo(1);
+        surface.flush();
+        expect(probe.offset.y, 0);
+        held.jumpTo(2);
+        surface.flush();
+        expect(probe.offset.y, -2);
+
+        supplied.dispose();
+      });
+    }
   });
 }

@@ -31,7 +31,9 @@
 ///    scroll position.
 ///  * [Layout3dBuiltChildrenMixin] and [Layout3dMeasuredChildrenMixin], the
 ///    bookkeeping every view built from an [Layout3dItemBuilder] needs, for
-///    writing one of your own.
+///    writing one of your own, with [Layout3dLayoutPassMixin] and
+///    [Scroll3dHolderMixin] under them: the layout pass that ignores its own
+///    dirt, and the scroll position a view holds and may own.
 ///
 /// The declarative widget layer, which describes the same tree from a Flutter
 /// `build` method, is in `package:flutter_scene_layout3d/widgets.dart`.
@@ -87,6 +89,7 @@ export 'src/layout3d.dart'
         ParentData3d,
         ProxyLayout3d,
         SingleChildLayout3d;
+export 'src/layout_pass.dart' show Layout3dLayoutPassMixin;
 export 'src/scroll/grid_view.dart'
     show
         Grid3dDelegate,
@@ -97,7 +100,8 @@ export 'src/scroll/grid_view.dart'
         GridView3d;
 export 'src/scroll/list_view.dart' show ListView3d;
 export 'src/scroll/scroll_controller.dart' show Scroll3dController;
-export 'src/scroll/scrollable.dart' show Scrollable3d, noIntrinsicExtent;
+export 'src/scroll/scrollable.dart'
+    show Scroll3dHolderMixin, Scrollable3d, noIntrinsicExtent;
 export 'src/sliver/custom_scroll_view.dart' show CustomScrollView3d;
 export 'src/sliver/sliver.dart' show Sliver3d, SliverToBoxAdapter3d;
 export 'src/sliver/sliver_constraints.dart'

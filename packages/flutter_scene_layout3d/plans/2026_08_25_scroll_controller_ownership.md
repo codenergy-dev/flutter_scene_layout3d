@@ -1,7 +1,7 @@
 ---
-status: pending
+status: completed
 created_at: 2026-08-25T15:21:54Z
-updated_at: 2026-08-25T15:21:54Z
+updated_at: 2026-08-25T18:04:00Z
 commit: 88e98579925771720a40c21b3d5ad607f787fdf7
 ---
 
@@ -135,29 +135,56 @@ which for a controller is one the view owns.
 
 ## Steps
 
-1. Add `Layout3dLayoutPassMixin` to `lib/src/built_children.dart` (or its own
-   file if that one is getting long), and make `Layout3dBuiltChildrenMixin`
+1. [x] Add `Layout3dLayoutPassMixin`, and make `Layout3dBuiltChildrenMixin`
    depend on it.
-2. Point `CustomScrollView3d` at it, deleting its hand-rolled copy.
-3. Add `Scroll3dHolderMixin`. Mix it into `Viewport3d`, `ListView3d`,
+2. [x] Point `CustomScrollView3d` at it, deleting its hand-rolled copy.
+3. [x] Add `Scroll3dHolderMixin`. Mix it into `Viewport3d`, `ListView3d`,
    `GridView3d`, `CustomScrollView3d`; delete the four copies; call
    `initController` from the four constructor bodies.
-4. Export both mixins, as the other two are.
-5. `CHANGELOG`: note that `Viewport3d` now ignores dirt raised during its own
-   layout pass, which is the one behaviour change (its half-copy did not).
+4. [x] Export both mixins, as the other two are.
+5. [x] `CHANGELOG`: note that `Viewport3d` now ignores dirt raised during its
+   own layout pass, which is the one behaviour change (its half-copy did not).
 
 ## Tests
 
 The existing suite is the bar — 249 tests, no edits — because none of this is
 new behaviour. Add two:
 
-- `dispose` disposes a controller the view made and leaves alone one it was
+- [x] `dispose` disposes a controller the view made and leaves alone one it was
   given (currently untested in all four).
-- `controller = null` after a supplied one gives a fresh, working controller
+- [x] `controller = null` after a supplied one gives a fresh, working controller
   rather than the old one.
+
+Both landed as one table-driven `controller ownership` group in
+`test/scroll_test.dart`, run against all four views: content 10 long in a
+window 4 long, and the first box slides by whatever the controller in force
+says. Eight tests, 257 in the suite, the other 249 untouched. A `ChangeNotifier`
+will not say whether it has been disposed, so `test/support.dart` gained
+`isDisposed`, which asks it the only way there is — by using it again.
 
 ## Risk
 
 Low. The one thing to watch is `initController` being missed in a constructor,
 which the `_held!` getter turns into a null-check failure on first use rather
 than something subtle. Make the assert message say which call is missing.
+
+## What the work turned up
+
+- **`Layout3dLayoutPassMixin` went in its own file**, `lib/src/layout_pass.dart`,
+  rather than into `built_children.dart` as step 1 offered as its first
+  option. `Viewport3d` and `CustomScrollView3d` need it without building
+  children, and having them import a file whose dartdoc opens "A child list
+  that may be built on demand" would say the wrong thing about why.
+  `Scroll3dHolderMixin` went into `lib/src/scroll/scrollable.dart`, next to the
+  `Scrollable3d` interface it satisfies, which all four views already import.
+- **`SliverList3d` and `SliverGrid3d` had to be edited too**, which the plan
+  did not mention. They mix in `Layout3dBuiltChildrenMixin`, so its new `on`
+  clause obliges them to apply `Layout3dLayoutPassMixin` themselves; one line
+  each, no behaviour change.
+- **The four classes dropped `implements Scrollable3d`.** The mixin carries it,
+  and stating it twice invites the two to disagree.
+- The `_controller` field is gone, so the view bodies read the `controller`
+  getter directly. It asserts a controller has been installed on every read,
+  which is a handful of asserts per layout pass and only in debug.
+- lib is 49 lines shorter (210 added, 259 removed) with the duplication gone.
+  This was the fifth and last duplication cluster in the package.

@@ -6,6 +6,7 @@ import '../geometry/constraints3d.dart';
 import '../geometry/offset3d.dart';
 import '../geometry/size3d.dart';
 import '../layout3d.dart';
+import '../layout_pass.dart';
 import 'scroll_controller.dart';
 import 'scrollable.dart';
 
@@ -32,9 +33,10 @@ import 'scrollable.dart';
 /// Flutter behaviour.
 class ListView3d extends MultiChildLayout3d<ParentData3d>
     with
+        Layout3dLayoutPassMixin,
         Layout3dBuiltChildrenMixin<ParentData3d>,
-        Layout3dMeasuredChildrenMixin<ParentData3d>
-    implements Scrollable3d {
+        Layout3dMeasuredChildrenMixin<ParentData3d>,
+        Scroll3dHolderMixin {
   /// Creates a list over an explicit set of children.
   ListView3d({
     Axis3d scrollDirection = Axis3d.vertical,
@@ -47,8 +49,6 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
     List<Layout3d> children = const <Layout3d>[],
     super.name,
   }) : _axis = scrollDirection,
-       _controller = controller ?? Scroll3dController(),
-       _ownsController = controller == null,
        _spacing = spacing,
        _itemExtent = itemExtent,
        _crossAxisAlignment = crossAxisAlignment,
@@ -59,7 +59,7 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
        assert(cacheExtent >= 0.0),
        assert(itemExtent == null || itemExtent > 0.0),
        super(children: children) {
-    _controller.addListener(_handleScrollChanged);
+    initController(controller);
   }
 
   /// Creates a list that builds its items on demand.
@@ -75,8 +75,6 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
     double cacheExtent = 0.0,
     super.name,
   }) : _axis = scrollDirection,
-       _controller = controller ?? Scroll3dController(),
-       _ownsController = controller == null,
        _spacing = spacing,
        _itemExtent = itemExtent,
        _crossAxisAlignment = crossAxisAlignment,
@@ -88,7 +86,7 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
        assert(cacheExtent >= 0.0),
        assert(itemExtent == null || itemExtent > 0.0) {
     declaredItemCount = itemCount;
-    _controller.addListener(_handleScrollChanged);
+    initController(controller);
   }
 
   Axis3d _axis;
@@ -102,30 +100,6 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
   set scrollDirection(Axis3d value) {
     if (_axis == value) return;
     _axis = value;
-    markNeedsLayout();
-  }
-
-  Scroll3dController _controller;
-  bool _ownsController;
-
-  /// The scroll position, and the metrics this list measured.
-  @override
-  Scroll3dController get controller => _controller;
-
-  /// Sets the position, or hands ownership back with null.
-  ///
-  /// Null means "make one of your own", the same thing it means in the
-  /// constructor, so a declarative caller that stops passing a controller gets
-  /// a fresh one rather than keeping the last one it happened to pass. A
-  /// controller supplied from outside belongs to whoever supplied it and is
-  /// never disposed here; one this view made is.
-  set controller(Scroll3dController? value) {
-    if (identical(_controller, value)) return;
-    _controller.removeListener(_handleScrollChanged);
-    if (_ownsController) _controller.dispose();
-    _ownsController = value == null;
-    _controller = (value ?? Scroll3dController())
-      ..addListener(_handleScrollChanged);
     markNeedsLayout();
   }
 
@@ -200,10 +174,6 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
   @override
   Layout3dItemBuilder? get itemBuilder => _builder;
 
-  /// A scroll position that moved needs a new layout, unless it moved
-  /// *during* one — and [markNeedsLayout] already ignores that case.
-  void _handleScrollChanged() => markNeedsLayout();
-
   Constraints3d _childConstraints(double? mainExtent) {
     var result = const Constraints3d().withAxis(
       _axis,
@@ -275,7 +245,7 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
       final stride = itemExtent + _spacing;
       contentExtent = count > 0 ? count * stride - _spacing : 0.0;
       final mainSize = boundedMain ? windowExtent : contentExtent;
-      final offset = _controller.offset.clamp(
+      final offset = controller.offset.clamp(
         0.0,
         math.max(0.0, contentExtent - mainSize),
       );
@@ -306,7 +276,7 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
     } else {
       // Measured lazily: walk forward until the window is covered, keeping
       // the running prefix so scrolling back needs no re-measuring.
-      final probeEnd = _controller.offset + windowExtent + _cacheExtent;
+      final probeEnd = controller.offset + windowExtent + _cacheExtent;
       while (measuredCount < count &&
           (!probeEnd.isFinite || measuredEnd <= probeEnd)) {
         final child = obtainChild(measuredCount, childConstraints);
@@ -315,7 +285,7 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
       }
       contentExtent = estimatedContentExtent(count);
       final mainSize = boundedMain ? windowExtent : contentExtent;
-      final offset = _controller.offset.clamp(
+      final offset = controller.offset.clamp(
         0.0,
         math.max(0.0, contentExtent - mainSize),
       );
@@ -346,12 +316,12 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
           ),
     );
     final actualMain = size.alongAxis(axis);
-    _controller.applyViewportMetrics(
+    controller.applyViewportMetrics(
       maxScrollExtent: math.max(0.0, contentExtent - actualMain),
       viewportExtent: actualMain,
       contentExtent: contentExtent,
     );
-    final scrollOffset = _controller.offset;
+    final scrollOffset = controller.offset;
 
     // 3. Place what is built, and hide what an explicit list keeps around.
     final actualFirstCross = size.alongAxis(firstCross);
@@ -386,12 +356,5 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
       );
       child.node.visible = start + extent > windowStart && start < windowEnd;
     }
-  }
-
-  @override
-  void dispose() {
-    _controller.removeListener(_handleScrollChanged);
-    if (_ownsController) _controller.dispose();
-    super.dispose();
   }
 }

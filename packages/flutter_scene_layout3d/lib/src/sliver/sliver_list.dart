@@ -5,6 +5,7 @@ import '../built_children.dart';
 import '../geometry/constraints3d.dart';
 import '../geometry/offset3d.dart';
 import '../layout3d.dart';
+import '../layout_pass.dart';
 import 'sliver.dart';
 import 'sliver_constraints.dart';
 
@@ -48,6 +49,7 @@ typedef Sliver3dItemBuilder = Layout3dItemBuilder;
 class SliverList3d extends Sliver3d
     with
         Layout3dWithChildrenMixin<ParentData3d>,
+        Layout3dLayoutPassMixin,
         Layout3dBuiltChildrenMixin<ParentData3d>,
         Layout3dMeasuredChildrenMixin<ParentData3d> {
   /// Creates a list over an explicit set of children.

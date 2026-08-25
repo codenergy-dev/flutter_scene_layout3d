@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import '../geometry/offset3d.dart';
 import '../geometry/size3d.dart';
 import '../layout3d.dart';
+import '../layout_pass.dart';
 import 'scroll_controller.dart';
 import 'scrollable.dart';
 
@@ -13,17 +14,16 @@ import 'scrollable.dart';
 /// slice at [controller]'s offset. Nothing is culled and nothing is clipped:
 /// the child keeps its geometry, it simply slides. For long lists, prefer
 /// [ListView3d], which only builds what is near the window.
-class Viewport3d extends SingleChildLayout3d implements Scrollable3d {
+class Viewport3d extends SingleChildLayout3d
+    with Layout3dLayoutPassMixin, Scroll3dHolderMixin {
   /// Creates a scrolling window along [axis].
   Viewport3d({
     Axis3d axis = Axis3d.vertical,
     Scroll3dController? controller,
     super.child,
     super.name,
-  }) : _axis = axis,
-       _controller = controller ?? Scroll3dController(),
-       _ownsController = controller == null {
-    _controller.addListener(_handleScrollChanged);
+  }) : _axis = axis {
+    initController(controller);
   }
 
   Axis3d _axis;
@@ -37,37 +37,6 @@ class Viewport3d extends SingleChildLayout3d implements Scrollable3d {
   set axis(Axis3d value) {
     if (_axis == value) return;
     _axis = value;
-    markNeedsLayout();
-  }
-
-  Scroll3dController _controller;
-  bool _ownsController;
-
-  /// The scroll position, and the metrics this viewport measured.
-  @override
-  Scroll3dController get controller => _controller;
-
-  /// Sets the position, or hands ownership back with null.
-  ///
-  /// Null means "make one of your own", the same thing it means in the
-  /// constructor, so a declarative caller that stops passing a controller gets
-  /// a fresh one rather than keeping the last one it happened to pass. A
-  /// controller supplied from outside belongs to whoever supplied it and is
-  /// never disposed here; one this view made is.
-  set controller(Scroll3dController? value) {
-    if (identical(_controller, value)) return;
-    _controller.removeListener(_handleScrollChanged);
-    if (_ownsController) _controller.dispose();
-    _ownsController = value == null;
-    _controller = (value ?? Scroll3dController())
-      ..addListener(_handleScrollChanged);
-    markNeedsLayout();
-  }
-
-  bool _layingOut = false;
-
-  void _handleScrollChanged() {
-    if (_layingOut) return;
     markNeedsLayout();
   }
 
@@ -87,45 +56,33 @@ class Viewport3d extends SingleChildLayout3d implements Scrollable3d {
       noIntrinsicExtent(this, axis);
 
   @override
-  void performLayout() {
-    _layingOut = true;
-    try {
-      final child = this.child;
-      final axis = _axis;
-      final bounded = constraints.hasBoundedAlong(axis);
-      if (child == null) {
-        size = constraints.constrain(Size3d.zero);
-        _controller.applyViewportMetrics(
-          maxScrollExtent: 0.0,
-          viewportExtent: bounded ? constraints.maxAlong(axis) : 0.0,
-          contentExtent: 0.0,
-        );
-        return;
-      }
-      child.layout(
-        constraints.withAxis(axis, min: 0.0, max: double.infinity),
-        parentUsesSize: true,
-      );
-      final contentExtent = child.size.alongAxis(axis);
-      final viewportExtent = bounded
-          ? constraints.maxAlong(axis)
-          : contentExtent;
-      size = constraints.constrain(child.size.withAxis(axis, viewportExtent));
-      _controller.applyViewportMetrics(
-        maxScrollExtent: math.max(0.0, contentExtent - viewportExtent),
-        viewportExtent: viewportExtent,
-        contentExtent: contentExtent,
-      );
-      child.place(Offset3d.along(axis, -_controller.offset));
-    } finally {
-      _layingOut = false;
-    }
-  }
+  void performLayout() => runLayoutPass(_performViewportLayout);
 
-  @override
-  void dispose() {
-    _controller.removeListener(_handleScrollChanged);
-    if (_ownsController) _controller.dispose();
-    super.dispose();
+  void _performViewportLayout() {
+    final child = this.child;
+    final axis = _axis;
+    final bounded = constraints.hasBoundedAlong(axis);
+    if (child == null) {
+      size = constraints.constrain(Size3d.zero);
+      controller.applyViewportMetrics(
+        maxScrollExtent: 0.0,
+        viewportExtent: bounded ? constraints.maxAlong(axis) : 0.0,
+        contentExtent: 0.0,
+      );
+      return;
+    }
+    child.layout(
+      constraints.withAxis(axis, min: 0.0, max: double.infinity),
+      parentUsesSize: true,
+    );
+    final contentExtent = child.size.alongAxis(axis);
+    final viewportExtent = bounded ? constraints.maxAlong(axis) : contentExtent;
+    size = constraints.constrain(child.size.withAxis(axis, viewportExtent));
+    controller.applyViewportMetrics(
+      maxScrollExtent: math.max(0.0, contentExtent - viewportExtent),
+      viewportExtent: viewportExtent,
+      contentExtent: contentExtent,
+    );
+    child.place(Offset3d.along(axis, -controller.offset));
   }
 }

@@ -24,11 +24,25 @@
   setter pair like every other property in the package, rather than bare public
   fields. They still cost nothing to flip.
 
+- `Viewport3d`, `ListView3d`, `GridView3d` and `CustomScrollView3d` held their
+  scroll controller four separate times over — the same field, setter,
+  listener and `dispose` in each — and the ownership rule underneath was easy
+  to get subtly wrong. It is one mixin now, `Scroll3dHolderMixin`, which the
+  four install from their constructors with `initController`. The rule it
+  keeps is unchanged: a controller the view made is disposed with the view, and
+  one handed in from outside never is.
+- `Layout3dLayoutPassMixin`, the flag that makes a view deaf to the dirt raised
+  by its own layout pass, is its own mixin rather than a part of
+  `Layout3dBuiltChildrenMixin`, because holding a scroll position needs it
+  without holding built children. Both new mixins are exported.
+- **Behaviour change:** `Viewport3d` now ignores *any* relayout request raised
+  during its own layout pass, not just one from its own scroll controller. It
+  had half of this guard; the other three views had all of it.
 - `ListView3d`, `GridView3d`, `SliverList3d` and `SliverGrid3d` were four
   independent implementations of the same bookkeeping, and had already drifted
   apart in three places. The shared half is now two mixins,
-  `Layout3dBuiltChildrenMixin` (the index-to-child map, the layout-pass guard,
-  `itemCount`, `refresh`, and the child-list guard above) and
+  `Layout3dBuiltChildrenMixin` (the index-to-child map, `itemCount`, `refresh`,
+  and the child-list guard above) and
   `Layout3dMeasuredChildrenMixin` (the running prefix a list of free-sized
   children keeps). Both are exported, for writing a scrolling view of your own.
   The four views shed 672 lines between them and keep only what is actually

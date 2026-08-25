@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-08-25T03:32:15Z
-updated_at: 2026-08-25T15:21:54Z
+updated_at: 2026-08-25T18:04:00Z
 commit: 495b1ec4e93e3588c93612ef02862355d380933a
 ---
 
@@ -494,7 +494,8 @@ own:
   — the fifth duplication cluster, found while doing 2.1 and phase 4 but out of
   scope for both. `Viewport3d`, `ListView3d`, `GridView3d` and
   `CustomScrollView3d` each carry the same `_controller` / `_ownsController`
-  pair, setter, `_handleScrollChanged` and dispose handling.
+  pair, setter, `_handleScrollChanged` and dispose handling. **Done**, as
+  `Scroll3dHolderMixin` over `Layout3dLayoutPassMixin`.
 - [Give a measured list a length it can stand behind](2026_08_25_measured_list_scroll_range.md)
   — what 2.3 left open. Measuring the symptom showed that a
   `scrollOffsetCorrection` producer is the *wrong* tool, and that the

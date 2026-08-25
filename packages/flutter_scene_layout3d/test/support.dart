@@ -1,5 +1,6 @@
 // Shared helpers for the layout tests.
 
+import 'package:flutter/foundation.dart' show ChangeNotifier, FlutterError;
 import 'package:flutter_scene/scene.dart' show Node;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
 import 'package:vector_math/vector_math.dart' show Vector3;
@@ -99,4 +100,21 @@ Offset3d rounded(Offset3d offset, [int digits = 6]) {
   }
 
   return Offset3d(round(offset.x), round(offset.y), round(offset.z));
+}
+
+void _noop() {}
+
+/// Whether [notifier] has been disposed.
+///
+/// A `ChangeNotifier` keeps no public flag for it; the only thing it will say
+/// is that it refuses to be used again, so that is what this asks. Debug mode
+/// only, which is where tests run.
+bool isDisposed(ChangeNotifier notifier) {
+  try {
+    notifier.addListener(_noop);
+  } on FlutterError {
+    return true;
+  }
+  notifier.removeListener(_noop);
+  return false;
 }
