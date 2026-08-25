@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import '../boxes/flex.dart' show CrossAxisAlignment3d;
+import '../built_children.dart';
 import '../geometry/constraints3d.dart';
 import '../geometry/offset3d.dart';
 import '../geometry/size3d.dart';
@@ -241,6 +242,7 @@ class Grid3dDelegateWithMaxCrossAxisExtent extends Grid3dDelegate {
 /// a grid of models of different thicknesses lines up on whichever face you
 /// choose.
 class GridView3d extends MultiChildLayout3d<ParentData3d>
+    with Layout3dBuiltChildrenMixin<ParentData3d>
     implements Scrollable3d {
   /// Creates a grid over an explicit set of children.
   GridView3d({
@@ -258,7 +260,6 @@ class GridView3d extends MultiChildLayout3d<ParentData3d>
        _depthAxisAlignment = depthAxisAlignment,
        _cacheExtent = cacheExtent,
        _builder = null,
-       _itemCount = children.length,
        assert(cacheExtent >= 0.0),
        super(children: children) {
     _controller.addListener(_handleScrollChanged);
@@ -281,9 +282,9 @@ class GridView3d extends MultiChildLayout3d<ParentData3d>
        _depthAxisAlignment = depthAxisAlignment,
        _cacheExtent = cacheExtent,
        _builder = itemBuilder,
-       _itemCount = itemCount,
        assert(itemCount >= 0),
        assert(cacheExtent >= 0.0) {
+    declaredItemCount = itemCount;
     _controller.addListener(_handleScrollChanged);
   }
 
@@ -357,25 +358,11 @@ class GridView3d extends MultiChildLayout3d<ParentData3d>
 
   final Layout3dItemBuilder? _builder;
 
-  int _itemCount;
+  @override
+  Layout3dItemBuilder? get itemBuilder => _builder;
 
-  /// How many cells the grid holds.
-  int get itemCount => _builder == null ? childCount : _itemCount;
-
-  set itemCount(int value) {
-    assert(
-      _builder != null,
-      'itemCount belongs to GridView3d.builder; a grid built from an '
-      'explicit list takes its count from the children.',
-    );
-    if (_itemCount == value) return;
-    assert(value >= 0);
-    _itemCount = value;
-    markNeedsLayout();
-  }
-
-  /// The cells built and kept alive, by index. Empty for an explicit grid.
-  final Map<int, Layout3d> _active = <int, Layout3d>{};
+  @override
+  String get itemNoun => 'cells';
 
   /// The grid the delegate last produced, for callers that want to know where
   /// a cell landed. Null until the first layout.
@@ -384,98 +371,9 @@ class GridView3d extends MultiChildLayout3d<ParentData3d>
   /// The cell grid in force after the most recent layout.
   Grid3dLayout? get gridLayout => _layout;
 
-  bool _layingOut = false;
-
-  void _handleScrollChanged() {
-    if (_layingOut) return;
-    markNeedsLayout();
-  }
-
-  @override
-  void markNeedsLayout() {
-    // Building and releasing cells happens inside performLayout; those child
-    // list edits must not re-dirty the grid that is being laid out.
-    if (_layingOut) return;
-    super.markNeedsLayout();
-  }
-
-  /// Refuses a child list edit on a built grid, where the bookkeeping
-  /// would not survive it.
-  ///
-  /// A built grid tracks its cells by index, and everything it does —
-  /// measuring, placing, culling, releasing — goes through that map. A child
-  /// inserted from outside is in the child list but not in the map, so it is
-  /// never laid out (the first read of its size trips the "has not been laid
-  /// out yet" assert) and never released. The cells of a built grid come from
-  /// its builder; change [itemCount], or call [refresh] when the data behind
-  /// the builder moved.
-  void _assertNotBuilt(String method) {
-    assert(
-      _builder == null,
-      'Cannot call $method on a GridView3d.builder. Its cells come from '
-      'itemBuilder and are tracked by index; a child added from outside is '
-      'never laid out and never released. Set itemCount, or call refresh() '
-      'when the data behind the builder changed.',
-    );
-  }
-
-  @override
-  void insert(Layout3d child, {int? index}) {
-    _assertNotBuilt('insert');
-    super.insert(child, index: index);
-  }
-
-  @override
-  void remove(Layout3d child) {
-    _assertNotBuilt('remove');
-    super.remove(child);
-  }
-
-  @override
-  void removeAll() {
-    _assertNotBuilt('removeAll');
-    super.removeAll();
-  }
-
-  @override
-  void syncChildren(List<Layout3d> children) {
-    _assertNotBuilt('syncChildren');
-    super.syncChildren(children);
-  }
-
-  /// Rebuilds the grid from scratch, for when the item builder's data
-  /// changed.
-  void refresh() {
-    if (_builder != null) {
-      for (final child in _active.values.toList()) {
-        remove(child);
-        child.dispose();
-      }
-      _active.clear();
-    }
-    markNeedsLayout();
-  }
-
-  Layout3d _obtainChild(int index, Constraints3d childConstraints) {
-    var child = _active[index];
-    if (child == null) {
-      child = _builder!(index);
-      final position = _active.keys.where((i) => i < index).length;
-      _active[index] = child;
-      super.insert(child, index: position);
-    }
-    child.layout(childConstraints, parentUsesSize: true);
-    return child;
-  }
-
-  void _releaseOutside(int first, int last) {
-    for (final index in _active.keys.toList()) {
-      if (index >= first && index <= last) continue;
-      final child = _active.remove(index)!;
-      super.remove(child);
-      child.dispose();
-    }
-  }
+  /// A scroll position that moved needs a new layout, unless it moved
+  /// *during* one — and [markNeedsLayout] already ignores that case.
+  void _handleScrollChanged() => markNeedsLayout();
 
   /// Opaque to hits across the whole window, the gaps between cells
   /// included, so a drag that starts between two cells still scrolls.
@@ -491,14 +389,7 @@ class GridView3d extends MultiChildLayout3d<ParentData3d>
       noIntrinsicExtent(this, axis);
 
   @override
-  void performLayout() {
-    _layingOut = true;
-    try {
-      _performGridLayout();
-    } finally {
-      _layingOut = false;
-    }
-  }
+  void performLayout() => runLayoutPass(_performGridLayout);
 
   void _performGridLayout() {
     final axis = _axis;
@@ -559,10 +450,10 @@ class GridView3d extends MultiChildLayout3d<ParentData3d>
       }
     } else {
       for (var index = firstIndex; index <= lastIndex; index++) {
-        final child = _obtainChild(index, childConstraints);
+        final child = obtainChild(index, childConstraints);
         depthExtent = math.max(depthExtent, child.size.alongAxis(depthAxis));
       }
-      _releaseOutside(firstIndex, lastIndex);
+      releaseOutside(firstIndex, lastIndex);
     }
 
     size = constraints.constrain(
@@ -581,7 +472,7 @@ class GridView3d extends MultiChildLayout3d<ParentData3d>
     final scrollOffset = _controller.offset;
     final actualDepth = size.alongAxis(depthAxis);
 
-    for (final (index, child) in _positionedChildren()) {
+    for (final (index, child) in positionedChildren()) {
       final start = grid.mainAxisOffsetOf(index);
       child.place(
         Offset3d.zero
@@ -589,7 +480,11 @@ class GridView3d extends MultiChildLayout3d<ParentData3d>
             .withAxis(crossAxis, grid.crossAxisOffsetOf(index))
             .withAxis(
               depthAxis,
-              _depthOffset(actualDepth, child.size.alongAxis(depthAxis)),
+              scrollCrossOffset(
+                _depthAxisAlignment,
+                actualDepth,
+                child.size.alongAxis(depthAxis),
+              ),
             ),
       );
       child.node.visible =
@@ -598,34 +493,10 @@ class GridView3d extends MultiChildLayout3d<ParentData3d>
     }
   }
 
-  Iterable<(int, Layout3d)> _positionedChildren() sync* {
-    if (_builder == null) {
-      for (var index = 0; index < childCount; index++) {
-        yield (index, childAt(index));
-      }
-      return;
-    }
-    for (final entry in _active.entries) {
-      yield (entry.key, entry.value);
-    }
-  }
-
-  double _depthOffset(double extent, double childExtent) =>
-      switch (_depthAxisAlignment) {
-        // Baseline alignment falls back to the start here: a grid cell has no
-        // line to share with the cells beside it.
-        CrossAxisAlignment3d.start ||
-        CrossAxisAlignment3d.stretch ||
-        CrossAxisAlignment3d.baseline => 0.0,
-        CrossAxisAlignment3d.end => extent - childExtent,
-        CrossAxisAlignment3d.center => (extent - childExtent) / 2.0,
-      };
-
   @override
   void dispose() {
     _controller.removeListener(_handleScrollChanged);
     if (_ownsController) _controller.dispose();
-    _active.clear();
     super.dispose();
   }
 }

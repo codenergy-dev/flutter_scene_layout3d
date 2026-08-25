@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import '../boxes/flex.dart' show CrossAxisAlignment3d;
 import '../geometry/constraints3d.dart';
 import '../geometry/offset3d.dart';
+import '../built_children.dart';
 import '../layout3d.dart';
 import '../scroll/grid_view.dart' show Grid3dDelegate, Grid3dLayout;
 import 'sliver.dart';
@@ -16,7 +17,9 @@ import 'sliver_constraints.dart';
 /// is exactly lazy — the scroll extent of ten thousand cells is known without
 /// building one.
 class SliverGrid3d extends Sliver3d
-    with Layout3dWithChildrenMixin<ParentData3d> {
+    with
+        Layout3dWithChildrenMixin<ParentData3d>,
+        Layout3dBuiltChildrenMixin<ParentData3d> {
   /// Creates a grid over an explicit set of children.
   SliverGrid3d({
     required Grid3dDelegate gridDelegate,
@@ -25,8 +28,7 @@ class SliverGrid3d extends Sliver3d
     super.name,
   }) : _gridDelegate = gridDelegate,
        _depthAxisAlignment = depthAxisAlignment,
-       _builder = null,
-       _itemCount = children.length {
+       _builder = null {
     addAll(children);
   }
 
@@ -40,8 +42,9 @@ class SliverGrid3d extends Sliver3d
   }) : _gridDelegate = gridDelegate,
        _depthAxisAlignment = depthAxisAlignment,
        _builder = itemBuilder,
-       _itemCount = itemCount,
-       assert(itemCount >= 0);
+       assert(itemCount >= 0) {
+    declaredItemCount = itemCount;
+  }
 
   Grid3dDelegate _gridDelegate;
 
@@ -70,125 +73,19 @@ class SliverGrid3d extends Sliver3d
 
   final Layout3dItemBuilder? _builder;
 
-  int _itemCount;
+  @override
+  Layout3dItemBuilder? get itemBuilder => _builder;
 
-  /// How many cells the grid holds.
-  int get itemCount => _builder == null ? childCount : _itemCount;
-
-  set itemCount(int value) {
-    assert(
-      _builder != null,
-      'itemCount belongs to SliverGrid3d.builder; a grid built from an '
-      'explicit set of children takes its count from them.',
-    );
-    if (_itemCount == value) return;
-    assert(value >= 0);
-    _itemCount = value;
-    markNeedsLayout();
-  }
-
-  final Map<int, Layout3d> _active = <int, Layout3d>{};
+  @override
+  String get itemNoun => 'cells';
 
   Grid3dLayout? _layout;
 
   /// The cell grid in force after the most recent layout.
   Grid3dLayout? get gridLayout => _layout;
 
-  bool _layingOut = false;
-
   @override
-  void markNeedsLayout() {
-    if (_layingOut) return;
-    super.markNeedsLayout();
-  }
-
-  /// Refuses a child list edit on a built grid, where the bookkeeping
-  /// would not survive it.
-  ///
-  /// A built grid tracks its cells by index, and everything it does —
-  /// measuring, placing, culling, releasing — goes through that map. A child
-  /// inserted from outside is in the child list but not in the map, so it is
-  /// never laid out (the first read of its size trips the "has not been laid
-  /// out yet" assert) and never released. The cells of a built grid come from
-  /// its builder; change [itemCount], or call [refresh] when the data behind
-  /// the builder moved.
-  void _assertNotBuilt(String method) {
-    assert(
-      _builder == null,
-      'Cannot call $method on a SliverGrid3d.builder. Its cells come from '
-      'itemBuilder and are tracked by index; a child added from outside is '
-      'never laid out and never released. Set itemCount, or call refresh() '
-      'when the data behind the builder changed.',
-    );
-  }
-
-  @override
-  void insert(Layout3d child, {int? index}) {
-    _assertNotBuilt('insert');
-    super.insert(child, index: index);
-  }
-
-  @override
-  void remove(Layout3d child) {
-    _assertNotBuilt('remove');
-    super.remove(child);
-  }
-
-  @override
-  void removeAll() {
-    _assertNotBuilt('removeAll');
-    super.removeAll();
-  }
-
-  @override
-  void syncChildren(List<Layout3d> children) {
-    _assertNotBuilt('syncChildren');
-    super.syncChildren(children);
-  }
-
-  /// Rebuilds the grid from scratch, for when the item builder's data
-  /// changed.
-  void refresh() {
-    if (_builder != null) {
-      for (final child in _active.values.toList()) {
-        remove(child);
-        child.dispose();
-      }
-      _active.clear();
-    }
-    markNeedsLayout();
-  }
-
-  Layout3d _obtainChild(int index, Constraints3d childConstraints) {
-    var child = _active[index];
-    if (child == null) {
-      child = _builder!(index);
-      final position = _active.keys.where((i) => i < index).length;
-      _active[index] = child;
-      super.insert(child, index: position);
-    }
-    child.layout(childConstraints, parentUsesSize: true);
-    return child;
-  }
-
-  void _releaseOutside(int first, int last) {
-    for (final index in _active.keys.toList()) {
-      if (index >= first && index <= last) continue;
-      final child = _active.remove(index)!;
-      super.remove(child);
-      child.dispose();
-    }
-  }
-
-  @override
-  void performSliverLayout() {
-    _layingOut = true;
-    try {
-      _performGridLayout();
-    } finally {
-      _layingOut = false;
-    }
-  }
+  void performSliverLayout() => runLayoutPass(_performGridLayout);
 
   void _performGridLayout() {
     final constraints = sliverConstraints;
@@ -238,9 +135,9 @@ class SliverGrid3d extends Sliver3d
       }
     } else {
       for (var index = firstIndex; index <= lastIndex; index++) {
-        _obtainChild(index, childConstraints);
+        obtainChild(index, childConstraints);
       }
-      _releaseOutside(firstIndex, lastIndex);
+      releaseOutside(firstIndex, lastIndex);
     }
 
     geometry = SliverGeometry3d(
@@ -254,7 +151,7 @@ class SliverGrid3d extends Sliver3d
     final visibleEnd =
         constraints.scrollOffset + constraints.remainingPaintExtent;
     final depthExtent = depthLimit.isFinite ? depthLimit : 0.0;
-    for (final (index, child) in _positionedChildren()) {
+    for (final (index, child) in positionedChildren()) {
       final start = grid.mainAxisOffsetOf(index);
       child.place(
         Offset3d.zero
@@ -262,34 +159,15 @@ class SliverGrid3d extends Sliver3d
             .withAxis(crossAxis, grid.crossAxisOffsetOf(index))
             .withAxis(
               depthAxis,
-              _depthOffset(depthExtent, child.size.alongAxis(depthAxis)),
+              scrollCrossOffset(
+                _depthAxisAlignment,
+                depthExtent,
+                child.size.alongAxis(depthAxis),
+              ),
             ),
       );
       child.node.visible =
           start + grid.cellMainAxisExtent > visibleStart && start < visibleEnd;
     }
   }
-
-  Iterable<(int, Layout3d)> _positionedChildren() sync* {
-    if (_builder == null) {
-      for (var index = 0; index < childCount; index++) {
-        yield (index, childAt(index));
-      }
-      return;
-    }
-    for (final entry in _active.entries) {
-      yield (entry.key, entry.value);
-    }
-  }
-
-  double _depthOffset(double extent, double childExtent) =>
-      switch (_depthAxisAlignment) {
-        // Baseline alignment falls back to the start here: a grid cell has no
-        // line to share with the cells beside it.
-        CrossAxisAlignment3d.start ||
-        CrossAxisAlignment3d.stretch ||
-        CrossAxisAlignment3d.baseline => 0.0,
-        CrossAxisAlignment3d.end => extent - childExtent,
-        CrossAxisAlignment3d.center => (extent - childExtent) / 2.0,
-      };
 }

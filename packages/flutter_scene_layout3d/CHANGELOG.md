@@ -1,5 +1,25 @@
 ## Unreleased
 
+- `ListView3d`, `GridView3d`, `SliverList3d` and `SliverGrid3d` were four
+  independent implementations of the same bookkeeping, and had already drifted
+  apart in three places. The shared half is now two mixins,
+  `Layout3dBuiltChildrenMixin` (the index-to-child map, the layout-pass guard,
+  `itemCount`, `refresh`, and the child-list guard above) and
+  `Layout3dMeasuredChildrenMixin` (the running prefix a list of free-sized
+  children keeps). Both are exported, for writing a scrolling view of your own.
+  The four views shed 672 lines between them and keep only what is actually
+  theirs: where the children go.
+- Fixed: `SliverList3d.itemCount` left the measured prefix in place, so a list
+  that had measured ten items went on reporting all ten as its `scrollExtent`
+  after being told there were five. Setting `itemCount` now drops the
+  measurements on all four views.
+- `ListView3d.itemCount` no longer disposes every built child when it changes.
+  The children are still right for their own indices; the next layout releases
+  whatever falls outside the window, which includes anything past the new end.
+  Call `refresh()` when what the builder *returns* has changed.
+- `activeIndices` and `isLazy`, previously on `ListView3d` alone, are now on
+  all four views.
+
 - **Breaking:** `Offset3dBox` is gone. It was undocumented, untested, had no
   widget, and was the one public type that did not end in `3d`;
   `Transform3d.translate` does the same thing.

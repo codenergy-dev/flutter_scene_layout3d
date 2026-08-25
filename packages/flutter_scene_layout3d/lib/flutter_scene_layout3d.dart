@@ -29,6 +29,9 @@
 ///  * [CustomScrollView3d] and the slivers ([SliverList3d], [SliverGrid3d],
 ///    [SliverToBoxAdapter3d]), a second protocol for sections that share one
 ///    scroll position.
+///  * [Layout3dBuiltChildrenMixin] and [Layout3dMeasuredChildrenMixin], the
+///    bookkeeping every view built from an [Layout3dItemBuilder] needs, for
+///    writing one of your own.
 ///
 /// The declarative widget layer, which describes the same tree from a Flutter
 /// `build` method, is in `package:flutter_scene_layout3d/widgets.dart`.
@@ -62,6 +65,8 @@ export 'src/boxes/shifted.dart'
 export 'src/boxes/sized.dart' show ConstrainedBox3d, SizedBox3d, Transform3d;
 export 'src/boxes/stack.dart' show Positioned3d, Stack3d, StackFit3d;
 export 'src/boxes/wrap.dart' show Wrap3d, WrapAlignment3d, WrapCrossAlignment3d;
+export 'src/built_children.dart'
+    show Layout3dBuiltChildrenMixin, Layout3dMeasuredChildrenMixin;
 export 'src/geometry/alignment3d.dart' show Alignment3d;
 export 'src/geometry/basis3d.dart' show LayoutBasis3d;
 export 'src/geometry/constraints3d.dart' show Constraints3d;

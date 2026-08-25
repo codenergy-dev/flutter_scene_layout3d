@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import '../boxes/flex.dart' show CrossAxisAlignment3d;
+import '../built_children.dart';
 import '../geometry/constraints3d.dart';
 import '../geometry/offset3d.dart';
 import '../geometry/size3d.dart';
@@ -29,6 +30,9 @@ import 'scrollable.dart';
 /// rather than rows. Ask for [CrossAxisAlignment3d.stretch] to get the
 /// Flutter behaviour.
 class ListView3d extends MultiChildLayout3d<ParentData3d>
+    with
+        Layout3dBuiltChildrenMixin<ParentData3d>,
+        Layout3dMeasuredChildrenMixin<ParentData3d>
     implements Scrollable3d {
   /// Creates a list over an explicit set of children.
   ListView3d({
@@ -50,7 +54,6 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
        _depthAxisAlignment = depthAxisAlignment,
        _cacheExtent = cacheExtent,
        _builder = null,
-       _itemCount = children.length,
        assert(spacing >= 0.0),
        assert(cacheExtent >= 0.0),
        assert(itemExtent == null || itemExtent > 0.0),
@@ -79,11 +82,11 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
        _depthAxisAlignment = depthAxisAlignment,
        _cacheExtent = cacheExtent,
        _builder = itemBuilder,
-       _itemCount = itemCount,
        assert(itemCount >= 0),
        assert(spacing >= 0.0),
        assert(cacheExtent >= 0.0),
        assert(itemExtent == null || itemExtent > 0.0) {
+    declaredItemCount = itemCount;
     _controller.addListener(_handleScrollChanged);
   }
 
@@ -123,11 +126,14 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
   /// The gap between adjacent items.
   double get spacing => _spacing;
 
+  @override
+  double get itemSpacing => _spacing;
+
   set spacing(double value) {
     if (_spacing == value) return;
     assert(value >= 0.0);
     _spacing = value;
-    _resetMeasurements();
+    resetMeasurements();
     markNeedsLayout();
   }
 
@@ -143,7 +149,7 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
     if (_itemExtent == value) return;
     assert(value == null || value > 0.0);
     _itemExtent = value;
-    _resetMeasurements();
+    resetMeasurements();
     markNeedsLayout();
   }
 
@@ -183,128 +189,12 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
 
   final Layout3dItemBuilder? _builder;
 
-  int _itemCount;
-
-  /// How many items the list holds.
-  ///
-  /// For an explicit list this follows the child list, so adding or removing
-  /// a child is reflected here; only a built list keeps a count of its own.
-  int get itemCount => _builder == null ? childCount : _itemCount;
-
-  set itemCount(int value) {
-    if (_itemCount == value) return;
-    assert(value >= 0);
-    assert(
-      _builder != null,
-      'itemCount follows the child list for a ListView3d built from explicit '
-      'children; use ListView3d.builder to set it directly.',
-    );
-    _itemCount = value;
-    _resetChildren();
-    markNeedsLayout();
-  }
-
-  /// Whether this list builds its items on demand.
-  bool get isLazy => _builder != null;
-
-  /// The items currently built, by index.
-  ///
-  /// Everything for an explicit list; the window plus [cacheExtent] for a
-  /// built one.
-  Iterable<int> get activeIndices => _active.keys;
-
-  final Map<int, Layout3d> _active = <int, Layout3d>{};
-
-  /// Prefix offsets: `_prefix[i]` is where item `i` starts, including
-  /// [spacing]. Only used when items are measured rather than given a fixed
-  /// [itemExtent].
-  final List<double> _prefix = <double>[0.0];
-
-  bool _layingOut = false;
-
-  void _handleScrollChanged() {
-    if (_layingOut) return;
-    markNeedsLayout();
-  }
-
   @override
-  void markNeedsLayout() {
-    // Building and releasing items happens inside performLayout; those child
-    // list edits must not re-dirty the list that is being laid out.
-    if (_layingOut) return;
-    super.markNeedsLayout();
-  }
+  Layout3dItemBuilder? get itemBuilder => _builder;
 
-  /// Refuses a child list edit on a built list, where the bookkeeping
-  /// would not survive it.
-  ///
-  /// A built list tracks its items by index, and everything it does —
-  /// measuring, placing, culling, releasing — goes through that map. A child
-  /// inserted from outside is in the child list but not in the map, so it is
-  /// never laid out (the first read of its size trips the "has not been laid
-  /// out yet" assert) and never released. The items of a built list come from
-  /// its builder; change [itemCount], or call [refresh] when the data behind
-  /// the builder moved.
-  void _assertNotBuilt(String method) {
-    assert(
-      _builder == null,
-      'Cannot call $method on a ListView3d.builder. Its items come from '
-      'itemBuilder and are tracked by index; a child added from outside is '
-      'never laid out and never released. Set itemCount, or call refresh() '
-      'when the data behind the builder changed.',
-    );
-  }
-
-  @override
-  void insert(Layout3d child, {int? index}) {
-    _assertNotBuilt('insert');
-    super.insert(child, index: index);
-  }
-
-  @override
-  void remove(Layout3d child) {
-    _assertNotBuilt('remove');
-    super.remove(child);
-  }
-
-  @override
-  void removeAll() {
-    _assertNotBuilt('removeAll');
-    super.removeAll();
-  }
-
-  @override
-  void syncChildren(List<Layout3d> children) {
-    _assertNotBuilt('syncChildren');
-    super.syncChildren(children);
-  }
-
-  /// Drops the cached item measurements, forcing them to be measured again.
-  ///
-  /// Call after the content of built items changes size.
-  void _resetMeasurements() {
-    _prefix
-      ..clear()
-      ..add(0.0);
-  }
-
-  /// Drops every built item, for a change that invalidates all of them.
-  void _resetChildren() {
-    _resetMeasurements();
-    if (_builder == null) return;
-    for (final child in _active.values.toList()) {
-      super.remove(child);
-      child.dispose();
-    }
-    _active.clear();
-  }
-
-  /// Rebuilds the list from scratch, for when the item builder's data
-  /// changed.
-  void refresh() {
-    _resetChildren();
-    markNeedsLayout();
-  }
+  /// A scroll position that moved needs a new layout, unless it moved
+  /// *during* one — and [markNeedsLayout] already ignores that case.
+  void _handleScrollChanged() => markNeedsLayout();
 
   Constraints3d _childConstraints(double? mainExtent) {
     var result = const Constraints3d().withAxis(
@@ -325,27 +215,6 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
     return result;
   }
 
-  Layout3d _obtainChild(int index, Constraints3d childConstraints) {
-    var child = _active[index];
-    if (child == null) {
-      child = _builder!(index);
-      final position = _active.keys.where((i) => i < index).length;
-      _active[index] = child;
-      super.insert(child, index: position);
-    }
-    child.layout(childConstraints, parentUsesSize: true);
-    return child;
-  }
-
-  void _releaseOutside(int first, int last) {
-    for (final index in _active.keys.toList()) {
-      if (index >= first && index <= last) continue;
-      final child = _active.remove(index)!;
-      super.remove(child);
-      child.dispose();
-    }
-  }
-
   /// Opaque to hits across the whole window, spacing between items included,
   /// so a drag that starts on a gap still scrolls the list. Items culled out
   /// of the window are hidden, and [hitTestChild] skips hidden nodes, so what
@@ -362,14 +231,7 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
       noIntrinsicExtent(this, axis);
 
   @override
-  void performLayout() {
-    _layingOut = true;
-    try {
-      _performListLayout();
-    } finally {
-      _layingOut = false;
-    }
-  }
+  void performLayout() => runLayoutPass(_performListLayout);
 
   void _performListLayout() {
     final axis = _axis;
@@ -421,41 +283,40 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
         }
       } else {
         for (var index = firstIndex; index <= lastIndex; index++) {
-          trackCross(_obtainChild(index, childConstraints).size);
+          trackCross(obtainChild(index, childConstraints).size);
         }
-        _releaseOutside(firstIndex, lastIndex);
+        releaseOutside(firstIndex, lastIndex);
       }
     } else if (_builder == null) {
-      _resetMeasurements();
+      resetMeasurements();
       for (final child in children) {
         child.layout(childConstraints, parentUsesSize: true);
         trackCross(child.size);
-        _prefix.add(_prefix.last + child.size.alongAxis(axis) + _spacing);
+        recordMeasurement(child.size.alongAxis(axis));
       }
-      contentExtent = _contentExtentOf(count);
+      contentExtent = contentExtentOf(count);
     } else {
       // Measured lazily: walk forward until the window is covered, keeping
       // the running prefix so scrolling back needs no re-measuring.
       final probeEnd = _controller.offset + windowExtent + _cacheExtent;
-      while (_measuredCount < count &&
-          (!probeEnd.isFinite || _prefix.last <= probeEnd)) {
-        final index = _measuredCount;
-        final child = _obtainChild(index, childConstraints);
+      while (measuredCount < count &&
+          (!probeEnd.isFinite || measuredEnd <= probeEnd)) {
+        final child = obtainChild(measuredCount, childConstraints);
         trackCross(child.size);
-        _prefix.add(_prefix.last + child.size.alongAxis(axis) + _spacing);
+        recordMeasurement(child.size.alongAxis(axis));
       }
-      contentExtent = _estimatedContentExtent(count);
+      contentExtent = estimatedContentExtent(count);
       final mainSize = boundedMain ? windowExtent : contentExtent;
       final offset = _controller.offset.clamp(
         0.0,
         math.max(0.0, contentExtent - mainSize),
       );
-      firstIndex = _indexAtOffset(offset - _cacheExtent);
-      lastIndex = _lastIndexBefore(offset + mainSize + _cacheExtent);
+      firstIndex = indexAtOffset(offset - _cacheExtent);
+      lastIndex = lastIndexBefore(offset + mainSize + _cacheExtent);
       for (var index = firstIndex; index <= lastIndex; index++) {
-        trackCross(_obtainChild(index, childConstraints).size);
+        trackCross(obtainChild(index, childConstraints).size);
       }
-      _releaseOutside(firstIndex, lastIndex);
+      releaseOutside(firstIndex, lastIndex);
     }
 
     // 2. Size the list, then report the metrics and read the clamped offset.
@@ -490,9 +351,9 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
     final windowStart = scrollOffset - _cacheExtent;
     final windowEnd = scrollOffset + actualMain + _cacheExtent;
 
-    for (final entry in _positionedChildren(count)) {
+    for (final entry in positionedChildren()) {
       final (index, child) = entry;
-      final start = _offsetOfIndex(index, itemExtent);
+      final start = offsetOfIndex(index, itemExtent);
       final childSize = child.size;
       final extent = itemExtent ?? childSize.alongAxis(axis);
       child.place(
@@ -500,7 +361,7 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
             .withAxis(axis, start - scrollOffset)
             .withAxis(
               firstCross,
-              _crossOffset(
+              scrollCrossOffset(
                 _crossAxisAlignment,
                 actualFirstCross,
                 childSize.alongAxis(firstCross),
@@ -508,7 +369,7 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
             )
             .withAxis(
               secondCross,
-              _crossOffset(
+              scrollCrossOffset(
                 _depthAxisAlignment,
                 actualSecondCross,
                 childSize.alongAxis(secondCross),
@@ -519,97 +380,10 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
     }
   }
 
-  Iterable<(int, Layout3d)> _positionedChildren(int count) sync* {
-    if (_builder == null) {
-      for (var index = 0; index < childCount; index++) {
-        yield (index, childAt(index));
-      }
-    } else {
-      for (final entry in _active.entries) {
-        yield (entry.key, entry.value);
-      }
-    }
-  }
-
-  int get _measuredCount => _prefix.length - 1;
-
-  double _offsetOfIndex(int index, double? itemExtent) {
-    if (itemExtent != null) return index * (itemExtent + _spacing);
-    if (index < _prefix.length) return _prefix[index];
-    return _prefix.last;
-  }
-
-  double _contentExtentOf(int count) {
-    if (count == 0) return 0.0;
-    return math.max(0.0, _prefix.last - _spacing);
-  }
-
-  /// The total extent, exact once every item has been measured and an average
-  /// based estimate before that.
-  double _estimatedContentExtent(int count) {
-    final measured = _measuredCount;
-    if (measured >= count) return _contentExtentOf(count);
-    if (measured == 0) return 0.0;
-    final averageStride = _prefix.last / measured;
-    return math.max(0.0, averageStride * count - _spacing);
-  }
-
-  /// The index of the item covering [offset], clamped into range.
-  int _indexAtOffset(double offset) {
-    if (offset <= 0.0 || _measuredCount == 0) return 0;
-    var low = 0;
-    var high = _measuredCount - 1;
-    while (low < high) {
-      final middle = (low + high + 1) ~/ 2;
-      if (_prefix[middle] <= offset) {
-        low = middle;
-      } else {
-        high = middle - 1;
-      }
-    }
-    return low;
-  }
-
-  /// The last index that starts before [end], clamped into range.
-  ///
-  /// A binary search over the same sorted prefix [_indexAtOffset] walks: the
-  /// measured list only grows, so scanning it linearly every pass made the
-  /// cost of a layout climb with how far the list had ever been scrolled.
-  int _lastIndexBefore(double end) {
-    if (_measuredCount == 0 || !(_prefix[0] < end)) return 0;
-    var low = 0;
-    var high = _measuredCount - 1;
-    while (low < high) {
-      final middle = (low + high + 1) ~/ 2;
-      if (_prefix[middle] < end) {
-        low = middle;
-      } else {
-        high = middle - 1;
-      }
-    }
-    return low;
-  }
-
-  static double _crossOffset(
-    CrossAxisAlignment3d alignment,
-    double extent,
-    double childExtent,
-  ) => switch (alignment) {
-    // Baseline alignment falls back to the start here: a scrolling view lays
-    // its children out one after another, so there is no shared line for
-    // their baselines to sit on.
-    CrossAxisAlignment3d.start ||
-    CrossAxisAlignment3d.stretch ||
-    CrossAxisAlignment3d.baseline => 0.0,
-    CrossAxisAlignment3d.end => extent - childExtent,
-    CrossAxisAlignment3d.center => (extent - childExtent) / 2.0,
-  };
-
   @override
   void dispose() {
     _controller.removeListener(_handleScrollChanged);
     if (_ownsController) _controller.dispose();
-    _active.clear();
     super.dispose();
   }
 }

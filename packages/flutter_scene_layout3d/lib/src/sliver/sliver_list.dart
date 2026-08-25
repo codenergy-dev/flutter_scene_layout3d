@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import '../boxes/flex.dart' show CrossAxisAlignment3d;
+import '../built_children.dart';
 import '../geometry/constraints3d.dart';
 import '../geometry/offset3d.dart';
 import '../layout3d.dart';
@@ -35,7 +36,10 @@ typedef Sliver3dItemBuilder = Layout3dItemBuilder;
 /// Giving every item the same [itemExtent] makes the length arithmetic and the
 /// problem disappear; it is worth doing whenever the items really are uniform.
 class SliverList3d extends Sliver3d
-    with Layout3dWithChildrenMixin<ParentData3d> {
+    with
+        Layout3dWithChildrenMixin<ParentData3d>,
+        Layout3dBuiltChildrenMixin<ParentData3d>,
+        Layout3dMeasuredChildrenMixin<ParentData3d> {
   /// Creates a list over an explicit set of children.
   SliverList3d({
     double spacing = 0.0,
@@ -49,7 +53,6 @@ class SliverList3d extends Sliver3d
        _crossAxisAlignment = crossAxisAlignment,
        _depthAxisAlignment = depthAxisAlignment,
        _builder = null,
-       _itemCount = children.length,
        assert(spacing >= 0.0),
        assert(itemExtent == null || itemExtent > 0.0) {
     addAll(children);
@@ -69,21 +72,25 @@ class SliverList3d extends Sliver3d
        _crossAxisAlignment = crossAxisAlignment,
        _depthAxisAlignment = depthAxisAlignment,
        _builder = itemBuilder,
-       _itemCount = itemCount,
        assert(itemCount >= 0),
        assert(spacing >= 0.0),
-       assert(itemExtent == null || itemExtent > 0.0);
+       assert(itemExtent == null || itemExtent > 0.0) {
+    declaredItemCount = itemCount;
+  }
 
   double _spacing;
 
   /// The gap between adjacent items.
   double get spacing => _spacing;
 
+  @override
+  double get itemSpacing => _spacing;
+
   set spacing(double value) {
     if (_spacing == value) return;
     assert(value >= 0.0);
     _spacing = value;
-    _resetMeasurements();
+    resetMeasurements();
     markNeedsLayout();
   }
 
@@ -99,7 +106,7 @@ class SliverList3d extends Sliver3d
     if (_itemExtent == value) return;
     assert(value == null || value > 0.0);
     _itemExtent = value;
-    _resetMeasurements();
+    resetMeasurements();
     markNeedsLayout();
   }
 
@@ -127,106 +134,11 @@ class SliverList3d extends Sliver3d
 
   final Layout3dItemBuilder? _builder;
 
-  int _itemCount;
-
-  /// How many items the list holds.
-  int get itemCount => _builder == null ? childCount : _itemCount;
-
-  set itemCount(int value) {
-    assert(
-      _builder != null,
-      'itemCount belongs to SliverList3d.builder; a list built from an '
-      'explicit set of children takes its count from them.',
-    );
-    if (_itemCount == value) return;
-    assert(value >= 0);
-    _itemCount = value;
-    markNeedsLayout();
-  }
-
-  /// The items built and kept alive, by index. Empty for an explicit list.
-  final Map<int, Layout3d> _active = <int, Layout3d>{};
-
-  /// Running start offsets of the items measured so far; `_prefix[i]` is
-  /// where item `i` begins, and the last entry is where the next one would.
-  final List<double> _prefix = <double>[0.0];
-
-  int get _measuredCount => _prefix.length - 1;
-
-  bool _layingOut = false;
-
   @override
-  void markNeedsLayout() {
-    // Building and releasing items happens inside performLayout; those child
-    // list edits must not re-dirty the list that is being laid out.
-    if (_layingOut) return;
-    super.markNeedsLayout();
-  }
+  Layout3dItemBuilder? get itemBuilder => _builder;
 
-  /// Refuses a child list edit on a built list, where the bookkeeping
-  /// would not survive it.
-  ///
-  /// A built list tracks its items by index, and everything it does —
-  /// measuring, placing, culling, releasing — goes through that map. A child
-  /// inserted from outside is in the child list but not in the map, so it is
-  /// never laid out (the first read of its size trips the "has not been laid
-  /// out yet" assert) and never released. The items of a built list come from
-  /// its builder; change [itemCount], or call [refresh] when the data behind
-  /// the builder moved.
-  void _assertNotBuilt(String method) {
-    assert(
-      _builder == null,
-      'Cannot call $method on a SliverList3d.builder. Its items come from '
-      'itemBuilder and are tracked by index; a child added from outside is '
-      'never laid out and never released. Set itemCount, or call refresh() '
-      'when the data behind the builder changed.',
-    );
-  }
-
-  @override
-  void insert(Layout3d child, {int? index}) {
-    _assertNotBuilt('insert');
-    super.insert(child, index: index);
-  }
-
-  @override
-  void remove(Layout3d child) {
-    _assertNotBuilt('remove');
-    super.remove(child);
-  }
-
-  @override
-  void removeAll() {
-    _assertNotBuilt('removeAll');
-    super.removeAll();
-  }
-
-  @override
-  void syncChildren(List<Layout3d> children) {
-    _assertNotBuilt('syncChildren');
-    super.syncChildren(children);
-  }
-
-  void _resetMeasurements() {
-    _prefix
-      ..clear()
-      ..add(0.0);
-  }
-
-  /// Rebuilds the list from scratch, for when the item builder's data
-  /// changed.
-  void refresh() {
-    _resetMeasurements();
-    if (_builder != null) {
-      for (final child in _active.values.toList()) {
-        remove(child);
-        child.dispose();
-      }
-      _active.clear();
-    }
-    markNeedsLayout();
-  }
-
+  /// What an item is offered: its fixed extent along the scroll axis if there
+  /// is one, the sliver's own room across the other two.
   Constraints3d _childConstraints(SliverConstraints3d constraints) {
     var result = const Constraints3d().withAxis(
       constraints.axis,
@@ -246,36 +158,8 @@ class SliverList3d extends Sliver3d
     return result;
   }
 
-  Layout3d _obtainChild(int index, Constraints3d childConstraints) {
-    var child = _active[index];
-    if (child == null) {
-      child = _builder!(index);
-      final position = _active.keys.where((i) => i < index).length;
-      _active[index] = child;
-      super.insert(child, index: position);
-    }
-    child.layout(childConstraints, parentUsesSize: true);
-    return child;
-  }
-
-  void _releaseOutside(int first, int last) {
-    for (final index in _active.keys.toList()) {
-      if (index >= first && index <= last) continue;
-      final child = _active.remove(index)!;
-      super.remove(child);
-      child.dispose();
-    }
-  }
-
   @override
-  void performSliverLayout() {
-    _layingOut = true;
-    try {
-      _performListLayout();
-    } finally {
-      _layingOut = false;
-    }
-  }
+  void performSliverLayout() => runLayoutPass(_performListLayout);
 
   void _performListLayout() {
     final constraints = sliverConstraints;
@@ -313,31 +197,31 @@ class SliverList3d extends Sliver3d
         }
       } else {
         for (var index = firstIndex; index <= lastIndex; index++) {
-          _obtainChild(index, childConstraints);
+          obtainChild(index, childConstraints);
         }
-        _releaseOutside(firstIndex, lastIndex);
+        releaseOutside(firstIndex, lastIndex);
       }
     } else if (_builder == null) {
-      _resetMeasurements();
+      resetMeasurements();
       for (final child in children) {
         child.layout(childConstraints, parentUsesSize: true);
-        _prefix.add(_prefix.last + child.size.alongAxis(axis) + _spacing);
+        recordMeasurement(child.size.alongAxis(axis));
       }
-      contentExtent = math.max(0.0, _prefix.last - _spacing);
+      contentExtent = contentExtentOf(count);
     } else {
       // Measured lazily: walk forward until the window is covered, keeping
       // the running prefix so scrolling back needs no re-measuring.
-      while (_measuredCount < count && _prefix.last <= windowEnd) {
-        final child = _obtainChild(_measuredCount, childConstraints);
-        _prefix.add(_prefix.last + child.size.alongAxis(axis) + _spacing);
+      while (measuredCount < count && measuredEnd <= windowEnd) {
+        final child = obtainChild(measuredCount, childConstraints);
+        recordMeasurement(child.size.alongAxis(axis));
       }
-      contentExtent = _estimatedContentExtent(count);
-      firstIndex = _indexAtOffset(windowStart);
-      lastIndex = _lastIndexBefore(windowEnd);
+      contentExtent = estimatedContentExtent(count);
+      firstIndex = indexAtOffset(windowStart);
+      lastIndex = lastIndexBefore(windowEnd);
       for (var index = firstIndex; index <= lastIndex; index++) {
-        _obtainChild(index, childConstraints);
+        obtainChild(index, childConstraints);
       }
-      _releaseOutside(firstIndex, lastIndex);
+      releaseOutside(firstIndex, lastIndex);
     }
 
     geometry = SliverGeometry3d(
@@ -350,8 +234,8 @@ class SliverList3d extends Sliver3d
     final visibleStart = constraints.scrollOffset;
     final visibleEnd =
         constraints.scrollOffset + constraints.remainingPaintExtent;
-    for (final (index, child) in _positionedChildren()) {
-      final start = _offsetOfIndex(index, itemExtent);
+    for (final (index, child) in positionedChildren()) {
+      final start = offsetOfIndex(index, itemExtent);
       final childSize = child.size;
       final extent = itemExtent ?? childSize.alongAxis(axis);
       child.place(
@@ -359,7 +243,7 @@ class SliverList3d extends Sliver3d
             .withAxis(axis, start - constraints.scrollOffset)
             .withAxis(
               crossAxis,
-              _crossOffset(
+              scrollCrossOffset(
                 _crossAxisAlignment,
                 constraints.crossAxisExtent,
                 childSize.alongAxis(crossAxis),
@@ -367,7 +251,7 @@ class SliverList3d extends Sliver3d
             )
             .withAxis(
               depthAxis,
-              _crossOffset(
+              scrollCrossOffset(
                 _depthAxisAlignment,
                 constraints.depthExtent.isFinite
                     ? constraints.depthExtent
@@ -379,83 +263,4 @@ class SliverList3d extends Sliver3d
       child.node.visible = start + extent > visibleStart && start < visibleEnd;
     }
   }
-
-  Iterable<(int, Layout3d)> _positionedChildren() sync* {
-    if (_builder == null) {
-      for (var index = 0; index < childCount; index++) {
-        yield (index, childAt(index));
-      }
-      return;
-    }
-    for (final entry in _active.entries) {
-      yield (entry.key, entry.value);
-    }
-  }
-
-  double _offsetOfIndex(int index, double? itemExtent) {
-    if (itemExtent != null) return index * (itemExtent + _spacing);
-    if (index < _prefix.length) return _prefix[index];
-    return _prefix.last;
-  }
-
-  /// The total extent, exact once every item has been measured and an average
-  /// based estimate before that.
-  double _estimatedContentExtent(int count) {
-    final measured = _measuredCount;
-    if (measured >= count) return math.max(0.0, _prefix.last - _spacing);
-    if (measured == 0) return 0.0;
-    final averageStride = _prefix.last / measured;
-    return math.max(0.0, averageStride * count - _spacing);
-  }
-
-  /// The index of the item covering [offset], clamped into range.
-  int _indexAtOffset(double offset) {
-    if (offset <= 0.0 || _measuredCount == 0) return 0;
-    var low = 0;
-    var high = _measuredCount - 1;
-    while (low < high) {
-      final middle = (low + high + 1) ~/ 2;
-      if (_prefix[middle] <= offset) {
-        low = middle;
-      } else {
-        high = middle - 1;
-      }
-    }
-    return low;
-  }
-
-  /// The last index that starts before [end], clamped into range.
-  ///
-  /// A binary search over the same sorted prefix [_indexAtOffset] walks: the
-  /// measured list only grows, so scanning it linearly every pass made the
-  /// cost of a layout climb with how far the list had ever been scrolled.
-  int _lastIndexBefore(double end) {
-    if (_measuredCount == 0 || !(_prefix[0] < end)) return 0;
-    var low = 0;
-    var high = _measuredCount - 1;
-    while (low < high) {
-      final middle = (low + high + 1) ~/ 2;
-      if (_prefix[middle] < end) {
-        low = middle;
-      } else {
-        high = middle - 1;
-      }
-    }
-    return low;
-  }
-
-  static double _crossOffset(
-    CrossAxisAlignment3d alignment,
-    double extent,
-    double childExtent,
-  ) => switch (alignment) {
-    // Baseline alignment falls back to the start here: a sliver lays its
-    // children out one after another, so there is no shared line for their
-    // baselines to sit on.
-    CrossAxisAlignment3d.start ||
-    CrossAxisAlignment3d.stretch ||
-    CrossAxisAlignment3d.baseline => 0.0,
-    CrossAxisAlignment3d.end => extent - childExtent,
-    CrossAxisAlignment3d.center => (extent - childExtent) / 2.0,
-  };
 }

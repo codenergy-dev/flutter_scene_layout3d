@@ -295,6 +295,24 @@ void main() {
   });
 
   group('SliverList3d', () {
+    test('a shrunken itemCount shortens the measured content with it', () {
+      // The measured prefix is what the list knows about where its items sit,
+      // and it outlives a change to how many there are. Left alone, a list
+      // that had measured ten items went on reporting all ten as its length
+      // after being told there were five.
+      final list = SliverList3d.builder(
+        itemCount: 10,
+        itemBuilder: (index) => TestBox(const Size3d(1, 2, 1)),
+      );
+      final view = CustomScrollView3d(slivers: [list]);
+      final surface = viewportOf(view, size: const Size3d(4, 20, 2));
+      expect(list.geometry.scrollExtent, 20);
+
+      list.itemCount = 5;
+      surface.flush();
+      expect(list.geometry.scrollExtent, 10);
+    });
+
     test('stacks its items along the scroll axis', () {
       final boxes = items(4);
       final list = SliverList3d(spacing: 1, children: boxes);

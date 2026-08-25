@@ -1,7 +1,7 @@
 ---
 status: in progress
 created_at: 2026-08-25T03:32:15Z
-updated_at: 2026-08-25T05:02:00Z
+updated_at: 2026-08-25T06:05:00Z
 commit: 495b1ec4e93e3588c93612ef02862355d380933a
 ---
 
@@ -190,7 +190,7 @@ the caller can see it`.
 
 ## Phase 2 — Structure
 
-### 2.1 Collapse the four parallel scrolling implementations
+### 2.1 Collapse the four parallel scrolling implementations — **done (route 1)**
 
 **Where.** `lib/src/scroll/list_view.dart`, `lib/src/scroll/grid_view.dart`,
 `lib/src/sliver/sliver_list.dart`, `lib/src/sliver/sliver_grid.dart`.
@@ -222,8 +222,45 @@ caught it.
 
 Route 1 is the recommendation for this pass; route 2 is worth its own plan.
 
-**Tests.** No new behaviour, so the bar is the existing `test/scroll_test.dart`,
-`test/grid_test.dart` and `test/sliver_test.dart` passing untouched.
+**What was done.** Route 1, as two mixins in `lib/src/built_children.dart`:
+
+- `Layout3dBuiltChildrenMixin` — the index-to-child map, `itemBuilder`,
+  `itemCount`, `refresh`, `obtainChild`, `releaseOutside`,
+  `positionedChildren`, the child-list guard from 2.2, and `runLayoutPass`,
+  which replaces the hand-rolled `_layingOut` flag each view kept.
+- `Layout3dMeasuredChildrenMixin` — the prefix sums the two *lists* keep, with
+  `recordMeasurement`, `offsetOfIndex`, `contentExtentOf`,
+  `estimatedContentExtent`, `indexAtOffset` and `lastIndexBefore`. The grids do
+  not mix it in; their positions are arithmetic.
+- One `scrollCrossOffset` function replaces four copies (`_crossOffset` twice,
+  `_depthOffset` twice) of the same switch.
+
+Named for what they hold rather than the plan's `Lazy`/`Extents`: the first
+mixin serves explicit views too, so "lazy" would have been wrong. Both are
+exported, alongside the other protocol mixins.
+
+The four views lost 672 lines net and keep only what is theirs: where the
+children go. `performLayout` in each is now one line delegating to
+`runLayoutPass`.
+
+**Two divergences had to be resolved rather than preserved**, since one mixin
+cannot hold four rules:
+
+- The `itemCount` setters differed in assert order, whether they dropped the
+  measurements, and whether they disposed every built child. Unified on: assert
+  first, drop the measurements, keep the children. That fixed a latent bug —
+  `SliverList3d` kept its prefix, so a list that had measured ten items went on
+  reporting all ten as its `scrollExtent` after being told there were five —
+  and dropped `ListView3d`'s habit of rebuilding the whole window on a count
+  change, which was never necessary. `refresh()` is still what to call when the
+  builder's *data* moved.
+- `activeIndices` and `isLazy` existed only on `ListView3d`. They are on all
+  four now.
+
+**Tests.** The bar was the existing suite passing untouched, and it does: 246
+tests, no edits. One test was added for the `SliverList3d` bug the unification
+fixed, and checked against the old behaviour — it fails with `20.0` where it
+now expects `10`.
 
 ### 2.2 Lazy views expose the API that corrupts them — **done**
 
@@ -421,9 +458,9 @@ release.
 2. ~~Phase 2.2 and 2.3 (documentation route)~~ — **done**, together with all
    of phase 3 and the two phase 4 items in the files that were already open
    (`_lastIndexBefore`, `GridView3d.dispose`).
-3. Phase 2.1 route 1 (mixin extraction), then re-run the whole suite untouched.
-   **Next.**
-4. Phase 2.4 as its own change, since it moves the widget base class.
+3. ~~Phase 2.1 route 1 (mixin extraction), then re-run the whole suite
+   untouched.~~ **Done.**
+4. Phase 2.4 as its own change, since it moves the widget base class. **Next.**
 5. The rest of phase 4 whenever a file is open for another reason.
 
 Route 2 of 2.1 (rebuilding the views on the sliver protocol) and the real
