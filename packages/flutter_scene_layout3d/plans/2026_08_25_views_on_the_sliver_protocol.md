@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-08-25T15:21:54Z
-updated_at: 2026-08-25T17:34:00Z
+updated_at: 2026-08-25T19:43:58Z
 commit: 88e98579925771720a40c21b3d5ad607f787fdf7
 ---
 
@@ -191,6 +191,25 @@ public API moved with them: both libraries export the same names.
 The forwarding layer is 50 lines, less than the "bulk of the work" this plan
 predicted, because the corrected shape needs no `Scrollable3d` delegation: a
 view that *is* a `CustomScrollView3d` already carries `Scroll3dHolderMixin`.
+
+### What the review afterwards turned up
+
+Two things, both about the seam this work created rather than about the shape
+of it:
+
+- **The bounded-extent demand reached the CHANGELOG but not the README.** It
+  matters more here than the entry admits: a `Layout3dSurface` is unbounded on
+  all three axes by default, so `Layout3dSurface(child: ListView3d(...))` — the
+  shortest thing a reader would write — now asserts where it used to
+  shrink-wrap. Flutter never faces this because the screen bounds everything.
+  The *Scrolling* section says so now, with the fix, and *Traps* carries the
+  unbounded depth axis, which leaves a view with no depth for items to stand
+  in.
+- **One assertion message still named the sliver.** `builtChildEditRefused`
+  exists so that a wrapper can refuse in its own name, and the child-list edits
+  use it; the `itemCount` setter was left telling a `ListView3d` caller about
+  `SliverList3d.builder`. It has a matching `explicitChildCountRefused` now,
+  refused in `BoxScrollView3d` before it forwards, the way the edits are.
 
 ## The shape it was built on
 

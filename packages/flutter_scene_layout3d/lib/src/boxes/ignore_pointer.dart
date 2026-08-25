@@ -20,6 +20,10 @@ class IgnorePointer3d extends ProxyLayout3d {
   ///
   /// Costs nothing to flip: hit testing reads it as it walks, so there is no
   /// relayout behind a change here.
+  // A plain field would do the same work, but every other property in the
+  // package is a getter and setter pair, and one that is a field cannot later
+  // grow a setter without breaking its callers.
+  // ignore: unnecessary_getters_setters
   bool get ignoring => _ignoring;
 
   set ignoring(bool value) {
@@ -50,6 +54,7 @@ class AbsorbPointer3d extends ProxyLayout3d {
   ///
   /// Costs nothing to flip, for the same reason [IgnorePointer3d.ignoring]
   /// does.
+  // ignore: unnecessary_getters_setters
   bool get absorbing => _absorbing;
 
   set absorbing(bool value) {

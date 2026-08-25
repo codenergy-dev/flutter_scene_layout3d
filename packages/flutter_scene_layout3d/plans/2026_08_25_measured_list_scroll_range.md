@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-08-25T15:21:54Z
-updated_at: 2026-08-25T16:08:17Z
+updated_at: 2026-08-25T19:43:58Z
 commit: 88e98579925771720a40c21b3d5ad607f787fdf7
 ---
 
@@ -163,7 +163,9 @@ which is a much larger piece of machinery than this package wants. Instead:
 2. [x] `contentExtentEstimator`, threaded into `estimatedContentExtent`.
 3. [x] Documentation: the README's *Scrolling* and *Slivers* sections gain
    `prototypeItem` as the recommended answer, above the "give it an
-   `itemExtent`" advice, since it needs nothing of the caller.
+   `itemExtent`" advice, since it needs nothing of the caller. The step named
+   the README and so did the work; the CHANGELOG was missed, and three pieces
+   of new public API went in without an entry. Added in the review afterwards.
 4. [x] Optional: the debug assert on a runaway measuring pass.
 
 ## What the implementation changed about the plan
@@ -189,11 +191,20 @@ on its own, and its node is never added to the scene, which is a stronger
 guarantee than hiding it: there is nothing to cull, hit, or draw. Its
 `node.visible` is set false anyway, for whoever finds it in a debugger.
 
-**The debug assert shipped, with an exemption.** A fixed threshold of 500 is
-honest enough on one condition: a list laid out in *unbounded* room genuinely
-measures every item, and that is the work rather than a symptom of it. So
-`debugMeasuringPassWasSane` takes `boundedWindow` and says nothing when the
-window is unbounded.
+**The debug assert shipped, and its first form was wrong.** A fixed threshold
+of 500 was applied to the items a pass *measured*, with one exemption: a list
+laid out in unbounded room genuinely measures every item, so
+`debugMeasuringPassWasSane` took a `boundedWindow` flag and said nothing there.
+The exemption was the right instinct aimed at the wrong quantity. A bounded
+window can also be long — 2000 items of 2 in a window of 1400 measures 701 of
+them, every one of which is on screen — and that layout crashed in debug, with
+a message claiming it had "kept only what the window shows".
+
+The quantity that says a pass went wrong is what it *threw away*, not what it
+measured. So the assert now takes `measured` and `discarded`, and the
+`boundedWindow` exemption is gone because it falls out: a window that shows
+what it measured, bounded or not, discards nothing. Pinned by two tests beside
+the deep-jump one — a long bounded window and an unbounded one, both silent.
 
 **The widget layer did not get either field.** `SceneListView3d` and
 `SceneSliverList3d` take explicit children and are rebuilt from a `build`

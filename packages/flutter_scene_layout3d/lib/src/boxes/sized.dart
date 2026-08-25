@@ -55,8 +55,9 @@ class ConstrainedBox3d extends SingleChildLayout3d
         : (min
               ? child.getMinIntrinsicExtent(axis, limits)
               : child.getMaxIntrinsicExtent(axis, limits));
-    if (extra.minAlong(axis).isFinite)
+    if (extra.minAlong(axis).isFinite) {
       return extra.constrainAlong(axis, extent);
+    }
     return extent;
   }
 

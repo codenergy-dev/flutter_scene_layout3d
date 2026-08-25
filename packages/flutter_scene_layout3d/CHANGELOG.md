@@ -12,7 +12,9 @@
     `add`, `insert`, `remove`, `removeAll`, `syncChildren`, `itemCount`,
     `isLazy`, `activeIndices` and `refresh` all still mean the items, and a
     hit test still answers `firstOf<Scrollable3d>()` with the list or the grid
-    rather than with the sliver inside it.
+    rather than with the sliver inside it. The one member that went with the
+    move is `itemBuilder`, which the sliver now implements; it was `@protected`
+    on the views, so nothing outside them should have been reading it.
   - **Behaviour change:** `cacheExtent` decides what is built and kept alive,
     not what is drawn. An item inside the cache but outside the window used to
     be visible; it is hidden now, and shown when the window reaches it. Since
@@ -28,6 +30,25 @@
   its slivers out against an endless window and coming out as long as they
   filled, the way Flutter's `ShrinkWrappingViewport` does. It used to assert.
   This is what keeps an unbounded `ListView3d` sizing to its content.
+- **`prototypeItem`** on `ListView3d`, `SliverList3d` and their `.builder`
+  constructors: an item built once and measured, standing for the extent of
+  them all, which is Flutter's `ListView.prototypeItem`. It is `itemExtent` for
+  a list whose items are uniform in a size that comes from the content rather
+  than from a number the caller can write down, and it buys back everything
+  `itemExtent` buys — arithmetic offsets, a total that does not move, and a
+  jump anywhere that builds only the window. The prototype is measured and
+  never shown: it is not one of the items and its node never enters the scene.
+  The two are answers to the same question, so a list takes one of them and
+  asserts on both.
+- **`contentExtentEstimator`** on the same four, for a list whose items
+  genuinely differ and whose total the application knows anyway. Offsets stay
+  measured and exact; what stops moving is the reachable range. An estimate
+  shorter than what has already been measured is raised to it.
+- In debug, a measuring pass that builds more than five hundred items **only to
+  release them again** now says so, naming both ways out. It is the discarded
+  items that make it a symptom: a long window genuinely showing hundreds of
+  items, or a list laid out in unbounded room showing all of them, throws
+  nothing away and passes quietly.
 
 - Every single-child `Scene*3d` widget is `const` now — `ScenePadding3d`,
   `SceneAlign3d`, `SceneCenter3d`, `SceneSizedBox3d`, `SceneContainer3d`,

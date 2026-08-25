@@ -58,6 +58,27 @@ void main() {
       expect(list.itemCount, 1);
     });
 
+    test('refuses an itemCount in its own name', () {
+      // The mirror of the guard a built list puts on its child list, and it
+      // has to name the class the caller wrote: the SliverList3d underneath
+      // is not something they ever mentioned.
+      final list = ListView3d(children: [TestBox(const Size3d(2, 2, 2))]);
+
+      expect(
+        () => list.itemCount = 5,
+        throwsA(
+          isA<AssertionError>().having(
+            (error) => error.message,
+            'message',
+            allOf(
+              contains('ListView3d.builder'),
+              isNot(contains('SliverList3d')),
+            ),
+          ),
+        ),
+      );
+    });
+
     test('stacks items along the scroll axis', () {
       final items = List.generate(5, (_) => TestBox(const Size3d(2, 2, 2)));
       final list = ListView3d(children: items);
@@ -515,26 +536,55 @@ void main() {
     });
   });
 
-  test('a measured list complains when one pass measures its way too far', () {
-    // The cost of the measured mode, made loud: reaching a deep offset builds
-    // every item before it. Debug only, and it names both ways out.
-    final list = ListView3d.builder(
+  group('the measuring pass complains about work it throws away', () {
+    ListView3d longList() => ListView3d.builder(
       itemCount: 2000,
       itemBuilder: (index) => TestBox(const Size3d(2, 2, 2)),
     );
-    final surface = laidOut(list, constraints: window);
-    list.controller.jumpTo(3000);
 
-    expect(
-      surface.flush,
-      throwsA(
-        isA<AssertionError>().having(
-          (error) => error.message,
-          'message',
-          allOf(contains('itemExtent'), contains('prototypeItem')),
+    test('a deep offset measures its way there and says so', () {
+      // The cost of the measured mode, made loud: reaching a deep offset
+      // builds every item before it and keeps two. Debug only, and it names
+      // both ways out.
+      final list = longList();
+      final surface = laidOut(list, constraints: window);
+      list.controller.jumpTo(3000);
+
+      expect(
+        surface.flush,
+        throwsA(
+          isA<AssertionError>().having(
+            (error) => error.message,
+            'message',
+            allOf(contains('itemExtent'), contains('prototypeItem')),
+          ),
         ),
-      ),
-    );
+      );
+    });
+
+    test('a long window measuring hundreds of items does not', () {
+      // The items measured here are the items on screen: a window 1400 long
+      // holds seven hundred of them, and measuring those is the work rather
+      // than a symptom of it. Counting measurements alone called this a
+      // runaway pass and turned a working layout into a debug crash.
+      final list = longList();
+      laidOut(list, constraints: Constraints3d.tight(const Size3d(10, 1400, 10)));
+
+      expect(list.size.height, 1400);
+      expect(list.activeIndices, hasLength(greaterThan(500)));
+      expect(list.children.last.node.visible, isTrue);
+    });
+
+    test('an unbounded window measuring everything does not either', () {
+      final list = longList();
+      laidOut(
+        list,
+        constraints: const Constraints3d.tightFor(width: 10, depth: 10),
+      );
+
+      expect(list.activeIndices, hasLength(2000));
+      expect(list.size.height, 4000);
+    });
   });
 
   // Every scrolling view holds a Scroll3dController the same way, through

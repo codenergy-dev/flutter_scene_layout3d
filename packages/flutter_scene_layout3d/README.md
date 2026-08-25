@@ -245,6 +245,23 @@ and without it items are measured once as they are first scrolled past, with
 the total extent estimated from the average, the same approximation
 `SliverList` makes.
 
+A list needs a bounded extent **across** its scroll axis, because that is what
+it gives an item to span, and it says so rather than guessing. Along the scroll
+axis it needs nothing: with no window to fill it is as long as its content and
+has nothing left to scroll. That matters here more than it does in Flutter,
+where the screen bounds everything: a `Layout3dSurface` is unbounded on all
+three axes unless you say otherwise, so a list on a bare surface has to be
+given a size somewhere — `constraints:` on the surface, or a `SizedBox3d`
+around the list.
+
+```dart
+Layout3dSurface(
+  // Without this the list has no width to hand its items, and says so.
+  constraints: Constraints3d.tight(const Size3d(0.8, 1.3, 0.3)),
+  child: ListView3d(children: cards),
+)
+```
+
 Neither view is a layout of its own kind. A `ListView3d` *is* a scrolling
 window over a single `SliverList3d`, and a `GridView3d` over a single
 `SliverGrid3d`, which is the shape Flutter's are: there is no `RenderListView`
@@ -364,7 +381,9 @@ moves as you scroll: the end recedes if the early items were short, and pulls
 in — taking the position with it — if they were long. And because the running
 total starts at the first item, scrolling straight to the middle of a long list
 measures everything before it in one pass; in debug, a pass that measures more
-than five hundred items says so rather than merely dropping a frame.
+than five hundred items only to throw them away again says so rather than
+merely dropping a frame. (Measuring hundreds of items the window then *shows*
+is not that, and passes quietly.)
 
 Both symptoms come from one gap — the list cannot know how long an item is
 without building it — so both close the moment you fill it. A `prototypeItem`
@@ -575,6 +594,12 @@ animation.
 * **The plane node moves in scene coordinates.** `surface.plane.position` is
   an ordinary engine transform; only what is *inside* the layout speaks layout
   space.
+* **A scrolling view on an unbounded depth axis has no depth.** It takes the
+  depth it is given, and an unbounded axis gives it none, so items thicker
+  than nothing stand out of the front of a view that is only as deep as a
+  plane. They still draw, and a ray straight at them still finds them, but the
+  view's own extent no longer contains them. Give the surface a real thickness
+  — which a plane wants anyway, for content to stand in.
 
 ## Seeing it run
 

@@ -50,6 +50,20 @@ String builtChildEditRefused({
     'never laid out and never released. Set itemCount, or call refresh() '
     'when the data behind the builder changed.';
 
+/// Why a view built from an explicit list of children refuses an `itemCount`.
+///
+/// The mirror of [builtChildEditRefused], and written beside it for the same
+/// reason: the wrapper has to refuse in its own name, or a caller who wrote
+/// `ListView3d(children: ...)` is told about a `SliverList3d` they never
+/// mentioned.
+String explicitChildCountRefused({
+  required Object view,
+  required String itemNoun,
+}) =>
+    'itemCount belongs to ${view.runtimeType}.builder; a view built from an '
+    'explicit list of children takes its count from the $itemNoun in it. Edit '
+    'the child list instead, with add, remove or syncChildren.';
+
 /// A child list that may be built on demand, for the views that hold one.
 ///
 /// `ListView3d`, `GridView3d`, `SliverList3d` and `SliverGrid3d` all offer the
@@ -96,8 +110,7 @@ mixin Layout3dBuiltChildrenMixin<ParentDataType extends ParentData3d>
   set itemCount(int value) {
     assert(
       itemBuilder != null,
-      'itemCount belongs to $runtimeType.builder; a view built from an '
-      'explicit list of children takes its count from them.',
+      explicitChildCountRefused(view: this, itemNoun: itemNoun),
     );
     if (declaredItemCount == value) return;
     assert(value >= 0);
@@ -455,11 +468,15 @@ mixin Layout3dMeasuredChildrenMixin<ParentDataType extends ParentData3d>
     return _prefix.last;
   }
 
-  /// The exact extent of [count] children, all of them measured.
+  /// The exact extent of the first [count] children, all of them measured.
+  ///
+  /// A count past what has been measured is answered with the whole prefix,
+  /// which is as far as this can be exact.
   @protected
   double contentExtentOf(int count) {
-    if (count == 0) return 0.0;
-    return math.max(0.0, _prefix.last - itemSpacing);
+    if (count <= 0) return 0.0;
+    final end = count < _prefix.length ? _prefix[count] : _prefix.last;
+    return math.max(0.0, end - itemSpacing);
   }
 
   /// The total extent: exact once every child has been measured, whatever
@@ -520,12 +537,13 @@ mixin Layout3dMeasuredChildrenMixin<ParentDataType extends ParentData3d>
     return low;
   }
 
-  /// How many children one pass may measure before it is worth complaining
-  /// about, for [debugMeasuringPassWasSane].
+  /// How many children one pass may measure *and throw away* before it is
+  /// worth complaining about, for [debugMeasuringPassWasSane].
   static const int debugMeasuringPassLimit = 500;
 
-  /// Whether a pass that measured [measured] children did a sane amount of
-  /// work, for an `assert` at the end of a measuring loop.
+  /// Whether a pass that measured [measured] children and released
+  /// [discarded] of them again did a sane amount of work, for an `assert` at
+  /// the end of a measuring loop.
   ///
   /// A measured list starts its running total at the first item, so reaching
   /// an offset deep into it builds every item before it in one pass and
@@ -534,19 +552,24 @@ mixin Layout3dMeasuredChildrenMixin<ParentDataType extends ParentData3d>
   /// 4000 before it — so what this does is turn a mysterious frame hitch into
   /// a message naming the two ways out.
   ///
-  /// Only for a window that is bounded: a list asked to lay out in unbounded
-  /// room is genuinely showing all of its items, and measuring them is the
-  /// work, not a symptom of it.
+  /// It is the *discarded* items that say this happened, not the measured
+  /// ones. A list in a long window genuinely shows hundreds of items at once,
+  /// and measuring those is the work rather than a symptom of it; so is a
+  /// list laid out in unbounded room, which shows all of them. In both of
+  /// those nothing is thrown away, and this says nothing.
   @protected
-  bool debugMeasuringPassWasSane(int measured, {required bool boundedWindow}) {
+  bool debugMeasuringPassWasSane({
+    required int measured,
+    required int discarded,
+  }) {
     assert(
-      !boundedWindow || measured <= debugMeasuringPassLimit,
+      discarded <= debugMeasuringPassLimit,
       'A single layout of this $runtimeType measured $measured $itemNoun to '
-      'reach the window, and kept only what the window shows. A list without '
-      'an itemExtent measures forward from its first item, so a deep scroll '
-      'offset costs every item before it. Give it an itemExtent if you know '
-      'how long an item is, or a prototypeItem if the items are uniform but '
-      'you do not.',
+      'reach the window and threw $discarded of them away again. A list '
+      'without an itemExtent measures forward from its first item, so a deep '
+      'scroll offset costs every item before it. Give it an itemExtent if you '
+      'know how long an item is, or a prototypeItem if the items are uniform '
+      'but you do not.',
     );
     return true;
   }

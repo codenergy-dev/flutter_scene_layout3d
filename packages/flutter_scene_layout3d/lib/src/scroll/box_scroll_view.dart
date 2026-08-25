@@ -116,7 +116,16 @@ abstract class BoxScrollView3d<SliverType extends SliverMultiBoxAdaptor3d>
   /// the count a builder was given for a lazy one.
   int get itemCount => sliver.itemCount;
 
-  set itemCount(int value) => sliver.itemCount = value;
+  set itemCount(int value) {
+    // Refused here as well as in the sliver, for the same reason the child
+    // list edits above are: the caller wrote this class's name, not the
+    // sliver's.
+    assert(
+      sliver.isLazy,
+      explicitChildCountRefused(view: this, itemNoun: itemNoun),
+    );
+    sliver.itemCount = value;
+  }
 
   /// Whether this view builds its children on demand.
   bool get isLazy => sliver.isLazy;

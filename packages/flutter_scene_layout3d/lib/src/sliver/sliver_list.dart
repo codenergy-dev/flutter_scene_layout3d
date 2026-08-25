@@ -224,21 +224,26 @@ class SliverList3d extends SliverMultiBoxAdaptor3d
     } else {
       // Measured lazily: walk forward until the window is covered, keeping
       // the running prefix so scrolling back needs no re-measuring.
-      var measuredHere = 0;
+      final firstMeasuredHere = measuredCount;
       while (measuredCount < count && measuredEnd <= windowEnd) {
         final child = obtainChild(measuredCount, childConstraints);
         recordMeasurement(child.size.alongAxis(axis));
-        measuredHere++;
       }
-      assert(
-        debugMeasuringPassWasSane(
-          measuredHere,
-          boundedWindow: windowEnd.isFinite,
-        ),
-      );
+      final measuredHere = measuredCount - firstMeasuredHere;
       contentExtent = estimatedContentExtent(count);
       firstIndex = indexAtOffset(windowStart);
       lastIndex = lastIndexBefore(windowEnd);
+      assert(() {
+        // What this pass measured only to release again: the items it built
+        // on its way to the window, rather than the ones the window holds.
+        final keptFrom = math.max(firstIndex, firstMeasuredHere);
+        final keptTo = math.min(lastIndex, measuredCount - 1);
+        final kept = math.max(0, keptTo - keptFrom + 1);
+        return debugMeasuringPassWasSane(
+          measured: measuredHere,
+          discarded: measuredHere - kept,
+        );
+      }());
       for (var index = firstIndex; index <= lastIndex; index++) {
         obtainChild(index, childConstraints);
       }
