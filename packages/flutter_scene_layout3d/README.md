@@ -171,6 +171,34 @@ Every layout has a widget with the same name under a `Scene` prefix
 Attach a `Layout3dController` to reach the surface imperatively, for measured
 sizes, scroll positions, or the plane node.
 
+### Why the names carry both a prefix and a suffix
+
+`Column3d` and `SceneColumn3d` are not two names for one thing. They are the
+two layers, and the two affixes answer different questions:
+
+* **`3d`** says *this is the three-dimensional counterpart of the Flutter
+  class with the same name*. `Column3d` is to `Column` what `Constraints3d` is
+  to `BoxConstraints`.
+* **`Scene`** says *this is the widget that mounts the object named after it*.
+
+The second is flutter_scene's own convention, not one invented here: `Node` is
+the object and `SceneNode` is the widget that mounts it, and the same holds for
+`Mesh`/`SceneMesh` and `Model`/`SceneModel`. `SceneColumn3d` parses exactly
+like `SceneNode` — the widget for a `Column3d`. (A handful of flutter_scene
+types carry the prefix for a different reason: `ScenePointer` and
+`SceneRaycastHit` are named for pointing *into a scene*, not for being
+widgets.)
+
+Dropping the suffix in the widget layer looks tidier until you write a line of
+it. The value types cannot lose it — `Size3d`, `EdgeInsets3d`, `Alignment3d`
+and `Axis3d` are the arguments both layers take — so the affix does not go
+away, it only stops being regular:
+
+```dart
+ScenePadding3d(padding: EdgeInsets3d.all(0.2), child: SceneColumn3d(...))
+ScenePadding(padding: EdgeInsets3d.all(0.2), child: SceneColumn(...))   // less
+```
+
 ## Wrapping
 
 `Wrap3d` is what a flex is not: given more children than fit, a `Row3d`
