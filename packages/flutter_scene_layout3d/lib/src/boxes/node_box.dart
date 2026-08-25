@@ -162,6 +162,22 @@ class NodeBox3d extends Layout3d {
     _measuredCenter = basis.centerOfBounds(bounds);
   }
 
+  /// The content's own extent, which is exactly what an intrinsic query
+  /// wants: this is the leaf where a real answer comes from, and every box
+  /// above it is adding to or holding down what is measured here.
+  ///
+  /// The minimum and the maximum are the same. Content in a scene does not
+  /// reflow — a model asked to fit into less room is scaled by [fit], not
+  /// rearranged — so there is no extent past which more room buys something,
+  /// and none below which it starts giving something up.
+  @override
+  double computeMinIntrinsicExtent(Axis3d axis, Size3d limits) =>
+      intrinsicSize.alongAxis(axis);
+
+  @override
+  double computeMaxIntrinsicExtent(Axis3d axis, Size3d limits) =>
+      intrinsicSize.alongAxis(axis);
+
   @override
   void performLayout() {
     _measure();

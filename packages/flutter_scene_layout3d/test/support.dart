@@ -7,11 +7,36 @@ import 'package:vector_math/vector_math.dart' show Vector3;
 /// A leaf that asks for [preferred] and settles for what the constraints
 /// allow, standing in for real content.
 class TestBox extends Layout3d {
-  TestBox(this._preferred, {this.pointable = false, super.name});
+  TestBox(this._preferred, {this.pointable = false, this.minimum, super.name});
 
   /// Whether this box answers hit tests on its own account, the way a
   /// [NodeBox3d] holding real content does.
   final bool pointable;
+
+  /// What this box reports as its minimum intrinsic extent, when that should
+  /// differ from [preferred].
+  final Size3d? minimum;
+
+  /// How many intrinsic queries have reached this box, so a test can tell a
+  /// cached answer from a recomputed one.
+  int intrinsicQueries = 0;
+
+  /// The limits of the most recent intrinsic query.
+  Size3d? lastIntrinsicLimits;
+
+  @override
+  double computeMinIntrinsicExtent(Axis3d axis, Size3d limits) {
+    intrinsicQueries++;
+    lastIntrinsicLimits = limits;
+    return (minimum ?? _preferred).alongAxis(axis);
+  }
+
+  @override
+  double computeMaxIntrinsicExtent(Axis3d axis, Size3d limits) {
+    intrinsicQueries++;
+    lastIntrinsicLimits = limits;
+    return _preferred.alongAxis(axis);
+  }
 
   @override
   bool hitTestSelf(Offset3d position) => pointable;

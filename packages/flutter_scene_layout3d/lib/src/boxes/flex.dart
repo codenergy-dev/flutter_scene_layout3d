@@ -43,6 +43,13 @@ enum CrossAxisAlignment3d {
   ///
   /// Requires the flex to be bounded on that axis.
   stretch,
+
+  /// Children lined up on the baselines they declare along that cross axis.
+  ///
+  /// Content of different extents sits on one line rather than sharing an
+  /// edge or a centre. A child with no baseline of its own falls back to its
+  /// far edge, exactly as in Flutter, which is what lets a line mix the two.
+  baseline,
 }
 
 /// Whether a [Flex3d] should be as big as possible along its main axis or as
@@ -269,6 +276,108 @@ class Flex3d extends MultiChildLayout3d<ParentData3d> {
     return result;
   }
 
+  /// A line's baseline along a cross axis is the highest of its children's,
+  /// because they lie side by side and hang from it together; along the main
+  /// axis it is the first child's, because there they are stacked and the
+  /// first one leads.
+  ///
+  /// This is Flutter's rule, which distinguishes a `Row` from a `Column`, put
+  /// in terms of the axis being asked about rather than the direction of the
+  /// flex.
+  @override
+  double? computeDistanceToActualBaseline(Axis3d axis) => axis == _direction
+      ? defaultComputeDistanceToFirstActualBaseline(axis)
+      : defaultComputeDistanceToHighestActualBaseline(axis);
+
+  double _childIntrinsic(
+    Layout3d child,
+    Axis3d axis,
+    Size3d limits, {
+    required bool min,
+  }) => min
+      ? child.getMinIntrinsicExtent(axis, limits)
+      : child.getMaxIntrinsicExtent(axis, limits);
+
+  /// The line's intrinsic extent, ported from Flutter's `RenderFlex`.
+  ///
+  /// Along the main axis the children add up, and a flexible child sets the
+  /// pace for every other: the run has to be long enough that the largest
+  /// "extent per flex unit" any child asks for is satisfied everywhere.
+  ///
+  /// Across it the children overlap instead of adding up, so the answer is
+  /// the largest of theirs — but each child has to be asked with the
+  /// main-axis room it would actually get, since what a child needs across
+  /// the line usually depends on how much of the line it was given.
+  double _flexIntrinsic(Axis3d axis, Size3d limits, {required bool min}) {
+    final totalSpacing = _spacing * math.max(0, childCount - 1);
+    if (axis == _direction) {
+      var totalFlex = 0;
+      var inflexibleSpace = 0.0;
+      var maxFlexFraction = 0.0;
+      for (final child in children) {
+        final flex = _flexOf(child);
+        totalFlex += flex;
+        final extent = _childIntrinsic(child, axis, limits, min: min);
+        if (flex > 0) {
+          maxFlexFraction = math.max(maxFlexFraction, extent / flex);
+        } else {
+          inflexibleSpace += extent;
+        }
+      }
+      return maxFlexFraction * totalFlex + inflexibleSpace + totalSpacing;
+    }
+
+    final available = limits.alongAxis(_direction);
+    final mainLimits = limits.withAxis(axis, double.infinity);
+    var totalFlex = 0;
+    var inflexibleSpace = 0.0;
+    var maxCross = 0.0;
+    for (final child in children) {
+      final flex = _flexOf(child);
+      totalFlex += flex;
+      if (flex > 0) continue;
+      final mainExtent = child.getMaxIntrinsicExtent(_direction, mainLimits);
+      inflexibleSpace += mainExtent;
+      maxCross = math.max(
+        maxCross,
+        _childIntrinsic(
+          child,
+          axis,
+          limits.withAxis(_direction, mainExtent),
+          min: min,
+        ),
+      );
+    }
+    if (totalFlex > 0) {
+      final spacePerFlex = math.max(
+        0.0,
+        (available - inflexibleSpace - totalSpacing) / totalFlex,
+      );
+      for (final child in children) {
+        final flex = _flexOf(child);
+        if (flex == 0) continue;
+        maxCross = math.max(
+          maxCross,
+          _childIntrinsic(
+            child,
+            axis,
+            limits.withAxis(_direction, spacePerFlex * flex),
+            min: min,
+          ),
+        );
+      }
+    }
+    return maxCross;
+  }
+
+  @override
+  double computeMinIntrinsicExtent(Axis3d axis, Size3d limits) =>
+      _flexIntrinsic(axis, limits, min: true);
+
+  @override
+  double computeMaxIntrinsicExtent(Axis3d axis, Size3d limits) =>
+      _flexIntrinsic(axis, limits, min: false);
+
   @override
   void performLayout() {
     final constraints = this.constraints;
@@ -283,6 +392,39 @@ class Flex3d extends MultiChildLayout3d<ParentData3d> {
     var secondCrossSize = 0.0;
     var totalFlex = 0;
 
+    // Baseline alignment needs two numbers per cross axis it applies to: how
+    // far the deepest baseline sits from the origin corner, and how much room
+    // the children need past their own. The line is as thick as those two
+    // added together, which is usually more than its thickest child, because
+    // lining content up on a line inside it pushes the extremes apart.
+    final aboveBaseline = <Axis3d, double>{};
+    final belowBaseline = <Axis3d, double>{};
+
+    void measureCross(Layout3d child) {
+      final childSize = child.size;
+      for (final axis in <Axis3d>[firstCross, secondCross]) {
+        var extent = childSize.alongAxis(axis);
+        if (_alignmentFor(axis) == CrossAxisAlignment3d.baseline) {
+          final distance = child.getDistanceToBaseline(axis, onlyReal: true);
+          if (distance != null) {
+            final above = math.max(aboveBaseline[axis] ?? 0.0, distance);
+            final below = math.max(
+              belowBaseline[axis] ?? 0.0,
+              extent - distance,
+            );
+            aboveBaseline[axis] = above;
+            belowBaseline[axis] = below;
+            extent = math.max(extent, above + below);
+          }
+        }
+        if (axis == firstCross) {
+          firstCrossSize = math.max(firstCrossSize, extent);
+        } else {
+          secondCrossSize = math.max(secondCrossSize, extent);
+        }
+      }
+    }
+
     // Pass one: the children that do not flex, with all the main-axis room
     // they ask for.
     for (final child in children) {
@@ -295,16 +437,8 @@ class Flex3d extends MultiChildLayout3d<ParentData3d> {
         _childConstraints(0.0, double.infinity),
         parentUsesSize: true,
       );
-      final childSize = child.size;
-      allocatedSize += childSize.alongAxis(mainAxis);
-      firstCrossSize = math.max(
-        firstCrossSize,
-        childSize.alongAxis(firstCross),
-      );
-      secondCrossSize = math.max(
-        secondCrossSize,
-        childSize.alongAxis(secondCross),
-      );
+      allocatedSize += child.size.alongAxis(mainAxis);
+      measureCross(child);
     }
 
     // Pass two: divide what is left among the flexible children.
@@ -337,18 +471,9 @@ class Flex3d extends MultiChildLayout3d<ParentData3d> {
           _childConstraints(minChildExtent, maxChildExtent),
           parentUsesSize: true,
         );
-        final childSize = child.size;
-        final childMain = childSize.alongAxis(mainAxis);
-        allocatedSize += childMain;
+        allocatedSize += child.size.alongAxis(mainAxis);
         allocatedFlexSpace += maxChildExtent;
-        firstCrossSize = math.max(
-          firstCrossSize,
-          childSize.alongAxis(firstCross),
-        );
-        secondCrossSize = math.max(
-          secondCrossSize,
-          childSize.alongAxis(secondCross),
-        );
+        measureCross(child);
       }
     }
 
@@ -389,18 +514,33 @@ class Flex3d extends MultiChildLayout3d<ParentData3d> {
       }(),
     };
 
+    double crossOffsetFor(Layout3d child, Axis3d axis, double extent) {
+      final alignment = _alignmentFor(axis);
+      if (alignment == CrossAxisAlignment3d.baseline) {
+        // Every child is pushed down by the difference between its own
+        // baseline and the deepest one in the line, which is what puts them
+        // all on the same line. A child that has no baseline of its own sits
+        // at the start, as it does in Flutter.
+        final deepest = aboveBaseline[axis];
+        final distance = child.getDistanceToBaseline(axis, onlyReal: true);
+        if (deepest == null || distance == null) return 0.0;
+        return deepest - distance;
+      }
+      return _crossOffset(alignment, extent, child.size.alongAxis(axis));
+    }
+
     var mainPosition = leadingSpace;
     for (final child in children) {
       final childSize = child.size;
-      final firstCrossOffset = _crossOffset(
-        _alignmentFor(firstCross),
+      final firstCrossOffset = crossOffsetFor(
+        child,
+        firstCross,
         actualFirstCross,
-        childSize.alongAxis(firstCross),
       );
-      final secondCrossOffset = _crossOffset(
-        _alignmentFor(secondCross),
+      final secondCrossOffset = crossOffsetFor(
+        child,
+        secondCross,
         actualSecondCross,
-        childSize.alongAxis(secondCross),
       );
       child.place(
         Offset3d.zero
@@ -417,7 +557,9 @@ class Flex3d extends MultiChildLayout3d<ParentData3d> {
     double extent,
     double childExtent,
   ) => switch (alignment) {
-    CrossAxisAlignment3d.start || CrossAxisAlignment3d.stretch => 0.0,
+    CrossAxisAlignment3d.start ||
+    CrossAxisAlignment3d.stretch ||
+    CrossAxisAlignment3d.baseline => 0.0,
     CrossAxisAlignment3d.end => extent - childExtent,
     CrossAxisAlignment3d.center => (extent - childExtent) / 2.0,
   };

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart' show protected;
 
 import '../geometry/alignment3d.dart';
@@ -10,7 +12,8 @@ import '../layout3d.dart';
 ///
 /// The shared base of [Padding3d] and [Align3d], mirroring
 /// `RenderShiftedBox`.
-abstract class ShiftedLayout3d extends SingleChildLayout3d {
+abstract class ShiftedLayout3d extends SingleChildLayout3d
+    with Layout3dChildIntrinsicsMixin {
   /// Creates a shifting layout around [child].
   ShiftedLayout3d({super.child, super.name});
 }
@@ -34,6 +37,34 @@ class Padding3d extends ShiftedLayout3d {
     _padding = value;
     markNeedsLayout();
   }
+
+  /// The child's intrinsic extent plus the insets on the queried axis, with
+  /// the insets on the other two taken out of what the child is offered.
+  double _paddedIntrinsic(Axis3d axis, Size3d limits, {required bool min}) {
+    final along = _padding.alongAxis(axis);
+    final child = this.child;
+    if (child == null) return along;
+    var childLimits = limits;
+    for (final other in Axis3d.values) {
+      if (other == axis) continue;
+      childLimits = childLimits.withAxis(
+        other,
+        math.max(0.0, limits.alongAxis(other) - _padding.alongAxis(other)),
+      );
+    }
+    final extent = min
+        ? child.getMinIntrinsicExtent(axis, childLimits)
+        : child.getMaxIntrinsicExtent(axis, childLimits);
+    return extent + along;
+  }
+
+  @override
+  double computeMinIntrinsicExtent(Axis3d axis, Size3d limits) =>
+      _paddedIntrinsic(axis, limits, min: true);
+
+  @override
+  double computeMaxIntrinsicExtent(Axis3d axis, Size3d limits) =>
+      _paddedIntrinsic(axis, limits, min: false);
 
   @override
   void performLayout() {

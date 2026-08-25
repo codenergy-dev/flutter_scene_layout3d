@@ -5,6 +5,7 @@ import 'package:vector_math/vector_math.dart' show Matrix4;
 import '../boxes/container.dart';
 import '../boxes/flex.dart';
 import '../boxes/ignore_pointer.dart';
+import '../boxes/intrinsic.dart';
 import '../boxes/node_box.dart';
 import '../boxes/shifted.dart';
 import '../boxes/sized.dart';
@@ -239,6 +240,92 @@ class SceneConstrainedBox3d extends SingleChildLayout3dWidget {
   @override
   void updateLayout(BuildContext context, ConstrainedBox3d layout) {
     layout.additionalConstraints = constraints;
+  }
+}
+
+/// Sizes its child to the child's own preferred width, the widget form of
+/// [IntrinsicWidth3d].
+class SceneIntrinsicWidth3d extends SingleChildLayout3dWidget {
+  /// Creates a width-shrinking box.
+  SceneIntrinsicWidth3d({super.key, this.step, super.child});
+
+  /// If non-null, the width is rounded up to a multiple of this.
+  final double? step;
+
+  @override
+  IntrinsicWidth3d createLayout(BuildContext context) =>
+      IntrinsicWidth3d(step: step);
+
+  @override
+  void updateLayout(BuildContext context, IntrinsicWidth3d layout) {
+    layout.step = step;
+  }
+}
+
+/// Sizes its child to the child's own preferred height, the widget form of
+/// [IntrinsicHeight3d].
+class SceneIntrinsicHeight3d extends SingleChildLayout3dWidget {
+  /// Creates a height-shrinking box.
+  SceneIntrinsicHeight3d({super.key, this.step, super.child});
+
+  /// If non-null, the height is rounded up to a multiple of this.
+  final double? step;
+
+  @override
+  IntrinsicHeight3d createLayout(BuildContext context) =>
+      IntrinsicHeight3d(step: step);
+
+  @override
+  void updateLayout(BuildContext context, IntrinsicHeight3d layout) {
+    layout.step = step;
+  }
+}
+
+/// Sizes its child to the child's own preferred depth, the widget form of
+/// [IntrinsicDepth3d].
+class SceneIntrinsicDepth3d extends SingleChildLayout3dWidget {
+  /// Creates a depth-shrinking box.
+  SceneIntrinsicDepth3d({super.key, this.step, super.child});
+
+  /// If non-null, the depth is rounded up to a multiple of this.
+  final double? step;
+
+  @override
+  IntrinsicDepth3d createLayout(BuildContext context) =>
+      IntrinsicDepth3d(step: step);
+
+  @override
+  void updateLayout(BuildContext context, IntrinsicDepth3d layout) {
+    layout.step = step;
+  }
+}
+
+/// Puts its child's baseline at a fixed distance, the widget form of
+/// [Baseline3d].
+class SceneBaseline3d extends SingleChildLayout3dWidget {
+  /// Creates a box that declares where its child's baseline sits.
+  SceneBaseline3d({
+    super.key,
+    required this.baseline,
+    this.axis = Axis3d.vertical,
+    super.child,
+  });
+
+  /// Where the child's baseline sits, from this box's origin corner.
+  final double baseline;
+
+  /// The axis the baseline is measured along.
+  final Axis3d axis;
+
+  @override
+  Baseline3d createLayout(BuildContext context) =>
+      Baseline3d(baseline: baseline, axis: axis);
+
+  @override
+  void updateLayout(BuildContext context, Baseline3d layout) {
+    layout
+      ..baseline = baseline
+      ..axis = axis;
   }
 }
 

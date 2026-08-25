@@ -241,7 +241,11 @@ class SliverGrid3d extends Sliver3d
 
   double _depthOffset(double extent, double childExtent) =>
       switch (_depthAxisAlignment) {
-        CrossAxisAlignment3d.start || CrossAxisAlignment3d.stretch => 0.0,
+        // Baseline alignment falls back to the start here: a grid cell has no
+        // line to share with the cells beside it.
+        CrossAxisAlignment3d.start ||
+        CrossAxisAlignment3d.stretch ||
+        CrossAxisAlignment3d.baseline => 0.0,
         CrossAxisAlignment3d.end => extent - childExtent,
         CrossAxisAlignment3d.center => (extent - childExtent) / 2.0,
       };

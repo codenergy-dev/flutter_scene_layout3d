@@ -72,6 +72,14 @@ class Viewport3d extends SingleChildLayout3d implements Scrollable3d {
   bool hitTestSelf(Offset3d position) => true;
 
   @override
+  double computeMinIntrinsicExtent(Axis3d axis, Size3d limits) =>
+      noIntrinsicExtent(this, axis);
+
+  @override
+  double computeMaxIntrinsicExtent(Axis3d axis, Size3d limits) =>
+      noIntrinsicExtent(this, axis);
+
+  @override
   void performLayout() {
     _layingOut = true;
     try {

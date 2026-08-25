@@ -48,6 +48,76 @@ void main() {
     expect(boxes[1].offset, const Offset3d(3, 2, 4));
   });
 
+  testWidgets('an intrinsic box sizes a column to its widest child', (
+    tester,
+  ) async {
+    final controller = Layout3dController();
+    await tester.pumpWidget(
+      SceneLayout3d(
+        parent: Node(),
+        constraints: const Constraints3d(maxHeight: 10, maxDepth: 10),
+        controller: controller,
+        child: SceneIntrinsicWidth3d(
+          child: SceneColumn3d(
+            crossAxisAlignment: CrossAxisAlignment3d.stretch,
+            children: [
+              SceneNodeBox3d(
+                content: Node(),
+                explicitSize: const Size3d(2, 1, 1),
+              ),
+              SceneNodeBox3d(
+                content: Node(),
+                explicitSize: const Size3d(5, 1, 1),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final column = (rootOf(controller) as IntrinsicWidth3d).child!;
+    expect(column.size.width, 5);
+    for (final box in childrenOf(column)) {
+      expect(box.size.width, 5);
+    }
+  });
+
+  testWidgets('a row lines its children up on the baselines they declare', (
+    tester,
+  ) async {
+    final controller = Layout3dController();
+    await tester.pumpWidget(
+      SceneLayout3d(
+        parent: Node(),
+        size: const Size3d(10, 10, 10),
+        controller: controller,
+        child: SceneRow3d(
+          crossAxisAlignment: CrossAxisAlignment3d.baseline,
+          children: [
+            SceneBaseline3d(
+              baseline: 4,
+              child: SceneNodeBox3d(
+                content: Node(),
+                explicitSize: const Size3d(1, 3, 1),
+              ),
+            ),
+            SceneBaseline3d(
+              baseline: 2,
+              child: SceneNodeBox3d(
+                content: Node(),
+                explicitSize: const Size3d(1, 2, 1),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    final children = childrenOf(rootOf(controller));
+    expect(children[0].offset.y, 0);
+    expect(children[1].offset.y, 2);
+  });
+
   testWidgets('a declarative tree is hit-testable through its surface', (
     tester,
   ) async {

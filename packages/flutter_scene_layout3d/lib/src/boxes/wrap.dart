@@ -176,6 +176,42 @@ class Wrap3d extends MultiChildLayout3d<ParentData3d> {
   /// The axis runs stack along, and the axis that only ever aligns.
   (Axis3d, Axis3d) get crossAxes => _direction.others;
 
+  /// Along the run axis the answers are exact: the smallest a wrap can be is
+  /// its widest single child, since nothing narrower could hold that child on
+  /// a run of its own, and the largest it can use is every child on one run.
+  ///
+  /// Across it they are the one-run answer, which is a lower bound. Knowing
+  /// how thick a wrap would be at a given width means knowing how many runs
+  /// it would break into, and that is a layout, not a measurement: Flutter
+  /// answers it with a dry layout, which this package does not have. The
+  /// depth axis is exact even so, because a wrap never breaks on depth.
+  double _wrapIntrinsic(Axis3d axis, Size3d limits, {required bool min}) {
+    var extent = 0.0;
+    if (axis == _direction && !min) {
+      for (final child in children) {
+        extent += child.getMaxIntrinsicExtent(axis, limits);
+      }
+      return extent + _spacing * math.max(0, childCount - 1);
+    }
+    for (final child in children) {
+      extent = math.max(
+        extent,
+        min
+            ? child.getMinIntrinsicExtent(axis, limits)
+            : child.getMaxIntrinsicExtent(axis, limits),
+      );
+    }
+    return extent;
+  }
+
+  @override
+  double computeMinIntrinsicExtent(Axis3d axis, Size3d limits) =>
+      _wrapIntrinsic(axis, limits, min: true);
+
+  @override
+  double computeMaxIntrinsicExtent(Axis3d axis, Size3d limits) =>
+      _wrapIntrinsic(axis, limits, min: false);
+
   @override
   void performLayout() {
     final constraints = this.constraints;

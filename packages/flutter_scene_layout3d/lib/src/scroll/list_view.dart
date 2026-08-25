@@ -310,6 +310,14 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
   bool hitTestSelf(Offset3d position) => true;
 
   @override
+  double computeMinIntrinsicExtent(Axis3d axis, Size3d limits) =>
+      noIntrinsicExtent(this, axis);
+
+  @override
+  double computeMaxIntrinsicExtent(Axis3d axis, Size3d limits) =>
+      noIntrinsicExtent(this, axis);
+
+  @override
   void performLayout() {
     _layingOut = true;
     try {
@@ -536,7 +544,12 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
     double extent,
     double childExtent,
   ) => switch (alignment) {
-    CrossAxisAlignment3d.start || CrossAxisAlignment3d.stretch => 0.0,
+    // Baseline alignment falls back to the start here: a scrolling view lays
+    // its children out one after another, so there is no shared line for
+    // their baselines to sit on.
+    CrossAxisAlignment3d.start ||
+    CrossAxisAlignment3d.stretch ||
+    CrossAxisAlignment3d.baseline => 0.0,
     CrossAxisAlignment3d.end => extent - childExtent,
     CrossAxisAlignment3d.center => (extent - childExtent) / 2.0,
   };

@@ -385,7 +385,12 @@ class SliverList3d extends Sliver3d
     double extent,
     double childExtent,
   ) => switch (alignment) {
-    CrossAxisAlignment3d.start || CrossAxisAlignment3d.stretch => 0.0,
+    // Baseline alignment falls back to the start here: a sliver lays its
+    // children out one after another, so there is no shared line for their
+    // baselines to sit on.
+    CrossAxisAlignment3d.start ||
+    CrossAxisAlignment3d.stretch ||
+    CrossAxisAlignment3d.baseline => 0.0,
     CrossAxisAlignment3d.end => extent - childExtent,
     CrossAxisAlignment3d.center => (extent - childExtent) / 2.0,
   };

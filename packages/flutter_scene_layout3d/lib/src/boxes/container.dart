@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:vector_math/vector_math.dart' show Matrix4;
 
 import '../geometry/alignment3d.dart';
@@ -18,7 +20,8 @@ import '../layout3d.dart';
 /// This is a layout container. Making it *visible* (a panel, a frame, a
 /// backing plane) is a matter of putting a mesh in the tree, which is what
 /// `NodeBox3d` is for; nothing in this package draws on its own.
-class Container3d extends SingleChildLayout3d {
+class Container3d extends SingleChildLayout3d
+    with Layout3dChildIntrinsicsMixin {
   /// Creates a container.
   Container3d({
     Alignment3d? alignment,
@@ -150,6 +153,45 @@ class Container3d extends SingleChildLayout3d {
         .multiplied(transform)
         .multiplied(Matrix4.translationValues(-origin.x, -origin.y, -origin.z));
   }
+
+  /// The child's intrinsic extent, taken through the same sequence
+  /// [performLayout] uses: padding is added to it, the extra constraints hold
+  /// the result, and the margin is added around that.
+  ///
+  /// [alignment] plays no part. An aligning container fills whatever bounded
+  /// room it is given, and an intrinsic query is asking what it would do
+  /// without being given any.
+  double _containerIntrinsic(Axis3d axis, Size3d limits, {required bool min}) {
+    final insets = _margin + _padding;
+    var content = _padding.alongAxis(axis);
+    final child = this.child;
+    if (child != null) {
+      var childLimits = limits;
+      for (final other in Axis3d.values) {
+        if (other == axis) continue;
+        childLimits = childLimits.withAxis(
+          other,
+          math.max(0.0, limits.alongAxis(other) - insets.alongAxis(other)),
+        );
+      }
+      content += min
+          ? child.getMinIntrinsicExtent(axis, childLimits)
+          : child.getMaxIntrinsicExtent(axis, childLimits);
+    }
+    final extra = _additionalConstraints;
+    final inner = extra == null || !extra.minAlong(axis).isFinite
+        ? content
+        : extra.constrainAlong(axis, content);
+    return inner + _margin.alongAxis(axis);
+  }
+
+  @override
+  double computeMinIntrinsicExtent(Axis3d axis, Size3d limits) =>
+      _containerIntrinsic(axis, limits, min: true);
+
+  @override
+  double computeMaxIntrinsicExtent(Axis3d axis, Size3d limits) =>
+      _containerIntrinsic(axis, limits, min: false);
 
   @override
   void performLayout() {

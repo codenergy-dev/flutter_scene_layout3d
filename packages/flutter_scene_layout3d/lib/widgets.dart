@@ -63,6 +63,7 @@ export 'src/widgets/layouts.dart'
     show
         SceneAbsorbPointer3d,
         SceneAlign3d,
+        SceneBaseline3d,
         SceneCenter3d,
         SceneColumn3d,
         SceneConstrainedBox3d,
@@ -74,6 +75,9 @@ export 'src/widgets/layouts.dart'
         SceneFlexible3d,
         SceneGridView3d,
         SceneIgnorePointer3d,
+        SceneIntrinsicDepth3d,
+        SceneIntrinsicHeight3d,
+        SceneIntrinsicWidth3d,
         SceneListView3d,
         SceneNodeBox3d,
         ScenePadding3d,

@@ -131,6 +131,16 @@ class Constraints3d {
   /// Whether the upper bound along [axis] is finite.
   bool hasBoundedAlong(Axis3d axis) => maxAlong(axis) < double.infinity;
 
+  /// Whether the extent along [axis] is fully determined.
+  bool hasTightAlong(Axis3d axis) => minAlong(axis) >= maxAlong(axis);
+
+  /// These constraints tightened to [extent] along [axis], without leaving
+  /// the range they already allow.
+  Constraints3d tightenAlong(Axis3d axis, double extent) {
+    final tight = extent.clamp(minAlong(axis), maxAlong(axis));
+    return withAxis(axis, min: tight, max: tight);
+  }
+
   /// The nearest width satisfying these constraints.
   double constrainWidth([double width = double.infinity]) =>
       width.clamp(minWidth, maxWidth);

@@ -1,3 +1,33 @@
+## 0.5.0
+
+- Intrinsic sizing: `Layout3d.getMinIntrinsicExtent` and `getMaxIntrinsicExtent`
+  ask a box how much room it would like, one axis at a time. Flutter's four
+  methods would be six with a third axis, so the axis is a parameter and the
+  `Size3d` beside it carries the limits on the other two.
+- `IntrinsicWidth3d`, `IntrinsicHeight3d` and `IntrinsicDepth3d` (over a shared
+  `IntrinsicExtent3d`), which size their child to the extent it asks for, with
+  Flutter's `stepWidth` under the name `step`.
+- Baselines: `Layout3d.getDistanceToBaseline`, `Baseline3d`, and
+  `CrossAxisAlignment3d.baseline`, so a line of content can hang from a line
+  inside it rather than from an edge. A baseline belongs to an axis here, and
+  `Baseline3d` declares one outright, because nothing in a scene reports one
+  the way text does.
+- Every box answers for itself: `NodeBox3d` measures the content it holds,
+  `Padding3d` and `Container3d` add their insets, `SizedBox3d` answers from its
+  fixed extents without asking the child, and `Flex3d`, `Stack3d` and `Wrap3d`
+  are ported from their Flutter counterparts. A `Wrap3d`'s answer across its
+  runs is the one-run lower bound; the rest are exact.
+- The scrolling views refuse the question, as Flutter's viewport does: a
+  viewport's content is whatever length it is, and the view exists so that it
+  need not grow to match.
+- Answers are cached until the box goes dirty, and a box whose answer was taken
+  pushes its dirt up past its own relayout boundary, because a parent decided
+  something from a number that has just gone stale.
+- `SceneIntrinsicWidth3d`, `SceneIntrinsicHeight3d`, `SceneIntrinsicDepth3d` and
+  `SceneBaseline3d` in the declarative layer.
+- `Constraints3d.hasTightAlong` and `tightenAlong`, `EdgeInsets3d.alongAxis` and
+  `lowAlong`.
+
 ## 0.4.0
 
 - The sliver protocol: `SliverConstraints3d` and `SliverGeometry3d`, and

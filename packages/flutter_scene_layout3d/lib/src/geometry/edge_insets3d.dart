@@ -78,6 +78,21 @@ class EdgeInsets3d {
   /// The total inset along `z`.
   double get alongDepth => front + back;
 
+  /// The total inset along [axis], both faces together.
+  double alongAxis(Axis3d axis) => switch (axis) {
+    Axis3d.horizontal => horizontal,
+    Axis3d.vertical => vertical,
+    Axis3d.depth => alongDepth,
+  };
+
+  /// The inset on the face [axis] starts at, the one nearest the origin
+  /// corner.
+  double lowAlong(Axis3d axis) => switch (axis) {
+    Axis3d.horizontal => left,
+    Axis3d.vertical => top,
+    Axis3d.depth => front,
+  };
+
   /// The size the insets consume on their own.
   Size3d get collapsedSize => Size3d(horizontal, vertical, alongDepth);
 

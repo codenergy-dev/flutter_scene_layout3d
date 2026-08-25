@@ -130,6 +130,8 @@ measurement is responsible.
 | `CustomScrollView3d`, `Sliver3d` | `CustomScrollView` + `Viewport`, `RenderSliver` |
 | `SliverList3d`, `SliverGrid3d`, `SliverToBoxAdapter3d` | `SliverList`, `SliverGrid`, `SliverToBoxAdapter` |
 | `SliverConstraints3d`, `SliverGeometry3d` | `SliverConstraints`, `SliverGeometry` |
+| `IntrinsicWidth3d`, `IntrinsicHeight3d`, `IntrinsicDepth3d` | `IntrinsicWidth`, `IntrinsicHeight` |
+| `Baseline3d`, `CrossAxisAlignment3d.baseline` | `Baseline`, `CrossAxisAlignment.baseline` |
 | `IgnorePointer3d`, `AbsorbPointer3d` | `IgnorePointer`, `AbsorbPointer` |
 | `Ray3d`, `HitTestResult3d`, `Layout3dPointer` | `hitTest`, `BoxHitTestResult`, `Listener` |
 | `NodeBox3d` | the leaf that holds content |
@@ -298,6 +300,77 @@ arithmetic. `scrollOffsetCorrection` is honoured: a sliver that discovers
 mid-layout that the content is not where the offset assumed can move the
 viewport and have the pass run again.
 
+## Measuring
+
+Layout answers one question: *given this much room, how big are you?* A box
+sometimes needs the other one — *how much room would you like?* — and asking
+it is a protocol of its own, Flutter's, with the axis moved into the argument
+list:
+
+```dart
+column.getMaxIntrinsicExtent(Axis3d.horizontal);          // how wide it wants to be
+column.getMinIntrinsicExtent(Axis3d.horizontal, limits);  // ... and the least it can live with
+```
+
+Flutter has four methods, one per axis and bound. Three axes would make six,
+so the axis is a parameter instead, and the `Size3d` beside it carries what
+the box would be offered on the *other two*. Its component along the queried
+axis is the thing being asked about, and is ignored.
+
+The answers come from the leaves. A `NodeBox3d` reports the extent of the
+content it holds, which is a real measurement of real geometry; every box
+above it either adds to that (`Padding3d` its insets, `Container3d` its
+padding and margin) or holds it down (`SizedBox3d` its fixed extents, without
+even asking the child), and a `Column3d` adds its children up along its axis
+and overlaps them across it.
+
+`IntrinsicWidth3d` — with `IntrinsicHeight3d` and `IntrinsicDepth3d` for the
+other two axes — is what the question is usually for. It asks its child what
+it wants and then hands it exactly that, tightly:
+
+```dart
+IntrinsicWidth3d(
+  child: Column3d(
+    crossAxisAlignment: CrossAxisAlignment3d.stretch,
+    children: cards,   // every card as wide as the widest one
+  ),
+)
+```
+
+It is expensive, for the reason it is expensive in Flutter: answering walks
+the whole subtree, and then the subtree is laid out again for real. The answer
+is cached until the box next goes dirty, and a box whose answer was taken
+pushes its dirt up *past its own relayout boundary*, because a parent decided
+something from a number that has just gone stale. Scrolling views refuse the
+question outright, as Flutter's viewport does: a list's content is whatever
+length it is, and the list exists so that it need not grow to match.
+
+### Baselines
+
+A baseline is a line content declares so that its neighbours can line up on it
+instead of on their edges. Flutter has one, running across a box at the foot
+of its text. Here a box can declare one on any axis, because there are three
+ways to stand side by side — and nothing in a scene reports one on its own, so
+`Baseline3d` is what states it:
+
+```dart
+Row3d(
+  crossAxisAlignment: CrossAxisAlignment3d.baseline,
+  children: [
+    Baseline3d(baseline: 0.4, child: NodeBox3d(content: title)),
+    Baseline3d(baseline: 0.4, child: NodeBox3d(content: badge)),
+  ],
+)
+```
+
+Both children now hang from `y = 0.4` whatever their own extents, and the row
+is as thick as the deepest baseline plus the most that hangs below one, which
+is generally more than its thickest child. A child with no baseline sits at
+the start of the line, exactly as in Flutter. Which cross axis the alignment
+applies to is the usual rule — `crossAxisAlignment` is the first cross axis
+and `depthAxisAlignment` the second — so a `Row3d` can carry a line on `y` and
+another on `z` at the same time.
+
 ## Pointing at it
 
 Hit testing is the other half of the protocol, and it is where three
@@ -387,8 +460,14 @@ animation.
 * **No gesture arena.** `Layout3dPointer` is a plain object driven from
   whatever pointer events the application has; there is no recognizer team,
   no arena, and no fling.
-* **No intrinsic sizing yet**, so no `IntrinsicWidth`/`IntrinsicHeight`
-  equivalents and no baseline alignment.
+* **A baseline belongs to an axis, and something has to declare it.**
+  Flutter's runs across a box at the foot of its text, and text reports it;
+  nothing in a scene does, so `Baseline3d` states one outright. There is no
+  `TextBaseline`, because alphabetic against ideographic means nothing here.
+* **A `Wrap3d` cannot say how thick it would be.** Its intrinsic extent across
+  the runs is the one-run answer, which is a lower bound: knowing better means
+  knowing how many runs it would break into, and Flutter answers that with a
+  dry layout this package does not have.
 * **No painting.** These layouts arrange content; they never draw. A visible
   panel is a mesh in a `NodeBox3d`.
 * **A `Positioned3d` axis with nothing pinned is capped by the stack.** Flutter
@@ -445,10 +524,21 @@ imperative side, but the declarative layer builds every child widget up front,
 because doing better needs a `RenderObjectElement` of its own and a build scope
 to create children during layout.
 
-**4. Intrinsic sizing.** `IntrinsicWidth3d`, `IntrinsicHeight3d`, and baseline
-alignment. Last, because it is where layout cost multiplies and because its
-value shows up mainly with content that sizes itself from its own contents,
-text above all, which this package does not have yet.
+**4. Intrinsic sizing.** ~~Done~~: `Layout3d.getMinIntrinsicExtent` and
+`getMaxIntrinsicExtent` ask the question one axis at a time,
+`IntrinsicWidth3d` and its two siblings are the boxes built on it, and
+`Baseline3d` with `CrossAxisAlignment3d.baseline` is the baseline half. See
+*Measuring* above. What is left is a dry layout, the speculative *sizing* pass
+that Flutter added on top of intrinsics; it is what would let a `Wrap3d`
+report how thick it would be at a given width instead of the one-run lower
+bound it reports now.
+
+**What is next.** Nothing in this list depends on anything else in it any
+more, so the order is a matter of what a caller reaches for first: the rest of
+Flutter's layout catalogue (`Table`, `Flow`, aspect-ratio and
+fractionally-sized boxes), pinned and floating sliver headers, lazily built
+child *widgets* in the declarative layer, and hover and press state on the
+boxes themselves, which is the groundwork any `Button3d` would need.
 
 ## License
 

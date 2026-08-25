@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart'
     show VoidCallback, mustCallSuper, protected;
 import 'package:flutter_scene/scene.dart' show Node;
@@ -305,6 +307,15 @@ abstract class Layout3d {
   /// (or one that does not use its child's size) absorbs the dirt, so a deep
   /// change does not relayout the whole plane.
   void markNeedsLayout() {
+    // Anything cached here was asked for by the parent, which means the
+    // parent's own layout was decided from an answer that is now stale. The
+    // dirt therefore has to go up, however tightly this box is constrained:
+    // a relayout boundary bounds the *sizes* that flow up, not the questions
+    // that were asked before them. Flutter's `RenderBox` does exactly this.
+    if (_clearIntrinsicsCache() && _parent != null) {
+      markParentNeedsLayout();
+      return;
+    }
     if (_needsLayout) return;
     final boundary = _relayoutBoundary;
     if (boundary == null) {
@@ -329,6 +340,7 @@ abstract class Layout3d {
   @protected
   void markParentNeedsLayout() {
     _needsLayout = true;
+    _clearIntrinsicsCache();
     final parent = _parent;
     if (parent == null) {
       final owner = _owner;
@@ -418,6 +430,129 @@ abstract class Layout3d {
   /// [place] on each child.
   @protected
   void performLayout();
+
+  // ---------------------------------------------------------- intrinsics
+
+  final Map<(Axis3d, bool, Size3d), double> _cachedIntrinsics =
+      <(Axis3d, bool, Size3d), double>{};
+
+  final Map<Axis3d, double?> _cachedBaselines = <Axis3d, double?>{};
+
+  /// Empties the intrinsic and baseline caches, reporting whether anything
+  /// was in them.
+  bool _clearIntrinsicsCache() {
+    if (_cachedIntrinsics.isEmpty && _cachedBaselines.isEmpty) return false;
+    _cachedIntrinsics.clear();
+    _cachedBaselines.clear();
+    return true;
+  }
+
+  /// The smallest extent along [axis] in which this box can present its
+  /// content without giving up anything it would otherwise fit, the 3D
+  /// analogue of [RenderBox.getMinIntrinsicWidth] and its siblings.
+  ///
+  /// The pair of questions is Flutter's, one axis at a time: the minimum is
+  /// the extent below which the box would have to sacrifice something (a
+  /// column would start compressing its children), and
+  /// [getMaxIntrinsicExtent] is the extent beyond which more room buys
+  /// nothing.
+  ///
+  /// [limits] carries what the box would be offered on the *other two* axes;
+  /// its own component along [axis] is ignored, since that is the question
+  /// being asked. The default asks with nothing else constrained.
+  ///
+  /// This is a speculation, not a layout: nothing is sized, nothing is
+  /// placed. It is also expensive, because answering walks the entire
+  /// subtree, which is why the answer is cached until the next
+  /// [markNeedsLayout] and why so few boxes ask. Do not call it from
+  /// [performLayout] unless the box exists to (see [IntrinsicExtent3d]);
+  /// laying a child out and reading its [size] is the cheap way to find out
+  /// how big it is.
+  double getMinIntrinsicExtent(
+    Axis3d axis, [
+    Size3d limits = Size3d.infinite,
+  ]) => _intrinsicExtent(axis, limits, min: true);
+
+  /// The extent along [axis] beyond which giving this box more room does not
+  /// change what it does with it, the 3D analogue of
+  /// [RenderBox.getMaxIntrinsicWidth].
+  ///
+  /// See [getMinIntrinsicExtent] for what [limits] means and what this costs.
+  double getMaxIntrinsicExtent(
+    Axis3d axis, [
+    Size3d limits = Size3d.infinite,
+  ]) => _intrinsicExtent(axis, limits, min: false);
+
+  double _intrinsicExtent(Axis3d axis, Size3d limits, {required bool min}) {
+    // The component along the queried axis is not part of the question, so
+    // it is zeroed before it reaches the cache key: two callers who differ
+    // only there are asking the same thing.
+    final others = limits.withAxis(axis, 0.0);
+    assert(
+      others.isNonNegative,
+      'Intrinsic limits must be non-negative, but $limits was given for '
+      '$axis on $runtimeType.',
+    );
+    final key = (axis, min, others);
+    final cached = _cachedIntrinsics[key];
+    if (cached != null) return cached;
+    final result = min
+        ? computeMinIntrinsicExtent(axis, others)
+        : computeMaxIntrinsicExtent(axis, others);
+    assert(
+      result.isFinite && result >= 0.0,
+      '$runtimeType reported $result as its intrinsic extent along $axis, '
+      'which is not a finite non-negative extent.',
+    );
+    _cachedIntrinsics[key] = result;
+    return result;
+  }
+
+  /// Computes [getMinIntrinsicExtent]. Override this; call the getter.
+  ///
+  /// Zero by default, as in Flutter: a box that has not been taught to
+  /// measure itself claims to need nothing.
+  @protected
+  double computeMinIntrinsicExtent(Axis3d axis, Size3d limits) => 0.0;
+
+  /// Computes [getMaxIntrinsicExtent]. Override this; call the getter.
+  @protected
+  double computeMaxIntrinsicExtent(Axis3d axis, Size3d limits) => 0.0;
+
+  // ----------------------------------------------------------- baselines
+
+  /// How far along [axis] this box's baseline sits, measured from its origin
+  /// corner, the 3D analogue of [RenderBox.getDistanceToBaseline].
+  ///
+  /// A baseline is a line content declares so that neighbours can line up on
+  /// it rather than on their edges. Flutter has one, running across a box at
+  /// the foot of its text; a box here can declare one on any axis, because
+  /// there are three ways for a row of content to be side by side.
+  ///
+  /// Null means this box has no baseline of its own, which is the default.
+  /// With [onlyReal] false, the answer for such a box is its far edge along
+  /// [axis] — the same substitution Flutter makes, and what lets a
+  /// baseline-aligned line mix content that has a baseline with content that
+  /// does not.
+  double? getDistanceToBaseline(Axis3d axis, {bool onlyReal = false}) {
+    final double? distance;
+    if (_cachedBaselines.containsKey(axis)) {
+      distance = _cachedBaselines[axis];
+    } else {
+      distance = computeDistanceToActualBaseline(axis);
+      _cachedBaselines[axis] = distance;
+    }
+    if (distance == null && !onlyReal) return size.alongAxis(axis);
+    return distance;
+  }
+
+  /// Computes [getDistanceToBaseline]. Override this; call the getter.
+  ///
+  /// Return null for a box with no baseline of its own. A box that wraps
+  /// another usually returns the child's, moved by wherever it placed the
+  /// child; [Layout3dChildIntrinsicsMixin] does that.
+  @protected
+  double? computeDistanceToActualBaseline(Axis3d axis) => null;
 
   // ------------------------------------------------------------ placement
 
@@ -614,11 +749,39 @@ mixin Layout3dWithChildMixin on Layout3d {
   }
 }
 
+/// Answers measurement questions with the child's answers, the 3D analogue
+/// of what [RenderProxyBox] and [RenderShiftedBox] do.
+///
+/// For every wrapper that neither adds room of its own nor changes what its
+/// child would ask for: its intrinsic extents are the child's, and its
+/// baseline is the child's, moved by wherever it placed the child. A wrapper
+/// that *does* add room ([Padding3d]) or impose limits ([ConstrainedBox3d])
+/// mixes this in and overrides the intrinsic half.
+mixin Layout3dChildIntrinsicsMixin on Layout3dWithChildMixin {
+  @override
+  double computeMinIntrinsicExtent(Axis3d axis, Size3d limits) =>
+      child?.getMinIntrinsicExtent(axis, limits) ?? 0.0;
+
+  @override
+  double computeMaxIntrinsicExtent(Axis3d axis, Size3d limits) =>
+      child?.getMaxIntrinsicExtent(axis, limits) ?? 0.0;
+
+  @override
+  double? computeDistanceToActualBaseline(Axis3d axis) {
+    final child = this.child;
+    if (child == null) return null;
+    final distance = child.getDistanceToBaseline(axis, onlyReal: true);
+    if (distance == null) return null;
+    return distance + child.offset.alongAxis(axis);
+  }
+}
+
 /// A layout that sizes itself to its child and passes its constraints
 /// straight through, the 3D analogue of [RenderProxyBox].
 ///
 /// The base for wrappers that change nothing about layout on their own.
-abstract class ProxyLayout3d extends SingleChildLayout3d {
+abstract class ProxyLayout3d extends SingleChildLayout3d
+    with Layout3dChildIntrinsicsMixin {
   /// Creates a pass-through layout around [child].
   ProxyLayout3d({super.child, super.name});
 
@@ -745,6 +908,39 @@ mixin Layout3dWithChildrenMixin<ParentDataType extends ParentData3d>
       if (!identical(a[i], b[i])) return false;
     }
     return true;
+  }
+
+  /// The baseline of the first child that has one, moved by where that child
+  /// was placed, the 3D analogue of
+  /// `defaultComputeDistanceToFirstActualBaseline`.
+  ///
+  /// The right answer for children stacked along [axis]: the line the first
+  /// one sits on is the line the whole run sits on.
+  @protected
+  double? defaultComputeDistanceToFirstActualBaseline(Axis3d axis) {
+    for (final child in _children) {
+      final distance = child.getDistanceToBaseline(axis, onlyReal: true);
+      if (distance != null) return distance + child.offset.alongAxis(axis);
+    }
+    return null;
+  }
+
+  /// The lowest of the children's baselines along [axis], the 3D analogue of
+  /// `defaultComputeDistanceToHighestActualBaseline`.
+  ///
+  /// "Highest" as Flutter means it, which is the smallest distance from the
+  /// origin corner: the right answer for children lying side by side across
+  /// [axis], where the whole group hangs from the topmost line among them.
+  @protected
+  double? defaultComputeDistanceToHighestActualBaseline(Axis3d axis) {
+    double? result;
+    for (final child in _children) {
+      final distance = child.getDistanceToBaseline(axis, onlyReal: true);
+      if (distance == null) continue;
+      final candidate = distance + child.offset.alongAxis(axis);
+      result = result == null ? candidate : math.min(result, candidate);
+    }
+    return result;
   }
 
   /// Tests children back to front, so the one drawn last is found first,

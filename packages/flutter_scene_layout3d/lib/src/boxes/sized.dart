@@ -11,7 +11,8 @@ import '../layout3d.dart';
 ///
 /// The extra constraints are combined with the incoming ones through
 /// [Constraints3d.enforce], so a parent's limits always win.
-class ConstrainedBox3d extends SingleChildLayout3d {
+class ConstrainedBox3d extends SingleChildLayout3d
+    with Layout3dChildIntrinsicsMixin {
   /// Creates a box that constrains its child.
   ConstrainedBox3d({
     Constraints3d additionalConstraints = const Constraints3d(),
@@ -31,6 +32,36 @@ class ConstrainedBox3d extends SingleChildLayout3d {
     _additionalConstraints = value;
     markNeedsLayout();
   }
+
+  /// The child's intrinsic extent, held to the extra constraints.
+  ///
+  /// An axis this box fixes outright answers with that fixed extent and never
+  /// asks the child, which is what makes a [SizedBox3d] the cheap way to stop
+  /// an intrinsic query from walking a subtree. An axis it *expands* on has
+  /// no finite answer to give, so it passes the child's through rather than
+  /// reporting an infinite intrinsic.
+  double _constrainedIntrinsic(Axis3d axis, Size3d limits, {required bool min}) {
+    final extra = _additionalConstraints;
+    if (extra.hasTightAlong(axis) && extra.hasBoundedAlong(axis)) {
+      return extra.minAlong(axis);
+    }
+    final child = this.child;
+    final extent = child == null
+        ? 0.0
+        : (min
+              ? child.getMinIntrinsicExtent(axis, limits)
+              : child.getMaxIntrinsicExtent(axis, limits));
+    if (extra.minAlong(axis).isFinite) return extra.constrainAlong(axis, extent);
+    return extent;
+  }
+
+  @override
+  double computeMinIntrinsicExtent(Axis3d axis, Size3d limits) =>
+      _constrainedIntrinsic(axis, limits, min: true);
+
+  @override
+  double computeMaxIntrinsicExtent(Axis3d axis, Size3d limits) =>
+      _constrainedIntrinsic(axis, limits, min: false);
 
   @override
   void performLayout() {
@@ -134,7 +165,8 @@ class SizedBox3d extends ConstrainedBox3d {
 /// `Transform3d.rotate(axis: Vector3(0, 0, 1), angle: 0.2)` turns the child
 /// clockwise on the plane, exactly as `Transform.rotate` does in Flutter. The
 /// child is laid out and sized as if the transform were not there.
-class Transform3d extends SingleChildLayout3d {
+class Transform3d extends SingleChildLayout3d
+    with Layout3dChildIntrinsicsMixin {
   /// Creates a transformed box.
   Transform3d({
     required Matrix4 transform,

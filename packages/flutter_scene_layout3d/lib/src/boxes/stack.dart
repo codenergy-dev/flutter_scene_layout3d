@@ -250,6 +250,39 @@ class Stack3d extends MultiChildLayout3d<ParentData3d> {
     markNeedsLayout();
   }
 
+  /// The largest of the non-positioned children's intrinsic extents.
+  ///
+  /// Positioned children are pinned to faces the stack does not have yet
+  /// while the question is being asked, so, as in Flutter, they are left out
+  /// of it.
+  double _stackIntrinsic(Axis3d axis, Size3d limits, {required bool min}) {
+    var extent = 0.0;
+    for (final child in children) {
+      if (child is Positioned3d && child.isPositioned) continue;
+      extent = math.max(
+        extent,
+        min
+            ? child.getMinIntrinsicExtent(axis, limits)
+            : child.getMaxIntrinsicExtent(axis, limits),
+      );
+    }
+    return extent;
+  }
+
+  @override
+  double computeMinIntrinsicExtent(Axis3d axis, Size3d limits) =>
+      _stackIntrinsic(axis, limits, min: true);
+
+  @override
+  double computeMaxIntrinsicExtent(Axis3d axis, Size3d limits) =>
+      _stackIntrinsic(axis, limits, min: false);
+
+  /// Overlaid children all hang from the same corner, so the stack's baseline
+  /// is the highest one among them.
+  @override
+  double? computeDistanceToActualBaseline(Axis3d axis) =>
+      defaultComputeDistanceToHighestActualBaseline(axis);
+
   @override
   void performLayout() {
     final constraints = this.constraints;

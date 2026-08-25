@@ -23,6 +23,9 @@
 ///    [ConstrainedBox3d], [Transform3d], [Row3d], [Column3d], [Depth3d],
 ///    [Stack3d], [Positioned3d], [Wrap3d], [Viewport3d], [ListView3d],
 ///    [GridView3d], the layouts.
+///  * [Layout3d.getMaxIntrinsicExtent] and [Layout3d.getDistanceToBaseline],
+///    the measurement protocol, with [IntrinsicWidth3d] and [Baseline3d] as
+///    the boxes that use it.
 ///  * [CustomScrollView3d] and the slivers ([SliverList3d], [SliverGrid3d],
 ///    [SliverToBoxAdapter3d]), a second protocol for sections that share one
 ///    scroll position.
@@ -46,6 +49,13 @@ export 'src/boxes/flex.dart'
         Row3d,
         Spacer3d;
 export 'src/boxes/ignore_pointer.dart' show AbsorbPointer3d, IgnorePointer3d;
+export 'src/boxes/intrinsic.dart'
+    show
+        Baseline3d,
+        IntrinsicDepth3d,
+        IntrinsicExtent3d,
+        IntrinsicHeight3d,
+        IntrinsicWidth3d;
 export 'src/boxes/node_box.dart' show BoxFit3d, NodeBox3d;
 export 'src/boxes/shifted.dart'
     show Align3d, Center3d, Offset3dBox, Padding3d, ShiftedLayout3d;
@@ -63,6 +73,7 @@ export 'src/input/pointer.dart' show Layout3dPointer;
 export 'src/layout3d.dart'
     show
         Layout3d,
+        Layout3dChildIntrinsicsMixin,
         Layout3dWithChildMixin,
         Layout3dWithChildrenMixin,
         Layout3dOwner,
@@ -80,7 +91,7 @@ export 'src/scroll/grid_view.dart'
         GridView3d;
 export 'src/scroll/list_view.dart' show Layout3dItemBuilder, ListView3d;
 export 'src/scroll/scroll_controller.dart' show Scroll3dController;
-export 'src/scroll/scrollable.dart' show Scrollable3d;
+export 'src/scroll/scrollable.dart' show Scrollable3d, noIntrinsicExtent;
 export 'src/sliver/custom_scroll_view.dart' show CustomScrollView3d;
 export 'src/sliver/sliver.dart' show Sliver3d, SliverToBoxAdapter3d;
 export 'src/sliver/sliver_constraints.dart'
