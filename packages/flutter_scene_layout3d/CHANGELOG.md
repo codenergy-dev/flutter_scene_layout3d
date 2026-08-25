@@ -1,5 +1,29 @@
 ## Unreleased
 
+- Every single-child `Scene*3d` widget is `const` now — `ScenePadding3d`,
+  `SceneAlign3d`, `SceneCenter3d`, `SceneSizedBox3d`, `SceneContainer3d`,
+  `SceneTransform3d`, `ScenePositioned3d`, `SceneFlexible3d`, `SceneExpanded3d`,
+  `SceneViewport3d`, `SceneSliverToBoxAdapter3d` and the three
+  `SceneIntrinsic*3d`. `SingleChildLayout3dWidget` folded its child into a list
+  in its constructor, which no const expression can do, so these were rebuilt on
+  every build of their parent while the multi-child widgets beside them were
+  not. The list is derived from `child` instead.
+- **Deprecated:** `EdgeInsets3d.alongDepth` is now `EdgeInsets3d.depth`,
+  matching `horizontal`, `vertical`, and the `depth` argument of
+  `EdgeInsets3d.symmetric`. The old name still works.
+- A null declarative property now means "the default" everywhere, rather than
+  "leave the last value alone". Dropping `basis` from a `SceneLayout3d` puts the
+  plane back upright, and dropping `controller` from a scrolling widget gives
+  the view a fresh one of its own instead of keeping the last one that was
+  passed. The imperative `controller` setters accept null to say the same
+  thing.
+- `Layout3d.debugDisposed`, and asserts against laying out, re-disposing, or
+  dirtying a disposed layout. The failure used to surface much later and
+  somewhere else.
+- `IgnorePointer3d.ignoring` and `AbsorbPointer3d.absorbing` are a getter and
+  setter pair like every other property in the package, rather than bare public
+  fields. They still cost nothing to flip.
+
 - `ListView3d`, `GridView3d`, `SliverList3d` and `SliverGrid3d` were four
   independent implementations of the same bookkeeping, and had already drifted
   apart in three places. The shared half is now two mixins,

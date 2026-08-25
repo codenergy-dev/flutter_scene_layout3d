@@ -158,8 +158,9 @@ class _SceneLayout3dState extends State<SceneLayout3d> {
     }
     _surface.configuration = _configuration;
     _surface.origin = widget.origin;
-    final basis = widget.basis;
-    if (basis != null) _surface.basis = basis;
+    // A null basis means the default, not "leave the last one alone", so
+    // dropping the argument on a rebuild puts the plane back upright.
+    _surface.basis = widget.basis ?? LayoutBasis3d.xy;
   }
 
   @override

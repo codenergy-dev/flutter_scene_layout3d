@@ -227,8 +227,27 @@ abstract class Layout3dWidget extends MultiChildRenderObjectWidget {
 }
 
 /// A [Layout3dWidget] with at most one child.
+///
+/// Flutter's `SingleChildRenderObjectWidget` is not the base here: its element
+/// hands the child render object to a `RenderObjectWithChildMixin`, while
+/// [Layout3dRenderBox] holds a child *list* so that one mirroring path serves
+/// every layout shape. This is a multi-child widget that reports a list of
+/// nought or one instead.
+///
+/// [children] is derived rather than built in the constructor, which is what
+/// lets these widgets be `const`: `const ScenePadding3d(...)` in a `build`
+/// method is a widget Flutter can skip rebuilding, the same as `const
+/// Padding(...)`.
 abstract class SingleChildLayout3dWidget extends Layout3dWidget {
   /// Creates a single-child layout widget.
-  SingleChildLayout3dWidget({super.key, Widget? child})
-    : super(children: child == null ? const <Widget>[] : <Widget>[child]);
+  const SingleChildLayout3dWidget({super.key, this.child});
+
+  /// The widget below this one in the tree.
+  final Widget? child;
+
+  @override
+  List<Widget> get children {
+    final child = this.child;
+    return child == null ? const <Widget>[] : <Widget>[child];
+  }
 }

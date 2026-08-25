@@ -11,15 +11,24 @@ import '../layout3d.dart';
 /// standing between the camera and the content that should be pointed at.
 class IgnorePointer3d extends ProxyLayout3d {
   /// Creates a box that hides [child] from hit tests while [ignoring].
-  IgnorePointer3d({this.ignoring = true, super.child, super.name});
+  IgnorePointer3d({bool ignoring = true, super.child, super.name})
+    : _ignoring = ignoring;
 
-  /// Whether the subtree is out of reach. Costs nothing to flip: hit testing
-  /// reads it as it walks, with no relayout behind it.
-  bool ignoring;
+  bool _ignoring;
+
+  /// Whether the subtree is out of reach.
+  ///
+  /// Costs nothing to flip: hit testing reads it as it walks, so there is no
+  /// relayout behind a change here.
+  bool get ignoring => _ignoring;
+
+  set ignoring(bool value) {
+    _ignoring = value;
+  }
 
   @override
   bool hitTest(HitTestResult3d result, {required Ray3d ray}) =>
-      ignoring ? false : super.hitTest(result, ray: ray);
+      _ignoring ? false : super.hitTest(result, ray: ray);
 }
 
 /// Takes the hit its subtree would have taken, the 3D analogue of
@@ -32,15 +41,25 @@ class IgnorePointer3d extends ProxyLayout3d {
 /// the scene behind it.
 class AbsorbPointer3d extends ProxyLayout3d {
   /// Creates a box that answers hits for [child] while [absorbing].
-  AbsorbPointer3d({this.absorbing = true, super.child, super.name});
+  AbsorbPointer3d({bool absorbing = true, super.child, super.name})
+    : _absorbing = absorbing;
+
+  bool _absorbing;
 
   /// Whether this box swallows hits meant for its subtree.
-  bool absorbing;
+  ///
+  /// Costs nothing to flip, for the same reason [IgnorePointer3d.ignoring]
+  /// does.
+  bool get absorbing => _absorbing;
+
+  set absorbing(bool value) {
+    _absorbing = value;
+  }
 
   @override
-  bool hitTestSelf(Offset3d position) => absorbing;
+  bool hitTestSelf(Offset3d position) => _absorbing;
 
   @override
   bool hitTestChildren(HitTestResult3d result, {required Ray3d ray}) =>
-      absorbing ? false : super.hitTestChildren(result, ray: ray);
+      _absorbing ? false : super.hitTestChildren(result, ray: ray);
 }

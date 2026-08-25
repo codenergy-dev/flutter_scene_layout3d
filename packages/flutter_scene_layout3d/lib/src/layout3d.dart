@@ -51,8 +51,7 @@ class ParentData3d {
   void detach() {}
 
   @override
-  String toString() =>
-      sceneOffset == Offset3d.zero
+  String toString() => sceneOffset == Offset3d.zero
       ? 'offset=$offset'
       : 'offset=$offset, sceneOffset=$sceneOffset';
 }
@@ -302,15 +301,44 @@ abstract class Layout3d {
     visitChildren((child) => child.detach());
   }
 
+  bool _debugDisposed = false;
+
+  /// Whether [dispose] has been called on this layout, in debug builds.
+  ///
+  /// Always false in release, where the flag is not kept.
+  bool get debugDisposed {
+    var disposed = false;
+    assert(() {
+      disposed = _debugDisposed;
+      return true;
+    }());
+    return disposed;
+  }
+
   /// Releases this subtree's scene resources.
   ///
   /// A layout only ever disposes what it created. Engine content handed to a
   /// leaf (a model loaded by the application, say) is detached, never
   /// disposed.
+  ///
+  /// A disposed layout is finished: it is not laid out again and not put back
+  /// in a tree. It is not unparented here, because whoever disposes it is the
+  /// one that removed it, and the lazy views do exactly that. What this does
+  /// catch is using one afterwards, which otherwise fails much later and
+  /// somewhere else.
   @mustCallSuper
   void dispose() {
+    assert(
+      !_debugDisposed,
+      '$runtimeType was disposed twice. A layout is disposed by whoever '
+      'removed it from the tree, and only once.',
+    );
     visitChildren((child) => child.dispose());
     _node.removeAll();
+    assert(() {
+      _debugDisposed = true;
+      return true;
+    }());
   }
 
   // -------------------------------------------------------------- layout
@@ -334,6 +362,10 @@ abstract class Layout3d {
   /// (or one that does not use its child's size) absorbs the dirt, so a deep
   /// change does not relayout the whole plane.
   void markNeedsLayout() {
+    assert(
+      !_debugDisposed,
+      '$runtimeType was marked as needing layout after it was disposed.',
+    );
     // Anything cached here was asked for by the parent, which means the
     // parent's own layout was decided from an answer that is now stale. The
     // dirt therefore has to go up, however tightly this box is constrained:
@@ -386,6 +418,7 @@ abstract class Layout3d {
   /// parent's own size or child positions depend on the size this call
   /// produces; that is what decides where relayout boundaries land.
   void layout(Constraints3d constraints, {bool parentUsesSize = false}) {
+    assert(!_debugDisposed, '$runtimeType was laid out after it was disposed.');
     assert(
       constraints.isNormalized,
       '$runtimeType was given non-normalized constraints: $constraints.',

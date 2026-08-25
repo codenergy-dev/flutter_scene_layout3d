@@ -1,7 +1,7 @@
 ---
-status: in progress
+status: completed
 created_at: 2026-08-25T03:32:15Z
-updated_at: 2026-08-25T06:05:00Z
+updated_at: 2026-08-25T06:58:00Z
 commit: 495b1ec4e93e3588c93612ef02862355d380933a
 ---
 
@@ -320,7 +320,7 @@ Emitting a real correction is still open and still wants a plan of its own: it
 exercises a viewport path only a test drives today, and a sliver that never
 settles needs a test of its own rather than leaning on `_maxLayoutCycles`.
 
-### 2.4 No single-child `Scene*3d` widget can be `const`
+### 2.4 No single-child `Scene*3d` widget can be `const` — **done**
 
 **Where.** `lib/src/widgets/framework.dart:232`
 
@@ -339,20 +339,34 @@ multi-child widgets (`SceneRow3d`, `SceneStack3d`, `SceneNodeBox3d`) *are*
 const. In Flutter `const Padding(...)` is idiomatic and skips rebuild work; the
 asymmetry here is invisible until a caller tries it.
 
-**How to fix.** Give the single-child widgets a `RenderObjectWidget` base that
-holds `final Widget? child` and its own `Element`, rather than folding the child
-into a `MultiChildRenderObjectWidget`'s list — the shape Flutter's own
-`SingleChildRenderObjectWidget` has. The layout-tree mirroring in
-`Layout3dRenderBox.performLayout` walks the render children, so a single-child
-render object needs the equivalent walk; keeping `ContainerRenderObjectMixin`
-with exactly zero or one child is the smaller change and keeps one code path.
+**What was done**, and it is smaller than this item assumed. Flutter's
+`SingleChildRenderObjectWidget` could not be the base: its element hands the
+child to a `RenderObjectWithChildMixin`, while `Layout3dRenderBox` holds a child
+*list* so that one mirroring path serves every layout shape. Writing a custom
+element was the obvious next thought, and it was not needed either.
 
-This is a public API change (constructors gain `const`), so it is additive for
-callers but touches every single-child widget. Sequence it after phase 1.
+`MultiChildRenderObjectWidget.children` is a `final` field, and a subclass can
+override a field's getter. So `SingleChildLayout3dWidget` keeps the multi-child
+base, holds `final Widget? child`, and *derives* the list:
 
-**Test.** `test/widgets_test.dart`: a `const ScenePadding3d(...)` compiles (the
-test file failing to analyze is the assertion) and rebuilds without writing to
-its layout.
+```dart
+const SingleChildLayout3dWidget({super.key, this.child});
+final Widget? child;
+@override
+List<Widget> get children =>
+    child == null ? const <Widget>[] : <Widget>[child!];
+```
+
+Nothing is built in the constructor, so the constructor is `const`. One render
+box, one element type, one mirroring path, and the analyzer's
+`prefer_const_constructors_in_immutables` then named every subclass that could
+follow: seventeen directly, plus `SceneCenter3d` and `SceneExpanded3d` once
+their superclasses were const.
+
+**Test.** `test/widgets_test.dart`: `a const single-child widget is const, and
+skips its rebuild` — the `const` keyword is the assertion, and the test also
+checks that rebuilding with the identical const widget reconciles onto the same
+layout object.
 
 ---
 
@@ -421,27 +435,33 @@ release.
 
 ---
 
-## Phase 4 — Minor
+## Phase 4 — Minor — **done**
 
-- `lib/src/widgets/surface.dart:162`: `if (basis != null) _surface.basis = basis`
-  never restores the default when `basis` goes back to null on a rebuild, unlike
-  `size` and `constraints`. The same `if (x != null)` pattern applies to
-  `controller` in every `updateLayout`; decide one rule and apply it to both.
+- ~~`if (basis != null) _surface.basis = basis` never restores the default when
+  `basis` goes back to null on a rebuild. The same `if (x != null)` pattern
+  applies to `controller`; decide one rule and apply it to both.~~ **Done.**
+  The rule: a null declarative property means *the default*, not "leave the
+  last value alone", and the widget always assigns the resolved value. For
+  `basis` the default is `LayoutBasis3d.xy`. For a controller it is one the
+  view owns, so the four imperative setters now take `Scroll3dController?` and
+  make a fresh one for null — which is also what the constructor has always
+  meant by null.
 - ~~`_lastIndexBefore` is a linear scan sitting next to `_indexAtOffset`, a
   binary search over the same sorted array.~~ **Done** in both files: the
   prefix is non-decreasing, so the predicate is monotone and the same
   last-true search applies. The linear version made the cost of a layout climb
   with how far the list had ever been scrolled.
-- `lib/src/boxes/ignore_pointer.dart`: `IgnorePointer3d.ignoring` and
-  `AbsorbPointer3d.absorbing` are public mutable fields; every other property in
-  the package is a private field with a getter/setter pair. They genuinely need
-  no relayout, so keep the cheapness and add the pair for consistency.
-- `lib/src/geometry/edge_insets3d.dart`: `horizontal`, `vertical`, `alongDepth`
-  — the third breaks the pattern, and `EdgeInsets3d.symmetric`'s parameter for
-  the same axis is called `depth`. Pick one spelling.
-- `lib/src/layout3d.dart`: `dispose()` neither unparents the layout nor marks it
-  disposed, so a discarded layout stays hanging off its parent with no warning.
-  Add a `debugDisposed` flag and assert on use, as `RenderObject` does.
+- ~~`IgnorePointer3d.ignoring` and `AbsorbPointer3d.absorbing` are public
+  mutable fields.~~ **Done.** Both are a getter and setter pair now, and still
+  cost nothing to flip.
+- ~~`horizontal`, `vertical`, `alongDepth` — the third breaks the pattern.~~
+  **Done.** `depth` is the name, matching the other two, the `depth` argument
+  of `EdgeInsets3d.symmetric`, and `Size3d.depth`. `alongDepth` is deprecated.
+- ~~`dispose()` neither unparents the layout nor marks it disposed.~~ **Done**,
+  the marking half. `Layout3d.debugDisposed`, with asserts against laying out,
+  re-disposing, or dirtying a disposed layout. Unparenting is deliberately not
+  done: whoever disposes a layout is the one that removed it, which is exactly
+  what the lazy views do.
 - ~~`GridView3d.dispose()` does not clear `_active`; `ListView3d.dispose()`
   does.~~ **Done.** Harmless either way, but it was one more copy that had
   drifted.
@@ -460,8 +480,27 @@ release.
    (`_lastIndexBefore`, `GridView3d.dispose`).
 3. ~~Phase 2.1 route 1 (mixin extraction), then re-run the whole suite
    untouched.~~ **Done.**
-4. Phase 2.4 as its own change, since it moves the widget base class. **Next.**
-5. The rest of phase 4 whenever a file is open for another reason.
+4. ~~Phase 2.4 as its own change, since it moves the widget base class.~~
+   **Done**, without moving the base class after all.
+5. ~~The rest of phase 4 whenever a file is open for another reason.~~ **Done.**
+
+Everything in this plan has landed. The suite went from 239 tests to 249, all
+green, with `flutter analyze` clean throughout.
+
+**What it deliberately did not do**, each worth its own plan:
+
+- Route 2 of 2.1: rebuilding `ListView3d` and `GridView3d` on the sliver
+  protocol, as Flutter does, so one code path serves both.
+- A real `scrollOffsetCorrection` producer in `SliverList3d.builder` (2.3),
+  which currently revises its length estimate silently.
+- The fifth duplication cluster, found while doing 2.1 and phase 4 but out of
+  scope for both: `Viewport3d`, `ListView3d`, `GridView3d` and
+  `CustomScrollView3d` each carry the same `_controller` / `_ownsController`
+  pair, the same setter, the same `_handleScrollChanged`, and the same dispose
+  handling. It wants a `Scroll3dHolderMixin` the way the built-children
+  bookkeeping wanted `Layout3dBuiltChildrenMixin`.
+- Lazily built child *widgets* in the declarative layer, and pinned or floating
+  sliver headers — both already on the README's roadmap.
 
 Route 2 of 2.1 (rebuilding the views on the sliver protocol) and the real
 `scrollOffsetCorrection` producer in 2.3 each deserve a plan of their own.

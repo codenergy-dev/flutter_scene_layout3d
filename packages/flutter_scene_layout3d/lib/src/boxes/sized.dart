@@ -40,7 +40,11 @@ class ConstrainedBox3d extends SingleChildLayout3d
   /// an intrinsic query from walking a subtree. An axis it *expands* on has
   /// no finite answer to give, so it passes the child's through rather than
   /// reporting an infinite intrinsic.
-  double _constrainedIntrinsic(Axis3d axis, Size3d limits, {required bool min}) {
+  double _constrainedIntrinsic(
+    Axis3d axis,
+    Size3d limits, {
+    required bool min,
+  }) {
     final extra = _additionalConstraints;
     if (extra.hasTightAlong(axis) && extra.hasBoundedAlong(axis)) {
       return extra.minAlong(axis);
@@ -51,7 +55,8 @@ class ConstrainedBox3d extends SingleChildLayout3d
         : (min
               ? child.getMinIntrinsicExtent(axis, limits)
               : child.getMaxIntrinsicExtent(axis, limits));
-    if (extra.minAlong(axis).isFinite) return extra.constrainAlong(axis, extent);
+    if (extra.minAlong(axis).isFinite)
+      return extra.constrainAlong(axis, extent);
     return extent;
   }
 

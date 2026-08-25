@@ -13,6 +13,38 @@ List<Layout3d> childrenOf(Layout3d layout) =>
 Layout3d rootOf(Layout3dController controller) => controller.surface!.child!;
 
 void main() {
+  testWidgets('a const single-child widget is const, and skips its rebuild', (
+    tester,
+  ) async {
+    // The `const` is the assertion: a single-child widget used to fold its
+    // child into a list in its constructor, which no const expression can do,
+    // so every one of them was rebuilt on every build of its parent while the
+    // multi-child ones beside it were not.
+    const padded = ScenePadding3d(
+      padding: EdgeInsets3d.all(1),
+      child: SceneSizedBox3d.cube(2),
+    );
+    final parent = Node();
+    final controller = Layout3dController();
+
+    Widget frame() => SceneLayout3d(
+      parent: parent,
+      size: const Size3d(10, 10, 10),
+      controller: controller,
+      child: padded,
+    );
+
+    await tester.pumpWidget(frame());
+    final layout = rootOf(controller);
+    expect(layout, isA<Padding3d>());
+    expect((layout as Padding3d).padding, const EdgeInsets3d.all(1));
+
+    // Rebuilding with the identical const widget reconciles onto the same
+    // layout object rather than making a new one.
+    await tester.pumpWidget(frame());
+    expect(rootOf(controller), same(layout));
+  });
+
   testWidgets('lays out a column of boxes on the plane', (tester) async {
     final parent = Node();
     final controller = Layout3dController();

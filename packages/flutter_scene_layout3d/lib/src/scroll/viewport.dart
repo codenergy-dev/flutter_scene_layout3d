@@ -47,13 +47,20 @@ class Viewport3d extends SingleChildLayout3d implements Scrollable3d {
   @override
   Scroll3dController get controller => _controller;
 
-  set controller(Scroll3dController value) {
+  /// Sets the position, or hands ownership back with null.
+  ///
+  /// Null means "make one of your own", the same thing it means in the
+  /// constructor, so a declarative caller that stops passing a controller gets
+  /// a fresh one rather than keeping the last one it happened to pass. A
+  /// controller supplied from outside belongs to whoever supplied it and is
+  /// never disposed here; one this view made is.
+  set controller(Scroll3dController? value) {
     if (identical(_controller, value)) return;
     _controller.removeListener(_handleScrollChanged);
-    // A controller supplied from outside belongs to whoever supplied it.
     if (_ownsController) _controller.dispose();
-    _ownsController = false;
-    _controller = value..addListener(_handleScrollChanged);
+    _ownsController = value == null;
+    _controller = (value ?? Scroll3dController())
+      ..addListener(_handleScrollChanged);
     markNeedsLayout();
   }
 

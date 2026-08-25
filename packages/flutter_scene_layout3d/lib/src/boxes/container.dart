@@ -208,7 +208,7 @@ class Container3d extends SingleChildLayout3d
       final content = Size3d(
         inner.hasBoundedWidth ? inner.maxWidth : _padding.horizontal,
         inner.hasBoundedHeight ? inner.maxHeight : _padding.vertical,
-        inner.hasBoundedDepth ? inner.maxDepth : _padding.alongDepth,
+        inner.hasBoundedDepth ? inner.maxDepth : _padding.depth,
       );
       size = incoming.constrain(_margin.inflateSize(inner.constrain(content)));
       applyNodeTransform();

@@ -193,7 +193,7 @@ class Constraints3d {
   Constraints3d deflate(EdgeInsets3d padding) {
     final horizontal = padding.horizontal;
     final vertical = padding.vertical;
-    final alongDepth = padding.alongDepth;
+    final alongDepth = padding.depth;
     final deflatedMinWidth = (minWidth - horizontal).clamp(
       0.0,
       double.infinity,

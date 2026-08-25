@@ -208,29 +208,32 @@ void main() {
       expect(list.activeIndices, isNot(contains(0)));
     });
 
-    test('refuses a child list edit, which its bookkeeping would not survive', () {
-      // A built list tracks items by index. A child pushed in from outside is
-      // in the child list but not in that map, so it is never laid out and
-      // never released; the failure would surface later, as a size assert on
-      // a box nobody remembers adding.
-      final list = ListView3d.builder(
-        itemCount: 3,
-        itemExtent: 2,
-        itemBuilder: (index) => TestBox(const Size3d(2, 2, 2)),
-      );
-      laidOut(list, constraints: window);
+    test(
+      'refuses a child list edit, which its bookkeeping would not survive',
+      () {
+        // A built list tracks items by index. A child pushed in from outside is
+        // in the child list but not in that map, so it is never laid out and
+        // never released; the failure would surface later, as a size assert on
+        // a box nobody remembers adding.
+        final list = ListView3d.builder(
+          itemCount: 3,
+          itemExtent: 2,
+          itemBuilder: (index) => TestBox(const Size3d(2, 2, 2)),
+        );
+        laidOut(list, constraints: window);
 
-      expect(
-        () => list.add(TestBox(const Size3d(2, 2, 2))),
-        throwsA(
-          isA<AssertionError>().having(
-            (error) => error.message,
-            'message',
-            allOf(contains('ListView3d.builder'), contains('refresh()')),
+        expect(
+          () => list.add(TestBox(const Size3d(2, 2, 2))),
+          throwsA(
+            isA<AssertionError>().having(
+              (error) => error.message,
+              'message',
+              allOf(contains('ListView3d.builder'), contains('refresh()')),
+            ),
           ),
-        ),
-      );
-    });
+        );
+      },
+    );
 
     test('refresh still edits the child list it owns', () {
       // The guard is on the public entry points; the list's own bookkeeping

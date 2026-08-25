@@ -76,7 +76,15 @@ class EdgeInsets3d {
   double get vertical => top + bottom;
 
   /// The total inset along `z`.
-  double get alongDepth => front + back;
+  double get depth => front + back;
+
+  /// The total inset along `z`.
+  @Deprecated(
+    'Use depth, which matches horizontal and vertical and the depth argument '
+    'of EdgeInsets3d.symmetric. This alias will be removed in a future '
+    'release.',
+  )
+  double get alongDepth => depth;
 
   /// The total inset along [axis], both faces together.
   double alongAxis(Axis3d axis) => switch (axis) {

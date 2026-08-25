@@ -248,4 +248,23 @@ void main() {
       expect(c.parent, row);
     });
   });
+  group('disposal', () {
+    test('a disposed layout says so, and refuses to be laid out again', () {
+      final box = TestBox(const Size3d(1, 1, 1));
+      final column = Column3d(children: [box]);
+      laidOut(column);
+
+      expect(column.debugDisposed, isFalse);
+      column.dispose();
+      expect(column.debugDisposed, isTrue);
+      // Disposal reaches the whole subtree.
+      expect(box.debugDisposed, isTrue);
+
+      expect(
+        () => column.layout(const Constraints3d()),
+        throwsA(isA<AssertionError>()),
+      );
+      expect(column.dispose, throwsA(isA<AssertionError>()));
+    });
+  });
 }

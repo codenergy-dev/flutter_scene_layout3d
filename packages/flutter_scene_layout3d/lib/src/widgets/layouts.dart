@@ -80,7 +80,11 @@ class SceneNodeBox3d extends Layout3dWidget {
 /// Insets its child, the widget form of [Padding3d].
 class ScenePadding3d extends SingleChildLayout3dWidget {
   /// Creates a padded box.
-  ScenePadding3d({super.key, this.padding = EdgeInsets3d.zero, super.child});
+  const ScenePadding3d({
+    super.key,
+    this.padding = EdgeInsets3d.zero,
+    super.child,
+  });
 
   /// The inset on each of the six faces.
   final EdgeInsets3d padding;
@@ -97,7 +101,7 @@ class ScenePadding3d extends SingleChildLayout3dWidget {
 /// Aligns its child, the widget form of [Align3d].
 class SceneAlign3d extends SingleChildLayout3dWidget {
   /// Creates an aligning box.
-  SceneAlign3d({
+  const SceneAlign3d({
     super.key,
     this.alignment = Alignment3d.center,
     this.widthFactor,
@@ -139,7 +143,7 @@ class SceneAlign3d extends SingleChildLayout3dWidget {
 /// Centres its child, the widget form of [Center3d].
 class SceneCenter3d extends SceneAlign3d {
   /// Creates a centring box.
-  SceneCenter3d({
+  const SceneCenter3d({
     super.key,
     super.widthFactor,
     super.heightFactor,
@@ -151,7 +155,7 @@ class SceneCenter3d extends SceneAlign3d {
 /// A box with a fixed size, the widget form of [SizedBox3d].
 class SceneSizedBox3d extends SingleChildLayout3dWidget {
   /// Creates a box fixed on the axes given.
-  SceneSizedBox3d({
+  const SceneSizedBox3d({
     super.key,
     this.width,
     this.height,
@@ -160,7 +164,7 @@ class SceneSizedBox3d extends SingleChildLayout3dWidget {
   });
 
   /// A cube [extent] on a side.
-  SceneSizedBox3d.cube(double extent, {super.key, super.child})
+  const SceneSizedBox3d.cube(double extent, {super.key, super.child})
     : width = extent,
       height = extent,
       depth = extent;
@@ -190,7 +194,7 @@ class SceneSizedBox3d extends SingleChildLayout3dWidget {
 /// Hides its subtree from hit testing, the widget form of [IgnorePointer3d].
 class SceneIgnorePointer3d extends SingleChildLayout3dWidget {
   /// Creates a box that hides [child] from hit tests while [ignoring].
-  SceneIgnorePointer3d({super.key, this.ignoring = true, super.child});
+  const SceneIgnorePointer3d({super.key, this.ignoring = true, super.child});
 
   /// Whether the subtree is out of reach.
   final bool ignoring;
@@ -209,7 +213,7 @@ class SceneIgnorePointer3d extends SingleChildLayout3dWidget {
 /// [AbsorbPointer3d].
 class SceneAbsorbPointer3d extends SingleChildLayout3dWidget {
   /// Creates a box that answers hits for [child] while [absorbing].
-  SceneAbsorbPointer3d({super.key, this.absorbing = true, super.child});
+  const SceneAbsorbPointer3d({super.key, this.absorbing = true, super.child});
 
   /// Whether this box swallows hits meant for its subtree.
   final bool absorbing;
@@ -228,7 +232,11 @@ class SceneAbsorbPointer3d extends SingleChildLayout3dWidget {
 /// [ConstrainedBox3d].
 class SceneConstrainedBox3d extends SingleChildLayout3dWidget {
   /// Creates a constraining box.
-  SceneConstrainedBox3d({super.key, required this.constraints, super.child});
+  const SceneConstrainedBox3d({
+    super.key,
+    required this.constraints,
+    super.child,
+  });
 
   /// The constraints added to those the box receives.
   final Constraints3d constraints;
@@ -247,7 +255,7 @@ class SceneConstrainedBox3d extends SingleChildLayout3dWidget {
 /// [IntrinsicWidth3d].
 class SceneIntrinsicWidth3d extends SingleChildLayout3dWidget {
   /// Creates a width-shrinking box.
-  SceneIntrinsicWidth3d({super.key, this.step, super.child});
+  const SceneIntrinsicWidth3d({super.key, this.step, super.child});
 
   /// If non-null, the width is rounded up to a multiple of this.
   final double? step;
@@ -266,7 +274,7 @@ class SceneIntrinsicWidth3d extends SingleChildLayout3dWidget {
 /// [IntrinsicHeight3d].
 class SceneIntrinsicHeight3d extends SingleChildLayout3dWidget {
   /// Creates a height-shrinking box.
-  SceneIntrinsicHeight3d({super.key, this.step, super.child});
+  const SceneIntrinsicHeight3d({super.key, this.step, super.child});
 
   /// If non-null, the height is rounded up to a multiple of this.
   final double? step;
@@ -285,7 +293,7 @@ class SceneIntrinsicHeight3d extends SingleChildLayout3dWidget {
 /// [IntrinsicDepth3d].
 class SceneIntrinsicDepth3d extends SingleChildLayout3dWidget {
   /// Creates a depth-shrinking box.
-  SceneIntrinsicDepth3d({super.key, this.step, super.child});
+  const SceneIntrinsicDepth3d({super.key, this.step, super.child});
 
   /// If non-null, the depth is rounded up to a multiple of this.
   final double? step;
@@ -304,7 +312,7 @@ class SceneIntrinsicDepth3d extends SingleChildLayout3dWidget {
 /// [Baseline3d].
 class SceneBaseline3d extends SingleChildLayout3dWidget {
   /// Creates a box that declares where its child's baseline sits.
-  SceneBaseline3d({
+  const SceneBaseline3d({
     super.key,
     required this.baseline,
     this.axis = Axis3d.vertical,
@@ -333,7 +341,7 @@ class SceneBaseline3d extends SingleChildLayout3dWidget {
 /// [Transform3d].
 class SceneTransform3d extends SingleChildLayout3dWidget {
   /// Creates a transformed box.
-  SceneTransform3d({
+  const SceneTransform3d({
     super.key,
     required this.transform,
     this.alignment = Alignment3d.center,
@@ -362,7 +370,7 @@ class SceneTransform3d extends SingleChildLayout3dWidget {
 /// [Container3d].
 class SceneContainer3d extends SingleChildLayout3dWidget {
   /// Creates a container.
-  SceneContainer3d({
+  const SceneContainer3d({
     super.key,
     this.alignment,
     this.padding = EdgeInsets3d.zero,
@@ -542,7 +550,7 @@ class SceneDepth3d extends SceneFlex3d {
 /// form of [Flexible3d].
 class SceneFlexible3d extends SingleChildLayout3dWidget {
   /// Creates a flexible child.
-  SceneFlexible3d({
+  const SceneFlexible3d({
     super.key,
     this.flex = 1,
     this.fit = FlexFit3d.loose,
@@ -570,7 +578,7 @@ class SceneFlexible3d extends SingleChildLayout3dWidget {
 /// A flexible child that must fill its share, the widget form of [Expanded3d].
 class SceneExpanded3d extends SceneFlexible3d {
   /// Creates an expanding child.
-  SceneExpanded3d({super.key, super.flex, super.child})
+  const SceneExpanded3d({super.key, super.flex, super.child})
     : super(fit: FlexFit3d.tight);
 }
 
@@ -628,7 +636,7 @@ class SceneStack3d extends Layout3dWidget {
 /// [Positioned3d].
 class ScenePositioned3d extends SingleChildLayout3dWidget {
   /// Creates a positioned child.
-  ScenePositioned3d({
+  const ScenePositioned3d({
     super.key,
     this.left,
     this.top,
@@ -700,7 +708,7 @@ class ScenePositioned3d extends SingleChildLayout3dWidget {
 /// A scrolling window onto a taller child, the widget form of [Viewport3d].
 class SceneViewport3d extends SingleChildLayout3dWidget {
   /// Creates a scrolling window.
-  SceneViewport3d({
+  const SceneViewport3d({
     super.key,
     this.axis = Axis3d.vertical,
     this.controller,
@@ -720,8 +728,7 @@ class SceneViewport3d extends SingleChildLayout3dWidget {
   @override
   void updateLayout(BuildContext context, Viewport3d layout) {
     layout.axis = axis;
-    final controller = this.controller;
-    if (controller != null) layout.controller = controller;
+    layout.controller = controller;
   }
 }
 
@@ -787,8 +794,7 @@ class SceneListView3d extends Layout3dWidget {
       ..crossAxisAlignment = crossAxisAlignment
       ..depthAxisAlignment = depthAxisAlignment
       ..cacheExtent = cacheExtent;
-    final controller = this.controller;
-    if (controller != null) layout.controller = controller;
+    layout.controller = controller;
   }
 }
 
@@ -896,8 +902,7 @@ class SceneGridView3d extends Layout3dWidget {
       ..scrollDirection = scrollDirection
       ..depthAxisAlignment = depthAxisAlignment
       ..cacheExtent = cacheExtent;
-    final controller = this.controller;
-    if (controller != null) layout.controller = controller;
+    layout.controller = controller;
   }
 }
 
@@ -938,8 +943,7 @@ class SceneCustomScrollView3d extends Layout3dWidget {
     layout
       ..scrollDirection = scrollDirection
       ..cacheExtent = cacheExtent;
-    final controller = this.controller;
-    if (controller != null) layout.controller = controller;
+    layout.controller = controller;
   }
 }
 
@@ -947,7 +951,7 @@ class SceneCustomScrollView3d extends Layout3dWidget {
 /// [SliverToBoxAdapter3d].
 class SceneSliverToBoxAdapter3d extends SingleChildLayout3dWidget {
   /// Creates an adapter around [child].
-  SceneSliverToBoxAdapter3d({super.key, super.child});
+  const SceneSliverToBoxAdapter3d({super.key, super.child});
 
   @override
   SliverToBoxAdapter3d createLayout(BuildContext context) =>
