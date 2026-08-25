@@ -403,6 +403,58 @@ void main() {
       expect(list.childCount, 6);
     });
 
+    test('a prototypeItem makes the offsets arithmetic again', () {
+      final built = <int>[];
+      final prototypes = <TestBox>[];
+      final list = SliverList3d.builder(
+        itemCount: 5000,
+        prototypeItem: () {
+          final box = TestBox(const Size3d(1, 2, 1), name: 'prototype');
+          prototypes.add(box);
+          return box;
+        },
+        itemBuilder: (index) {
+          built.add(index);
+          return TestBox(const Size3d(1, 2, 1));
+        },
+      );
+      final view = CustomScrollView3d(slivers: [list]);
+      final surface = viewportOf(view);
+
+      // One item measured, and the whole length known from it.
+      expect(prototypes, hasLength(1));
+      expect(list.geometry.scrollExtent, 10000);
+      expect(built.length, 6);
+      // The prototype is measured, not held: the six children are the window.
+      expect(list.childCount, 6);
+      expect(list.node.children, isNot(contains(prototypes.single.node)));
+
+      view.controller.jumpTo(4000);
+      surface.flush();
+
+      expect(built.length, lessThanOrEqualTo(13));
+      expect(list.geometry.scrollExtent, 10000);
+      expect(list.childCount, 6);
+    });
+
+    test('a contentExtentEstimator states the length the list cannot', () {
+      // Five items 10 long and thirty-five 1 long: measuring forward from the
+      // first says the whole list is 400 long, and keeps changing its mind.
+      final list = SliverList3d.builder(
+        itemCount: 40,
+        contentExtentEstimator: (count) => 85,
+        itemBuilder: (index) =>
+            TestBox(index < 5 ? const Size3d(1, 10, 1) : const Size3d(1, 1, 1)),
+      );
+      final view = CustomScrollView3d(slivers: [list]);
+      final surface = viewportOf(view);
+      expect(list.geometry.scrollExtent, 85);
+
+      view.controller.jumpTo(40);
+      surface.flush();
+      expect(list.geometry.scrollExtent, 85);
+    });
+
     test('an empty list is a sliver of no length', () {
       final list = SliverList3d();
       viewportOf(CustomScrollView3d(slivers: [list]));

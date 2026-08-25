@@ -1,7 +1,7 @@
 ---
-status: pending
+status: completed
 created_at: 2026-08-25T15:21:54Z
-updated_at: 2026-08-25T15:21:54Z
+updated_at: 2026-08-25T16:08:17Z
 commit: 88e98579925771720a40c21b3d5ad607f787fdf7
 ---
 
@@ -158,25 +158,72 @@ which is a much larger piece of machinery than this package wants. Instead:
 
 ## Steps
 
-1. `prototypeItem` on the two lists and their sliver twins. Most of the work is
+1. [x] `prototypeItem` on the two lists and their sliver twins. Most of the work is
    in `Layout3dMeasuredChildrenMixin`'s callers, not the mixin.
-2. `contentExtentEstimator`, threaded into `estimatedContentExtent`.
-3. Documentation: the README's *Scrolling* and *Slivers* sections gain
+2. [x] `contentExtentEstimator`, threaded into `estimatedContentExtent`.
+3. [x] Documentation: the README's *Scrolling* and *Slivers* sections gain
    `prototypeItem` as the recommended answer, above the "give it an
    `itemExtent`" advice, since it needs nothing of the caller.
-4. Optional: the debug assert on a runaway measuring pass.
+4. [x] Optional: the debug assert on a runaway measuring pass.
+
+## What the implementation changed about the plan
+
+Four things came out differently, all of them decided while writing it:
+
+**The mixin took more of the work, not less.** The plan expected the work to
+sit in `Layout3dMeasuredChildrenMixin`'s callers. It ended up in the mixin:
+`itemExtent` itself moved there from the two lists, which held identical
+copies of the field, the getter and the setter, and `prototypeItem` sits next
+to it. That is what makes the mutual-exclusion assert a single line in one
+setter instead of four constructor asserts, and it turns "the four places
+`itemExtent` is read" into one call, `resolveItemExtent(childConstraints,
+axis)`. Each list is left with the part that is its own: which constraints an
+item gets, and what to do with an extent once it has one.
+
+**The prototype is not in the child list.** The plan said "a real child of the
+view … its node is kept hidden". It is a child of neither list. Both views
+index their children — `positionedChildren` walks `childCount` for an explicit
+list, and `itemCount` *is* `childCount` there — so a prototype in that list
+would be placed as an item and counted as one. It is held in a field, laid out
+on its own, and its node is never added to the scene, which is a stronger
+guarantee than hiding it: there is nothing to cull, hit, or draw. Its
+`node.visible` is set false anyway, for whoever finds it in a debugger.
+
+**The debug assert shipped, with an exemption.** A fixed threshold of 500 is
+honest enough on one condition: a list laid out in *unbounded* room genuinely
+measures every item, and that is the work rather than a symptom of it. So
+`debugMeasuringPassWasSane` takes `boundedWindow` and says nothing when the
+window is unbounded.
+
+**The widget layer did not get either field.** `SceneListView3d` and
+`SceneSliverList3d` take explicit children and are rebuilt from a `build`
+method, where a closure is a new object every time. `prototypeItem` compares by
+identity, so a widget field would discard and re-measure the prototype on every
+rebuild — a trap worse than the problem. Both fields stay on the imperative
+classes, which is where the plan put them; a widget-layer answer needs the
+prototype to be a *widget*, compared the way Flutter compares one, and that is
+a piece of the lazy-widget-building work rather than of this.
 
 ## Tests
 
-- A `prototypeItem` list builds a constant number of children whatever the
+All of these landed, in `test/scroll_test.dart` and `test/sliver_test.dart`:
+
+- [x] A `prototypeItem` list builds a constant number of children whatever the
   scroll offset — the `built=2006` case above becomes `built=12`-ish.
-- A `prototypeItem` list reports the same `scrollExtent` at every offset.
-- The prototype's node is never visible.
-- `prototypeItem` and `itemExtent` together assert.
-- A `contentExtentEstimator` overrides the average, and the range holds still
-  across a scroll that would otherwise move it.
-- The existing measured-mode tests keep passing unchanged: this adds modes, it
-  does not change the one that is there.
+- [x] A `prototypeItem` list reports the same `scrollExtent` at every offset.
+- [x] The prototype's node is never visible — checked as never being in the
+  list's node children at all, which is what the implementation guarantees.
+- [x] `prototypeItem` and `itemExtent` together assert.
+- [x] A `contentExtentEstimator` overrides the average, and the range holds
+  still across a scroll that would otherwise move it.
+- [x] The existing measured-mode tests keep passing unchanged: this adds modes,
+  it does not change the one that is there.
+
+Plus three the plan did not name: the prototype is measured once and again when
+the constraints an item gets change, `refresh()` builds a new one, and an
+estimate shorter than what has already been measured is raised to it — the
+offsets are exact measurements, so a total under them would put items outside
+the range they sit in.
 
 ## Where this sits
 
@@ -189,3 +236,11 @@ if that lands first, `prototypeItem` is implemented once in `SliverList3d` and
 `ListView3d` inherits it. If this lands first, it is implemented twice and the
 other plan collapses the two. Either order works; doing that one first is
 slightly less total work, doing this one first delivers value sooner.
+
+This one landed first, and the "implemented twice" half of that turned out to
+be nearly free: the measuring, the prototype and the estimate all sit in
+`Layout3dMeasuredChildrenMixin`, which both lists already had, and what is
+duplicated is three lines of wiring in each — resolve the extent, then hand it
+to the code that was already reading `itemExtent`. That is evidence for the
+other plan's "not yet": the copies that cost something are the placement
+loops, not the features layered on them.

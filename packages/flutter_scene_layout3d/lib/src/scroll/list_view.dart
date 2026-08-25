@@ -24,7 +24,10 @@ import 'scrollable.dart';
 ///    measured forward from the first and the rest of the extent is estimated
 ///    from the average, the same approximation Flutter's `SliverList` makes.
 ///    See [SliverList3d] for what that estimate costs — a scroll range that
-///    moves, and a deep jump that measures everything before it.
+///    moves, and a deep jump that measures everything before it. A
+///    [prototypeItem] buys the arithmetic back when the items are uniform in
+///    a size only the content knows; a [contentExtentEstimator] steadies the
+///    range of a list whose items really do differ.
 ///
 /// Unlike Flutter's `ListView`, children are not stretched across the cross
 /// axes by default; [crossAxisAlignment] and [depthAxisAlignment] centre them
@@ -43,6 +46,8 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
     Scroll3dController? controller,
     double spacing = 0.0,
     double? itemExtent,
+    Layout3dPrototypeBuilder? prototypeItem,
+    Layout3dContentExtentEstimator? contentExtentEstimator,
     CrossAxisAlignment3d crossAxisAlignment = CrossAxisAlignment3d.center,
     CrossAxisAlignment3d depthAxisAlignment = CrossAxisAlignment3d.center,
     double cacheExtent = 0.0,
@@ -50,7 +55,6 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
     super.name,
   }) : _axis = scrollDirection,
        _spacing = spacing,
-       _itemExtent = itemExtent,
        _crossAxisAlignment = crossAxisAlignment,
        _depthAxisAlignment = depthAxisAlignment,
        _cacheExtent = cacheExtent,
@@ -59,6 +63,9 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
        assert(cacheExtent >= 0.0),
        assert(itemExtent == null || itemExtent > 0.0),
        super(children: children) {
+    this.itemExtent = itemExtent;
+    this.prototypeItem = prototypeItem;
+    this.contentExtentEstimator = contentExtentEstimator;
     initController(controller);
   }
 
@@ -70,13 +77,14 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
     Scroll3dController? controller,
     double spacing = 0.0,
     double? itemExtent,
+    Layout3dPrototypeBuilder? prototypeItem,
+    Layout3dContentExtentEstimator? contentExtentEstimator,
     CrossAxisAlignment3d crossAxisAlignment = CrossAxisAlignment3d.center,
     CrossAxisAlignment3d depthAxisAlignment = CrossAxisAlignment3d.center,
     double cacheExtent = 0.0,
     super.name,
   }) : _axis = scrollDirection,
        _spacing = spacing,
-       _itemExtent = itemExtent,
        _crossAxisAlignment = crossAxisAlignment,
        _depthAxisAlignment = depthAxisAlignment,
        _cacheExtent = cacheExtent,
@@ -85,6 +93,9 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
        assert(spacing >= 0.0),
        assert(cacheExtent >= 0.0),
        assert(itemExtent == null || itemExtent > 0.0) {
+    this.itemExtent = itemExtent;
+    this.prototypeItem = prototypeItem;
+    this.contentExtentEstimator = contentExtentEstimator;
     declaredItemCount = itemCount;
     initController(controller);
   }
@@ -115,22 +126,6 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
     if (_spacing == value) return;
     assert(value >= 0.0);
     _spacing = value;
-    resetMeasurements();
-    markNeedsLayout();
-  }
-
-  double? _itemExtent;
-
-  /// A fixed extent for every item along the scroll axis.
-  ///
-  /// Makes a built list exactly lazy: item offsets become arithmetic, so
-  /// nothing outside the window is ever built or measured.
-  double? get itemExtent => _itemExtent;
-
-  set itemExtent(double? value) {
-    if (_itemExtent == value) return;
-    assert(value == null || value > 0.0);
-    _itemExtent = value;
     resetMeasurements();
     markNeedsLayout();
   }
@@ -232,8 +227,13 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
       );
     }
 
-    final itemExtent = _itemExtent;
-    final childConstraints = _childConstraints(itemExtent);
+    // What an item is offered with the scroll axis free, which is both what a
+    // measured item gets and what the prototype is measured against.
+    final freeConstraints = _childConstraints(null);
+    final itemExtent = resolveItemExtent(freeConstraints, axis);
+    final childConstraints = itemExtent == null
+        ? freeConstraints
+        : _childConstraints(itemExtent);
     final count = itemCount;
 
     // 1. Work out where every item starts, building only what is needed.
@@ -277,12 +277,17 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
       // Measured lazily: walk forward until the window is covered, keeping
       // the running prefix so scrolling back needs no re-measuring.
       final probeEnd = controller.offset + windowExtent + _cacheExtent;
+      var measuredHere = 0;
       while (measuredCount < count &&
           (!probeEnd.isFinite || measuredEnd <= probeEnd)) {
         final child = obtainChild(measuredCount, childConstraints);
         trackCross(child.size);
         recordMeasurement(child.size.alongAxis(axis));
+        measuredHere++;
       }
+      assert(
+        debugMeasuringPassWasSane(measuredHere, boundedWindow: boundedMain),
+      );
       contentExtent = estimatedContentExtent(count);
       final mainSize = boundedMain ? windowExtent : contentExtent;
       final offset = controller.offset.clamp(

@@ -268,6 +268,205 @@ void main() {
     });
   });
 
+  // A measured list guesses its own length and pays for a deep offset by
+  // building everything before it. A prototype is the way out that asks
+  // nothing of the caller but one item.
+  group('ListView3d.builder with a prototypeItem', () {
+    test('builds the window and nothing else, however deep the offset', () {
+      var built = 0;
+      final list = ListView3d.builder(
+        itemCount: 5000,
+        prototypeItem: () => TestBox(const Size3d(2, 2, 2)),
+        itemBuilder: (index) {
+          built++;
+          return TestBox(const Size3d(2, 2, 2));
+        },
+      );
+      final surface = laidOut(list, constraints: window);
+      final atStart = built;
+      expect(atStart, lessThan(5));
+      expect(list.controller.contentExtent, 10000);
+
+      list.controller.jumpTo(4000);
+      surface.flush();
+
+      // Measuring its way here would have built the two thousand items before
+      // this one and thrown all but three away.
+      expect(built - atStart, lessThan(5));
+      expect(list.activeIndices, containsAll(<int>[2000, 2001]));
+    });
+
+    test('reports the same range at every offset', () {
+      // Items that would measure raggedly: the prototype makes every one of
+      // them 3 long, so the total is 400 * 3 wherever the window sits.
+      final list = ListView3d.builder(
+        itemCount: 400,
+        prototypeItem: () => TestBox(const Size3d(2, 3, 2)),
+        itemBuilder: (index) => TestBox(Size3d(2, index.isEven ? 1 : 9, 2)),
+      );
+      final surface = laidOut(list, constraints: window);
+
+      expect(list.controller.contentExtent, 1200);
+      for (final offset in <double>[10, 500, 1196]) {
+        list.controller.jumpTo(offset);
+        surface.flush();
+        expect(list.controller.contentExtent, 1200);
+      }
+    });
+
+    test('measures one prototype, and never shows it', () {
+      final prototypes = <TestBox>[];
+      final list = ListView3d.builder(
+        itemCount: 100,
+        prototypeItem: () {
+          final box = TestBox(const Size3d(2, 2, 2), name: 'prototype');
+          prototypes.add(box);
+          return box;
+        },
+        itemBuilder: (index) => TestBox(const Size3d(2, 2, 2)),
+      );
+      final surface = laidOut(list, constraints: window);
+      list.controller.jumpTo(50);
+      surface.flush();
+
+      expect(prototypes, hasLength(1));
+      final prototype = prototypes.single;
+      expect(prototype.layoutCount, 1);
+      // Not an item: not in the child list, and its node is not in the scene
+      // at all, so there is nothing to cull, hit, or draw.
+      expect(list.children, isNot(contains(prototype)));
+      expect(list.node.children, isNot(contains(prototype.node)));
+      expect(prototype.node.visible, isFalse);
+    });
+
+    test('measures it again when the constraints an item gets change', () {
+      final prototypes = <TestBox>[];
+      final list = ListView3d.builder(
+        itemCount: 100,
+        prototypeItem: () {
+          final box = TestBox(const Size3d(2, 2, 2));
+          prototypes.add(box);
+          return box;
+        },
+        itemBuilder: (index) => TestBox(const Size3d(2, 2, 2)),
+      );
+      final surface = laidOut(list, constraints: window);
+      expect(prototypes.single.layoutCount, 1);
+
+      list.crossAxisAlignment = CrossAxisAlignment3d.stretch;
+      surface.flush();
+
+      // The same prototype, measured against the new constraints.
+      expect(prototypes, hasLength(1));
+      expect(prototypes.single.layoutCount, 2);
+      expect(prototypes.single.size.width, 10);
+    });
+
+    test('refresh builds a new one, the data behind it having changed', () {
+      var prototypes = 0;
+      final list = ListView3d.builder(
+        itemCount: 100,
+        prototypeItem: () {
+          prototypes++;
+          return TestBox(const Size3d(2, 2, 2));
+        },
+        itemBuilder: (index) => TestBox(const Size3d(2, 2, 2)),
+      );
+      final surface = laidOut(list, constraints: window);
+      expect(prototypes, 1);
+
+      list.refresh();
+      surface.flush();
+      expect(prototypes, 2);
+    });
+
+    test('refuses an itemExtent alongside it', () {
+      expect(
+        () => ListView3d.builder(
+          itemCount: 10,
+          itemExtent: 2,
+          prototypeItem: () => TestBox(const Size3d(2, 2, 2)),
+          itemBuilder: (index) => TestBox(const Size3d(2, 2, 2)),
+        ),
+        throwsA(
+          isA<AssertionError>().having(
+            (error) => error.message,
+            'message',
+            allOf(contains('itemExtent'), contains('prototypeItem')),
+          ),
+        ),
+      );
+    });
+  });
+
+  group('ListView3d.builder with a contentExtentEstimator', () {
+    // Five long items and thirty-five short ones, so the average of what has
+    // been measured starts far too long and shrinks as the list is read.
+    Size3d sizeOf(int index) =>
+        index < 5 ? const Size3d(2, 10, 2) : const Size3d(2, 1, 2);
+
+    ListView3d listOf([Layout3dContentExtentEstimator? estimator]) =>
+        ListView3d.builder(
+          itemCount: 40,
+          contentExtentEstimator: estimator,
+          itemBuilder: (index) => TestBox(sizeOf(index)),
+        );
+
+    test('holds a range still that the average moves', () {
+      final guessing = listOf();
+      final guessingSurface = laidOut(guessing, constraints: window);
+      final firstGuess = guessing.controller.contentExtent;
+      guessing.controller.jumpTo(60);
+      guessingSurface.flush();
+      expect(guessing.controller.contentExtent, isNot(firstGuess));
+
+      // 5 * 10 + 35 * 1, which the caller knows and the list cannot.
+      final told = listOf((count) => 85);
+      final toldSurface = laidOut(told, constraints: window);
+      expect(told.controller.contentExtent, 85);
+      expect(told.controller.maxScrollExtent, 81);
+
+      told.controller.jumpTo(60);
+      toldSurface.flush();
+      expect(told.controller.contentExtent, 85);
+    });
+
+    test('never claims the content is shorter than what was measured', () {
+      // Where an item sits comes from the measurement and is exact; a total
+      // under it would put items outside the range they are sitting in.
+      final list = ListView3d.builder(
+        itemCount: 100,
+        contentExtentEstimator: (count) => 1,
+        itemBuilder: (index) => TestBox(const Size3d(2, 2, 2)),
+      );
+      laidOut(list, constraints: window);
+
+      expect(list.controller.contentExtent, 6);
+    });
+  });
+
+  test('a measured list complains when one pass measures its way too far', () {
+    // The cost of the measured mode, made loud: reaching a deep offset builds
+    // every item before it. Debug only, and it names both ways out.
+    final list = ListView3d.builder(
+      itemCount: 2000,
+      itemBuilder: (index) => TestBox(const Size3d(2, 2, 2)),
+    );
+    final surface = laidOut(list, constraints: window);
+    list.controller.jumpTo(3000);
+
+    expect(
+      surface.flush,
+      throwsA(
+        isA<AssertionError>().having(
+          (error) => error.message,
+          'message',
+          allOf(contains('itemExtent'), contains('prototypeItem')),
+        ),
+      ),
+    );
+  });
+
   // Every scrolling view holds a Scroll3dController the same way, through
   // Scroll3dHolderMixin, so the rule is checked on all four at once: content
   // 10 long in a window 4 long, and the first box slides by whatever the

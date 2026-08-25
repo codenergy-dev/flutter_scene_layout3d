@@ -42,10 +42,15 @@ typedef Sliver3dItemBuilder = Layout3dItemBuilder;
 ///    position with it, if they were longer.
 ///  * Because the running total starts at the first item, reaching an offset
 ///    deep in the list measures everything before it in a single pass. Items
-///    outside the window are released again, but they were all built.
+///    outside the window are released again, but they were all built. In
+///    debug a pass that measures more than a few hundred says so.
 ///
-/// Both go away with a fixed [itemExtent], which makes the offsets arithmetic.
-/// Use one whenever the items really are uniform.
+/// Both go away as soon as the list knows how long an item is without
+/// building one: [itemExtent] when you can state the number, [prototypeItem]
+/// when the items are uniform but only the content knows it. Either makes the
+/// offsets arithmetic. For a list whose items genuinely differ,
+/// [contentExtentEstimator] leaves the offsets measured and steadies the total
+/// alone.
 class SliverList3d extends Sliver3d
     with
         Layout3dWithChildrenMixin<ParentData3d>,
@@ -56,17 +61,21 @@ class SliverList3d extends Sliver3d
   SliverList3d({
     double spacing = 0.0,
     double? itemExtent,
+    Layout3dPrototypeBuilder? prototypeItem,
+    Layout3dContentExtentEstimator? contentExtentEstimator,
     CrossAxisAlignment3d crossAxisAlignment = CrossAxisAlignment3d.center,
     CrossAxisAlignment3d depthAxisAlignment = CrossAxisAlignment3d.center,
     List<Layout3d> children = const <Layout3d>[],
     super.name,
   }) : _spacing = spacing,
-       _itemExtent = itemExtent,
        _crossAxisAlignment = crossAxisAlignment,
        _depthAxisAlignment = depthAxisAlignment,
        _builder = null,
        assert(spacing >= 0.0),
        assert(itemExtent == null || itemExtent > 0.0) {
+    this.itemExtent = itemExtent;
+    this.prototypeItem = prototypeItem;
+    this.contentExtentEstimator = contentExtentEstimator;
     addAll(children);
   }
 
@@ -76,17 +85,21 @@ class SliverList3d extends Sliver3d
     required Layout3dItemBuilder itemBuilder,
     double spacing = 0.0,
     double? itemExtent,
+    Layout3dPrototypeBuilder? prototypeItem,
+    Layout3dContentExtentEstimator? contentExtentEstimator,
     CrossAxisAlignment3d crossAxisAlignment = CrossAxisAlignment3d.center,
     CrossAxisAlignment3d depthAxisAlignment = CrossAxisAlignment3d.center,
     super.name,
   }) : _spacing = spacing,
-       _itemExtent = itemExtent,
        _crossAxisAlignment = crossAxisAlignment,
        _depthAxisAlignment = depthAxisAlignment,
        _builder = itemBuilder,
        assert(itemCount >= 0),
        assert(spacing >= 0.0),
        assert(itemExtent == null || itemExtent > 0.0) {
+    this.itemExtent = itemExtent;
+    this.prototypeItem = prototypeItem;
+    this.contentExtentEstimator = contentExtentEstimator;
     declaredItemCount = itemCount;
   }
 
@@ -102,22 +115,6 @@ class SliverList3d extends Sliver3d
     if (_spacing == value) return;
     assert(value >= 0.0);
     _spacing = value;
-    resetMeasurements();
-    markNeedsLayout();
-  }
-
-  double? _itemExtent;
-
-  /// A fixed extent for every item along the scroll axis.
-  ///
-  /// Makes a built list exactly lazy: item offsets become arithmetic, so the
-  /// total extent is known without measuring anything.
-  double? get itemExtent => _itemExtent;
-
-  set itemExtent(double? value) {
-    if (_itemExtent == value) return;
-    assert(value == null || value > 0.0);
-    _itemExtent = value;
     resetMeasurements();
     markNeedsLayout();
   }
@@ -149,13 +146,16 @@ class SliverList3d extends Sliver3d
   @override
   Layout3dItemBuilder? get itemBuilder => _builder;
 
-  /// What an item is offered: its fixed extent along the scroll axis if there
-  /// is one, the sliver's own room across the other two.
-  Constraints3d _childConstraints(SliverConstraints3d constraints) {
+  /// What an item is offered: [mainExtent] along the scroll axis when the
+  /// list has one to impose, the sliver's own room across the other two.
+  Constraints3d _childConstraints(
+    SliverConstraints3d constraints,
+    double? mainExtent,
+  ) {
     var result = const Constraints3d().withAxis(
       constraints.axis,
-      min: _itemExtent ?? 0.0,
-      max: _itemExtent ?? double.infinity,
+      min: mainExtent ?? 0.0,
+      max: mainExtent ?? double.infinity,
     );
     final (crossAxis, depthAxis) = constraints.crossAxes;
     for (final (axis, limit, alignment)
@@ -183,7 +183,6 @@ class SliverList3d extends Sliver3d
       return;
     }
 
-    final childConstraints = _childConstraints(constraints);
     // The stretch of content this pass has to account for, in the list's own
     // scroll coordinates: the visible window plus whatever cache surrounds it.
     final windowStart = math.max(
@@ -193,10 +192,17 @@ class SliverList3d extends Sliver3d
     final windowEnd =
         constraints.scrollOffset + constraints.remainingCacheExtent;
 
+    // What an item is offered with the scroll axis free, which is both what a
+    // measured item gets and what the prototype is measured against.
+    final freeConstraints = _childConstraints(constraints, null);
+    final itemExtent = resolveItemExtent(freeConstraints, axis);
+    final childConstraints = itemExtent == null
+        ? freeConstraints
+        : _childConstraints(constraints, itemExtent);
+
     double contentExtent;
     var firstIndex = 0;
     var lastIndex = count - 1;
-    final itemExtent = _itemExtent;
 
     if (itemExtent != null) {
       final stride = itemExtent + _spacing;
@@ -223,10 +229,18 @@ class SliverList3d extends Sliver3d
     } else {
       // Measured lazily: walk forward until the window is covered, keeping
       // the running prefix so scrolling back needs no re-measuring.
+      var measuredHere = 0;
       while (measuredCount < count && measuredEnd <= windowEnd) {
         final child = obtainChild(measuredCount, childConstraints);
         recordMeasurement(child.size.alongAxis(axis));
+        measuredHere++;
       }
+      assert(
+        debugMeasuringPassWasSane(
+          measuredHere,
+          boundedWindow: windowEnd.isFinite,
+        ),
+      );
       contentExtent = estimatedContentExtent(count);
       firstIndex = indexAtOffset(windowStart);
       lastIndex = lastIndexBefore(windowEnd);

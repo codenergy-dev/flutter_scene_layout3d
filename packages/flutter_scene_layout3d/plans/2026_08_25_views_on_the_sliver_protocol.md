@@ -1,7 +1,7 @@
 ---
 status: pending
 created_at: 2026-08-25T15:21:54Z
-updated_at: 2026-08-25T15:21:54Z
+updated_at: 2026-08-25T16:08:17Z
 commit: 88e98579925771720a40c21b3d5ad607f787fdf7
 ---
 
@@ -32,10 +32,13 @@ copies; the placement logic is still two copies of "where does item `i` go and
 is it visible", about 80 lines each.
 
 **Improvements land once.** `prototypeItem` from
-[the measured-list plan](2026_08_25_measured_list_scroll_range.md) is the
-immediate example: two implementations if the views stay separate, one if they
-do not. The same goes for anything later — reverse lists, a `center` sliver,
-keep-alive.
+[the measured-list plan](2026_08_25_measured_list_scroll_range.md) was the
+immediate example, and it has since landed with the views still separate. It
+is weaker evidence than it looked: the feature went into
+`Layout3dMeasuredChildrenMixin`, which both lists already share, and each list
+pays three lines of wiring for it. The argument still holds for anything that
+touches *placement* — reverse lists, a `center` sliver, keep-alive — because
+that is the part the two views actually keep two copies of.
 
 **It is the shape a reader expects.** The package's whole proposition is
 "Flutter's protocol, one axis richer", and a reader who knows that `ListView`
@@ -73,8 +76,9 @@ imperative `ListView3d`.
 
 Reasons that would flip it, any one of them enough:
 
-- A second feature after `prototypeItem` needs implementing in both places.
-  Two is a coincidence; three is the pattern this exists to stop.
+- A feature needs implementing in both *placement* loops. `prototypeItem` did
+  not — it went into the shared measuring mixin — so that one is not the
+  precedent this was watching for.
 - `SceneListView3d` gains lazily built child widgets (README roadmap), which
   needs a `RenderObjectElement` of its own — at which point the declarative
   list and the declarative sliver list want the same element, and sharing the

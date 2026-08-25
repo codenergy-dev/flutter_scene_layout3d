@@ -68,7 +68,11 @@ export 'src/boxes/sized.dart' show ConstrainedBox3d, SizedBox3d, Transform3d;
 export 'src/boxes/stack.dart' show Positioned3d, Stack3d, StackFit3d;
 export 'src/boxes/wrap.dart' show Wrap3d, WrapAlignment3d, WrapCrossAlignment3d;
 export 'src/built_children.dart'
-    show Layout3dBuiltChildrenMixin, Layout3dMeasuredChildrenMixin;
+    show
+        Layout3dBuiltChildrenMixin,
+        Layout3dContentExtentEstimator,
+        Layout3dMeasuredChildrenMixin,
+        Layout3dPrototypeBuilder;
 export 'src/geometry/alignment3d.dart' show Alignment3d;
 export 'src/geometry/basis3d.dart' show LayoutBasis3d;
 export 'src/geometry/constraints3d.dart' show Constraints3d;

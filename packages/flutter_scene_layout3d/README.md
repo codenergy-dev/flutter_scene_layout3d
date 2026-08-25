@@ -244,6 +244,28 @@ and without it items are measured once as they are first scrolled past, with
 the total extent estimated from the average, the same approximation
 `SliverList` makes.
 
+That estimate is worth avoiding, and `prototypeItem` is the way to avoid it
+without knowing anything the content does not already tell you. The items of a
+long list are usually all the same size, but that size often comes from the
+model inside them rather than from a number you can write down. So write down
+an item instead: the list builds one, lays it out, and uses its extent for
+every item there is.
+
+```dart
+ListView3d.builder(
+  itemCount: 5000,
+  prototypeItem: () => NodeBox3d(content: sampleCard),
+  itemBuilder: (index) => NodeBox3d(content: cards[index]),
+)
+```
+
+Every offset is arithmetic again, exactly as it is with `itemExtent`. The two
+are answers to the same question — how long is an item — so a list takes one of
+them, never both. The prototype is measured and never shown: it is not one of
+the items, its node never enters the scene, and it is measured again only when
+the room an item gets changes. *Slivers*, below, spells out what all this
+saves you from.
+
 `GridView3d` lays cells out on a grid a `Grid3dDelegate` decides from the room
 across the scroll axis — `Grid3dDelegateWithFixedCrossAxisCount` for "three
 across", `Grid3dDelegateWithMaxCrossAxisExtent` for "as many as fit under this
@@ -323,9 +345,27 @@ has measured and guesses the rest from the average, so the *reachable range*
 moves as you scroll: the end recedes if the early items were short, and pulls
 in — taking the position with it — if they were long. And because the running
 total starts at the first item, scrolling straight to the middle of a long list
-measures everything before it in one pass. Give the items a fixed `itemExtent`
-when they are uniform: the length becomes arithmetic, the range stops moving,
-and jumping anywhere costs nothing.
+measures everything before it in one pass; in debug, a pass that measures more
+than five hundred items says so rather than merely dropping a frame.
+
+Both symptoms come from one gap — the list cannot know how long an item is
+without building it — so both close the moment you fill it. A `prototypeItem`
+fills it from the content, an `itemExtent` fills it from a number you supply,
+and either turns the length into arithmetic: the range stops moving and jumping
+anywhere costs nothing. Both are on `SliverList3d` and `ListView3d` alike.
+
+For a list whose items genuinely do differ, there is a smaller answer.
+`contentExtentEstimator` is a callback taking the item count and returning the
+total extent, for an application that knows the real total because it knows the
+data. Offsets stay measured, and exact; what stops moving is the range:
+
+```dart
+SliverList3d.builder(
+  itemCount: chapters.length,
+  contentExtentEstimator: (count) => library.totalHeight,
+  itemBuilder: (index) => chapterCard(chapters[index]),
+)
+```
 
 ## Measuring
 
