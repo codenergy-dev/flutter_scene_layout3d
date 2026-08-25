@@ -1,7 +1,7 @@
 ---
 status: in progress
 created_at: 2026-08-25T03:32:15Z
-updated_at: 2026-08-25T04:14:00Z
+updated_at: 2026-08-25T05:02:00Z
 commit: 495b1ec4e93e3588c93612ef02862355d380933a
 ---
 
@@ -225,7 +225,7 @@ Route 1 is the recommendation for this pass; route 2 is worth its own plan.
 **Tests.** No new behaviour, so the bar is the existing `test/scroll_test.dart`,
 `test/grid_test.dart` and `test/sliver_test.dart` passing untouched.
 
-### 2.2 Lazy views expose the API that corrupts them
+### 2.2 Lazy views expose the API that corrupts them — **done**
 
 **Where.** the four `.builder` constructors above.
 
@@ -234,16 +234,23 @@ Route 1 is the recommendation for this pass; route 2 is worth its own plan.
 inserted that way is not in `_active`: it is never laid out (so `child.size`
 trips the "has not been laid out yet" assert) and never released. Nothing warns.
 
-**How to fix.** Assert in the mutating entry points when `_builder != null`:
-a built view owns its children and the way to change them is `itemCount`,
-`itemBuilder` data plus `refresh()`. The cleanest place is a single
-`_assertNotLazy(String method)` helper called from overrides of `insert`,
-`remove` and `removeAll`; `_obtainChild` and `_releaseOutside` bypass it by
-calling `super`. If 2.1 route 1 lands first, this belongs in the shared mixin.
+**What was done.** A `_assertNotBuilt(String method)` helper in each of the
+four views, called from overrides of `insert`, `remove`, `removeAll` and
+`syncChildren`. The views' own bookkeeping (`_obtainChild`, `_releaseOutside`,
+`_resetChildren`, `refresh`) calls `super.insert` / `super.remove` to go round
+it.
 
-**Test.** `test/scroll_test.dart`: `ListView3d.builder(...).add(box)` throws.
+Worth knowing if this moves into a shared mixin with 2.1: the first attempt
+gated the assert on `!_layingOut` instead, which looked equivalent and was not.
+`refresh()` edits the child list from *outside* layout, so it tripped its own
+assert. Routing the internal callers through `super` is what makes the guard
+mean "no edits from outside", which is the actual rule.
 
-### 2.3 No built-in sliver ever emits `scrollOffsetCorrection`
+**Tests.** `test/scroll_test.dart`: `refuses a child list edit, which its
+bookkeeping would not survive`, and `refresh still edits the child list it
+owns` — the second is what would have caught the `_layingOut` version.
+
+### 2.3 No built-in sliver ever emits `scrollOffsetCorrection` — **documented**
 
 **Where.** `lib/src/sliver/sliver_list.dart` (the estimating branch).
 
@@ -266,8 +273,15 @@ corrects, so content below it jumps as new items are measured.
   (the viewport's `_maxLayoutCycles` catches it, but a sliver that never settles
   is a bug worth its own test).
 
-Do the documentation now; put the correction behind its own plan entry if it is
-wanted.
+**What was done.** The documentation route. `SliverList3d`'s class doc and the
+README's *Slivers* section now say that the estimate is revised silently, that
+whatever follows the list in the viewport shifts when it is, that no built-in
+sliver issues a correction, and that a uniform `itemExtent` removes the problem
+by making the length arithmetic.
+
+Emitting a real correction is still open and still wants a plan of its own: it
+exercises a viewport path only a test drives today, and a sliver that never
+settles needs a test of its own rather than leaning on `_maxLayoutCycles`.
 
 ### 2.4 No single-child `Scene*3d` widget can be `const`
 
@@ -305,12 +319,12 @@ its layout.
 
 ---
 
-## Phase 3 — Documentation truth
+## Phase 3 — Documentation truth — **done**
 
 Each of these is a place where the docs state something the code does not do.
 They are cheap and should land with phase 1.
 
-### 3.1 Stale promise in the widget layer
+### 3.1 Stale promise in the widget layer — **done**
 
 `lib/src/widgets/layouts.dart:732` says lazy declarative building waits on "the
 element machinery that the sliver work will bring". The sliver work landed in
@@ -318,7 +332,7 @@ element machinery that the sliver work will bring". The sliver work landed in
 `RenderObjectElement` of its own and a build scope". Replace the widget doc with
 the README's current account.
 
-### 3.2 README undercounts the examples
+### 3.2 README undercounts the examples — **done**
 
 *Seeing it run* claims "two scenes in `examples/smoke_render` (`layout3d_panel`
 and `layout3d_ground`)". There are five: `layout3d_wrap_grid`,
@@ -328,14 +342,14 @@ and `layout3d_ground`)". There are five: `layout3d_wrap_grid`,
 demonstrates only `SceneListView3d` — wrap, grid, slivers, intrinsics and
 baselines have headless coverage but no interactive demo.
 
-### 3.3 `Viewport3d` neither culls nor clips
+### 3.3 `Viewport3d` neither culls nor clips — **done**
 
 Documented on the class, absent from the README. In a 3D scene this means
 geometry renders outside the panel, which is more surprising than in Flutter
 where clipping is the default. Add it to the README's *Scrolling* section
 alongside the `ListView3d` culling description.
 
-### 3.4 `Layout3dController` promises more than it exposes
+### 3.4 `Layout3dController` promises more than it exposes — **done**
 
 The README says to attach one "for measured sizes, scroll positions, or the
 plane node". The class (`lib/src/widgets/surface.dart:26`) exposes only
@@ -344,7 +358,7 @@ Either narrow the README sentence, or add the accessors it advertises
 (`size`, and a lookup for a named scrollable). Narrowing is honest and takes a
 line.
 
-### 3.5 `Offset3dBox` is an orphan that breaks the naming rule
+### 3.5 `Offset3dBox` is an orphan that breaks the naming rule — **done**
 
 `lib/src/boxes/shifted.dart:205`, exported from
 `lib/flutter_scene_layout3d.dart:61`. It is absent from the README, the
@@ -352,16 +366,21 @@ CHANGELOG, the tests and the declarative layer, and it is the only public type
 that does not end in `3d` — in a package whose README spends a section
 defending exactly that rule. `Transform3d.translate` already covers the use.
 
-Remove it, and say so in the CHANGELOG as a breaking removal. If it is wanted,
-it needs a conforming name (`Shift3d`), a `SceneShift3d`, a test and a README
-row.
+**What was done.** Removed, with a breaking-change note in the CHANGELOG.
+Nothing in the repository referenced it. If it is ever wanted back it needs a
+conforming name (`Shift3d`), a `SceneShift3d`, a test and a README row.
 
-### 3.6 Three identical typedefs
+### 3.6 Three identical typedefs — **done**
 
 `Layout3dItemBuilder` (`list_view.dart:12`), `Grid3dItemBuilder`
 (`grid_view.dart:12`) and `Sliver3dItemBuilder` (`sliver_list.dart:11`) are all
-`Layout3d Function(int index)`. Keep `Layout3dItemBuilder`, deprecate the other
-two as aliases for one release, then drop them.
+`Layout3d Function(int index)`.
+
+**What was done.** `Layout3dItemBuilder` moved to `layout3d.dart`, beside the
+protocol, since all four views take it and none of them should have to import
+another view to name it. The other two are now `@Deprecated` aliases for it,
+still exported so existing callers keep compiling, to be dropped in a later
+release.
 
 ---
 
@@ -371,9 +390,11 @@ two as aliases for one release, then drop them.
   never restores the default when `basis` goes back to null on a rebuild, unlike
   `size` and `constraints`. The same `if (x != null)` pattern applies to
   `controller` in every `updateLayout`; decide one rule and apply it to both.
-- `lib/src/scroll/list_view.dart:530` and `lib/src/sliver/sliver_list.dart:371`:
-  `_lastIndexBefore` is a linear scan sitting next to `_indexAtOffset`, a binary
-  search over the same sorted array. Make it a binary search.
+- ~~`_lastIndexBefore` is a linear scan sitting next to `_indexAtOffset`, a
+  binary search over the same sorted array.~~ **Done** in both files: the
+  prefix is non-decreasing, so the predicate is monotone and the same
+  last-true search applies. The linear version made the cost of a layout climb
+  with how far the list had ever been scrolled.
 - `lib/src/boxes/ignore_pointer.dart`: `IgnorePointer3d.ignoring` and
   `AbsorbPointer3d.absorbing` are public mutable fields; every other property in
   the package is a private field with a getter/setter pair. They genuinely need
@@ -384,8 +405,9 @@ two as aliases for one release, then drop them.
 - `lib/src/layout3d.dart`: `dispose()` neither unparents the layout nor marks it
   disposed, so a discarded layout stays hanging off its parent with no warning.
   Add a `debugDisposed` flag and assert on use, as `RenderObject` does.
-- `lib/src/scroll/grid_view.dart`: `dispose()` does not clear `_active`;
-  `ListView3d.dispose()` does. Harmless, but it is one more copy that drifted.
+- ~~`GridView3d.dispose()` does not clear `_active`; `ListView3d.dispose()`
+  does.~~ **Done.** Harmless either way, but it was one more copy that had
+  drifted.
 
 ---
 
@@ -396,10 +418,13 @@ two as aliases for one release, then drop them.
    doc, the property doc and the README's *How it differs from Flutter* entry),
    plus an `Unreleased` CHANGELOG section. The rest of phase 3 is untouched and
    still stands.
-2. Phase 2.2 and 2.3 (documentation route), which are small.
+2. ~~Phase 2.2 and 2.3 (documentation route)~~ — **done**, together with all
+   of phase 3 and the two phase 4 items in the files that were already open
+   (`_lastIndexBefore`, `GridView3d.dispose`).
 3. Phase 2.1 route 1 (mixin extraction), then re-run the whole suite untouched.
+   **Next.**
 4. Phase 2.4 as its own change, since it moves the widget base class.
-5. Phase 4 whenever a file is open for another reason.
+5. The rest of phase 4 whenever a file is open for another reason.
 
 Route 2 of 2.1 (rebuilding the views on the sliver protocol) and the real
 `scrollOffsetCorrection` producer in 2.3 each deserve a plan of their own.

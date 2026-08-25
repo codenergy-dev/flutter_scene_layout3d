@@ -727,9 +727,11 @@ class SceneViewport3d extends SingleChildLayout3dWidget {
 
 /// A scrollable line of children, the widget form of [ListView3d].
 ///
-/// Takes an explicit list of children; lazy building lives on the imperative
-/// [ListView3d.builder] for now, because building items on demand needs the
-/// element machinery that the sliver work will bring.
+/// Takes an explicit list of children, and every one of them is built when the
+/// enclosing widget builds. Lazy building lives on the imperative
+/// [ListView3d.builder]: building *widgets* on demand needs a
+/// `RenderObjectElement` of its own and a build scope to create children
+/// during layout, which this layer does not have yet.
 class SceneListView3d extends Layout3dWidget {
   /// Creates a scrollable list.
   const SceneListView3d({

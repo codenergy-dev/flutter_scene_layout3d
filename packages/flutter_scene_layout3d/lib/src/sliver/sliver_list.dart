@@ -8,7 +8,11 @@ import 'sliver.dart';
 import 'sliver_constraints.dart';
 
 /// Builds the layout for one item of a [SliverList3d.builder].
-typedef Sliver3dItemBuilder = Layout3d Function(int index);
+@Deprecated(
+  'Use Layout3dItemBuilder, which every builder in the package shares. '
+  'This alias will be removed in a future release.',
+)
+typedef Sliver3dItemBuilder = Layout3dItemBuilder;
 
 /// A run of items in a sliver world, the 3D analogue of [SliverList].
 ///
@@ -21,6 +25,15 @@ typedef Sliver3dItemBuilder = Layout3d Function(int index);
 /// [ListView3d] makes: [crossAxisAlignment] and [depthAxisAlignment] place
 /// them instead, because a model is not a row of text and stretching it is
 /// rarely what was meant.
+///
+/// Without an [itemExtent] the length of the list is a guess, and the guess
+/// changes. Items are measured as they are first scrolled past, and the total
+/// is the average of what has been measured so far, so a list of unequal items
+/// reports one `scrollExtent` early on and a different one later. Anything
+/// after it in the viewport moves when it does, and this sliver does not issue
+/// a [SliverGeometry3d.scrollOffsetCorrection] to absorb the difference.
+/// Giving every item the same [itemExtent] makes the length arithmetic and the
+/// problem disappear; it is worth doing whenever the items really are uniform.
 class SliverList3d extends Sliver3d
     with Layout3dWithChildrenMixin<ParentData3d> {
   /// Creates a list over an explicit set of children.
@@ -45,7 +58,7 @@ class SliverList3d extends Sliver3d
   /// Creates a list that builds its items on demand.
   SliverList3d.builder({
     required int itemCount,
-    required Sliver3dItemBuilder itemBuilder,
+    required Layout3dItemBuilder itemBuilder,
     double spacing = 0.0,
     double? itemExtent,
     CrossAxisAlignment3d crossAxisAlignment = CrossAxisAlignment3d.center,
@@ -112,7 +125,7 @@ class SliverList3d extends Sliver3d
     markNeedsLayout();
   }
 
-  final Sliver3dItemBuilder? _builder;
+  final Layout3dItemBuilder? _builder;
 
   int _itemCount;
 
@@ -148,6 +161,50 @@ class SliverList3d extends Sliver3d
     // list edits must not re-dirty the list that is being laid out.
     if (_layingOut) return;
     super.markNeedsLayout();
+  }
+
+  /// Refuses a child list edit on a built list, where the bookkeeping
+  /// would not survive it.
+  ///
+  /// A built list tracks its items by index, and everything it does —
+  /// measuring, placing, culling, releasing — goes through that map. A child
+  /// inserted from outside is in the child list but not in the map, so it is
+  /// never laid out (the first read of its size trips the "has not been laid
+  /// out yet" assert) and never released. The items of a built list come from
+  /// its builder; change [itemCount], or call [refresh] when the data behind
+  /// the builder moved.
+  void _assertNotBuilt(String method) {
+    assert(
+      _builder == null,
+      'Cannot call $method on a SliverList3d.builder. Its items come from '
+      'itemBuilder and are tracked by index; a child added from outside is '
+      'never laid out and never released. Set itemCount, or call refresh() '
+      'when the data behind the builder changed.',
+    );
+  }
+
+  @override
+  void insert(Layout3d child, {int? index}) {
+    _assertNotBuilt('insert');
+    super.insert(child, index: index);
+  }
+
+  @override
+  void remove(Layout3d child) {
+    _assertNotBuilt('remove');
+    super.remove(child);
+  }
+
+  @override
+  void removeAll() {
+    _assertNotBuilt('removeAll');
+    super.removeAll();
+  }
+
+  @override
+  void syncChildren(List<Layout3d> children) {
+    _assertNotBuilt('syncChildren');
+    super.syncChildren(children);
   }
 
   void _resetMeasurements() {
@@ -195,7 +252,7 @@ class SliverList3d extends Sliver3d
       child = _builder!(index);
       final position = _active.keys.where((i) => i < index).length;
       _active[index] = child;
-      insert(child, index: position);
+      super.insert(child, index: position);
     }
     child.layout(childConstraints, parentUsesSize: true);
     return child;
@@ -205,7 +262,7 @@ class SliverList3d extends Sliver3d
     for (final index in _active.keys.toList()) {
       if (index >= first && index <= last) continue;
       final child = _active.remove(index)!;
-      remove(child);
+      super.remove(child);
       child.dispose();
     }
   }
@@ -368,16 +425,23 @@ class SliverList3d extends Sliver3d
   }
 
   /// The last index that starts before [end], clamped into range.
+  ///
+  /// A binary search over the same sorted prefix [_indexAtOffset] walks: the
+  /// measured list only grows, so scanning it linearly every pass made the
+  /// cost of a layout climb with how far the list had ever been scrolled.
   int _lastIndexBefore(double end) {
-    var last = -1;
-    for (var index = 0; index < _measuredCount; index++) {
-      if (_prefix[index] < end) {
-        last = index;
+    if (_measuredCount == 0 || !(_prefix[0] < end)) return 0;
+    var low = 0;
+    var high = _measuredCount - 1;
+    while (low < high) {
+      final middle = (low + high + 1) ~/ 2;
+      if (_prefix[middle] < end) {
+        low = middle;
       } else {
-        break;
+        high = middle - 1;
       }
     }
-    return math.max(0, last);
+    return low;
   }
 
   static double _crossOffset(

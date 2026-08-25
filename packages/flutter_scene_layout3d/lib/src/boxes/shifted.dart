@@ -1,7 +1,5 @@
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show protected;
-
 import '../geometry/alignment3d.dart';
 import '../geometry/edge_insets3d.dart';
 import '../geometry/offset3d.dart';
@@ -198,36 +196,4 @@ class Center3d extends Align3d {
     super.child,
     super.name,
   });
-}
-
-/// Applies a fixed offset to its child without affecting layout, useful for
-/// nudging content off the plane.
-class Offset3dBox extends ShiftedLayout3d {
-  /// Creates a box that shifts its child by [shift].
-  Offset3dBox({Offset3d shift = Offset3d.zero, super.child, super.name})
-    : _shift = shift;
-
-  Offset3d _shift;
-
-  /// The extra offset applied to the child.
-  Offset3d get shift => _shift;
-
-  set shift(Offset3d value) {
-    if (_shift == value) return;
-    _shift = value;
-    markNeedsLayout();
-  }
-
-  @protected
-  @override
-  void performLayout() {
-    final child = this.child;
-    if (child == null) {
-      size = constraints.smallest;
-      return;
-    }
-    child.layout(constraints, parentUsesSize: true);
-    size = child.size;
-    child.place(_shift);
-  }
 }

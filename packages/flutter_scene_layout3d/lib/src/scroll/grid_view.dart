@@ -9,7 +9,11 @@ import 'scroll_controller.dart';
 import 'scrollable.dart';
 
 /// Builds the layout for one cell of a [GridView3d.builder].
-typedef Grid3dItemBuilder = Layout3d Function(int index);
+@Deprecated(
+  'Use Layout3dItemBuilder, which every builder in the package shares. '
+  'This alias will be removed in a future release.',
+)
+typedef Grid3dItemBuilder = Layout3dItemBuilder;
 
 /// The cell grid a [GridView3d] places its children on, the 3D analogue of
 /// [SliverGridLayout].
@@ -264,7 +268,7 @@ class GridView3d extends MultiChildLayout3d<ParentData3d>
   GridView3d.builder({
     required Grid3dDelegate gridDelegate,
     required int itemCount,
-    required Grid3dItemBuilder itemBuilder,
+    required Layout3dItemBuilder itemBuilder,
     Axis3d scrollDirection = Axis3d.vertical,
     Scroll3dController? controller,
     CrossAxisAlignment3d depthAxisAlignment = CrossAxisAlignment3d.center,
@@ -351,7 +355,7 @@ class GridView3d extends MultiChildLayout3d<ParentData3d>
     markNeedsLayout();
   }
 
-  final Grid3dItemBuilder? _builder;
+  final Layout3dItemBuilder? _builder;
 
   int _itemCount;
 
@@ -395,6 +399,50 @@ class GridView3d extends MultiChildLayout3d<ParentData3d>
     super.markNeedsLayout();
   }
 
+  /// Refuses a child list edit on a built grid, where the bookkeeping
+  /// would not survive it.
+  ///
+  /// A built grid tracks its cells by index, and everything it does —
+  /// measuring, placing, culling, releasing — goes through that map. A child
+  /// inserted from outside is in the child list but not in the map, so it is
+  /// never laid out (the first read of its size trips the "has not been laid
+  /// out yet" assert) and never released. The cells of a built grid come from
+  /// its builder; change [itemCount], or call [refresh] when the data behind
+  /// the builder moved.
+  void _assertNotBuilt(String method) {
+    assert(
+      _builder == null,
+      'Cannot call $method on a GridView3d.builder. Its cells come from '
+      'itemBuilder and are tracked by index; a child added from outside is '
+      'never laid out and never released. Set itemCount, or call refresh() '
+      'when the data behind the builder changed.',
+    );
+  }
+
+  @override
+  void insert(Layout3d child, {int? index}) {
+    _assertNotBuilt('insert');
+    super.insert(child, index: index);
+  }
+
+  @override
+  void remove(Layout3d child) {
+    _assertNotBuilt('remove');
+    super.remove(child);
+  }
+
+  @override
+  void removeAll() {
+    _assertNotBuilt('removeAll');
+    super.removeAll();
+  }
+
+  @override
+  void syncChildren(List<Layout3d> children) {
+    _assertNotBuilt('syncChildren');
+    super.syncChildren(children);
+  }
+
   /// Rebuilds the grid from scratch, for when the item builder's data
   /// changed.
   void refresh() {
@@ -414,7 +462,7 @@ class GridView3d extends MultiChildLayout3d<ParentData3d>
       child = _builder!(index);
       final position = _active.keys.where((i) => i < index).length;
       _active[index] = child;
-      insert(child, index: position);
+      super.insert(child, index: position);
     }
     child.layout(childConstraints, parentUsesSize: true);
     return child;
@@ -424,7 +472,7 @@ class GridView3d extends MultiChildLayout3d<ParentData3d>
     for (final index in _active.keys.toList()) {
       if (index >= first && index <= last) continue;
       final child = _active.remove(index)!;
-      remove(child);
+      super.remove(child);
       child.dispose();
     }
   }
@@ -577,6 +625,7 @@ class GridView3d extends MultiChildLayout3d<ParentData3d>
   void dispose() {
     _controller.removeListener(_handleScrollChanged);
     if (_ownsController) _controller.dispose();
+    _active.clear();
     super.dispose();
   }
 }

@@ -11,6 +11,13 @@ import 'geometry/offset3d.dart';
 import 'geometry/size3d.dart';
 import 'hit_test.dart';
 
+/// Builds the layout for one item of a lazily built view.
+///
+/// The one signature shared by every builder in the package:
+/// `ListView3d.builder`, `GridView3d.builder`, `SliverList3d.builder` and
+/// `SliverGrid3d.builder` all hand out an index and take a box back.
+typedef Layout3dItemBuilder = Layout3d Function(int index);
+
 /// Data a parent layout stores on its child, the 3D analogue of [ParentData].
 ///
 /// Every child carries at least its [offset], the position its parent gave

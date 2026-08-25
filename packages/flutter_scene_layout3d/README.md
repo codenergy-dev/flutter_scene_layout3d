@@ -170,8 +170,11 @@ SceneView.declarative(
 
 Every layout has a widget with the same name under a `Scene` prefix
 (`SceneRow3d`, `SceneStack3d`, `ScenePositioned3d`, `SceneListView3d`, ...).
-Attach a `Layout3dController` to reach the surface imperatively, for measured
-sizes, scroll positions, or the plane node.
+Attach a `Layout3dController` to reach the surface imperatively: it hands back
+the `Layout3dSurface` and its plane `Node`, which is what a raycast or a
+hand-written transform needs. Anything below the root — a measured size, a
+scroll position — is reached by keeping a reference to the object itself (a
+`Scroll3dController` you passed in, say), not through the controller.
 
 ### Why the names carry both a prefix and a suffix
 
@@ -223,6 +226,15 @@ Wrap3d(
 ```
 
 ## Scrolling
+
+There is no clipping here, which is the first thing to know. A scene has no
+scissor rectangle to hide content behind, so a scrolling view hides what leaves
+its window by making the node invisible, one whole child at a time. `ListView3d`
+and `GridView3d` do that; `Viewport3d`, which slides a single child, does not —
+its child is one node, and half a node cannot be hidden. A tall child in a
+`Viewport3d` therefore stands out through the ends of the window. Reach for it
+when the content is a little longer than the plane, and for anything else reach
+for a list.
 
 `ListView3d` shows the window of its content at a `Scroll3dController`
 offset. Built from an explicit list of children, every child is laid out and
@@ -299,6 +311,14 @@ where `constraints.paintPortion` and `constraints.cachePortion` do the
 arithmetic. `scrollOffsetCorrection` is honoured: a sliver that discovers
 mid-layout that the content is not where the offset assumed can move the
 viewport and have the pass run again.
+
+That last one is a facility for slivers you write, and none of the built-in
+ones use it yet, which is worth knowing before you build a long list of unequal
+items. `SliverList3d.builder` without an `itemExtent` measures items as they
+are first scrolled past and reports the average as the total, so the length it
+claims changes as you scroll and whatever sits below it in the viewport shifts
+by the difference. Give the items a fixed `itemExtent` when they are uniform
+and the length becomes arithmetic instead of a guess.
 
 ## Measuring
 
@@ -493,14 +513,18 @@ animation.
 
 ## Seeing it run
 
-Two scenes in `examples/smoke_render` (`layout3d_panel` and `layout3d_ground`)
-render a laid-out surface headlessly and assert a sane frame, so a layout that
-stops producing geometry fails in CI along with the rest of the render smoke
-matrix. `examples/flutter_app` has a live `Layout` example with an upright
-panel that turns on its axis, the same protocol on the ground plane, and a
-scrolling list built with the declarative widgets. It is wired for input: the
-cursor names what it is over, on all three surfaces and through the turning
-panel, and the list scrolls by dragging.
+Five scenes in `examples/smoke_render` render a laid-out surface headlessly and
+assert a sane frame, so a layout that stops producing geometry fails in CI
+along with the rest of the render smoke matrix: `layout3d_panel` and
+`layout3d_ground` for the two bases, then `layout3d_wrap_grid`,
+`layout3d_slivers` and `layout3d_intrinsic`.
+
+`examples/flutter_app` has a live `Layout` example with an upright panel that
+turns on its axis, the same protocol on the ground plane, and a scrolling list
+built with the declarative widgets. It is wired for input: the cursor names
+what it is over, on all three surfaces and through the turning panel, and the
+list scrolls by dragging. Wrapping, grids, slivers and intrinsics have headless
+coverage but no interactive demo yet.
 
 ## Roadmap
 

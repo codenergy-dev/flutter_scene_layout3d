@@ -8,9 +8,6 @@ import '../layout3d.dart';
 import 'scroll_controller.dart';
 import 'scrollable.dart';
 
-/// Builds the layout for one item of a [ListView3d.builder].
-typedef Layout3dItemBuilder = Layout3d Function(int index);
-
 /// A scrollable line of children, the 3D analogue of [ListView].
 ///
 /// Children are laid out one after another along [scrollDirection] and the
@@ -238,6 +235,50 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
     super.markNeedsLayout();
   }
 
+  /// Refuses a child list edit on a built list, where the bookkeeping
+  /// would not survive it.
+  ///
+  /// A built list tracks its items by index, and everything it does —
+  /// measuring, placing, culling, releasing — goes through that map. A child
+  /// inserted from outside is in the child list but not in the map, so it is
+  /// never laid out (the first read of its size trips the "has not been laid
+  /// out yet" assert) and never released. The items of a built list come from
+  /// its builder; change [itemCount], or call [refresh] when the data behind
+  /// the builder moved.
+  void _assertNotBuilt(String method) {
+    assert(
+      _builder == null,
+      'Cannot call $method on a ListView3d.builder. Its items come from '
+      'itemBuilder and are tracked by index; a child added from outside is '
+      'never laid out and never released. Set itemCount, or call refresh() '
+      'when the data behind the builder changed.',
+    );
+  }
+
+  @override
+  void insert(Layout3d child, {int? index}) {
+    _assertNotBuilt('insert');
+    super.insert(child, index: index);
+  }
+
+  @override
+  void remove(Layout3d child) {
+    _assertNotBuilt('remove');
+    super.remove(child);
+  }
+
+  @override
+  void removeAll() {
+    _assertNotBuilt('removeAll');
+    super.removeAll();
+  }
+
+  @override
+  void syncChildren(List<Layout3d> children) {
+    _assertNotBuilt('syncChildren');
+    super.syncChildren(children);
+  }
+
   /// Drops the cached item measurements, forcing them to be measured again.
   ///
   /// Call after the content of built items changes size.
@@ -252,7 +293,7 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
     _resetMeasurements();
     if (_builder == null) return;
     for (final child in _active.values.toList()) {
-      remove(child);
+      super.remove(child);
       child.dispose();
     }
     _active.clear();
@@ -290,7 +331,7 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
       child = _builder!(index);
       final position = _active.keys.where((i) => i < index).length;
       _active[index] = child;
-      insert(child, index: position);
+      super.insert(child, index: position);
     }
     child.layout(childConstraints, parentUsesSize: true);
     return child;
@@ -300,7 +341,7 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
     for (final index in _active.keys.toList()) {
       if (index >= first && index <= last) continue;
       final child = _active.remove(index)!;
-      remove(child);
+      super.remove(child);
       child.dispose();
     }
   }
@@ -530,16 +571,23 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
   }
 
   /// The last index that starts before [end], clamped into range.
+  ///
+  /// A binary search over the same sorted prefix [_indexAtOffset] walks: the
+  /// measured list only grows, so scanning it linearly every pass made the
+  /// cost of a layout climb with how far the list had ever been scrolled.
   int _lastIndexBefore(double end) {
-    var last = -1;
-    for (var index = 0; index < _measuredCount; index++) {
-      if (_prefix[index] < end) {
-        last = index;
+    if (_measuredCount == 0 || !(_prefix[0] < end)) return 0;
+    var low = 0;
+    var high = _measuredCount - 1;
+    while (low < high) {
+      final middle = (low + high + 1) ~/ 2;
+      if (_prefix[middle] < end) {
+        low = middle;
       } else {
-        break;
+        high = middle - 1;
       }
     }
-    return math.max(0, last);
+    return low;
   }
 
   static double _crossOffset(

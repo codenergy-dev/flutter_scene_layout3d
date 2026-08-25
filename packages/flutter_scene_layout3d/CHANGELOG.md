@@ -1,5 +1,33 @@
 ## Unreleased
 
+- **Breaking:** `Offset3dBox` is gone. It was undocumented, untested, had no
+  widget, and was the one public type that did not end in `3d`;
+  `Transform3d.translate` does the same thing.
+- **Deprecated:** `Grid3dItemBuilder` and `Sliver3dItemBuilder`, which were
+  identical to `Layout3dItemBuilder`. That one name now lives beside the
+  protocol in `layout3d.dart` and every builder takes it; the two aliases still
+  work and will be removed in a later release.
+- A `ListView3d.builder`, `GridView3d.builder`, `SliverList3d.builder` or
+  `SliverGrid3d.builder` now asserts when its child list is edited from
+  outside. A built view tracks its children by index, so a child inserted that
+  way was never laid out and never released; the failure used to surface much
+  later as a size assert on a box nobody remembered adding. Items come from the
+  builder: set `itemCount`, or call `refresh()`.
+- `_lastIndexBefore` in `ListView3d` and `SliverList3d` is a binary search
+  rather than a linear scan, so the cost of a layout no longer climbs with how
+  far the list has ever been scrolled.
+- `GridView3d.dispose` clears the map of built cells, as `ListView3d` already
+  did.
+- Documented what was already true: a `SliverList3d.builder` with no
+  `itemExtent` revises its estimated length silently and issues no
+  `scrollOffsetCorrection`, so content after it shifts as items are measured;
+  `Viewport3d` neither culls nor clips, unlike the lists; the declarative layer
+  builds every child widget up front, and lazy *widgets* need a
+  `RenderObjectElement` this layer does not have (the old note promised the
+  sliver work would bring it, which it did not); `Layout3dController` reaches
+  the surface and its plane node, not measured sizes or scroll positions; and
+  `examples/smoke_render` has five layout scenes, not two.
+
 - Fixed: `Stack3d.depthStep` moved its children in the *layout*, which broke
   the two things the stack promises. A `Positioned3d` pinned to a face landed
   short of it by the step, and a coplanar child was pushed in front of the

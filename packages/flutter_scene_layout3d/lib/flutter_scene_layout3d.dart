@@ -58,7 +58,7 @@ export 'src/boxes/intrinsic.dart'
         IntrinsicWidth3d;
 export 'src/boxes/node_box.dart' show BoxFit3d, NodeBox3d;
 export 'src/boxes/shifted.dart'
-    show Align3d, Center3d, Offset3dBox, Padding3d, ShiftedLayout3d;
+    show Align3d, Center3d, Padding3d, ShiftedLayout3d;
 export 'src/boxes/sized.dart' show ConstrainedBox3d, SizedBox3d, Transform3d;
 export 'src/boxes/stack.dart' show Positioned3d, Stack3d, StackFit3d;
 export 'src/boxes/wrap.dart' show Wrap3d, WrapAlignment3d, WrapCrossAlignment3d;
@@ -74,6 +74,7 @@ export 'src/layout3d.dart'
     show
         Layout3d,
         Layout3dChildIntrinsicsMixin,
+        Layout3dItemBuilder,
         Layout3dWithChildMixin,
         Layout3dWithChildrenMixin,
         Layout3dOwner,
@@ -89,7 +90,7 @@ export 'src/scroll/grid_view.dart'
         Grid3dItemBuilder,
         Grid3dLayout,
         GridView3d;
-export 'src/scroll/list_view.dart' show Layout3dItemBuilder, ListView3d;
+export 'src/scroll/list_view.dart' show ListView3d;
 export 'src/scroll/scroll_controller.dart' show Scroll3dController;
 export 'src/scroll/scrollable.dart' show Scrollable3d, noIntrinsicExtent;
 export 'src/sliver/custom_scroll_view.dart' show CustomScrollView3d;
