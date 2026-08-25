@@ -5,8 +5,7 @@ import '../geometry/constraints3d.dart';
 import '../geometry/offset3d.dart';
 import '../built_children.dart';
 import '../layout3d.dart';
-import '../layout_pass.dart';
-import '../scroll/grid_view.dart' show Grid3dDelegate, Grid3dLayout;
+import '../scroll/grid_delegate.dart' show Grid3dDelegate, Grid3dLayout;
 import 'sliver.dart';
 import 'sliver_constraints.dart';
 
@@ -17,11 +16,7 @@ import 'sliver_constraints.dart';
 /// `CustomScrollView3d`. Because cell positions are arithmetic, a built grid
 /// is exactly lazy — the scroll extent of ten thousand cells is known without
 /// building one.
-class SliverGrid3d extends Sliver3d
-    with
-        Layout3dWithChildrenMixin<ParentData3d>,
-        Layout3dLayoutPassMixin,
-        Layout3dBuiltChildrenMixin<ParentData3d> {
+class SliverGrid3d extends SliverMultiBoxAdaptor3d {
   /// Creates a grid over an explicit set of children.
   SliverGrid3d({
     required Grid3dDelegate gridDelegate,

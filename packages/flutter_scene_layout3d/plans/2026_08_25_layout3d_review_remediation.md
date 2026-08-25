@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-08-25T03:32:15Z
-updated_at: 2026-08-25T18:04:00Z
+updated_at: 2026-08-25T17:40:00Z
 commit: 495b1ec4e93e3588c93612ef02862355d380933a
 ---
 
@@ -190,15 +190,18 @@ the caller can see it`.
 
 ## Phase 2 — Structure
 
-### 2.1 Collapse the four parallel scrolling implementations — **done (route 1)**
+### 2.1 Collapse the four parallel scrolling implementations — **both done**
 
 **Where.** `lib/src/scroll/list_view.dart`, `lib/src/scroll/grid_view.dart`,
 `lib/src/sliver/sliver_list.dart`, `lib/src/sliver/sliver_grid.dart`.
 
-In Flutter, `ListView` *is* a `CustomScrollView` holding a `SliverList` — one
-implementation, two entry points. Here they are four independent ones that
-repeat `_obtainChild`, `_releaseOutside`, `_prefix`, `_indexAtOffset`,
-`_lastIndexBefore`, `_estimatedContentExtent`, `_crossOffset`,
+In Flutter, a `ListView` has no layout of its own: it is a `ScrollView`, the
+same one `CustomScrollView` is, whose items are placed by a `RenderSliverList`
+inside a `RenderViewport`. (Written here first as "`ListView` *is* a
+`CustomScrollView` holding a `SliverList`", which is not what the framework
+does — the two are siblings, not a container and its content.) Here they are
+four independent ones that repeat `_obtainChild`, `_releaseOutside`, `_prefix`,
+`_indexAtOffset`, `_lastIndexBefore`, `_estimatedContentExtent`, `_crossOffset`,
 `_positionedChildren`, `refresh()`, the `_layingOut` guard on `markNeedsLayout`,
 and every property setter. Roughly 600 duplicated lines. Item 1.2 is exactly the
 drift this produces: one of four copies of the same getter diverged and nothing
@@ -221,6 +224,10 @@ caught it.
    acceptance criterion.
 
 Route 1 is the recommendation for this pass; route 2 is worth its own plan.
+
+Both have since landed: route 1 here, and route 2 in
+[views on the sliver protocol](2026_08_25_views_on_the_sliver_protocol.md),
+which corrected the premise above before building on it.
 
 **What was done.** Route 1, as two mixins in `lib/src/built_children.dart`:
 

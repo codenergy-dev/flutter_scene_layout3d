@@ -129,6 +129,7 @@ measurement is responsible.
 | `Grid3dDelegate`, `Grid3dLayout` | `SliverGridDelegate`, `SliverGridLayout` |
 | `CustomScrollView3d`, `Sliver3d` | `CustomScrollView` + `Viewport`, `RenderSliver` |
 | `SliverList3d`, `SliverGrid3d`, `SliverToBoxAdapter3d` | `SliverList`, `SliverGrid`, `SliverToBoxAdapter` |
+| `BoxScrollView3d`, `SliverMultiBoxAdaptor3d` | `BoxScrollView`, `RenderSliverMultiBoxAdaptor` |
 | `SliverConstraints3d`, `SliverGeometry3d` | `SliverConstraints`, `SliverGeometry` |
 | `IntrinsicWidth3d`, `IntrinsicHeight3d`, `IntrinsicDepth3d` | `IntrinsicWidth`, `IntrinsicHeight` |
 | `Baseline3d`, `CrossAxisAlignment3d.baseline` | `Baseline`, `CrossAxisAlignment.baseline` |
@@ -244,6 +245,22 @@ and without it items are measured once as they are first scrolled past, with
 the total extent estimated from the average, the same approximation
 `SliverList` makes.
 
+Neither view is a layout of its own kind. A `ListView3d` *is* a scrolling
+window over a single `SliverList3d`, and a `GridView3d` over a single
+`SliverGrid3d`, which is the shape Flutter's are: there is no `RenderListView`
+in Flutter, and a `ListView`'s items are placed by a `RenderSliverList` inside
+a `RenderViewport`. So where an item goes is decided in one place rather than
+copied into two. It changes nothing a caller writes — `children`, `add`,
+`remove`, `itemCount` and `refresh` still mean the items, and a hit still finds
+the list itself as its `Scrollable3d` — and it shows only if you go looking, in
+`list.sliver` and in the extra node a ray passes through on its way in.
+
+One consequence is worth stating, because it is the one thing that changed with
+it: `cacheExtent` decides what is *built and kept*, not what is drawn. An item
+inside the cache but outside the window is ready for the scroll that reaches
+it, and hidden until then, the same division Flutter makes between laying a
+child out and painting it.
+
 That estimate is worth avoiding, and `prototypeItem` is the way to avoid it
 without knowing anything the content does not already tell you. The items of a
 long list are usually all the same size, but that size often comes from the
@@ -314,10 +331,11 @@ CustomScrollView3d(
 )
 ```
 
-What this buys over `ListView3d` and `GridView3d` is the thing neither can do:
-**several sections on one scroll position**. A header, a grid and a list scroll
-together as one surface, each asked only about the part of the window it can
-see. `SliverToBoxAdapter3d` is the glue — everything else in this package is a
+This is the protocol the list and the grid are built on — each is one of these
+views holding one sliver — and what it buys over them is the thing neither can
+do: **several sections on one scroll position**. A header, a grid and a list
+scroll together as one surface, each asked only about the part of the window it
+can see. `SliverToBoxAdapter3d` is the glue — everything else in this package is a
 box, and that is how a box takes its turn.
 
 `SliverConstraints3d` and `SliverGeometry3d` are the two halves. The names keep
@@ -518,7 +536,7 @@ animation.
 * **A wrap breaks into runs, never into layers.** The depth axis of a `Wrap3d`
   aligns children rather than wrapping them.
 * **`GridView3d` is exactly lazy**, because a grid's cell positions are
-  arithmetic. It needs no slivers to know how long it is.
+  arithmetic. It knows how long ten thousand cells are without building one.
 * **A sliver has no growth direction and no centre child.** Slivers run one
   way from the start of the viewport; there is no reverse list and no
   `center` key yet.
@@ -591,7 +609,9 @@ breadth rather than new machinery.
 
 **3. Slivers.** ~~Mostly done~~: `CustomScrollView3d` drives the protocol,
 with `SliverList3d`, `SliverGrid3d` and `SliverToBoxAdapter3d` on top of it and
-`scrollOffsetCorrection` honoured. See *Slivers* above. Two pieces are left.
+`scrollOffsetCorrection` honoured. `ListView3d` and `GridView3d` are views of
+this kind over a single sliver, as Flutter's are, so placement is written
+once. See *Slivers* above. Two pieces are left.
 Pinned and floating headers need `overlap` and `paintOrigin` threaded through
 the protocol, which is what a `SliverAppBar3d` would be built on. And building
 **widgets** lazily still has no answer: `SliverList3d.builder` is lazy on the

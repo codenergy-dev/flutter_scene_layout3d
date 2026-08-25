@@ -219,6 +219,24 @@ void main() {
       expect(sliver.windows.last.remainingCacheExtent, 16);
     });
 
+    test('shrink-wraps when the scroll axis has no edge', () {
+      final first = ProbeSliver3d(8);
+      final second = ProbeSliver3d(6);
+      final view = CustomScrollView3d(slivers: [first, second]);
+      laidOut(
+        view,
+        constraints: const Constraints3d.tightFor(width: 4, depth: 2),
+      );
+
+      // No window to fill, so the sections are offered an endless one and
+      // the view comes out as long as they filled, with nothing to scroll.
+      // The same thing Flutter's ShrinkWrappingViewport does.
+      expect(first.windows.last.remainingPaintExtent, double.infinity);
+      expect(view.size.height, 14);
+      expect(view.controller.contentExtent, 14);
+      expect(view.controller.maxScrollExtent, 0);
+    });
+
     test('applies a scroll offset correction and lays out again', () {
       final correcting = CorrectingSliver3d(30, 5);
       final view = CustomScrollView3d(slivers: [correcting]);

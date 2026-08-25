@@ -1,7 +1,7 @@
 ---
-status: pending
+status: completed
 created_at: 2026-08-25T15:21:54Z
-updated_at: 2026-08-25T16:21:57Z
+updated_at: 2026-08-25T17:34:00Z
 commit: 88e98579925771720a40c21b3d5ad607f787fdf7
 ---
 
@@ -9,17 +9,18 @@ commit: 88e98579925771720a40c21b3d5ad607f787fdf7
 
 Route 2 of item 2.1 in
 [the review remediation](2026_08_25_layout3d_review_remediation.md), deferred
-there because route 1 was the smaller change. Route 1 has since landed, which
-changes the arithmetic on this one — read the decision section before starting.
+there because route 1 was the smaller change.
 
-**This plan opens with a decision, not a task.** The work is a real refactor of
-two public classes, and the case for it got weaker when the mixins landed.
+**Done.** This plan opened with a decision rather than a task, recommended
+*not yet*, and was then directed to go ahead on fidelity grounds. The case on
+both sides is kept as it was written; what happened is under *Decision* and
+*What was done*.
 
 **The premise this plan was written on was wrong.** It said Flutter's
 `ListView` *is* a `CustomScrollView` holding a `SliverList`. It is not, and the
 shape the plan derived from that — a `ListView3d` that *owns* a
-`CustomScrollView3d` — is a shape Flutter has nowhere. The correction is below;
-it changes the design and part of the cost, and it leaves the decision standing.
+`CustomScrollView3d` — is a shape Flutter has nowhere. The correction is below,
+and the work was built on the corrected shape.
 
 ## What Flutter actually does
 
@@ -63,11 +64,11 @@ holding a `SliverList3d` would be three nodes where Flutter has two, plus a
 forwarding layer with no counterpart in the framework — further from Flutter's
 shape, not closer.
 
-## What it would be
+## What it was to be
 
-Here the list views and the sliver views are separate implementations that
-answer different protocols. This would make `ListView3d` *be* a viewport over a
-single `SliverList3d`, and `GridView3d` the same over a `SliverGrid3d`, so the
+The list views and the sliver views were separate implementations answering
+different protocols. This makes `ListView3d` *be* a viewport over a single
+`SliverList3d`, and `GridView3d` the same over a `SliverGrid3d`, so the
 placement logic exists once and the class hierarchy says what Flutter's says:
 a list view is a scroll view whose one sliver happens to be chosen for it.
 
@@ -125,66 +126,108 @@ reported) would now sit between a caller and their list.
 
 ## Decision
 
-Recommended: **not yet** — unchanged by the correction above. The duplication
-that remains is the part that is genuinely different, and the API break is paid
-by every caller of the imperative `ListView3d`. What the correction changes is
-the design to use when it *is* done, and it removes one of the three nodes from
-the cost.
+**Done**, on the corrected shape, at the caller's direction. The plan had
+recommended *not yet*, and the reasoning behind that recommendation is kept
+below because it is the honest account of the trade: the duplication left after
+route 1 is the part that genuinely differs, and the shape had to be paid for in
+forwarding. What decided it was fidelity — the package's whole proposition is
+Flutter's protocol one axis richer, and a box-level list layout is a thing
+Flutter does not have anywhere.
 
-Reasons that would flip it, any one of them enough:
+What was recommended against, and why, at the time:
 
-- A feature needs implementing in both *placement* loops. `prototypeItem` did
-  not — it went into the shared measuring mixin — so that one is not the
-  precedent this was watching for.
-- `SceneListView3d` gains lazily built child widgets (README roadmap), which
-  needs a `RenderObjectElement` of its own — at which point the declarative
-  list and the declarative sliver list want the same element, and sharing the
-  layout object underneath stops being optional.
-- The package moves past experimental and the API break becomes expensive to
-  make later. Then it is now or never. (At 0.5.0 it has not.)
+- No feature had needed implementing in both *placement* loops.
+  `prototypeItem` went into the shared measuring mixin instead.
+- `SceneListView3d` still has no lazily built child widgets, so the declarative
+  list and the declarative sliver list do not yet want the same element.
+- The package is at 0.5.0, so the API break was not yet expensive to make
+  later.
 
-If none of those has happened, spend the time on the other two plans.
+Of those, the third turned out to argue *for* doing it now rather than against:
+the break is cheapest while the package is pre-1.0, and it is now paid.
 
-## If it is done anyway, the shape
+## What was done
 
-Recorded so the decision does not have to be re-derived. Revised for what
-Flutter actually does.
+**`BoxScrollView3d`**, the 3D analogue of Flutter's `BoxScrollView`: a
+`CustomScrollView3d` whose window holds exactly one sliver, and which forwards
+its public child list to it. `ListView3d extends BoxScrollView3d<SliverList3d>`
+and `GridView3d extends BoxScrollView3d<SliverGrid3d>`; each public constructor
+builds its sliver and redirects to a private one that wires the viewport.
 
-**Make the list a viewport, not a wrapper around one.** `ListView3d extends
-CustomScrollView3d`, seeded with one `SliverList3d`; `GridView3d` the same with
-a `SliverGrid3d`. Flutter's `ListView` and `CustomScrollView` are siblings over
-one `ScrollView`, and the render object at the top of both is the viewport. If
-`CustomScrollView3d` turns out to want a narrower public surface than a
-subclass should inherit, the equivalent move is to lift the viewport layout
-into a shared base the way `ScrollView` does, and have both extend it — what
-must not happen is a list that *contains* a scroll view.
+**`SliverMultiBoxAdaptor3d`**, the analogue of `RenderSliverMultiBoxAdaptor`:
+the child list, the index-keyed bookkeeping and the layout pass that
+`SliverList3d` and `SliverGrid3d` had been declaring one mixin at a time. It is
+also the type bound `BoxScrollView3d` forwards to.
 
-**Scrollable3d then needs no delegation.** `hit.firstOf<Scrollable3d>()` must
-keep finding `ListView3d`. Because `CustomScrollView3d` already carries
-`Scroll3dHolderMixin`, a `ListView3d` that *is* one satisfies this for free,
-and there is no inner viewport to be found first. This was the largest hazard
-under the old shape and it disappears with it.
+**Two accessors the forwarding needed.** `Layout3dWithChildrenMixin` gained a
+protected `heldChildren` — the list a layout actually holds, as against the one
+[children] answers with — because `CustomScrollView3d` lays out its own slivers
+and must not read the forwarded list. And the refusal message a built view
+gives a child-list edit moved into `builtChildEditRefused`, so the wrapper can
+refuse in its own name (`ListView3d.builder`, not `SliverList3d.builder`)
+before forwarding.
 
-**Give the outer class a child list that means what it meant.** `ListView3d`
-should forward `children`, `add`, `remove` and `syncChildren` to its one
-`SliverList3d`, not to its own list of slivers, so that the imperative API
-and the declarative mirroring both keep working. That is a forwarding
-layer, and it is the bulk of the work.
+**`CustomScrollView3d` learned to shrink-wrap.** It asserted on an unbounded
+scroll axis; the box views sized themselves to their content there, and that
+had to survive. It now lays its slivers out against an endless window and comes
+out as long as they filled, which is `ShrinkWrappingViewport`.
 
-**Do not make `Viewport3d` a sliver view.** It is `SingleChildScrollView`: one
-child that slides, no culling, no protocol. It stays as it is.
+**`Grid3dDelegate` and `Grid3dLayout` moved** to `src/scroll/grid_delegate.dart`
+so that `grid_view.dart` and `sliver_grid.dart` do not import each other. No
+public API moved with them: both libraries export the same names.
 
-**Order:** grid first. `GridView3d` and `SliverGrid3d` are the smaller pair,
-their placement is pure arithmetic, and the shape of the forwarding layer can
-be settled there before the list, which has the measured prefix to carry as
-well.
+### What it cost, measured
+
+- One scene node per list or grid, the sliver's — the node Flutter's render
+  tree has in the same place.
+- Two behaviour changes, both toward Flutter and both in the CHANGELOG:
+  `cacheExtent` no longer draws what it keeps alive, and a view now needs a
+  bounded extent across its scroll axis rather than shrink-wrapping to the
+  widest item (it takes no depth on an unbounded depth axis for the same
+  reason).
+- One test edited, which is what those changes look like from outside: the
+  cache-extent test now reads the built set rather than the visible set.
+
+The forwarding layer is 50 lines, less than the "bulk of the work" this plan
+predicted, because the corrected shape needs no `Scrollable3d` delegation: a
+view that *is* a `CustomScrollView3d` already carries `Scroll3dHolderMixin`.
+
+## The shape it was built on
+
+**The list is a viewport, not a wrapper around one.** Flutter's `ListView` and
+`CustomScrollView` are siblings over one `ScrollView`, and the render object at
+the top of both is the viewport. A list that *contains* a scroll view is the
+thing this plan originally proposed and the thing Flutter has nowhere.
+
+**`Scrollable3d` needs no delegation.** `hit.firstOf<Scrollable3d>()` keeps
+finding `ListView3d` because a `ListView3d` *is* a `Scroll3dHolderMixin`, and
+the sliver in between is not one. Pinned by a test.
+
+**The child list means the items.** `children`, `childAt`, `childCount`, `add`,
+`insert`, `remove`, `removeAll`, `syncChildren`, `itemCount`, `isLazy`,
+`activeIndices` and `refresh` forward to the sliver; `visitChildren` and hit
+testing walk the tree as it really is. That is what keeps both the imperative
+API and the declarative `adoptLayoutChildren` mirroring working untouched.
+
+**`Viewport3d` was not made a sliver view.** It is `SingleChildScrollView`: one
+child that slides, no culling, no protocol. Unchanged.
+
+**Order:** grid first, then the list, as planned. The grid landed with its
+whole suite passing before the list was started.
 
 ## Tests
 
-The bar is the whole existing suite passing **unchanged** — every scroll, grid,
-sliver, hit-test and widget test. If a test needs editing, that edit is the API
-break, and it should be listed in the CHANGELOG rather than absorbed.
+The bar was the whole existing suite passing **unchanged**. It does, with one
+exception, listed in the CHANGELOG rather than absorbed: `a cache extent keeps
+neighbours alive` asserted that an item in the cache was *visible*, which is
+the behaviour that changed.
 
-Add: a hit test through a `ListView3d` returns the `ListView3d` as its
-`Scrollable3d`, and a `ListView3d` built from an explicit list still answers
-`children` with its items.
+Added:
+
+- a `ListView3d` holds its sliver, answers `children` with the items, and
+  parents them to the sliver in both the layout tree and the scene graph;
+- a hit through a `ListView3d` answers `firstOf<Scrollable3d>()` with the list,
+  passes through the sliver, and the sliver is not a `Scrollable3d`;
+- the same structural test for `GridView3d`;
+- a list and a viewport each shrink-wrap when the scroll axis has no edge;
+- a cache extent builds past the window without showing it.

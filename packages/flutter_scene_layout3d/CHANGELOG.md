@@ -1,5 +1,34 @@
 ## Unreleased
 
+- `ListView3d` and `GridView3d` are built on the sliver protocol now: each one
+  *is* a scrolling window over a single sliver — a `SliverList3d`, a
+  `SliverGrid3d` — reachable as `view.sliver`. That is the shape Flutter's
+  views have (there is no `RenderListView`: a `ListView`'s items are placed by
+  `RenderSliverList` inside a `RenderViewport`), and it leaves one copy of
+  "where does item `i` go and is it visible" where there were two. The new
+  `BoxScrollView3d` holds the forwarding, and `SliverMultiBoxAdaptor3d` is the
+  base the two slivers now share; both are exported.
+  - The imperative API is unchanged: `children`, `childAt`, `childCount`,
+    `add`, `insert`, `remove`, `removeAll`, `syncChildren`, `itemCount`,
+    `isLazy`, `activeIndices` and `refresh` all still mean the items, and a
+    hit test still answers `firstOf<Scrollable3d>()` with the list or the grid
+    rather than with the sliver inside it.
+  - **Behaviour change:** `cacheExtent` decides what is built and kept alive,
+    not what is drawn. An item inside the cache but outside the window used to
+    be visible; it is hidden now, and shown when the window reaches it. Since
+    a scene has nothing to clip with, that item was drawn outside the list.
+  - **Behaviour change:** a list or a grid needs a bounded extent across its
+    scroll axis, which is what an item is given to span, and it asserts when it
+    has none. It used to size that axis to the widest item. Flutter's viewport
+    makes the same demand. It also takes no depth when the depth axis is
+    unbounded, where it used to grow to the deepest item.
+  - It costs one scene node per view, the sliver's, which is the node Flutter's
+    render tree has there too.
+- `CustomScrollView3d` shrink-wraps when the scroll axis is unbounded, laying
+  its slivers out against an endless window and coming out as long as they
+  filled, the way Flutter's `ShrinkWrappingViewport` does. It used to assert.
+  This is what keeps an unbounded `ListView3d` sizing to its content.
+
 - Every single-child `Scene*3d` widget is `const` now — `ScenePadding3d`,
   `SceneAlign3d`, `SceneCenter3d`, `SceneSizedBox3d`, `SceneContainer3d`,
   `SceneTransform3d`, `ScenePositioned3d`, `SceneFlexible3d`, `SceneExpanded3d`,

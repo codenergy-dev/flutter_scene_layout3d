@@ -166,6 +166,22 @@ void main() {
     });
   });
 
+  // What the class is underneath: a viewport over one sliver, the shape
+  // Flutter's GridView has. None of it changes what a caller sees.
+  group('GridView3d is a viewport over one SliverGrid3d', () {
+    test('holds the sliver, and answers children with the cells in it', () {
+      final boxes = cells(2);
+      final grid = GridView3d(gridDelegate: twoAcross, children: boxes);
+      laidOut(grid, constraints: Constraints3d.tight(const Size3d(10, 10, 2)));
+
+      expect(grid.children, boxes);
+      expect(grid.sliver.children, boxes);
+      expect(boxes[0].parent, same(grid.sliver));
+      // The grid it reports is the one its sliver laid the cells out on.
+      expect(grid.gridLayout, same(grid.sliver.gridLayout));
+    });
+  });
+
   group('building on demand', () {
     GridView3d lazyGrid({double cacheExtent = 0.0, int itemCount = 8}) =>
         GridView3d.builder(

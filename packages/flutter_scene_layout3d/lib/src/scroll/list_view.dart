@@ -1,14 +1,10 @@
-import 'dart:math' as math;
-
 import '../boxes/flex.dart' show CrossAxisAlignment3d;
 import '../built_children.dart';
-import '../geometry/constraints3d.dart';
 import '../geometry/offset3d.dart';
-import '../geometry/size3d.dart';
 import '../layout3d.dart';
-import '../layout_pass.dart';
+import '../sliver/sliver_list.dart';
+import 'box_scroll_view.dart';
 import 'scroll_controller.dart';
-import 'scrollable.dart';
 
 /// A scrollable line of children, the 3D analogue of [ListView].
 ///
@@ -16,8 +12,8 @@ import 'scrollable.dart';
 /// list shows the window at [controller]'s offset. Two ways to supply them:
 ///
 ///  * the default constructor takes an explicit list; every child is laid out
-///    each pass, and the ones outside the window (plus [cacheExtent]) have
-///    their nodes hidden rather than removed;
+///    each pass, and the ones outside the window have their nodes hidden
+///    rather than removed;
 ///  * [ListView3d.builder] builds items on demand and keeps only what is near
 ///    the window, disposing the rest. With [itemExtent] the offsets are
 ///    arithmetic and nothing off-screen is ever built; without it, items are
@@ -29,17 +25,18 @@ import 'scrollable.dart';
 ///    a size only the content knows; a [contentExtentEstimator] steadies the
 ///    range of a list whose items really do differ.
 ///
+/// A list is a viewport over one [SliverList3d], the way Flutter's `ListView`
+/// is a `ScrollView` over one `SliverList`: the items are placed by the
+/// sliver, and this class is the window and the scroll position around it.
+/// [children] still means the items; see [BoxScrollView3d] for what that
+/// forwarding covers.
+///
 /// Unlike Flutter's `ListView`, children are not stretched across the cross
 /// axes by default; [crossAxisAlignment] and [depthAxisAlignment] centre them
 /// instead, which is the more useful default when the items are objects
 /// rather than rows. Ask for [CrossAxisAlignment3d.stretch] to get the
 /// Flutter behaviour.
-class ListView3d extends MultiChildLayout3d<ParentData3d>
-    with
-        Layout3dLayoutPassMixin,
-        Layout3dBuiltChildrenMixin<ParentData3d>,
-        Layout3dMeasuredChildrenMixin<ParentData3d>,
-        Scroll3dHolderMixin {
+class ListView3d extends BoxScrollView3d<SliverList3d> {
   /// Creates a list over an explicit set of children.
   ListView3d({
     Axis3d scrollDirection = Axis3d.vertical,
@@ -52,22 +49,22 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
     CrossAxisAlignment3d depthAxisAlignment = CrossAxisAlignment3d.center,
     double cacheExtent = 0.0,
     List<Layout3d> children = const <Layout3d>[],
-    super.name,
-  }) : _axis = scrollDirection,
-       _spacing = spacing,
-       _crossAxisAlignment = crossAxisAlignment,
-       _depthAxisAlignment = depthAxisAlignment,
-       _cacheExtent = cacheExtent,
-       _builder = null,
-       assert(spacing >= 0.0),
-       assert(cacheExtent >= 0.0),
-       assert(itemExtent == null || itemExtent > 0.0),
-       super(children: children) {
-    this.itemExtent = itemExtent;
-    this.prototypeItem = prototypeItem;
-    this.contentExtentEstimator = contentExtentEstimator;
-    initController(controller);
-  }
+    String? name,
+  }) : this._(
+         SliverList3d(
+           spacing: spacing,
+           itemExtent: itemExtent,
+           prototypeItem: prototypeItem,
+           contentExtentEstimator: contentExtentEstimator,
+           crossAxisAlignment: crossAxisAlignment,
+           depthAxisAlignment: depthAxisAlignment,
+           children: children,
+         ),
+         scrollDirection: scrollDirection,
+         controller: controller,
+         cacheExtent: cacheExtent,
+         name: name,
+       );
 
   /// Creates a list that builds its items on demand.
   ListView3d.builder({
@@ -82,284 +79,81 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
     CrossAxisAlignment3d crossAxisAlignment = CrossAxisAlignment3d.center,
     CrossAxisAlignment3d depthAxisAlignment = CrossAxisAlignment3d.center,
     double cacheExtent = 0.0,
-    super.name,
-  }) : _axis = scrollDirection,
-       _spacing = spacing,
-       _crossAxisAlignment = crossAxisAlignment,
-       _depthAxisAlignment = depthAxisAlignment,
-       _cacheExtent = cacheExtent,
-       _builder = itemBuilder,
-       assert(itemCount >= 0),
-       assert(spacing >= 0.0),
-       assert(cacheExtent >= 0.0),
-       assert(itemExtent == null || itemExtent > 0.0) {
-    this.itemExtent = itemExtent;
-    this.prototypeItem = prototypeItem;
-    this.contentExtentEstimator = contentExtentEstimator;
-    declaredItemCount = itemCount;
-    initController(controller);
-  }
+    String? name,
+  }) : this._(
+         SliverList3d.builder(
+           itemCount: itemCount,
+           itemBuilder: itemBuilder,
+           spacing: spacing,
+           itemExtent: itemExtent,
+           prototypeItem: prototypeItem,
+           contentExtentEstimator: contentExtentEstimator,
+           crossAxisAlignment: crossAxisAlignment,
+           depthAxisAlignment: depthAxisAlignment,
+         ),
+         scrollDirection: scrollDirection,
+         controller: controller,
+         cacheExtent: cacheExtent,
+         name: name,
+       );
 
-  Axis3d _axis;
-
-  /// The axis the list scrolls along.
-  Axis3d get scrollDirection => _axis;
-
-  @override
-  Axis3d get scrollAxis => _axis;
-
-  set scrollDirection(Axis3d value) {
-    if (_axis == value) return;
-    _axis = value;
-    markNeedsLayout();
-  }
-
-  double _spacing;
+  // The sliver has to be built before it can be handed up, and an explicit
+  // super call rules out super parameters, so the two constructors above
+  // redirect here rather than each repeating the wiring.
+  // ignore: use_super_parameters
+  ListView3d._(
+    SliverList3d sliver, {
+    required Axis3d scrollDirection,
+    required Scroll3dController? controller,
+    required double cacheExtent,
+    required String? name,
+  }) : super(
+         sliver: sliver,
+         scrollDirection: scrollDirection,
+         controller: controller,
+         cacheExtent: cacheExtent,
+         name: name,
+       );
 
   /// The gap between adjacent items.
-  double get spacing => _spacing;
+  double get spacing => sliver.spacing;
 
-  @override
-  double get itemSpacing => _spacing;
+  set spacing(double value) => sliver.spacing = value;
 
-  set spacing(double value) {
-    if (_spacing == value) return;
-    assert(value >= 0.0);
-    _spacing = value;
-    resetMeasurements();
-    markNeedsLayout();
-  }
+  /// A fixed extent for every item along the scroll axis.
+  ///
+  /// Makes a built list exactly lazy, and is mutually exclusive with
+  /// [prototypeItem].
+  double? get itemExtent => sliver.itemExtent;
 
-  CrossAxisAlignment3d _crossAxisAlignment;
+  set itemExtent(double? value) => sliver.itemExtent = value;
+
+  /// An item built once and measured, standing for the extent of them all.
+  ///
+  /// See [Layout3dMeasuredChildrenMixin.prototypeItem].
+  Layout3dPrototypeBuilder? get prototypeItem => sliver.prototypeItem;
+
+  set prototypeItem(Layout3dPrototypeBuilder? value) =>
+      sliver.prototypeItem = value;
+
+  /// The total extent along the scroll axis, when the caller knows it.
+  ///
+  /// See [Layout3dMeasuredChildrenMixin.contentExtentEstimator].
+  Layout3dContentExtentEstimator? get contentExtentEstimator =>
+      sliver.contentExtentEstimator;
+
+  set contentExtentEstimator(Layout3dContentExtentEstimator? value) =>
+      sliver.contentExtentEstimator = value;
 
   /// How items are positioned on the first cross axis.
-  CrossAxisAlignment3d get crossAxisAlignment => _crossAxisAlignment;
+  CrossAxisAlignment3d get crossAxisAlignment => sliver.crossAxisAlignment;
 
-  set crossAxisAlignment(CrossAxisAlignment3d value) {
-    if (_crossAxisAlignment == value) return;
-    _crossAxisAlignment = value;
-    markNeedsLayout();
-  }
-
-  CrossAxisAlignment3d _depthAxisAlignment;
+  set crossAxisAlignment(CrossAxisAlignment3d value) =>
+      sliver.crossAxisAlignment = value;
 
   /// How items are positioned on the second cross axis.
-  CrossAxisAlignment3d get depthAxisAlignment => _depthAxisAlignment;
+  CrossAxisAlignment3d get depthAxisAlignment => sliver.depthAxisAlignment;
 
-  set depthAxisAlignment(CrossAxisAlignment3d value) {
-    if (_depthAxisAlignment == value) return;
-    _depthAxisAlignment = value;
-    markNeedsLayout();
-  }
-
-  double _cacheExtent;
-
-  /// How far beyond each end of the window items are kept alive.
-  double get cacheExtent => _cacheExtent;
-
-  set cacheExtent(double value) {
-    if (_cacheExtent == value) return;
-    assert(value >= 0.0);
-    _cacheExtent = value;
-    markNeedsLayout();
-  }
-
-  final Layout3dItemBuilder? _builder;
-
-  @override
-  Layout3dItemBuilder? get itemBuilder => _builder;
-
-  Constraints3d _childConstraints(double? mainExtent) {
-    var result = const Constraints3d().withAxis(
-      _axis,
-      min: mainExtent ?? 0.0,
-      max: mainExtent ?? double.infinity,
-    );
-    final (firstCross, secondCross) = _axis.others;
-    for (final axis in <Axis3d>[firstCross, secondCross]) {
-      final alignment = axis == firstCross
-          ? _crossAxisAlignment
-          : _depthAxisAlignment;
-      final limit = constraints.maxAlong(axis);
-      final stretch =
-          alignment == CrossAxisAlignment3d.stretch && limit.isFinite;
-      result = result.withAxis(axis, min: stretch ? limit : 0.0, max: limit);
-    }
-    return result;
-  }
-
-  /// Opaque to hits across the whole window, spacing between items included,
-  /// so a drag that starts on a gap still scrolls the list. Items culled out
-  /// of the window are hidden, and [hitTestChild] skips hidden nodes, so what
-  /// is out of view is out of reach.
-  @override
-  bool hitTestSelf(Offset3d position) => true;
-
-  @override
-  double computeMinIntrinsicExtent(Axis3d axis, Size3d limits) =>
-      noIntrinsicExtent(this, axis);
-
-  @override
-  double computeMaxIntrinsicExtent(Axis3d axis, Size3d limits) =>
-      noIntrinsicExtent(this, axis);
-
-  @override
-  void performLayout() => runLayoutPass(_performListLayout);
-
-  void _performListLayout() {
-    final axis = _axis;
-    final (firstCross, secondCross) = axis.others;
-    final boundedMain = constraints.hasBoundedAlong(axis);
-    final windowExtent = boundedMain
-        ? constraints.maxAlong(axis)
-        : double.infinity;
-
-    var firstCrossExtent = 0.0;
-    var secondCrossExtent = 0.0;
-    void trackCross(Size3d childSize) {
-      firstCrossExtent = math.max(
-        firstCrossExtent,
-        childSize.alongAxis(firstCross),
-      );
-      secondCrossExtent = math.max(
-        secondCrossExtent,
-        childSize.alongAxis(secondCross),
-      );
-    }
-
-    // What an item is offered with the scroll axis free, which is both what a
-    // measured item gets and what the prototype is measured against.
-    final freeConstraints = _childConstraints(null);
-    final itemExtent = resolveItemExtent(freeConstraints, axis);
-    final childConstraints = itemExtent == null
-        ? freeConstraints
-        : _childConstraints(itemExtent);
-    final count = itemCount;
-
-    // 1. Work out where every item starts, building only what is needed.
-    double contentExtent;
-    var firstIndex = 0;
-    var lastIndex = count - 1;
-
-    if (itemExtent != null) {
-      final stride = itemExtent + _spacing;
-      contentExtent = count > 0 ? count * stride - _spacing : 0.0;
-      final mainSize = boundedMain ? windowExtent : contentExtent;
-      final offset = controller.offset.clamp(
-        0.0,
-        math.max(0.0, contentExtent - mainSize),
-      );
-      firstIndex = math.max(0, ((offset - _cacheExtent) / stride).floor());
-      lastIndex = math.min(
-        count - 1,
-        ((offset + mainSize + _cacheExtent) / stride).floor(),
-      );
-      if (_builder == null) {
-        for (final child in children) {
-          child.layout(childConstraints, parentUsesSize: true);
-          trackCross(child.size);
-        }
-      } else {
-        for (var index = firstIndex; index <= lastIndex; index++) {
-          trackCross(obtainChild(index, childConstraints).size);
-        }
-        releaseOutside(firstIndex, lastIndex);
-      }
-    } else if (_builder == null) {
-      resetMeasurements();
-      for (final child in children) {
-        child.layout(childConstraints, parentUsesSize: true);
-        trackCross(child.size);
-        recordMeasurement(child.size.alongAxis(axis));
-      }
-      contentExtent = contentExtentOf(count);
-    } else {
-      // Measured lazily: walk forward until the window is covered, keeping
-      // the running prefix so scrolling back needs no re-measuring.
-      final probeEnd = controller.offset + windowExtent + _cacheExtent;
-      var measuredHere = 0;
-      while (measuredCount < count &&
-          (!probeEnd.isFinite || measuredEnd <= probeEnd)) {
-        final child = obtainChild(measuredCount, childConstraints);
-        trackCross(child.size);
-        recordMeasurement(child.size.alongAxis(axis));
-        measuredHere++;
-      }
-      assert(
-        debugMeasuringPassWasSane(measuredHere, boundedWindow: boundedMain),
-      );
-      contentExtent = estimatedContentExtent(count);
-      final mainSize = boundedMain ? windowExtent : contentExtent;
-      final offset = controller.offset.clamp(
-        0.0,
-        math.max(0.0, contentExtent - mainSize),
-      );
-      firstIndex = indexAtOffset(offset - _cacheExtent);
-      lastIndex = lastIndexBefore(offset + mainSize + _cacheExtent);
-      for (var index = firstIndex; index <= lastIndex; index++) {
-        trackCross(obtainChild(index, childConstraints).size);
-      }
-      releaseOutside(firstIndex, lastIndex);
-    }
-
-    // 2. Size the list, then report the metrics and read the clamped offset.
-    final mainSize = boundedMain ? windowExtent : contentExtent;
-    size = constraints.constrain(
-      Size3d.zero
-          .withAxis(axis, mainSize)
-          .withAxis(
-            firstCross,
-            constraints.hasBoundedAlong(firstCross)
-                ? constraints.maxAlong(firstCross)
-                : firstCrossExtent,
-          )
-          .withAxis(
-            secondCross,
-            constraints.hasBoundedAlong(secondCross)
-                ? constraints.maxAlong(secondCross)
-                : secondCrossExtent,
-          ),
-    );
-    final actualMain = size.alongAxis(axis);
-    controller.applyViewportMetrics(
-      maxScrollExtent: math.max(0.0, contentExtent - actualMain),
-      viewportExtent: actualMain,
-      contentExtent: contentExtent,
-    );
-    final scrollOffset = controller.offset;
-
-    // 3. Place what is built, and hide what an explicit list keeps around.
-    final actualFirstCross = size.alongAxis(firstCross);
-    final actualSecondCross = size.alongAxis(secondCross);
-    final windowStart = scrollOffset - _cacheExtent;
-    final windowEnd = scrollOffset + actualMain + _cacheExtent;
-
-    for (final entry in positionedChildren()) {
-      final (index, child) = entry;
-      final start = offsetOfIndex(index, itemExtent);
-      final childSize = child.size;
-      final extent = itemExtent ?? childSize.alongAxis(axis);
-      child.place(
-        Offset3d.zero
-            .withAxis(axis, start - scrollOffset)
-            .withAxis(
-              firstCross,
-              scrollCrossOffset(
-                _crossAxisAlignment,
-                actualFirstCross,
-                childSize.alongAxis(firstCross),
-              ),
-            )
-            .withAxis(
-              secondCross,
-              scrollCrossOffset(
-                _depthAxisAlignment,
-                actualSecondCross,
-                childSize.alongAxis(secondCross),
-              ),
-            ),
-      );
-      child.node.visible = start + extent > windowStart && start < windowEnd;
-    }
-  }
+  set depthAxisAlignment(CrossAxisAlignment3d value) =>
+      sliver.depthAxisAlignment = value;
 }

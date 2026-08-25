@@ -16,6 +16,7 @@ import '../geometry/constraints3d.dart';
 import '../geometry/edge_insets3d.dart';
 import '../geometry/offset3d.dart';
 import '../geometry/size3d.dart';
+import '../scroll/grid_delegate.dart';
 import '../scroll/grid_view.dart';
 import '../scroll/list_view.dart';
 import '../scroll/scroll_controller.dart';

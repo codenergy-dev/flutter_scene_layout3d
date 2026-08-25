@@ -45,7 +45,7 @@ export 'src/geometry/size3d.dart' show Size3d;
 export 'src/hit_test.dart' show HitTestEntry3d, HitTestResult3d, Ray3d;
 export 'src/input/pointer.dart' show Layout3dPointer;
 export 'src/layout3d.dart' show Layout3d;
-export 'src/scroll/grid_view.dart'
+export 'src/scroll/grid_delegate.dart'
     show
         Grid3dDelegate,
         Grid3dDelegateWithFixedCrossAxisCount,

@@ -28,7 +28,9 @@
 ///    the boxes that use it.
 ///  * [CustomScrollView3d] and the slivers ([SliverList3d], [SliverGrid3d],
 ///    [SliverToBoxAdapter3d]), a second protocol for sections that share one
-///    scroll position.
+///    scroll position. [ListView3d] and [GridView3d] are built on it, each a
+///    viewport over a single sliver, the way Flutter's are; [BoxScrollView3d]
+///    is that shape.
 ///  * [Layout3dBuiltChildrenMixin] and [Layout3dMeasuredChildrenMixin], the
 ///    bookkeeping every view built from an [Layout3dItemBuilder] needs, for
 ///    writing one of your own, with [Layout3dLayoutPassMixin] and
@@ -94,20 +96,21 @@ export 'src/layout3d.dart'
         ProxyLayout3d,
         SingleChildLayout3d;
 export 'src/layout_pass.dart' show Layout3dLayoutPassMixin;
-export 'src/scroll/grid_view.dart'
+export 'src/scroll/box_scroll_view.dart' show BoxScrollView3d;
+export 'src/scroll/grid_delegate.dart'
     show
         Grid3dDelegate,
         Grid3dDelegateWithFixedCrossAxisCount,
         Grid3dDelegateWithMaxCrossAxisExtent,
-        Grid3dItemBuilder,
-        Grid3dLayout,
-        GridView3d;
+        Grid3dLayout;
+export 'src/scroll/grid_view.dart' show Grid3dItemBuilder, GridView3d;
 export 'src/scroll/list_view.dart' show ListView3d;
 export 'src/scroll/scroll_controller.dart' show Scroll3dController;
 export 'src/scroll/scrollable.dart'
     show Scroll3dHolderMixin, Scrollable3d, noIntrinsicExtent;
 export 'src/sliver/custom_scroll_view.dart' show CustomScrollView3d;
-export 'src/sliver/sliver.dart' show Sliver3d, SliverToBoxAdapter3d;
+export 'src/sliver/sliver.dart'
+    show Sliver3d, SliverMultiBoxAdaptor3d, SliverToBoxAdapter3d;
 export 'src/sliver/sliver_constraints.dart'
     show SliverConstraints3d, SliverGeometry3d;
 export 'src/sliver/sliver_grid.dart' show SliverGrid3d;

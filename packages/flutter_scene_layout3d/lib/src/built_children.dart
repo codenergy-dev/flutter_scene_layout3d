@@ -27,6 +27,29 @@ double scrollCrossOffset(
   CrossAxisAlignment3d.center => (extent - childExtent) / 2.0,
 };
 
+/// Why a built view refuses a child list edit from outside.
+///
+/// A built view tracks its children by index, and everything it does —
+/// measuring, placing, culling, releasing — goes through that map. A child
+/// inserted from outside is in the child list but not in the map, so it is
+/// never laid out (the first read of its size trips the "has not been laid
+/// out yet" assert) and never released.
+///
+/// Written once because two layouts refuse the same edit: the view that keeps
+/// the map, and a `BoxScrollView3d` that forwards its child list to one. The
+/// wrapper has to say so in its own name — a caller who wrote
+/// `ListView3d.builder` is not helped by a message about the sliver inside it
+/// — so it asserts before forwarding, with this.
+String builtChildEditRefused({
+  required Object view,
+  required String method,
+  required String itemNoun,
+}) =>
+    'Cannot call $method on a ${view.runtimeType}.builder. Its $itemNoun come '
+    'from itemBuilder and are tracked by index; a child added from outside is '
+    'never laid out and never released. Set itemCount, or call refresh() '
+    'when the data behind the builder changed.';
+
 /// A child list that may be built on demand, for the views that hold one.
 ///
 /// `ListView3d`, `GridView3d`, `SliverList3d` and `SliverGrid3d` all offer the
@@ -100,19 +123,10 @@ mixin Layout3dBuiltChildrenMixin<ParentDataType extends ParentData3d>
 
   /// Refuses a child list edit from outside, which the bookkeeping would not
   /// survive.
-  ///
-  /// A built view tracks its children by index, and everything it does —
-  /// measuring, placing, culling, releasing — goes through that map. A child
-  /// inserted from outside is in the child list but not in the map, so it is
-  /// never laid out (the first read of its size trips the "has not been laid
-  /// out yet" assert) and never released.
   void _assertNotBuilt(String method) {
     assert(
       itemBuilder == null,
-      'Cannot call $method on a $runtimeType.builder. Its $itemNoun come from '
-      'itemBuilder and are tracked by index; a child added from outside is '
-      'never laid out and never released. Set itemCount, or call refresh() '
-      'when the data behind the builder changed.',
+      builtChildEditRefused(view: this, method: method, itemNoun: itemNoun),
     );
   }
 

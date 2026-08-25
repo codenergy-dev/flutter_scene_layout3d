@@ -105,11 +105,22 @@ void main() {
       expect(items[2].offset.y, 0);
     });
 
-    test('a cache extent keeps neighbours alive', () {
-      final items = List.generate(5, (_) => TestBox(const Size3d(2, 2, 2)));
-      laidOut(ListView3d(cacheExtent: 2, children: items), constraints: window);
-      expect(items[2].node.visible, isTrue);
-      expect(items[3].node.visible, isFalse);
+    test('a cache extent builds past the window without showing it', () {
+      // The cache decides what is built and kept alive, not what is drawn:
+      // an item inside it is ready for the scroll that reaches it, and hidden
+      // until then. Items 0 and 1 fill the window of 4; item 3 ends at 8 and
+      // is built only because the cache reaches it.
+      final list = ListView3d.builder(
+        itemCount: 10,
+        itemExtent: 2,
+        cacheExtent: 2,
+        itemBuilder: (index) => TestBox(const Size3d(2, 2, 2)),
+      );
+      laidOut(list, constraints: window);
+
+      expect(list.activeIndices, containsAll(<int>[0, 1, 2, 3]));
+      expect(list.children[1].node.visible, isTrue);
+      expect(list.children[3].node.visible, isFalse);
     });
 
     test('spacing separates the items', () {
@@ -119,6 +130,23 @@ void main() {
       expect(items[1].offset.y, 3);
       // Three items of two, two gaps of one.
       expect(list.controller.contentExtent, 8);
+    });
+
+    test('shrink-wraps when the scroll axis has no edge', () {
+      // A list with no window to fill is as long as its items, and has
+      // nothing left to scroll. The cross axes still need an edge: that is
+      // what an item is given to span, as in Flutter.
+      final items = List.generate(3, (_) => TestBox(const Size3d(2, 2, 2)));
+      final list = ListView3d(children: items);
+      laidOut(
+        list,
+        constraints: const Constraints3d.tightFor(width: 10, depth: 10),
+      );
+
+      expect(list.size.height, 6);
+      expect(list.controller.maxScrollExtent, 0);
+      expect(items[2].offset.y, 4);
+      expect(items[2].node.visible, isTrue);
     });
 
     test('scrolls horizontally when asked', () {
@@ -136,6 +164,48 @@ void main() {
       list.controller.jumpTo(2);
       surface.flush();
       expect(items[1].offset.x, 0);
+    });
+  });
+
+  // What the class is underneath: a viewport over one sliver, the shape
+  // Flutter's ListView has. None of it changes what a caller sees.
+  group('ListView3d is a viewport over one SliverList3d', () {
+    test('holds the sliver, and answers children with the items in it', () {
+      final items = List.generate(3, (_) => TestBox(const Size3d(2, 2, 2)));
+      final list = ListView3d(children: items);
+      laidOut(list, constraints: window);
+
+      // The child list a caller reads is the items, not the sliver.
+      expect(list.children, items);
+      expect(list.childCount, 3);
+      expect(list.childAt(1), same(items[1]));
+      // The child it holds and lays out is the sliver, and the items are the
+      // sliver's, both in the layout tree and in the scene graph.
+      expect(list.sliver.children, items);
+      expect(items[0].parent, same(list.sliver));
+      expect(list.node.children, <Object>[list.sliver.node]);
+      // And the sections are the view's own: replacing them would put
+      // slivers inside the list of items.
+      expect(list.slivers, <Object>[list.sliver]);
+      expect(
+        () => list.syncSlivers(<Sliver3d>[SliverList3d()]),
+        throwsAssertionError,
+      );
+    });
+
+    test('is the Scrollable3d a hit finds, and the sliver is not', () {
+      final item = TestBox(const Size3d(2, 2, 2), pointable: true);
+      final list = ListView3d(children: [item]);
+      final surface = laidOut(list, constraints: window);
+
+      final hit = surface.hitTestAt(const Offset3d(5, 1, 5));
+
+      expect(hit.target, same(item));
+      // The drag handlers reach for this, and the answer has to stay the
+      // list: the sliver in between holds no scroll position.
+      expect(hit.firstOf<Scrollable3d>(), same(list));
+      expect(list.sliver, isNot(isA<Scrollable3d>()));
+      expect(hit.path.map((entry) => entry.layout), contains(list.sliver));
     });
   });
 

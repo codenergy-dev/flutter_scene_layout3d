@@ -2,9 +2,11 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show protected;
 
+import '../built_children.dart';
 import '../geometry/offset3d.dart';
 import '../geometry/size3d.dart';
 import '../layout3d.dart';
+import '../layout_pass.dart';
 import 'sliver_constraints.dart';
 
 /// A layout that answers the sliver protocol rather than the box one, the 3D
@@ -133,4 +135,23 @@ class SliverToBoxAdapter3d extends Sliver3d with Layout3dWithChildMixin {
     child.place(Offset3d.along(constraints.axis, -constraints.scrollOffset));
     child.node.visible = geometry.visible;
   }
+}
+
+/// A sliver holding a list of children it may build on demand, the 3D
+/// analogue of [RenderSliverMultiBoxAdaptor].
+///
+/// What [SliverList3d] and [SliverGrid3d] have in common, which is everything
+/// except where a child goes: the child list, the index-keyed bookkeeping of
+/// a builder, and a layout pass that ignores the dirt it raises by building.
+///
+/// It is also the sliver a [BoxScrollView3d] puts in its window, and the
+/// reason that class can forward a child list to whichever of the two it
+/// holds.
+abstract class SliverMultiBoxAdaptor3d extends Sliver3d
+    with
+        Layout3dWithChildrenMixin<ParentData3d>,
+        Layout3dLayoutPassMixin,
+        Layout3dBuiltChildrenMixin<ParentData3d> {
+  /// Creates a sliver over a child list.
+  SliverMultiBoxAdaptor3d({super.name});
 }

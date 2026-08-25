@@ -903,6 +903,19 @@ mixin Layout3dWithChildrenMixin<ParentDataType extends ParentData3d>
   /// The children, in layout order.
   List<Layout3d> get children => List<Layout3d>.unmodifiable(_children);
 
+  /// The children this layout actually holds, for its own [performLayout].
+  ///
+  /// The same list [children] answers with, everywhere except a layout that
+  /// forwards its public child list somewhere else: a `BoxScrollView3d`
+  /// answers [children] with the items inside its one sliver, because that is
+  /// what a caller means by the children of a list, while the child it holds
+  /// and lays out is the sliver. Layout code reads this; callers read
+  /// [children].
+  ///
+  /// Live, not a copy: do not edit it while walking it.
+  @protected
+  List<Layout3d> get heldChildren => _children;
+
   /// How many children this layout has.
   int get childCount => _children.length;
 

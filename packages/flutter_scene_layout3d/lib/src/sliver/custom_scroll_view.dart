@@ -29,8 +29,13 @@ import 'sliver_constraints.dart';
 /// )
 /// ```
 ///
-/// The window must be bounded along the scroll axis and across it: a viewport
-/// with no edges has no window to fill.
+/// It is also what [ListView3d] and [GridView3d] are underneath, each over a
+/// single sliver; see [BoxScrollView3d].
+///
+/// The window must be bounded across the scroll axis, which is what the
+/// slivers are given to span. Along the scroll axis it need not be: with no
+/// edge to fill, the view shrink-wraps to however long its slivers came out,
+/// the way Flutter's `ShrinkWrappingViewport` does.
 class CustomScrollView3d extends MultiChildLayout3d<ParentData3d>
     with Layout3dLayoutPassMixin, Scroll3dHolderMixin {
   /// Creates a viewport over [slivers].
@@ -89,7 +94,7 @@ class CustomScrollView3d extends MultiChildLayout3d<ParentData3d>
   void setupParentData(Layout3d child) {
     assert(
       child is Sliver3d,
-      'CustomScrollView3d takes slivers, but was given a '
+      '$runtimeType takes slivers, but was given a '
       '${child.runtimeType}. Wrap an ordinary box in a SliverToBoxAdapter3d '
       '(SceneSliverToBoxAdapter3d in the declarative layer) to give it its '
       'turn in the viewport.',
@@ -99,7 +104,7 @@ class CustomScrollView3d extends MultiChildLayout3d<ParentData3d>
 
   /// The slivers in this viewport, in scroll order.
   List<Sliver3d> get slivers =>
-      List<Sliver3d>.unmodifiable(children.cast<Sliver3d>());
+      List<Sliver3d>.unmodifiable(heldChildren.cast<Sliver3d>());
 
   /// Replaces the sliver list, adopting what is new and dropping what is gone.
   void syncSlivers(List<Sliver3d> slivers) => syncChildren(slivers);
@@ -124,41 +129,45 @@ class CustomScrollView3d extends MultiChildLayout3d<ParentData3d>
     final axis = _axis;
     final (crossAxis, depthAxis) = axis.others;
     assert(
-      constraints.hasBoundedAlong(axis),
-      'CustomScrollView3d needs a bounded extent along $axis: a window with '
-      'no edge has nothing for its slivers to fill.',
-    );
-    assert(
       constraints.hasBoundedAlong(crossAxis),
-      'CustomScrollView3d needs a bounded extent along $crossAxis, which is '
-      'what it gives its slivers to span.',
+      '$runtimeType needs a bounded extent along $crossAxis, which is what it '
+      'gives its slivers to span.',
     );
-    final mainExtent = constraints.hasBoundedAlong(axis)
-        ? constraints.maxAlong(axis)
-        : 0.0;
+    // With no edge along the scroll axis there is no window to fill, so the
+    // view shrink-wraps instead: the slivers are offered an endless one and
+    // the view comes out as long as they filled, which is what Flutter's
+    // `ShrinkWrappingViewport` does for a `shrinkWrap: true` scroll view.
+    final bounded = constraints.hasBoundedAlong(axis);
+    final windowExtent = bounded ? constraints.maxAlong(axis) : double.infinity;
     final crossExtent = constraints.hasBoundedAlong(crossAxis)
         ? constraints.maxAlong(crossAxis)
         : 0.0;
     final depthExtent = constraints.maxAlong(depthAxis);
 
-    size = constraints.constrain(
+    Size3d sizeFor(double mainExtent) => constraints.constrain(
       Size3d.zero
           .withAxis(axis, mainExtent)
           .withAxis(crossAxis, crossExtent)
           .withAxis(depthAxis, depthExtent.isFinite ? depthExtent : 0.0),
     );
 
+    // A size to fall back on, so that a view whose slivers never settle is
+    // still a laid-out view. The pass below replaces it.
+    size = sizeFor(bounded ? windowExtent : 0.0);
+
     var cycles = 0;
     while (true) {
       final total = _layoutSliverSequence(
         scrollOffset: controller.offset,
-        mainExtent: mainExtent,
+        mainExtent: windowExtent,
         crossExtent: crossExtent,
         depthExtent: depthExtent,
       );
       if (total.correction != null) {
         controller.correctBy(total.correction!);
       } else {
+        size = sizeFor(bounded ? windowExtent : total.scrollExtent);
+        final mainExtent = size.alongAxis(axis);
         final before = controller.offset;
         controller.applyViewportMetrics(
           maxScrollExtent: math.max(0.0, total.scrollExtent - mainExtent),
@@ -172,7 +181,7 @@ class CustomScrollView3d extends MultiChildLayout3d<ParentData3d>
       cycles++;
       assert(
         cycles < _maxLayoutCycles,
-        'CustomScrollView3d gave up after $_maxLayoutCycles layout passes: a '
+        '$runtimeType gave up after $_maxLayoutCycles layout passes: a '
         'sliver keeps asking to move the scroll offset. A sliver that '
         'reports a scrollOffsetCorrection must settle once the viewport has '
         'applied it.',
@@ -201,7 +210,7 @@ class CustomScrollView3d extends MultiChildLayout3d<ParentData3d>
         2 * _cacheExtent -
         math.max(0.0, _cacheExtent - scrollOffset);
 
-    for (final child in children) {
+    for (final child in heldChildren) {
       final sliver = child as Sliver3d;
       final sliverScrollOffset = math.max(0.0, remainingScroll);
       final correctedCacheOrigin = math.max(cacheOrigin, -sliverScrollOffset);
