@@ -127,6 +127,9 @@ measurement is responsible.
 | `Wrap3d` | `Wrap` |
 | `Viewport3d`, `ListView3d`, `GridView3d`, `Scroll3dController` | `SingleChildScrollView`, `ListView`, `GridView`, `ScrollController` |
 | `Grid3dDelegate`, `Grid3dLayout` | `SliverGridDelegate`, `SliverGridLayout` |
+| `CustomScrollView3d`, `Sliver3d` | `CustomScrollView` + `Viewport`, `RenderSliver` |
+| `SliverList3d`, `SliverGrid3d`, `SliverToBoxAdapter3d` | `SliverList`, `SliverGrid`, `SliverToBoxAdapter` |
+| `SliverConstraints3d`, `SliverGeometry3d` | `SliverConstraints`, `SliverGeometry` |
 | `IgnorePointer3d`, `AbsorbPointer3d` | `IgnorePointer`, `AbsorbPointer` |
 | `Ray3d`, `HitTestResult3d`, `Layout3dPointer` | `hitTest`, `BoxHitTestResult`, `Listener` |
 | `NodeBox3d` | the leaf that holds content |
@@ -227,6 +230,46 @@ clamps it to what the content allows, and `Layout3dPointer` drives it from a
 drag; anything else (a thumbstick, a wheel, an animation) drives
 `Scroll3dController.offset` directly.
 
+## Slivers
+
+The box protocol cannot answer the question a long list asks. A box is handed
+a size and gives one back; that is the wrong shape for "there are ten thousand
+of these and you can see nine". So there is a second protocol, the same one
+Flutter reaches for: a **sliver** is handed a *window* — how far it has already
+scrolled past, how much of the viewport is still unfilled — and reports what it
+filled.
+
+```dart
+CustomScrollView3d(
+  controller: scroll,
+  slivers: [
+    SliverToBoxAdapter3d(child: NodeBox3d(content: title)),
+    SliverGrid3d(gridDelegate: threeAcross, children: thumbnails),
+    SliverList3d.builder(itemCount: 5000, itemExtent: 0.4, itemBuilder: row),
+  ],
+)
+```
+
+What this buys over `ListView3d` and `GridView3d` is the thing neither can do:
+**several sections on one scroll position**. A header, a grid and a list scroll
+together as one surface, each asked only about the part of the window it can
+see. `SliverToBoxAdapter3d` is the glue — everything else in this package is a
+box, and that is how a box takes its turn.
+
+`SliverConstraints3d` and `SliverGeometry3d` are the two halves. The names keep
+Flutter's spelling, `paintExtent` included, even though nothing here paints:
+the quantity is the same one, and porting sliver code is easier when the words
+match. Read "paint" as "the part of the window the viewer can see".
+
+A sliver is still a `Layout3d`. It owns a scene node, it is placed by the
+viewport, and it is hit-tested like anything else; its box is the part of it
+the viewer can actually see, derived from the geometry it reported. Writing one
+means extending `Sliver3d` and setting `geometry` in `performSliverLayout`,
+where `constraints.paintPortion` and `constraints.cachePortion` do the
+arithmetic. `scrollOffsetCorrection` is honoured: a sliver that discovers
+mid-layout that the content is not where the offset assumed can move the
+viewport and have the pass run again.
+
 ## Pointing at it
 
 Hit testing is the other half of the protocol, and it is where three
@@ -304,6 +347,12 @@ animation.
   aligns children rather than wrapping them.
 * **`GridView3d` is exactly lazy**, because a grid's cell positions are
   arithmetic. It needs no slivers to know how long it is.
+* **A sliver has no growth direction and no centre child.** Slivers run one
+  way from the start of the viewport; there is no reverse list and no
+  `center` key yet.
+* **No pinned or floating headers**, so `SliverConstraints3d` carries no
+  `overlap` and `SliverGeometry3d` no `paintOrigin`. They are the fields those
+  headers need, and they can arrive with them.
 * **Hit testing walks with a ray, not a point**, so an entry reports where
   the ray *entered* the box, and a box bounds the stretch of ray its children
   can be found in.
@@ -358,13 +407,15 @@ builder. What is left in this direction is the rest of Flutter's catalogue
 (`Table`, `Flow`, aspect-ratio and fractionally-sized boxes), which is
 breadth rather than new machinery.
 
-**3. Slivers.** A genuine `Viewport3d` protocol with `SliverConstraints3d` and
-`SliverGeometry3d`, then `SliverList3d` and `SliverGrid3d` on top of it, and
-only then lazy building in the declarative layer, which needs a
-`RenderObjectElement` of its own and a build scope to create children during
-layout. The largest piece, and the one that gains the most from the rest being
-settled first. What it buys over what is here now is several scrolling
-sections sharing one scroll position, which the current views cannot do.
+**3. Slivers.** ~~Mostly done~~: `CustomScrollView3d` drives the protocol,
+with `SliverList3d`, `SliverGrid3d` and `SliverToBoxAdapter3d` on top of it and
+`scrollOffsetCorrection` honoured. See *Slivers* above. Two pieces are left.
+Pinned and floating headers need `overlap` and `paintOrigin` threaded through
+the protocol, which is what a `SliverAppBar3d` would be built on. And building
+**widgets** lazily still has no answer: `SliverList3d.builder` is lazy on the
+imperative side, but the declarative layer builds every child widget up front,
+because doing better needs a `RenderObjectElement` of its own and a build scope
+to create children during layout.
 
 **4. Intrinsic sizing.** `IntrinsicWidth3d`, `IntrinsicHeight3d`, and baseline
 alignment. Last, because it is where layout cost multiplies and because its

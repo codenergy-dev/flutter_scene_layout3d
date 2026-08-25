@@ -23,6 +23,9 @@
 ///    [ConstrainedBox3d], [Transform3d], [Row3d], [Column3d], [Depth3d],
 ///    [Stack3d], [Positioned3d], [Wrap3d], [Viewport3d], [ListView3d],
 ///    [GridView3d], the layouts.
+///  * [CustomScrollView3d] and the slivers ([SliverList3d], [SliverGrid3d],
+///    [SliverToBoxAdapter3d]), a second protocol for sections that share one
+///    scroll position.
 ///
 /// The declarative widget layer, which describes the same tree from a Flutter
 /// `build` method, is in `package:flutter_scene_layout3d/widgets.dart`.
@@ -60,6 +63,8 @@ export 'src/input/pointer.dart' show Layout3dPointer;
 export 'src/layout3d.dart'
     show
         Layout3d,
+        Layout3dWithChildMixin,
+        Layout3dWithChildrenMixin,
         Layout3dOwner,
         MultiChildLayout3d,
         ParentData3d,
@@ -76,5 +81,11 @@ export 'src/scroll/grid_view.dart'
 export 'src/scroll/list_view.dart' show Layout3dItemBuilder, ListView3d;
 export 'src/scroll/scroll_controller.dart' show Scroll3dController;
 export 'src/scroll/scrollable.dart' show Scrollable3d;
+export 'src/sliver/custom_scroll_view.dart' show CustomScrollView3d;
+export 'src/sliver/sliver.dart' show Sliver3d, SliverToBoxAdapter3d;
+export 'src/sliver/sliver_constraints.dart'
+    show SliverConstraints3d, SliverGeometry3d;
+export 'src/sliver/sliver_grid.dart' show SliverGrid3d;
+export 'src/sliver/sliver_list.dart' show Sliver3dItemBuilder, SliverList3d;
 export 'src/scroll/viewport.dart' show Viewport3d;
 export 'src/surface.dart' show Layout3dSurface;

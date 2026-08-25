@@ -428,6 +428,7 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
     _controller.applyViewportMetrics(
       maxScrollExtent: math.max(0.0, contentExtent - actualMain),
       viewportExtent: actualMain,
+      contentExtent: contentExtent,
     );
     final scrollOffset = _controller.offset;
 

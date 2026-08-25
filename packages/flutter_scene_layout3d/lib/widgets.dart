@@ -53,6 +53,9 @@ export 'src/scroll/grid_view.dart'
         Grid3dLayout;
 export 'src/scroll/scroll_controller.dart' show Scroll3dController;
 export 'src/scroll/scrollable.dart' show Scrollable3d;
+export 'src/sliver/sliver.dart' show Sliver3d;
+export 'src/sliver/sliver_constraints.dart'
+    show SliverConstraints3d, SliverGeometry3d;
 export 'src/surface.dart' show Layout3dSurface;
 export 'src/widgets/framework.dart'
     show Layout3dWidget, SingleChildLayout3dWidget;
@@ -63,6 +66,7 @@ export 'src/widgets/layouts.dart'
         SceneCenter3d,
         SceneColumn3d,
         SceneConstrainedBox3d,
+        SceneCustomScrollView3d,
         SceneContainer3d,
         SceneDepth3d,
         SceneExpanded3d,
@@ -76,6 +80,9 @@ export 'src/widgets/layouts.dart'
         ScenePositioned3d,
         SceneRow3d,
         SceneSizedBox3d,
+        SceneSliverGrid3d,
+        SceneSliverList3d,
+        SceneSliverToBoxAdapter3d,
         SceneSpacer3d,
         SceneStack3d,
         SceneTransform3d,

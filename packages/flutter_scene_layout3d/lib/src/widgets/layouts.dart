@@ -1,4 +1,4 @@
-import 'package:flutter/widgets.dart' show BuildContext;
+import 'package:flutter/widgets.dart' show BuildContext, Widget;
 import 'package:flutter_scene/scene.dart' show Node;
 import 'package:vector_math/vector_math.dart' show Matrix4;
 
@@ -19,6 +19,10 @@ import '../scroll/grid_view.dart';
 import '../scroll/list_view.dart';
 import '../scroll/scroll_controller.dart';
 import '../scroll/viewport.dart';
+import '../sliver/custom_scroll_view.dart';
+import '../sliver/sliver.dart';
+import '../sliver/sliver_grid.dart';
+import '../sliver/sliver_list.dart';
 import 'framework.dart';
 
 /// Puts engine content into a declarative layout, the widget form of
@@ -805,5 +809,133 @@ class SceneGridView3d extends Layout3dWidget {
       ..cacheExtent = cacheExtent;
     final controller = this.controller;
     if (controller != null) layout.controller = controller;
+  }
+}
+
+/// A window over a sequence of slivers, the widget form of
+/// [CustomScrollView3d].
+///
+/// The children must be slivers ([SceneSliverList3d], [SceneSliverGrid3d],
+/// [SceneSliverToBoxAdapter3d]); ordinary boxes go in an adapter.
+class SceneCustomScrollView3d extends Layout3dWidget {
+  /// Creates a viewport over slivers.
+  const SceneCustomScrollView3d({
+    super.key,
+    this.scrollDirection = Axis3d.vertical,
+    this.controller,
+    this.cacheExtent = 0.0,
+    List<Widget> slivers = const <Widget>[],
+  }) : super(children: slivers);
+
+  /// The axis the viewport scrolls along.
+  final Axis3d scrollDirection;
+
+  /// The scroll position shared by every sliver. One is created and owned
+  /// when this is null.
+  final Scroll3dController? controller;
+
+  /// How far beyond the window slivers stay alive.
+  final double cacheExtent;
+
+  @override
+  CustomScrollView3d createLayout(BuildContext context) => CustomScrollView3d(
+    scrollDirection: scrollDirection,
+    controller: controller,
+    cacheExtent: cacheExtent,
+  );
+
+  @override
+  void updateLayout(BuildContext context, CustomScrollView3d layout) {
+    layout
+      ..scrollDirection = scrollDirection
+      ..cacheExtent = cacheExtent;
+    final controller = this.controller;
+    if (controller != null) layout.controller = controller;
+  }
+}
+
+/// Puts one box in a sliver world, the widget form of
+/// [SliverToBoxAdapter3d].
+class SceneSliverToBoxAdapter3d extends SingleChildLayout3dWidget {
+  /// Creates an adapter around [child].
+  SceneSliverToBoxAdapter3d({super.key, super.child});
+
+  @override
+  SliverToBoxAdapter3d createLayout(BuildContext context) =>
+      SliverToBoxAdapter3d();
+
+  @override
+  void updateLayout(BuildContext context, SliverToBoxAdapter3d layout) {}
+}
+
+/// A run of items in a sliver world, the widget form of [SliverList3d].
+class SceneSliverList3d extends Layout3dWidget {
+  /// Creates a sliver list.
+  const SceneSliverList3d({
+    super.key,
+    this.spacing = 0.0,
+    this.itemExtent,
+    this.crossAxisAlignment = CrossAxisAlignment3d.center,
+    this.depthAxisAlignment = CrossAxisAlignment3d.center,
+    super.children,
+  });
+
+  /// The gap between adjacent items.
+  final double spacing;
+
+  /// A fixed extent for every item along the scroll axis.
+  final double? itemExtent;
+
+  /// How items are positioned on the first cross axis.
+  final CrossAxisAlignment3d crossAxisAlignment;
+
+  /// How items are positioned on the second cross axis.
+  final CrossAxisAlignment3d depthAxisAlignment;
+
+  @override
+  SliverList3d createLayout(BuildContext context) => SliverList3d(
+    spacing: spacing,
+    itemExtent: itemExtent,
+    crossAxisAlignment: crossAxisAlignment,
+    depthAxisAlignment: depthAxisAlignment,
+  );
+
+  @override
+  void updateLayout(BuildContext context, SliverList3d layout) {
+    layout
+      ..spacing = spacing
+      ..itemExtent = itemExtent
+      ..crossAxisAlignment = crossAxisAlignment
+      ..depthAxisAlignment = depthAxisAlignment;
+  }
+}
+
+/// A grid of cells in a sliver world, the widget form of [SliverGrid3d].
+class SceneSliverGrid3d extends Layout3dWidget {
+  /// Creates a sliver grid.
+  const SceneSliverGrid3d({
+    super.key,
+    required this.gridDelegate,
+    this.depthAxisAlignment = CrossAxisAlignment3d.center,
+    super.children,
+  });
+
+  /// Decides the cell grid from the room across the scroll axis.
+  final Grid3dDelegate gridDelegate;
+
+  /// How a cell's child sits on the depth axis.
+  final CrossAxisAlignment3d depthAxisAlignment;
+
+  @override
+  SliverGrid3d createLayout(BuildContext context) => SliverGrid3d(
+    gridDelegate: gridDelegate,
+    depthAxisAlignment: depthAxisAlignment,
+  );
+
+  @override
+  void updateLayout(BuildContext context, SliverGrid3d layout) {
+    layout
+      ..gridDelegate = gridDelegate
+      ..depthAxisAlignment = depthAxisAlignment;
   }
 }

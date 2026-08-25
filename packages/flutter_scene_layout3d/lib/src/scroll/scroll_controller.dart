@@ -40,8 +40,14 @@ class Scroll3dController extends ChangeNotifier {
   /// The extent of the scrolling window along its axis, set by the view.
   double get viewportExtent => _viewportExtent;
 
+  double _contentExtent = 0.0;
+
   /// The extent of the content along the view's axis.
-  double get contentExtent => _maxScrollExtent + _viewportExtent;
+  ///
+  /// Reported by the view, because the scroll range alone cannot tell:
+  /// content shorter than the window has nowhere to scroll, so
+  /// [maxScrollExtent] is zero either way.
+  double get contentExtent => _contentExtent;
 
   /// Whether the content is longer than the window.
   bool get canScroll => _maxScrollExtent > 0.0;
@@ -52,6 +58,18 @@ class Scroll3dController extends ChangeNotifier {
   /// Moves by [delta], clamped to the scrollable range.
   void jumpBy(double delta) => offset = _offset + delta;
 
+  /// Shifts the position by [correction] without clamping and without
+  /// notifying, the 3D analogue of [ScrollPosition.correctBy].
+  ///
+  /// For a viewport applying a [SliverGeometry3d.scrollOffsetCorrection] in
+  /// the middle of its own layout: a sliver has discovered that the content
+  /// is not where this offset assumed, and the layout is about to be redone
+  /// from the corrected position. Nobody is told, because nothing has moved
+  /// as far as the outside world is concerned.
+  void correctBy(double correction) {
+    _offset += correction;
+  }
+
   /// Records the metrics measured during layout, clamping [offset] into the
   /// new range.
   ///
@@ -60,12 +78,14 @@ class Scroll3dController extends ChangeNotifier {
   void applyViewportMetrics({
     required double maxScrollExtent,
     required double viewportExtent,
+    double? contentExtent,
   }) {
     final clampedMax = math.max(0.0, maxScrollExtent);
     final clampedOffset = _offset.clamp(0.0, clampedMax);
     final offsetChanged = clampedOffset != _offset;
     _maxScrollExtent = clampedMax;
     _viewportExtent = viewportExtent;
+    _contentExtent = contentExtent ?? clampedMax + viewportExtent;
     _offset = clampedOffset;
     // Only a moved position is worth waking listeners for; the metrics
     // themselves are recorded silently, because this runs during layout.

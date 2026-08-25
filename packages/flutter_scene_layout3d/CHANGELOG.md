@@ -1,3 +1,27 @@
+## 0.4.0
+
+- The sliver protocol: `SliverConstraints3d` and `SliverGeometry3d`, and
+  `Sliver3d`, a layout that answers a window rather than a size. The box
+  protocol is the wrong shape for "there are ten thousand of these and you can
+  see nine"; this is the one Flutter reaches for, ported.
+- `CustomScrollView3d`, a viewport that puts several sections on one scroll
+  position and gives each only the part of the window it can see. It honours
+  `SliverGeometry3d.scrollOffsetCorrection`, so a sliver that finds its content
+  elsewhere mid-layout can move the offset and have the pass run again.
+- `SliverList3d`, `SliverGrid3d` (sharing `GridView3d`'s `Grid3dDelegate`) and
+  `SliverToBoxAdapter3d`, the glue that gives an ordinary box its turn.
+- `SceneCustomScrollView3d`, `SceneSliverList3d`, `SceneSliverGrid3d` and
+  `SceneSliverToBoxAdapter3d` in the declarative layer. Child widgets are still
+  built up front there; only the imperative builders are lazy.
+- `Layout3dWithChildMixin` and `Layout3dWithChildrenMixin`, extracted from
+  `SingleChildLayout3d` and `MultiChildLayout3d` so a sliver can hold children
+  without being a box.
+- `Scroll3dController.correctBy`, for a viewport applying a correction during
+  its own layout.
+- Fixed: `Scroll3dController.contentExtent` reported the viewport's extent for
+  content shorter than the window, because the scroll range alone cannot tell
+  the two apart. Views now report the extent they measured.
+
 ## 0.3.0
 
 - `Wrap3d`, which breaks into runs where a flex would overflow. Runs stack on

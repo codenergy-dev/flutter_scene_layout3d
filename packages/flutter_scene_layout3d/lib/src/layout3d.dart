@@ -286,6 +286,19 @@ abstract class Layout3d {
 
   // -------------------------------------------------------------- layout
 
+  /// Forces the next [layout] call to run [performLayout], even when the
+  /// constraints have not changed.
+  ///
+  /// For protocols layered on top of the box one, where the constraints that
+  /// actually changed are not [Constraints3d]: a sliver relaid out at a new
+  /// scroll offset has the same box constraints as before, and would
+  /// otherwise be skipped. Unlike [markNeedsLayout] this tells nobody, since
+  /// the caller is the parent that is about to lay this layout out.
+  @protected
+  void invalidateLayout() {
+    _needsLayout = true;
+  }
+
   /// Marks this layout as needing to be laid out again.
   ///
   /// Stops at the nearest relayout boundary: a tightly constrained ancestor
@@ -556,12 +569,20 @@ abstract class Layout3d {
 
 /// A layout with at most one child, the 3D analogue of
 /// [RenderObjectWithChildMixin].
-abstract class SingleChildLayout3d extends Layout3d {
+abstract class SingleChildLayout3d extends Layout3d
+    with Layout3dWithChildMixin {
   /// Creates a layout wrapping [child].
   SingleChildLayout3d({Layout3d? child, super.name}) {
     this.child = child;
   }
+}
 
+/// Holds one child, the 3D analogue of [RenderObjectWithChildMixin].
+///
+/// Separate from [SingleChildLayout3d] because the box protocol is not the
+/// only one that wraps a single child: a `SliverToBoxAdapter3d` holds one too,
+/// and it answers to the sliver protocol instead.
+mixin Layout3dWithChildMixin on Layout3d {
   Layout3d? _child;
 
   /// The wrapped layout, or null.
@@ -620,14 +641,24 @@ abstract class ProxyLayout3d extends SingleChildLayout3d {
 /// [ParentDataType] is the per-child state this layout keeps; read it with
 /// [parentDataOf].
 abstract class MultiChildLayout3d<ParentDataType extends ParentData3d>
-    extends Layout3d {
+    extends Layout3d
+    with Layout3dWithChildrenMixin<ParentDataType> {
   /// Creates a layout holding [children], in order.
   MultiChildLayout3d({List<Layout3d>? children, super.name}) {
     if (children != null) {
       addAll(children);
     }
   }
+}
 
+/// Holds an ordered list of children, the 3D analogue of
+/// [ContainerRenderObjectMixin].
+///
+/// Separate from [MultiChildLayout3d] for the same reason
+/// [Layout3dWithChildMixin] is separate: the sliver protocol needs the same
+/// child list without being a box.
+mixin Layout3dWithChildrenMixin<ParentDataType extends ParentData3d>
+    on Layout3d {
   final List<Layout3d> _children = <Layout3d>[];
 
   /// The children, in layout order.

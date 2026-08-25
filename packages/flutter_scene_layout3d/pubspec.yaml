@@ -2,7 +2,7 @@ name: flutter_scene_layout3d
 description: Flutter's box layout protocol in three dimensions for flutter_scene. Constraints go down, sizes go up, and the parent positions the child, on a freely transformable 3D plane.
 repository: https://github.com/bdero/flutter_scene
 homepage: https://github.com/bdero/flutter_scene
-version: 0.3.0
+version: 0.4.0
 
 topics:
   - layout

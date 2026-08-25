@@ -163,11 +163,13 @@ void adoptLayoutChildren(Layout3d parent, List<Layout3d> children) {
       detachLayout(child, previous);
     }
   }
-  if (parent is MultiChildLayout3d) {
+  // The mixins rather than the box classes, so a sliver that holds children
+  // is adopted the same way a box is.
+  if (parent is Layout3dWithChildrenMixin) {
     parent.syncChildren(children);
     return;
   }
-  if (parent is SingleChildLayout3d) {
+  if (parent is Layout3dWithChildMixin) {
     assert(
       children.length <= 1,
       '${parent.runtimeType} takes a single child, but was given '
@@ -184,9 +186,10 @@ void adoptLayoutChildren(Layout3d parent, List<Layout3d> children) {
 
 /// Removes [child] from [parent], whatever kind of layout it is.
 void detachLayout(Layout3d child, Layout3d parent) {
-  if (parent is MultiChildLayout3d) {
+  if (parent is Layout3dWithChildrenMixin) {
     parent.remove(child);
-  } else if (parent is SingleChildLayout3d && identical(parent.child, child)) {
+  } else if (parent is Layout3dWithChildMixin &&
+      identical(parent.child, child)) {
     parent.child = null;
   }
 }

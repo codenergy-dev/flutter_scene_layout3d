@@ -164,6 +164,49 @@ void main() {
     expect(controller.surface!.needsFlush, isFalse);
   });
 
+  testWidgets('SceneCustomScrollView3d puts sections on one position', (
+    tester,
+  ) async {
+    final controller = Layout3dController();
+    final scroll = Scroll3dController();
+    await tester.pumpWidget(
+      SceneLayout3d(
+        parent: Node(),
+        size: const Size3d(4, 6, 1),
+        controller: controller,
+        child: SceneCustomScrollView3d(
+          controller: scroll,
+          slivers: [
+            SceneSliverToBoxAdapter3d(
+              child: SceneNodeBox3d(
+                content: Node(),
+                explicitSize: const Size3d(4, 3, 1),
+              ),
+            ),
+            SceneSliverList3d(
+              children: [
+                for (var index = 0; index < 3; index++)
+                  SceneNodeBox3d(
+                    content: Node(),
+                    explicitSize: const Size3d(2, 2, 1),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+
+    final view = rootOf(controller) as CustomScrollView3d;
+
+    expect(view.slivers, hasLength(2));
+    expect(view.slivers[1], isA<SliverList3d>());
+    // The header takes 3, the list of three 2-tall items takes 6.
+    expect(view.slivers[1].offset, const Offset3d(0, 3, 0));
+    expect(scroll.contentExtent, 9);
+    expect(scroll.maxScrollExtent, 3);
+  });
+
   testWidgets('mounts the plane under the given parent', (tester) async {
     final parent = Node();
     final controller = Layout3dController();

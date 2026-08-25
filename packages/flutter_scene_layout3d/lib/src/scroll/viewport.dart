@@ -83,6 +83,7 @@ class Viewport3d extends SingleChildLayout3d implements Scrollable3d {
         _controller.applyViewportMetrics(
           maxScrollExtent: 0.0,
           viewportExtent: bounded ? constraints.maxAlong(axis) : 0.0,
+          contentExtent: 0.0,
         );
         return;
       }
@@ -98,6 +99,7 @@ class Viewport3d extends SingleChildLayout3d implements Scrollable3d {
       _controller.applyViewportMetrics(
         maxScrollExtent: math.max(0.0, contentExtent - viewportExtent),
         viewportExtent: viewportExtent,
+        contentExtent: contentExtent,
       );
       child.place(Offset3d.along(axis, -_controller.offset));
     } finally {
