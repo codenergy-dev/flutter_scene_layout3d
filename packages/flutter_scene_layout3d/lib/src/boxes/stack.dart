@@ -201,9 +201,11 @@ class Positioned3d extends ProxyLayout3d {
 ///
 /// Depth is where a 3D stack parts ways with Flutter's. Two children that
 /// share the same `z` are coplanar and will fight for the depth buffer, so
-/// [depthStep] pulls each successive child toward the viewer by a fixed
-/// amount, reproducing "later children paint on top" with real geometry. It
-/// does not affect the stack's size.
+/// [depthStep] pulls each successive child's *geometry* toward the viewer by a
+/// fixed amount, reproducing "later children paint on top" with real geometry.
+/// It changes nothing about the layout: not the stack's size, not where a
+/// child's box sits, not what a [Positioned3d] pin means, and not what a ray
+/// reaches. See [depthStep].
 class Stack3d extends MultiChildLayout3d<ParentData3d> {
   /// Creates a stack of overlaid children.
   Stack3d({
@@ -241,7 +243,14 @@ class Stack3d extends MultiChildLayout3d<ParentData3d> {
 
   double _depthStep;
 
-  /// How far toward the viewer each successive child is pulled.
+  /// How far toward the viewer each successive child's geometry is pulled.
+  ///
+  /// An epsilon that breaks a tie in the depth buffer, not a layout property:
+  /// it is written to [ParentData3d.sceneOffset], which moves the child's
+  /// scene node and nothing else. The child's box stays where the stack put
+  /// it, so hit testing still finds the last child first — which is the same
+  /// answer the separated geometry gives the eye — and a `Positioned3d(back:
+  /// 0)` slab still sits on the back face.
   double get depthStep => _depthStep;
 
   set depthStep(double value) {
@@ -327,7 +336,11 @@ class Stack3d extends MultiChildLayout3d<ParentData3d> {
         );
         anchor = _positionedOffset(positioned, child.size, stackSize);
       }
-      child.place(anchor - Offset3d(0, 0, index * _depthStep));
+      // The step separates the geometry in the scene without moving the box,
+      // so a Positioned3d lands exactly on the face it pinned itself to and
+      // every child stays inside the stack, where a ray can still reach it.
+      parentDataOf(child).sceneOffset = Offset3d(0, 0, -index * _depthStep);
+      child.place(anchor);
       index++;
     }
   }

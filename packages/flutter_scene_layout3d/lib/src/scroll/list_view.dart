@@ -189,7 +189,10 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
   int _itemCount;
 
   /// How many items the list holds.
-  int get itemCount => _itemCount;
+  ///
+  /// For an explicit list this follows the child list, so adding or removing
+  /// a child is reflected here; only a built list keeps a count of its own.
+  int get itemCount => _builder == null ? childCount : _itemCount;
 
   set itemCount(int value) {
     if (_itemCount == value) return;
@@ -350,7 +353,7 @@ class ListView3d extends MultiChildLayout3d<ParentData3d>
 
     final itemExtent = _itemExtent;
     final childConstraints = _childConstraints(itemExtent);
-    final count = _builder == null ? childCount : _itemCount;
+    final count = itemCount;
 
     // 1. Work out where every item starts, building only what is needed.
     double contentExtent;

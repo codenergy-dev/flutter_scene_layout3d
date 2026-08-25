@@ -22,12 +22,32 @@ class ParentData3d {
   /// Written by the parent through [Layout3d.place], never by the child.
   Offset3d offset = Offset3d.zero;
 
+  /// An extra offset applied to the child's scene node and to nothing else.
+  ///
+  /// Measured in layout axes, like [offset], but the layout protocol never
+  /// sees it: the child's box still sits at [offset], intrinsics ignore it,
+  /// and a hit test walks straight past it. It moves the *geometry*, not the
+  /// box.
+  ///
+  /// That distinction is what [Stack3d.depthStep] is built on. Coplanar
+  /// children fight for the depth buffer and have to be separated in the
+  /// scene, but separating them in the layout would push them out of their
+  /// parent's box, break a [Positioned3d] pin, and take the topmost child out
+  /// of reach of a ray. Nudging the node alone leaves every one of those
+  /// intact.
+  ///
+  /// Written by the parent before [Layout3d.place], which is what applies it.
+  Offset3d sceneOffset = Offset3d.zero;
+
   /// Called when the child is removed from its parent.
   @mustCallSuper
   void detach() {}
 
   @override
-  String toString() => 'offset=$offset';
+  String toString() =>
+      sceneOffset == Offset3d.zero
+      ? 'offset=$offset'
+      : 'offset=$offset, sceneOffset=$sceneOffset';
 }
 
 /// Drives layout for a tree of [Layout3d] objects, the 3D analogue of
@@ -571,13 +591,19 @@ abstract class Layout3d {
     applyNodeTransform();
   }
 
+  /// The offset the parent applies to this layout's scene node on top of
+  /// [offset], which layout and hit testing never see.
+  ///
+  /// See [ParentData3d.sceneOffset].
+  Offset3d get sceneOffset => parentData?.sceneOffset ?? Offset3d.zero;
+
   /// Rewrites this layout's node transform from its offset and
   /// [localTransform].
   ///
   /// Call after changing anything [localTransform] depends on.
   @protected
   void applyNodeTransform() {
-    final position = offset;
+    final position = offset + sceneOffset;
     final transform = Matrix4.translationValues(
       position.x,
       position.y,
@@ -605,21 +631,31 @@ abstract class Layout3d {
 
   /// The transform taking this box's own frame to world space.
   ///
-  /// The box's node carries `T(offset) * localTransform`, so the node's world
-  /// transform describes the frame this box's *children* sit in; undoing
-  /// [hitTestTransform] backs up one step to the frame this box measures
-  /// itself in, the one [HitTestEntry3d.localPosition] is expressed in.
+  /// The box's node carries `T(offset + sceneOffset) * localTransform`, so the
+  /// node's world transform describes the frame this box's *children* sit in;
+  /// undoing [hitTestTransform] backs up one step to the frame this box
+  /// measures itself in, the one [HitTestEntry3d.localPosition] is expressed
+  /// in, and undoing [sceneOffset] discards the nudge the parent applied to
+  /// the geometry alone.
   ///
   /// Only meaningful once the surface has been mounted in a scene and laid
   /// out. Inverting it takes a world-space ray into this box's frame, which
   /// is how a drag keeps tracking a box after the pointer has left it.
   Matrix4 get worldTransform {
-    final world = Matrix4.copy(_node.globalTransform);
+    var world = Matrix4.copy(_node.globalTransform);
     final local = hitTestTransform;
-    if (local == null) return world;
-    final inverse = Matrix4.zero();
-    if (inverse.copyInverse(local) == 0.0) return world;
-    return world.multiplied(inverse);
+    if (local != null) {
+      final inverse = Matrix4.zero();
+      if (inverse.copyInverse(local) == 0.0) return world;
+      world = world.multiplied(inverse);
+    }
+    final nudge = sceneOffset;
+    if (nudge == Offset3d.zero) return world;
+    // Translations commute, so undoing the nudge on the right of
+    // `T(offset + sceneOffset)` leaves `T(offset)`: the layout frame.
+    return world.multiplied(
+      Matrix4.translationValues(-nudge.x, -nudge.y, -nudge.z),
+    );
   }
 
   /// Whether [ray] reaches this box or anything below it, recording what it

@@ -438,9 +438,13 @@ animation.
 * **`Flexible3d` and `Positioned3d` are layouts, not parent-data widgets.**
   They sit in the tree as real boxes, and the enclosing flex or stack reads
   their properties off them.
-* **`Stack3d.depthStep`** pulls each successive child toward the viewer, which
-  is how "later children paint on top" is spelled when the children are real
-  geometry that would otherwise be coplanar.
+* **`Stack3d.depthStep`** pulls each successive child's geometry toward the
+  viewer, which is how "later children paint on top" is spelled when the
+  children are real geometry that would otherwise be coplanar. It moves the
+  content in the scene and nothing in the layout: the boxes stay where the
+  stack put them, a `Positioned3d` still lands on the face it pinned, and a
+  ray still finds the last child first — the same answer the separated
+  geometry gives the eye.
 * **List items are not stretched by default.** `ListView3d` centres its items
   across the cross axes; ask for `CrossAxisAlignment3d.stretch` for the
   Flutter behaviour.

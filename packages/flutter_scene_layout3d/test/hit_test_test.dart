@@ -117,6 +117,22 @@ void main() {
       );
     });
 
+    test('depthStep does not take the child on top out of reach', () {
+      // Coplanar panels are exactly what depthStep exists for, and a stack of
+      // them has no depth for the fan to live in. Stepping the boxes rather
+      // than the geometry would put the topmost child in front of the stack's
+      // own front face, where the ray is clipped before it ever gets there —
+      // and the answer would come back as the child *underneath*.
+      final under = TestBox(const Size3d(1, 1, 0), pointable: true);
+      final over = TestBox(const Size3d(1, 1, 0), pointable: true);
+      final surface = laidOut(
+        Stack3d(depthStep: 0.01, children: [under, over]),
+        constraints: Constraints3d.tight(const Size3d(1, 1, 0)),
+      );
+
+      expect(surface.hitTestAt(const Offset3d(0.5, 0.5, 0)).target, same(over));
+    });
+
     test('a box clips the ray to itself, so overflow is out of reach', () {
       final badge = TestBox(const Size3d(0.4, 0.4, 0.4), pointable: true);
       final surface = laidOut(

@@ -114,6 +114,24 @@ void main() {
   });
 
   group('the viewport', () {
+    test('rejects a child that is not a sliver, where the caller can see it', () {
+      // The constructor is typed, but the child-list mixin is not, and the
+      // declarative layer hands over plain widgets. Caught at adoption, the
+      // message can name the fix; caught during layout it was a bare cast
+      // failure with no idea what to do about it.
+      final view = CustomScrollView3d();
+      expect(
+        () => view.add(TestBox(const Size3d(1, 1, 1))),
+        throwsA(
+          isA<AssertionError>().having(
+            (error) => error.message,
+            'message',
+            contains('SliverToBoxAdapter3d'),
+          ),
+        ),
+      );
+    });
+
     test('lays its slivers out one after another', () {
       final first = ProbeSliver3d(4);
       final second = ProbeSliver3d(3);

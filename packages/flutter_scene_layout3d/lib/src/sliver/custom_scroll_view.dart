@@ -95,6 +95,26 @@ class CustomScrollView3d extends MultiChildLayout3d<ParentData3d>
     markNeedsLayout();
   }
 
+  /// Rejects a child that is not a [Sliver3d], where the caller can still see
+  /// what it did.
+  ///
+  /// The constructor is typed, but [add], [insert] and [syncChildren] come
+  /// from the child-list mixin and take any [Layout3d], and the declarative
+  /// layer hands over plain widgets. Without this the mistake surfaces as a
+  /// cast failure in the middle of [performLayout], naming neither the child
+  /// nor the fix.
+  @override
+  void setupParentData(Layout3d child) {
+    assert(
+      child is Sliver3d,
+      'CustomScrollView3d takes slivers, but was given a '
+      '${child.runtimeType}. Wrap an ordinary box in a SliverToBoxAdapter3d '
+      '(SceneSliverToBoxAdapter3d in the declarative layer) to give it its '
+      'turn in the viewport.',
+    );
+    super.setupParentData(child);
+  }
+
   /// The slivers in this viewport, in scroll order.
   List<Sliver3d> get slivers =>
       List<Sliver3d>.unmodifiable(children.cast<Sliver3d>());

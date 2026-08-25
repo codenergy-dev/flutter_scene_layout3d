@@ -1,3 +1,27 @@
+## Unreleased
+
+- Fixed: `Stack3d.depthStep` moved its children in the *layout*, which broke
+  the two things the stack promises. A `Positioned3d` pinned to a face landed
+  short of it by the step, and a coplanar child was pushed in front of the
+  stack's own front face, where the ray gate could not reach it — so on a flat
+  stack, the child on top became the one hit testing could not find, the exact
+  inverse of the documented rule. The step is now written to
+  `ParentData3d.sceneOffset`, a new per-child offset that moves the scene node
+  and nothing else: the geometry separates in the depth buffer, and the layout,
+  the pins and the hit test are untouched. `Stack3d` sizing is unchanged.
+- `ParentData3d.sceneOffset` and `Layout3d.sceneOffset`, for a parent that
+  needs to nudge a child's geometry without moving its box.
+  `Layout3d.worldTransform` undoes it, so it still describes the layout frame.
+- Fixed: `ListView3d.itemCount` reported the count captured when the list was
+  built, so it went stale as soon as a child was added or removed. It now
+  follows the child list, as `GridView3d`, `SliverList3d` and `SliverGrid3d`
+  already did.
+- A non-sliver child of a `CustomScrollView3d` now asserts as it is adopted,
+  naming `SliverToBoxAdapter3d`, instead of failing as a bare cast error in the
+  middle of layout. The constructor was typed, but `add`, `insert` and
+  `syncChildren` come from the child-list mixin and the declarative layer
+  passes plain widgets.
+
 ## 0.5.0
 
 - Intrinsic sizing: `Layout3d.getMinIntrinsicExtent` and `getMaxIntrinsicExtent`

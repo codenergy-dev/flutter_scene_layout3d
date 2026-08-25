@@ -255,8 +255,45 @@ void main() {
         Stack3d(depthStep: 0.01, children: [first, second]),
         constraints: tight10,
       );
+      // The step moves the geometry, so it shows up in the scene node...
+      // (a node transform is float32, hence the tolerance).
+      expect(translationOf(first).z, 0);
+      expect(translationOf(second).z, closeTo(-0.01, 1e-6));
+      // ... and nowhere in the layout.
       expect(first.offset.z, 0);
-      expect(second.offset.z, -0.01);
+      expect(second.offset.z, 0);
+    });
+
+    test('depthStep leaves a Positioned3d on the face it pinned', () {
+      final pinned = Positioned3d(
+        back: 0,
+        depth: 1,
+        child: TestBox(const Size3d(2, 2, 1)),
+      );
+      laidOut(
+        Stack3d(
+          depthStep: 0.01,
+          children: [TestBox(const Size3d(2, 2, 1)), pinned],
+        ),
+        constraints: tight10,
+      );
+      // A pin is a layout statement: the box sits against the back face
+      // whatever the step does to the geometry in front of it.
+      expect(pinned.offset.z, 9);
+      expect(translationOf(pinned).z, closeTo(8.99, 1e-6));
+    });
+
+    test('depthStep does not change the stack size', () {
+      final stack = Stack3d(
+        depthStep: 0.5,
+        children: [
+          TestBox(const Size3d(2, 2, 1)),
+          TestBox(const Size3d(2, 2, 1)),
+          TestBox(const Size3d(2, 2, 1)),
+        ],
+      );
+      laidOut(stack);
+      expect(stack.size, const Size3d(2, 2, 1));
     });
   });
 }

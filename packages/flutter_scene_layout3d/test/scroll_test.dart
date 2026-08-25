@@ -45,6 +45,18 @@ void main() {
   });
 
   group('ListView3d with explicit children', () {
+    test('itemCount follows the child list', () {
+      final list = ListView3d(children: [TestBox(const Size3d(2, 2, 2))]);
+      expect(list.itemCount, 1);
+
+      final extra = TestBox(const Size3d(2, 2, 2));
+      list.add(extra);
+      expect(list.itemCount, 2);
+
+      list.remove(extra);
+      expect(list.itemCount, 1);
+    });
+
     test('stacks items along the scroll axis', () {
       final items = List.generate(5, (_) => TestBox(const Size3d(2, 2, 2)));
       final list = ListView3d(children: items);

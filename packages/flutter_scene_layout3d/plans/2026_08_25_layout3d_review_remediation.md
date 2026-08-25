@@ -1,7 +1,7 @@
 ---
-status: pending
+status: in progress
 created_at: 2026-08-25T03:32:15Z
-updated_at: 2026-08-25T03:32:15Z
+updated_at: 2026-08-25T04:14:00Z
 commit: 495b1ec4e93e3588c93612ef02862355d380933a
 ---
 
@@ -19,9 +19,21 @@ and can be dropped without losing anything.
 
 ---
 
-## Phase 1 — Confirmed bugs
+## Phase 1 — Confirmed bugs — **done**
 
-### 1.1 `Stack3d.depthStep` breaks `Positioned3d` pins and inverts hit testing
+Landed together with the `depthStep` documentation it invalidated. Suite went
+from 239 to 244 tests, all green; `flutter analyze` clean. The four original
+reproductions now read:
+
+```
+pinned offset: Offset3d(0.000, 0.000, 0.900)   // was 0.850
+hit target:    front                            // was back
+after add:     itemCount=2 childCount=2         // was 1 / 2
+CustomScrollView3d takes slivers, but was given a TestBox. Wrap an ordinary
+box in a SliverToBoxAdapter3d ...                // was a bare _TypeError
+```
+
+### 1.1 `Stack3d.depthStep` breaks `Positioned3d` pins and inverts hit testing — **done**
 
 **Where.** `lib/src/boxes/stack.dart:330`
 
@@ -54,29 +66,54 @@ unreachable there. With flat panels — the case `depthStep` exists for — the
 topmost child becomes the *least* reachable, inverting the documented "the box
 on top wins" rule.
 
-**How to fix.** Decide the ownership question first, then implement:
+**Both fixes proposed here were wrong.** Recorded because the reasoning is the
+useful part:
 
-- Apply the step only to non-positioned children, so a pin means what it says.
-  A `Positioned3d` already states its depth outright; it does not need
-  disambiguating.
-- Make the stack's box cover the range its children actually occupy, so the hit
-  test can still find them. Either grow `size` along `z` by the total step
-  (changes layout, so it must be documented as such), or place the first child
-  at `+totalStep` and walk toward the viewer from there so the whole fan stays
-  inside `[0, depth]`. The second keeps the stack's size honest and is
-  preferred; it does mean `depthStep` shifts every child, which is fine because
-  a stack of coplanar content has nothing else at those depths.
+- *"Apply the step only to non-positioned children"* fixes the pin but not the
+  hit test, and it makes the feature's rule conditional on a child's type for
+  no reason a caller could predict.
+- *"Place the first child at `+totalStep` and walk toward the viewer so the fan
+  stays inside `[0, depth]`"* only holds when `depth >= totalStep +
+  maxChildDepth`. The headline case for `depthStep` is **coplanar** content,
+  where the stack's depth is 0 and no fan of any sign fits inside it. Growing
+  the box instead fails the same way whenever the caller pins the depth — and
+  `Constraints3d.tight(Size3d(2, 2, 0))` is exactly what a flat panel is given.
 
-**Tests.** In `test/boxes_test.dart` (or a new `stack_test.dart`):
+**What was actually done.** The premise was wrong: `depthStep` is not a layout
+quantity at all. It is an epsilon that breaks a tie in the depth buffer, and the
+class doc already claimed it "does not affect the stack's size". So it now moves
+the child's **scene node** and nothing else:
 
-- a pinned `Positioned3d(back: 0)` lands on the back face whatever `depthStep`
-  is;
-- with `depthStep` set and two coplanar pointable children, `hitTestAt` returns
-  the later one;
-- the stack's reported size is unchanged by `depthStep` (or changed exactly as
-  documented, if the growing variant is chosen).
+- `ParentData3d.sceneOffset`, a new per-child offset in layout axes that
+  `applyNodeTransform` adds to the translation and that layout, intrinsics and
+  hit testing never see. `Layout3d.sceneOffset` reads it;
+  `Layout3d.worldTransform` undoes it, so it still describes the layout frame
+  (translations commute, so it is one multiply on the right).
+- `Stack3d` writes `Offset3d(0, 0, -index * depthStep)` there and calls
+  `place(anchor)` with the unmodified anchor.
 
-### 1.2 `ListView3d.itemCount` goes stale
+Every failure falls out at once. The pin is exact because the box never moved.
+The coplanar children stay inside the stack, so the ray gate lets the walk
+through, and since they are all at the same `z` in layout space,
+`hitTestChildren` testing last-to-first returns the topmost — which is the same
+child the separated geometry shows the eye. And the size claim becomes literally
+true instead of nearly true.
+
+Applying the step to *every* child, positioned ones included, is now harmless
+and was kept: it is what makes "later children render in front" unconditional,
+and it costs a pinned child nothing but an epsilon of geometry.
+
+**Tests.** `test/boxes_test.dart`: the existing `depthStep pulls later children
+toward the viewer` was asserting the old layout offsets and now asserts the node
+translation *and* that the layout offsets are untouched; plus `depthStep leaves
+a Positioned3d on the face it pinned` and `depthStep does not change the stack
+size`. `test/hit_test_test.dart`: `depthStep does not take the child on top out
+of reach`, on a zero-depth stack, which is the case that failed.
+
+Node transforms are float32, so anything reading back through
+`translationOf` needs a `closeTo` tolerance around `1e-6`, not an exact match.
+
+### 1.2 `ListView3d.itemCount` goes stale — **done**
 
 **Where.** `lib/src/scroll/list_view.dart:192`
 
@@ -99,14 +136,14 @@ after add: itemCount=1 childCount=2
 int get itemCount => _builder == null ? childCount : _itemCount;
 ```
 
-The setter's assert stays. Internal layout already uses the right value
-(`count = _builder == null ? childCount : _itemCount`), so this is a getter fix
-only.
+The setter's assert stays. Internal layout already computed the right value
+inline, so `_performListLayout` now calls the getter rather than repeating the
+expression — one fewer copy to drift.
 
-**Test.** `test/scroll_test.dart`: an explicit `ListView3d` reports
-`itemCount == childCount` after `add` and after `remove`.
+**Test.** `test/scroll_test.dart`: `itemCount follows the child list`, checking
+`add` and `remove`.
 
-### 1.3 A non-sliver in `CustomScrollView3d` throws a raw `_TypeError`
+### 1.3 A non-sliver in `CustomScrollView3d` throws a raw `_TypeError` — **done**
 
 **Where.** `lib/src/sliver/custom_scroll_view.dart:223`
 
@@ -139,11 +176,15 @@ void setupParentData(Layout3d child) {
 }
 ```
 
-Give `SceneCustomScrollView3d` the same assert, phrased for the widget layer
-(`SceneSliverToBoxAdapter3d`), since a widget-layer mistake is the likelier one.
+The widget layer needs no separate assert: `adoptLayoutChildren` reaches the
+same `adoptChild`, so a bad `SceneCustomScrollView3d` child trips it too. The
+message names both spellings (`SliverToBoxAdapter3d` and
+`SceneSliverToBoxAdapter3d`) so it reads correctly from either layer. A marker
+type for sliver *widgets*, which would catch it at compile time, belongs with
+phase 2.
 
-**Test.** `test/sliver_test.dart`: adding a box to a `CustomScrollView3d` throws
-an `AssertionError` naming `SliverToBoxAdapter3d`.
+**Test.** `test/sliver_test.dart`: `rejects a child that is not a sliver, where
+the caller can see it`.
 
 ---
 
@@ -350,9 +391,11 @@ two as aliases for one release, then drop them.
 
 ## Sequencing
 
-1. Phase 1 in one pass, with phase 3's doc fixes — small, independently
-   testable, and 1.1 is the only item producing silently wrong output in
-   ordinary use.
+1. ~~Phase 1 in one pass, with phase 3's doc fixes~~ — **done.** Landed with
+   only the documentation phase 1 itself invalidated (the `depthStep` class
+   doc, the property doc and the README's *How it differs from Flutter* entry),
+   plus an `Unreleased` CHANGELOG section. The rest of phase 3 is untouched and
+   still stands.
 2. Phase 2.2 and 2.3 (documentation route), which are small.
 3. Phase 2.1 route 1 (mixin extraction), then re-run the whole suite untouched.
 4. Phase 2.4 as its own change, since it moves the widget base class.
