@@ -59,6 +59,16 @@ export 'src/sliver/sliver.dart' show Sliver3d;
 export 'src/sliver/sliver_constraints.dart'
     show SliverConstraints3d, SliverGeometry3d;
 export 'src/surface.dart' show Layout3dSurface;
+export 'src/text/break_rules.dart'
+    show OverflowWrap3d, TextBreakRules3d, TextWhitespace3d, WordBreak3d;
+export 'src/text/text3d.dart' show Text3d;
+export 'src/text/text_layout.dart' show TextLayout3d, TextLine3d, TextRun3d;
+export 'src/text/text_measurement.dart'
+    show
+        ParagraphTextMeasurement3d,
+        SegmentedTextMeasurement3d,
+        TextMeasurement3d;
+export 'src/text/text_renderer.dart' show Text3dRenderRequest, Text3dRenderer;
 export 'src/widgets/framework.dart'
     show Layout3dWidget, SingleChildLayout3dWidget;
 export 'src/widgets/layouts.dart'
@@ -91,6 +101,7 @@ export 'src/widgets/layouts.dart'
         SceneSliverToBoxAdapter3d,
         SceneSpacer3d,
         SceneStack3d,
+        SceneText3d,
         SceneTransform3d,
         SceneViewport3d,
         SceneWrap3d;

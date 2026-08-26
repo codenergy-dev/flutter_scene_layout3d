@@ -17,6 +17,9 @@
 ///    the value types, each the 3D counterpart of a Flutter one.
 ///  * [NodeBox3d], the leaf that puts engine content into a layout and
 ///    measures its bounds to answer how big it is.
+///  * [Text3d], the leaf that lays a string out, with [TextMeasurement3d]
+///    and its two policies behind it: prepare a string once, then fit it to
+///    any width without consulting the font again.
 ///  * [Layout3dMetrics] and [Layout3dCameraBinding], the unit contract: how
 ///    many world units a logical pixel is worth, and the camera binding that
 ///    derives it by making a surface cover the view.
@@ -120,5 +123,21 @@ export 'src/sliver/sliver_constraints.dart'
     show SliverConstraints3d, SliverGeometry3d;
 export 'src/sliver/sliver_grid.dart' show SliverGrid3d;
 export 'src/sliver/sliver_list.dart' show Sliver3dItemBuilder, SliverList3d;
+export 'src/text/break_rules.dart'
+    show OverflowWrap3d, TextBreakRules3d, TextWhitespace3d, WordBreak3d;
+export 'src/text/line_break.dart' show TextBreak3d;
+export 'src/text/prepared_text.dart'
+    show PreparedText3d, SegmentGraphemes3d, TextSegment3d;
+export 'src/text/text3d.dart' show Text3d;
+export 'src/text/text_layout.dart' show TextLayout3d, TextLine3d, TextRun3d;
+export 'src/text/text_measurement.dart'
+    show
+        ParagraphTextMeasurement3d,
+        SegmentedTextMeasurement3d,
+        TextMeasurement3d,
+        TextMeasurementCache3d,
+        TextMetrics3d,
+        debugTextParagraphCount;
+export 'src/text/text_renderer.dart' show Text3dRenderRequest, Text3dRenderer;
 export 'src/scroll/viewport.dart' show Viewport3d;
 export 'src/surface.dart' show Layout3dSurface;

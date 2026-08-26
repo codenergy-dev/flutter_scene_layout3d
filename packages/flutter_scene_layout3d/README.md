@@ -180,6 +180,93 @@ Three things are worth knowing before you reach for any of this:
   before it is written; and a camera that pans, or walks along its own forward
   axis, re-derives the same frustum and relayouts nothing.
 
+## Text
+
+`Text3d` is a string laid out as a box. It is a leaf, like `NodeBox3d`, and it
+is the first thing in this package that answers the measurement protocol with
+something real: it reports intrinsic widths that mean what they say, and it
+states a baseline.
+
+```dart
+Row3d(
+  crossAxisAlignment: CrossAxisAlignment3d.baseline,
+  children: [
+    Text3d('Save', style: const TextStyle(fontSize: 14)),
+    Text3d('⌘S', style: const TextStyle(fontSize: 11)),
+  ],
+)
+```
+
+Flutter's own `TextStyle`, `TextAlign`, `TextDirection` and `TextOverflow` are
+what it takes, because a component author already knows them and the
+measurement layer has to build a `ui.Paragraph` out of them anyway. Font sizes
+are logical pixels, as everywhere in Flutter, and the unit contract above is
+what turns them into world units: a 14sp label is `metrics.sp(14)` tall
+whether the surface is bound to a camera or drawn at an authored scale. The
+box has **no thickness** by default — glyphs are flat, and the slab behind a
+label belongs to whatever draws the label's background.
+
+### Prepare once, lay out often
+
+The design is a two-phase split, and it is the reason text is usable here at
+all. `prepare()` runs once per string: normalize the whitespace, split the
+text at every place a line is allowed to end, and measure each of those pieces
+with the platform's own font engine. `layout()` then fits those measured
+pieces into a width, and for the default policy that is arithmetic and nothing
+else — no shaping, no `Paragraph.layout`, no font.
+
+That matters more here than it would in Flutter. A box in this package is
+relaid out far more often than a `RenderParagraph` is: whenever a scroll
+offset changes the room an item gets, whenever the surface resizes, on every
+frame of an animation, and *twice more* whenever an `IntrinsicWidth3d` above
+it asks its question, because answering an intrinsic walks the whole subtree
+and then the subtree is laid out again for real. With shaping on that path, a
+`Column3d(crossAxisAlignment: stretch)` of labels under an `IntrinsicWidth3d`
+is unaffordable; without it, it costs a few additions.
+
+The measurements are cached by (string, style), which pays because UI text
+repeats: a list of labels shares its words, a column of numbers shares its
+digits, and the single space between two words is measured once for a whole
+application.
+
+### The trade, and how to opt out of it
+
+Adding per-segment widths is not the same as shaping a whole line. Kerning and
+ligatures *across* a segment boundary are not modelled, and neither is the
+joining behaviour of Arabic and Indic scripts, where a letter's width depends
+on its neighbours. Segments are word-like — they are exactly the places a line
+may end — so for Latin, Greek, Cyrillic and CJK the error is nil: the suite
+checks every wrap against `TextPainter`, at every whole width from 10 to 210
+logical pixels, and they agree exactly.
+
+Where the trade does not hold, swap the policy rather than the box:
+
+```dart
+Text3d(arabic, style: style, measurement: const ParagraphTextMeasurement3d())
+```
+
+That hands every layout back to the platform — one `ui.Paragraph` per layout
+call, with its line breaking, shaping and bidi. It costs the thing the split
+exists to avoid, so reach for it per box rather than globally.
+
+`TextBreakRules3d` is the third dial: whitespace preserved (Flutter's rule) or
+collapsed (CSS's), `WordBreak3d.keepAll` for text that must not break between
+ideographs, and `OverflowWrap3d.overflow` for a word that should hang outside
+the box rather than be broken. The defaults are Flutter's, including breaking
+a word too wide for its line — which Flutter does and CSS does not.
+
+### It does not draw
+
+A `Text3d` with no `renderer` lays out, sizes itself, answers intrinsics and
+states a baseline, and puts nothing in the scene. That is deliberate:
+measurement is pure arithmetic and testable headless, rasterization is neither,
+and there is more than one defensible way to do it (a glyph atlas of textured
+quads, a captured widget on a quad, extruded outlines). `Text3dRenderer` is
+the seam between them, and it is handed everything a renderer needs —
+the box's node, the layout in logical pixels, the style, the basis, and both
+directions of the unit conversion including the rasterization resolution. No
+renderer ships yet.
+
 ## Sizing real 3D content
 
 The hard part of a 3D layout is getting arbitrary content, primitives,
@@ -246,6 +333,7 @@ measurement is responsible.
 | `IgnorePointer3d`, `AbsorbPointer3d` | `IgnorePointer`, `AbsorbPointer` |
 | `Ray3d`, `HitTestResult3d`, `Layout3dPointer` | `hitTest`, `BoxHitTestResult`, `Listener` |
 | `NodeBox3d` | the leaf that holds content |
+| `Text3d`, `TextMeasurement3d` | `Text`, and the `TextPainter` behind it |
 
 `Depth3d` is the axis Flutter does not have: a flex that stacks children away
 from the viewer.
@@ -281,6 +369,10 @@ SceneView.declarative(
 
 Every layout has a widget with the same name under a `Scene` prefix
 (`SceneRow3d`, `SceneStack3d`, `ScenePositioned3d`, `SceneListView3d`, ...).
+`SceneText3d` is the one that gains something from being a widget: it has a
+`BuildContext` to ask, so it picks up the ambient `DefaultTextStyle` and
+`Directionality` the way a Flutter `Text` does — from the widget tree the
+scene is hosted in, not from anything inside the scene.
 Attach a `Layout3dController` to reach the surface imperatively: it hands back
 the `Layout3dSurface` and its plane `Node`, which is what a raycast or a
 hand-written transform needs. Anything below the root — a measured size, a
@@ -534,7 +626,9 @@ the box would be offered on the *other two*. Its component along the queried
 axis is the thing being asked about, and is ignored.
 
 The answers come from the leaves. A `NodeBox3d` reports the extent of the
-content it holds, which is a real measurement of real geometry; every box
+content it holds and a `Text3d` reports what its string needs (the widest
+unbreakable word as the minimum, the whole string on one line as the maximum),
+which are real measurements of real content; every box
 above it either adds to that (`Padding3d` its insets, `Container3d` its
 padding and margin) or holds it down (`SizedBox3d` its fixed extents, without
 even asking the child), and a `Column3d` adds its children up along its axis
@@ -566,8 +660,24 @@ length it is, and the list exists so that it need not grow to match.
 A baseline is a line content declares so that its neighbours can line up on it
 instead of on their edges. Flutter has one, running across a box at the foot
 of its text. Here a box can declare one on any axis, because there are three
-ways to stand side by side — and nothing in a scene reports one on its own, so
-`Baseline3d` is what states it:
+ways to stand side by side.
+
+`Text3d` states a real one — the first line's alphabetic baseline, along the
+vertical — so two labels of different sizes in a baseline-aligned row sit on
+the same line without being told anything:
+
+```dart
+Row3d(
+  crossAxisAlignment: CrossAxisAlignment3d.baseline,
+  children: [
+    Text3d('Title', style: const TextStyle(fontSize: 20)),
+    Text3d('new', style: const TextStyle(fontSize: 11)),
+  ],
+)
+```
+
+Nothing else in a scene reports one, because a model has no notion of where
+its text sits. `Baseline3d` is what states one by hand:
 
 ```dart
 Row3d(
@@ -756,7 +866,17 @@ imperative side, but the declarative layer builds every child widget up front,
 because doing better needs a `RenderObjectElement` of its own and a build scope
 to create children during layout.
 
-**4. Intrinsic sizing.** ~~Done~~: `Layout3d.getMinIntrinsicExtent` and
+**4. Text.** ~~Measurement done~~: `Text3d` lays a string out as a box,
+sizes itself, answers intrinsics and states a baseline, over a prepare/layout
+split whose fast half consults no font. See *Text* above. What is left is the
+half that draws — `Text3dRenderer` is the seam and nothing implements it yet.
+A glyph atlas of textured quads is the intended default (one atlas per
+font-and-size bucket, run meshes built with `GeometryBuilder`, a signed
+distance field so a label stays sharp as the panel comes toward the camera),
+with a `WidgetComponent` capture as the escape hatch for what an atlas cannot
+do. Selection, editing and rich-text spans are further out still.
+
+**5. Intrinsic sizing.** ~~Done~~: `Layout3d.getMinIntrinsicExtent` and
 `getMaxIntrinsicExtent` ask the question one axis at a time,
 `IntrinsicWidth3d` and its two siblings are the boxes built on it, and
 `Baseline3d` with `CrossAxisAlignment3d.baseline` is the baseline half. See
@@ -766,11 +886,12 @@ report how thick it would be at a given width instead of the one-run lower
 bound it reports now.
 
 **What is next.** Nothing in this list depends on anything else in it any
-more, so the order is a matter of what a caller reaches for first: the rest of
-Flutter's layout catalogue (`Table`, `Flow`, aspect-ratio and
-fractionally-sized boxes), pinned and floating sliver headers, lazily built
-child *widgets* in the declarative layer, and hover and press state on the
-boxes themselves, which is the groundwork any `Button3d` would need.
+more, so the order is a matter of what a caller reaches for first: a
+`Text3dRenderer` that actually draws, the rest of Flutter's layout catalogue
+(`Table`, `Flow`, aspect-ratio and fractionally-sized boxes), pinned and
+floating sliver headers, lazily built child *widgets* in the declarative
+layer, and hover and press state on the boxes themselves, which is the
+groundwork any `Button3d` would need.
 
 ## License
 

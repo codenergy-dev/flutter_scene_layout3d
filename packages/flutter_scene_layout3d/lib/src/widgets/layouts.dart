@@ -1,4 +1,13 @@
-import 'package:flutter/widgets.dart' show BuildContext, Widget;
+import 'package:flutter/widgets.dart'
+    show
+        BuildContext,
+        DefaultTextStyle,
+        Directionality,
+        TextAlign,
+        TextDirection,
+        TextOverflow,
+        TextStyle,
+        Widget;
 import 'package:flutter_scene/scene.dart' show Node;
 import 'package:vector_math/vector_math.dart' show Matrix4;
 
@@ -25,6 +34,10 @@ import '../sliver/custom_scroll_view.dart';
 import '../sliver/sliver.dart';
 import '../sliver/sliver_grid.dart';
 import '../sliver/sliver_list.dart';
+import '../text/break_rules.dart';
+import '../text/text3d.dart';
+import '../text/text_measurement.dart';
+import '../text/text_renderer.dart';
 import 'framework.dart';
 
 /// Puts engine content into a declarative layout, the widget form of
@@ -1031,5 +1044,109 @@ class SceneSliverGrid3d extends Layout3dWidget {
     layout
       ..gridDelegate = gridDelegate
       ..depthAxisAlignment = depthAxisAlignment;
+  }
+}
+
+/// A string laid out as a box, the widget form of [Text3d].
+///
+/// Unlike the imperative box, this one has a `BuildContext` to ask, so it
+/// picks up the ambient [DefaultTextStyle] and [Directionality] the way a
+/// Flutter [Text] does — with the caveat that both come from the *widget*
+/// tree the scene is hosted in, not from anything in the scene. A style
+/// passed here is merged onto the inherited one, so a `SceneText3d` under a
+/// `DefaultTextStyle` only has to say what differs.
+class SceneText3d extends Layout3dWidget {
+  /// Creates a text box over [data].
+  const SceneText3d(
+    this.data, {
+    super.key,
+    this.style,
+    this.textAlign = TextAlign.start,
+    this.textDirection,
+    this.softWrap = true,
+    this.overflow = TextOverflow.clip,
+    this.maxLines,
+    this.depth = 0.0,
+    this.rules = TextBreakRules3d.standard,
+    this.measurement,
+    this.renderer,
+  });
+
+  /// The string to lay out.
+  final String data;
+
+  /// The style to draw it in, merged onto the inherited [DefaultTextStyle].
+  final TextStyle? style;
+
+  /// How lines sit inside the box's width.
+  final TextAlign textAlign;
+
+  /// Which way the text runs; the ambient [Directionality] by default.
+  final TextDirection? textDirection;
+
+  /// Whether a line may end because it ran out of room.
+  final bool softWrap;
+
+  /// What text that does not fit does.
+  final TextOverflow overflow;
+
+  /// The most lines the text may take.
+  final int? maxLines;
+
+  /// How thick the box is, in world units.
+  final double depth;
+
+  /// Where a line is allowed to end.
+  final TextBreakRules3d rules;
+
+  /// The measurement policy, or null for the shared segmented one.
+  final TextMeasurement3d? measurement;
+
+  /// What turns the layout into geometry, or null to draw nothing.
+  final Text3dRenderer? renderer;
+
+  TextStyle _resolveStyle(BuildContext context) {
+    final inherited = DefaultTextStyle.of(context).style;
+    final style = this.style;
+    if (style == null) {
+      return inherited.fontSize == null
+          ? inherited.merge(Text3d.defaultStyle)
+          : inherited;
+    }
+    return style.inherit ? inherited.merge(style) : style;
+  }
+
+  TextDirection _resolveDirection(BuildContext context) =>
+      textDirection ?? Directionality.maybeOf(context) ?? TextDirection.ltr;
+
+  @override
+  Text3d createLayout(BuildContext context) => Text3d(
+    data,
+    style: _resolveStyle(context),
+    textAlign: textAlign,
+    textDirection: _resolveDirection(context),
+    softWrap: softWrap,
+    overflow: overflow,
+    maxLines: maxLines,
+    depth: depth,
+    rules: rules,
+    measurement: measurement,
+    renderer: renderer,
+  );
+
+  @override
+  void updateLayout(BuildContext context, Text3d layout) {
+    layout
+      ..data = data
+      ..style = _resolveStyle(context)
+      ..textAlign = textAlign
+      ..textDirection = _resolveDirection(context)
+      ..softWrap = softWrap
+      ..overflow = overflow
+      ..maxLines = maxLines
+      ..depth = depth
+      ..rules = rules
+      ..measurement = measurement ?? SegmentedTextMeasurement3d.shared
+      ..renderer = renderer;
   }
 }

@@ -568,7 +568,10 @@ void main() {
       // than a symptom of it. Counting measurements alone called this a
       // runaway pass and turned a working layout into a debug crash.
       final list = longList();
-      laidOut(list, constraints: Constraints3d.tight(const Size3d(10, 1400, 10)));
+      laidOut(
+        list,
+        constraints: Constraints3d.tight(const Size3d(10, 1400, 10)),
+      );
 
       expect(list.size.height, 1400);
       expect(list.activeIndices, hasLength(greaterThan(500)));

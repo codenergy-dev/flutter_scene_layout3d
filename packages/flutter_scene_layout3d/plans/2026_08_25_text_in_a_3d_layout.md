@@ -1,7 +1,10 @@
 ---
-status: pending
+status: in progress
+reason: phases 1-3 and 6 are done; phases 4 (the atlas renderer) and 5
+  (RichText3d) are not, because a glyph atlas needs a GPU context that
+  `flutter test` does not have. See "What was left out, and why".
 created_at: 2026-08-25T20:31:04Z
-updated_at: 2026-08-25T20:31:04Z
+updated_at: 2026-08-26T22:51:13Z
 commit: d7bb9db224f8080ddddde70d019ab5481b45d05e
 ---
 
@@ -170,39 +173,187 @@ if outlines ever arrive.
 
 ## The work
 
-- [ ] **Phase 1 — prepare.** Segmentation (graphemes via `package:characters`,
-      line-break opportunities), whitespace normalization, per-segment
-      measurement through `ui.Paragraph`, the cache and its eviction. Pure
-      Dart, no GPU, fully testable.
-- [ ] **Phase 2 — layout.** Greedy line breaking over prepared segments;
-      `break-word` grapheme fallback; soft hyphens; alignment; `maxLines` and
-      ellipsis. Output is lines, each with a range, a width and a baseline.
-- [ ] **Phase 3 — the box.** `Text3d extends Layout3d`: sizes from the layout,
-      answers intrinsics and the baseline, holds no geometry yet (a null
-      renderer). Everything above is headless-testable at this point.
-- [ ] **Phase 4 — the atlas renderer.** Glyph rasterization, atlas packing,
-      run meshes, the material. SDF as a follow-up within the phase.
-- [ ] **Phase 5 — `RichText3d`** over `WidgetComponent`, for what the atlas
-      cannot do.
-- [ ] **Phase 6, optional** — `ParagraphTextMeasurement3d` for complex
-      scripts, per-line variable width, Knuth–Plass, bidi levels.
+- [x] **Phase 1 — prepare.** Segmentation, whitespace normalization,
+      per-segment measurement through `ui.Paragraph`, the cache and its
+      eviction. `lib/src/text/break_rules.dart` (the policy),
+      `lib/src/text/line_break.dart` (normalize and segment, no font),
+      `lib/src/text/prepared_text.dart` (the handle),
+      `lib/src/text/text_measurement.dart` (the measuring and the LRU cache).
+      Graphemes come from `package:characters`, which is a new dependency of
+      this package.
+- [x] **Phase 2 — layout.** Greedy line breaking over prepared segments;
+      `break-word` grapheme fallback; soft hyphens; alignment (including
+      justify); `maxLines` and ellipsis. `lib/src/text/text_layout.dart` is
+      the output — lines, each with a range, a width, a baseline and its
+      runs.
+- [x] **Phase 3 — the box.** `Text3d extends Layout3d` in
+      `lib/src/text/text3d.dart`, with `SceneText3d` beside it in
+      `lib/src/widgets/layouts.dart`. Sizes from the layout, answers
+      intrinsics and the baseline, holds no geometry.
+- [ ] **Phase 4 — the atlas renderer.** **Not done.** The seam is:
+      `Text3dRenderer` and `Text3dRenderRequest` in
+      `lib/src/text/text_renderer.dart`, called after every layout of the box
+      and disposed with it. See *What was left out, and why* below.
+- [ ] **Phase 5 — `RichText3d`** over `WidgetComponent`. **Not done**, same
+      reason.
+- [x] **Phase 6, partly** — `ParagraphTextMeasurement3d` is in, because the
+      plan's own design section makes the *swappable policy* part of phase 1
+      rather than an optional extra: without a second implementation the
+      interface is a claim rather than a seam, and the fidelity test has
+      nothing to compare against. Per-line variable width, Knuth–Plass and
+      bidi levels are not in; the prepared handle is the shape they would be
+      built on and nothing has asked for them.
 
 ## Tests
 
-- Measured width and height against `TextPainter` ground truth for Latin text
-  at several widths, within a stated tolerance; the tolerance *is* the
-  accuracy claim.
-- Break rules: normal, `keep-all`, `break-word`, soft hyphen, a word wider
-  than the container, an empty string, whitespace-only.
-- Intrinsics answer without a layout pass, and a `Column3d` with
-  `CrossAxisAlignment3d.stretch` under `IntrinsicWidth3d` sizes to the widest
-  label.
-- The baseline is real: two `Text3d`s of different sizes in a
-  `CrossAxisAlignment3d.baseline` row share a line.
-- A benchmark that asserts the hot path performs no `Paragraph.layout` — the
-  point of the whole design, so it should fail loudly if a change reintroduces
-  one.
-- Cache: a style change invalidates, an identical string reuses.
+`test/text_test.dart` (53) and `test/text_box_test.dart` (27).
+
+- [x] Measured width and height against `TextPainter` ground truth, for eight
+      strings at every whole width from 10 to 210 logical pixels. **The
+      tolerance is zero** — they agree exactly, which is a stronger claim than
+      the plan asked for and is what the break-word correction below bought.
+- [x] Break rules: preserved and collapsed whitespace, `keep-all`,
+      `break-word` and its `overflow` opposite, soft hyphen (taken and not
+      taken), zero-width space, tabs, a word wider than the container, an
+      empty string, whitespace-only, a trailing newline, CJK, a grapheme
+      cluster that must not be split, closing punctuation that may not start a
+      line.
+- [x] Intrinsics answer without a layout pass — asserted through the
+      paragraph counter, not by inspection — and a `Column3d` with
+      `CrossAxisAlignment3d.stretch` under `IntrinsicWidth3d` sizes to the
+      widest label.
+- [x] The baseline is real: two `Text3d`s of different sizes in a
+      `CrossAxisAlignment3d.baseline` row share a line, and a wrapping label
+      reports its *first* line's baseline.
+- [x] The benchmark: `debugTextParagraphCount` does not move across 200
+      layouts at 200 different widths with alignment and a line limit. It is
+      exported, so a later plan's hot path can make the same assertion.
+- [x] Cache: an identical string reuses, a style change invalidates, the LRU
+      evicts rather than growing.
+- [x] Extra: the unit contract (a denser surface, a text scale, a change
+      reaching a deep label), `maxLines` and ellipsis through the box,
+      `softWrap: false`, relayout at the same width doing nothing, a ray
+      finding the label, the renderer seam being called and disposed, and the
+      declarative widget picking up `DefaultTextStyle` and `Directionality`.
+
+## What the original reasoning got wrong
+
+**Flutter breaks a word that does not fit; the plan treated that as an
+opt-in.** `overflow-wrap: break-word` was written up as one rule among
+several, with CSS's default (let it overflow) implied as ours. It is the other
+way round: Skia breaks an over-wide word at a grapheme boundary, so a
+`Text3d` whose default matched CSS would report a different height from the
+equivalent `Text` at every narrow width. `OverflowWrap3d.breakWord` is the
+default and `OverflowWrap3d.overflow` is the opt-out.
+
+**And it does not break the word in isolation.** The obvious implementation —
+put the over-wide word on a line of its own and split it there — is one line
+out from Flutter at several widths. What Skia actually does is pack the word's
+graphemes into whatever room is left *on the current line*, and then carry on
+into the following word by graphemes as well, so `'hello world'` at 42px is
+`hell` / `o wo` / `rld`, not `hell` / `o` / `worl` / `d`. Matching that is
+what took the ground-truth comparison from "close" to exact. It is written up
+on `_breakLines`.
+
+**Whitespace collapsing is not the default.** The plan named CSS's
+`white-space: normal` and `pre-wrap` as the two modes to cover, which reads as
+though collapsing were the ordinary case. Flutter preserves whitespace, and
+this package mirrors Flutter, so `TextWhitespace3d.preserve` is the default and
+`collapse` is the opt-in. A hard `\n` is a line break under both, which is
+Flutter's rule rather than CSS's.
+
+**The break rules belong to `prepare`, not to `layout`.** The plan's sketch
+was `prepare(text, style)` and `layout(prepared, maxWidth, lineHeight)`. The
+rules decide the *segmentation* — where a line may end at all — so they have
+to be in the first phase or the second one is not arithmetic. And `lineHeight`
+is not a layout parameter either: it comes from `TextStyle.height` through the
+paragraph style, which `prepare` has already consulted. What `layout` does
+need, and the plan did not have, is a **`minWidth`**: a block shrink-wraps to
+its longest line, so without one there is nothing for `textAlign` to align
+inside of. It is the same pair `TextPainter.layout` takes, for the same
+reason.
+
+**Grapheme widths cannot be measured in `prepare`.** Measuring every grapheme
+of every string up front would cost a `ui.Paragraph` per character for a
+policy most text never exercises. They are measured on first use and kept on
+the handle, so the first layout narrow enough to break a given word pays once
+and every layout after it is arithmetic again. The benchmark test warms that
+up before it starts counting, and there is a separate test asserting the
+one-time cost is one-time.
+
+**The escape hatch for a missing unit contract was not needed.** The plan
+allowed for an explicit `unitsPerLogicalPixel` on the box "until [camera-bound
+surfaces] lands". It landed first, so `Text3d` reads `Layout3d.metrics` like
+any other box and has no unit property of its own. `logicalPixelScale` is the
+one number it exposes, and it is derived rather than settable.
+
+**Tabs are a fixed advance, not a tab stop.** A real tab stop depends on where
+the tab sits on the line, and a line's position is not known until after it
+has been broken and aligned — which would put an intra-segment cursor into the
+arithmetic half for a feature a 3D label has no use for. A tab is `tabSize`
+space widths, and says so.
+
+**The line box comes from a probe, not from the content.** `prepare` measures
+a single space at the style to get the line height and baseline, the way
+`TextPainter.preferredLineHeight` does, and then widens the box if a segment's
+own paragraph came out taller (which is how a fallback font for an emoji gets
+counted). The alternative — deriving the box from the content — makes an empty
+label a different height from a full one.
+
+## What was left out, and why
+
+**Phases 4 and 5, the two halves of drawing.** Everything above is headless
+and is tested; a renderer is neither. A glyph atlas needs per-glyph rasters,
+which `dart:ui` does not expose: each glyph has to be painted into a
+`PictureRecorder`, read back through `Picture.toImage` and `Image.toByteData`
+(both asynchronous), packed into an atlas and uploaded with
+`Texture2D.fromPixels`, which requires a GPU context that `flutter test` does
+not have. The widget-capture path has the same problem plus a dependency on
+`SceneView` hosting the subtree. Landing several hundred lines of GPU code
+that neither this suite nor a reviewer could execute would have been worse
+than landing the seam, and the plan's own framing — *"build the first alone,
+behind an interface, and the renderer becomes a choice rather than a
+commitment"* — is the argument for stopping here. `Text3dRenderer` takes
+everything a renderer needs, including both directions of the unit conversion
+and the rasterization resolution, and `Text3d` calls it after every layout and
+disposes it with the box.
+
+**Knuth–Plass, per-line variable width, bidi levels.** The prepared handle is
+the right shape for all three (they are strategies over the same segment
+widths), and none of them has a caller. `ParagraphTextMeasurement3d` covers
+the bidi case today by handing it back to the platform.
+
+## What the later plans need from this
+
+- `Text3d(data, style: ..., textAlign:, textDirection:, softWrap:, overflow:,
+  maxLines:, depth:, rules:, measurement:, renderer:)` is the box, and
+  `SceneText3d` the widget. Every property has a setter that invalidates the
+  right amount: text, style, rules and the measurement re-prepare; alignment,
+  direction, wrapping, overflow and `maxLines` only re-lay-out.
+- **Everything in the measurement layer is in logical pixels.** `Text3d`
+  multiplies by `logicalPixelScale`, which is
+  `metrics.unitsPerLogicalPixel * metrics.textScaleFactor`. A prepared handle
+  therefore survives a change of metrics, which matters because a metrics
+  change relayouts the whole tree.
+- `Text3d.textLayout` is the last layout (null before the first), and
+  `Text3d.prepared` the measured handle. Between them they carry every line,
+  its runs, its width and its baseline, which is what
+  [size-driven geometry](2026_08_25_size_driven_geometry.md) needs to put a
+  panel behind a label and what a renderer needs to draw one.
+- `debugTextParagraphCount` is the instrument for "this path does no
+  shaping". [Animation](2026_08_25_animation_and_scroll_physics.md) dirties
+  layout every frame and should assert against it.
+- Text is the first thing in the package with a **real baseline**
+  (`Axis3d.vertical` only). `Baseline3d` is still what states one for content
+  that has none.
+- A `Text3d` answers hit tests on its own account, like a `NodeBox3d`. A label
+  inside a `Button3d` wants an `IgnorePointer3d` around it so the button
+  answers rather than the text — that is
+  [pointer dispatch](2026_08_25_pointer_dispatch_and_focus.md)'s business.
+- The renderer seam is open. Whoever implements it owns the level-of-detail
+  question [camera-bound surfaces](2026_08_25_camera_bound_surfaces.md) left
+  open: `logicalPixelsPerUnit` is a promise about screen pixels only for a
+  camera-bound surface.
 
 ## Out of scope
 
