@@ -17,6 +17,9 @@
 ///    the value types, each the 3D counterpart of a Flutter one.
 ///  * [NodeBox3d], the leaf that puts engine content into a layout and
 ///    measures its bounds to answer how big it is.
+///  * [Layout3dMetrics] and [Layout3dCameraBinding], the unit contract: how
+///    many world units a logical pixel is worth, and the camera binding that
+///    derives it by making a surface cover the view.
 ///  * [Layout3dSurface.hitTestRay] and [Layout3dPointer], the input half:
 ///    what a camera ray reaches, and the drag that scrolls it.
 ///  * [Container3d], [Padding3d], [Align3d], [Center3d], [SizedBox3d],
@@ -75,6 +78,7 @@ export 'src/built_children.dart'
         Layout3dContentExtentEstimator,
         Layout3dMeasuredChildrenMixin,
         Layout3dPrototypeBuilder;
+export 'src/camera_binding.dart' show Layout3dCameraBinding;
 export 'src/geometry/alignment3d.dart' show Alignment3d;
 export 'src/geometry/basis3d.dart' show LayoutBasis3d;
 export 'src/geometry/constraints3d.dart' show Constraints3d;
@@ -96,6 +100,7 @@ export 'src/layout3d.dart'
         ProxyLayout3d,
         SingleChildLayout3d;
 export 'src/layout_pass.dart' show Layout3dLayoutPassMixin;
+export 'src/metrics.dart' show Layout3dMetrics, VisualDensity3d;
 export 'src/scroll/box_scroll_view.dart' show BoxScrollView3d;
 export 'src/scroll/grid_delegate.dart'
     show

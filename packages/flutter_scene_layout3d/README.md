@@ -72,6 +72,114 @@ laid-out box sits at the plane node's origin, and defaults to the centre. The
 plane node itself is an ordinary scene node: its `position` is in the
 engine's coordinates, not in layout space.
 
+## How the plane gets a screen, and what a logical pixel is worth
+
+A surface is unbounded on all three axes until something bounds it, and a
+scene, unlike a window, bounds nothing. That is why a `ListView3d` on a bare
+surface asserts: nothing has told it how tall its window is. Flutter never has
+this problem, because the screen bounds everything.
+
+A **camera-bound** surface is the missing screen. Put the plane a fixed
+distance in front of the camera, oriented to it, and the view frustum at that
+distance has an exact world width and height, which are the surface's
+constraints:
+
+```dart
+final surface = Layout3dSurface(child: panel);
+const binding = Layout3dCameraBinding.screenFilling(distance: 2, depth: 0.2);
+
+// Once a frame, before rendering.
+binding.update(surface, camera: camera, viewSize: viewSize);
+surface.flush();
+```
+
+Declaratively it is two arguments, and the widget runs itself off the enclosing
+`SceneView`'s clock, so a moving camera is followed without the application
+ticking anything:
+
+```dart
+SceneLayout3d(
+  camera: camera,
+  binding: const Layout3dCameraBinding.screenFilling(distance: 2, depth: 0.2),
+  child: SceneColumn3d(children: [...]),
+)
+```
+
+A panel so bound behaves like a Flutter window. It resizes when the view
+resizes, its content reflows, and "how big is the screen" finally has an
+answer. Do not also give it a `size`: the binding owns the constraints, and
+the two would fight every frame.
+
+### The unit contract
+
+Once the plane covers the view, the conversion between logical pixels and
+world units stops being a choice. The plane's world height spans exactly
+`viewSize.height` logical pixels, so
+
+```
+unitsPerLogicalPixel = worldHeight / viewSize.height
+```
+
+and a Material 48dp touch target laid out `48 * unitsPerLogicalPixel` units
+wide lands as 48dp on the screen. That number, with an accessibility text
+scale and a visual density beside it, is `Layout3dMetrics`. It rides on the
+surface, next to the basis, and every box in the tree reads the same one:
+
+```dart
+class Button3d extends SingleChildLayout3d {
+  @override
+  void performLayout() {
+    // A 64 x 40 dp minimum, adjusted by the theme's density, inside whatever
+    // the parent allows.
+    final wanted = metrics.effectiveConstraints(
+      Constraints3d(minWidth: metrics.dp(64), minHeight: metrics.dp(40)),
+    );
+    child!.layout(wanted.enforce(constraints), parentUsesSize: true);
+    size = constraints.constrain(child!.size);
+    child!.place(Offset3d.zero);
+  }
+}
+```
+
+`metrics.dp(x)` is logical pixels to world units, `metrics.sp(x)` is the same
+scaled by the text scale, and `metrics.toLogicalPixels(u)` goes back the other
+way — which is what a rasterizer wants when it has to decide how many real
+pixels a glyph is worth. Changing the metrics relayouts the whole subtree,
+because a box sized in dp is a different box afterwards and nothing else would
+tell it so.
+
+### Panels that are not screens
+
+A panel hanging on a wall at some angle is not standing in for a screen, and
+there is no frustum to derive its scale from. Say what it is drawn at instead:
+
+```dart
+Layout3dCameraBinding.fixedDensity(0.01).update(surface);   // 1 unit = 100 dp
+```
+
+Same contract, authored rather than derived, and nothing downstream can tell
+the difference. `Layout3dCameraBinding.billboard()` is the third mode: the
+application owns where the panel is and the camera owns which way it faces. It
+writes the plane's transform only, so it touches no layout at all and is cheap
+to run every frame on as many panels as the scene holds.
+
+Three things are worth knowing before you reach for any of this:
+
+* **Depth is not derivable.** A frustum has no thickness, so
+  `screenFilling(depth: ...)` is an explicit property and defaults to zero. A
+  flat plane is a fine screen, but content standing in it needs a real
+  thickness — the same trap the *Traps* section names.
+* **The metrics are not a promise about pixels** unless the surface really is
+  camera-bound. A panel at an angle, or one the viewer can walk toward, covers
+  a different number of real pixels every frame. The number says how the
+  layout is *specified*; anything that rasterizes needs its own
+  level-of-detail story on top.
+* **A moving camera is cheap.** The derived extents carry a dead band
+  (`extentEpsilon`, a ten-thousandth of a unit by default), so view-matrix
+  jitter does not read as a size change; the plane's transform is compared
+  before it is written; and a camera that pans, or walks along its own forward
+  axis, re-derives the same frustum and relayouts nothing.
+
 ## Sizing real 3D content
 
 The hard part of a 3D layout is getting arbitrary content, primitives,
@@ -125,6 +233,8 @@ measurement is responsible.
 | `Row3d`, `Column3d`, `Depth3d`, `Flexible3d`, `Expanded3d`, `Spacer3d` | `Row`, `Column`, `Flexible`, `Expanded`, `Spacer` |
 | `Stack3d`, `Positioned3d` | `Stack`, `Positioned` |
 | `Wrap3d` | `Wrap` |
+| `Layout3dCameraBinding` | what `View` does for a Flutter tree: the thing that bounds it |
+| `Layout3dMetrics`, `VisualDensity3d` | `MediaQuery`'s scale factors, `VisualDensity` |
 | `Viewport3d`, `ListView3d`, `GridView3d`, `Scroll3dController` | `SingleChildScrollView`, `ListView`, `GridView`, `ScrollController` |
 | `Grid3dDelegate`, `Grid3dLayout` | `SliverGridDelegate`, `SliverGridLayout` |
 | `CustomScrollView3d`, `Sliver3d` | `CustomScrollView` + `Viewport`, `RenderSliver` |
@@ -246,7 +356,9 @@ the total extent estimated from the average, the same approximation
 `SliverList` makes.
 
 A list needs a bounded extent **across** its scroll axis, because that is what
-it gives an item to span, and it says so rather than guessing. Along the scroll
+it gives an item to span, and it says so rather than guessing. A camera-bound
+surface bounds every axis for you, which is the easiest way to stop hearing
+about it; see *How the plane gets a screen* above. Along the scroll
 axis it needs nothing: with no window to fill it is as long as its content and
 has nothing left to scroll. That matters here more than it does in Flutter,
 where the screen bounds everything: a `Layout3dSurface` is unbounded on all

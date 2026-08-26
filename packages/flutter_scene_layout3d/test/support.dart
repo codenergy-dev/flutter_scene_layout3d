@@ -66,6 +66,36 @@ class TestBox extends Layout3d {
   }
 }
 
+/// A box that asks for a size stated in logical pixels, the way a component
+/// in the catalogue will.
+///
+/// The point of it is that the size is not a constant: it is read back out of
+/// the tree's [Layout3d.metrics] on every layout, so a change to the unit
+/// contract shows up as a different box.
+class DpBox extends Layout3d {
+  DpBox(this.widthDp, this.heightDp, {this.depthDp = 0.0, super.name});
+
+  /// The width this box asks for, in logical pixels.
+  final double widthDp;
+
+  /// The height this box asks for, in logical pixels.
+  final double heightDp;
+
+  /// The depth this box asks for, in logical pixels.
+  final double depthDp;
+
+  /// How many times this box has been laid out.
+  int layoutCount = 0;
+
+  @override
+  void performLayout() {
+    layoutCount++;
+    size = constraints.constrain(
+      Size3d(metrics.dp(widthDp), metrics.dp(heightDp), metrics.dp(depthDp)),
+    );
+  }
+}
+
 /// The translation a layout's own node carries, in layout space.
 Offset3d translationOf(Layout3d layout) {
   final translation = layout.node.localTransform.getTranslation();
@@ -80,11 +110,13 @@ Layout3dSurface laidOut(
   Layout3d child, {
   Constraints3d constraints = const Constraints3d(),
   LayoutBasis3d? basis,
+  Layout3dMetrics metrics = Layout3dMetrics.standard,
   Alignment3d origin = Alignment3d.center,
 }) {
   final surface = Layout3dSurface(
     constraints: constraints,
     basis: basis,
+    metrics: metrics,
     origin: origin,
     child: child,
   );

@@ -1,7 +1,7 @@
 ---
-status: pending
+status: completed
 created_at: 2026-08-25T20:31:04Z
-updated_at: 2026-08-25T20:31:04Z
+updated_at: 2026-08-26T22:15:48Z
 commit: d7bb9db224f8080ddddde70d019ab5481b45d05e
 ---
 
@@ -158,33 +158,129 @@ text renderer is not designed as though density were constant.
 
 ## The work
 
-- [ ] **Phase 1 — the metrics.** `Layout3dMetrics` on `Layout3dOwner`, a
+- [x] **Phase 1 — the metrics.** `Layout3dMetrics` on `Layout3dOwner`, a
       setter on `Layout3dSurface` that relayouts, `Layout3d.metrics`,
       documented defaults, and the conversion helpers a component author uses
-      (`dp(48)` → units).
-- [ ] **Phase 2 — the binding.** `Layout3dCameraBinding` with the three modes,
+      (`dp(48)` → units). `lib/src/metrics.dart`, with `VisualDensity3d` as
+      the 3D analogue the plan left open.
+- [x] **Phase 2 — the binding.** `Layout3dCameraBinding` with the three modes,
       the frustum arithmetic, the plane transform, the epsilon, and the
-      declarative wiring on `SceneLayout3d`.
-- [ ] **Phase 3 — orthographic.** `OrthographicProjection` in `flutter_scene`
-      (separate commit, engine package), and the ortho branch of
-      `screenFilling`.
-- [ ] **Phase 4 — README.** A section on what a camera-bound surface is, why
-      it is how a 3D UI gets a "screen", and the authored-density alternative
-      for panels that are not screens.
+      declarative wiring on `SceneLayout3d`. `lib/src/camera_binding.dart`.
+- [x] **Phase 3 — orthographic**, on this package's side: there is no ortho
+      *branch* in `screenFilling` and there does not need to be, because the
+      extents are read out of the projection matrix rather than out of a
+      `PerspectiveProjection`'s field of view (see below). Covered by a test
+      with a projection defined in the test file.
+      **Not done, deliberately:** `OrthographicProjection` in `flutter_scene`.
+      The plan itself says that is a separate commit in the engine package, so
+      it stays one; nothing on the layout side is waiting on it.
+- [x] **Phase 4 — README.** *How the plane gets a screen, and what a logical
+      pixel is worth*, with the unit contract, the authored-density
+      alternative, and the three things worth knowing before reaching for any
+      of it.
 
 ## Tests
 
-- Frustum arithmetic: a known fov, aspect and distance produce known world
-  extents; the surface's constraints match; `unitsPerLogicalPixel` inverts
-  correctly (a box of `n` logical pixels projects to `n` pixels on screen,
-  checked through `Camera.getViewTransform`).
-- A camera translating along its forward axis with `screenFilling` re-derives
-  and relayouts; a camera panning at fixed distance does not (the epsilon
-  test).
-- `billboard` writes no constraints and marks no layout dirty.
-- Metrics propagate to a deep child through `owner`, and a change relayouts.
-- An authored density and a derived one produce the same box sizes for the
-  same inputs.
+`test/metrics_test.dart` (17) and `test/camera_binding_test.dart` (26).
+
+- [x] Frustum arithmetic: a known fov, aspect and distance produce known world
+      extents; the surface's constraints match; `unitsPerLogicalPixel` inverts
+      correctly. Checked two ways: the plane's corners project to the view's
+      corners, and a box of `metrics.dp(48)` measures 48 logical pixels across
+      through `Camera.worldToScreen`.
+- [x] A camera panning at a fixed distance relayouts nothing (the epsilon
+      test), **and so does one translating along its forward axis** — see the
+      correction below.
+- [x] `billboard` writes no constraints, no metrics, and marks no layout
+      dirty; it keeps the translation the application set and takes only the
+      facing.
+- [x] Metrics propagate to a deep child through `owner`, and a change
+      relayouts.
+- [x] An authored density and a derived one produce the same box sizes for the
+      same inputs.
+- [x] Extra: an orthographic lens covers the same extents at any distance; a
+      still camera writes nothing at all, not even a node transform; a
+      degenerate view is a no-op; the declarative wiring derives, and hands the
+      contract back when the binding is dropped.
+
+## What the original reasoning got wrong
+
+**A camera translating along its forward axis does not re-derive.** The plan
+predicted it would, and made it a test. It is wrong: `screenFilling` pins the
+plane a fixed `distance` in front of the eye, so walking forward carries the
+plane along and the frustum *at that distance* is unchanged. What actually
+re-derives is a change of view size, field of view, or `distance`. The test
+now asserts the true behaviour and says so in a comment, and there is a
+separate test for the view-size case.
+
+**Rounding to an epsilon is the wrong mechanism.** "Round the derived extents
+to an epsilon before assigning" was implemented first and failed its own test:
+an extent that happens to sit near a quantum boundary flips across it on
+exactly the jitter the rounding was meant to absorb (the derived width did,
+while the height did not). `extentEpsilon` is now a **dead band** measured
+against the extent already in force — within it, the standing value is kept.
+That has no boundaries in it, keeps the surface covering the view *exactly*
+rather than on a grid, and still lets a slow genuine drift land, one epsilon
+at a time. Default `1e-4` world units, a hundredth of a logical pixel at the
+default metrics.
+
+**`markNeedsLayout` at the root is not enough for a tree-wide value.**
+`Layout3d.layout` skips a clean child whose constraints did not change, which
+is exactly the case for a box that reads `metrics` directly. Added
+`Layout3d.markSubtreeNeedsLayout()` and used it from the metrics setter. The
+pre-existing `basis` setter had the same latent bug — its dartdoc promised a
+relayout that a `NodeBox3d` deeper in the tree would never see — and was fixed
+in the same pass.
+
+**The binding takes the surface as an argument.** The plan wrote
+`binding.update(camera: camera, viewSize: size)`, implying a binding holds a
+surface. It is an immutable description instead —
+`binding.update(surface, camera: ..., viewSize: ...)` — so a `const` binding
+can live in a widget's build method and be applied to whichever surface that
+widget owns. The hierarchy is closed (private subclasses behind three named
+constructors).
+
+**The orthographic branch is not a branch.** Rather than reading
+`PerspectiveProjection.fovRadiansY`, `screenFilling` reads the projection
+*matrix*: at view depth `z` the clip `w` is `m32 * z + m33`, so the visible
+half-width there is `w / m00` and the half-height `w / m11`. For a perspective
+lens that is the familiar `z * tan(fov / 2)`; for an orthographic one
+(`m32 = 0`, `m33 = 1`) it collapses to a constant with no distance in it. One
+expression covers both, and any caller's own `CameraProjection` besides.
+
+**`SceneView` publishes no view size, and cannot easily.** Its declarative
+children are laid out at a tight zero size (they exist to reconcile trees, not
+to take space), so a `LayoutBuilder` under a `SceneLayout3d` sees nothing.
+`SceneLayout3d` therefore resolves the size by walking to the nearest
+*laid-out* ancestor box, which under a `SceneView` is the view's own box, with
+`viewSize` as an explicit override. That walk must not happen during layout —
+a box's size is only legible to its parent while a pass is running — so the
+binding is applied from the enclosing scene's per-frame clock
+(`SceneScope.elapsed`) and, for the first application and for hosts that do
+not tick, from a post-frame callback. No caller threads a size by hand in the
+common case, which was the plan's requirement.
+
+**"Inherited" metrics had nothing to attach to.** The package has no nested
+surfaces yet; inheritance inside one tree is what `owner.metrics` already
+gives, and a nested surface (when [overlays](2026_08_25_overlays_and_layered_surfaces.md)
+land) assigns its host's `metrics` to get the same contract.
+
+## What the later plans need from this
+
+- The number is `Layout3dMetrics.unitsPerLogicalPixel`, in
+  `lib/src/metrics.dart`, carried on `Layout3dOwner.metrics` and read by any
+  box as `metrics` (`Layout3d.metrics`, falling back to
+  `Layout3dMetrics.standard` while detached). `metrics.dp(x)`,
+  `metrics.sp(x)`, `metrics.toLogicalPixels(u)`, `metrics.dpSize(w, h, [d])`
+  and `metrics.effectiveConstraints(c)` are the conversions.
+- The authored default is `0.01`: one world unit to a hundred logical pixels.
+- `metrics.logicalPixelsPerUnit` is the rasterization number
+  ([text](2026_08_25_text_in_a_3d_layout.md) wants it), and it is *not* a
+  promise about screen pixels unless the surface is camera-bound — the LOD
+  question this plan leaves open is unchanged.
+- Reading `metrics` in `performLayout` is safe and cheap; a change to it
+  relayouts the whole subtree, so nothing on a per-frame animation path should
+  write it.
 
 ## Out of scope
 

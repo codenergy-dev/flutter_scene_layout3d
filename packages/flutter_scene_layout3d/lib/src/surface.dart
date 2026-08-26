@@ -9,6 +9,7 @@ import 'geometry/offset3d.dart';
 import 'geometry/size3d.dart';
 import 'hit_test.dart';
 import 'layout3d.dart';
+import 'metrics.dart';
 
 /// The root of a 3D layout: the plane its children are arranged on.
 ///
@@ -40,10 +41,13 @@ class Layout3dSurface extends SingleChildLayout3d {
   /// [constraints] is what the root child is laid out against; a tight one
   /// gives the plane a fixed extent, an unbounded one lets it shrink-wrap its
   /// content. [origin] says which point of the laid-out box sits at the
-  /// [plane] node's origin, and defaults to the center.
+  /// [plane] node's origin, and defaults to the center. [metrics] is the unit
+  /// contract the whole tree is specified in, and defaults to the authored
+  /// one; bind the surface to a camera to have it derived instead.
   Layout3dSurface({
     Constraints3d constraints = const Constraints3d(),
     LayoutBasis3d? basis,
+    Layout3dMetrics metrics = Layout3dMetrics.standard,
     Alignment3d origin = Alignment3d.center,
     VoidCallback? onNeedVisualUpdate,
     super.child,
@@ -55,6 +59,7 @@ class Layout3dSurface extends SingleChildLayout3d {
     _plane.add(node);
     _owner
       ..basis = basis ?? LayoutBasis3d.xy
+      ..metrics = metrics
       ..onNeedVisualUpdate = onNeedVisualUpdate;
     attach(_owner);
     applyNodeTransform();
@@ -105,8 +110,33 @@ class Layout3dSurface extends SingleChildLayout3d {
   set basis(LayoutBasis3d value) {
     if (identical(_owner.basis, value)) return;
     _owner.basis = value;
-    markNeedsLayout();
+    // The whole subtree, not just this box: a leaf reads the basis directly
+    // rather than being handed it, so a child whose constraints did not
+    // change would otherwise be skipped with a stale measurement.
+    markSubtreeNeedsLayout();
     applyNodeTransform();
+  }
+
+  @override
+  Layout3dMetrics get metrics => _owner.metrics;
+
+  /// Sets the unit contract for the whole tree: how many world units a
+  /// logical pixel is worth, and the dials a component library reads beside
+  /// it.
+  ///
+  /// The root owns it and every box below reads it through
+  /// [Layout3d.metrics]. Set it by hand for a panel whose scale is authored,
+  /// or let a [Layout3dCameraBinding] derive it from the view.
+  ///
+  /// Changing it relayouts the whole subtree, for the same reason changing
+  /// the [basis] does: content measured at one density reports a different
+  /// size at another. A component sized `metrics.dp(48)` is a different box
+  /// after the number changes, and since the number never reaches it as a
+  /// constraint, nothing else would tell it so.
+  set metrics(Layout3dMetrics value) {
+    if (_owner.metrics == value) return;
+    _owner.metrics = value;
+    markSubtreeNeedsLayout();
   }
 
   /// Called when something in the tree goes dirty, so a host can schedule a

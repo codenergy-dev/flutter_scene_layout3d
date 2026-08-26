@@ -1,19 +1,25 @@
+import 'dart:ui' show Size;
+
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/widgets.dart'
     show
         BuildContext,
         MultiChildRenderObjectWidget,
         State,
         StatefulWidget,
-        Widget;
-import 'package:flutter/rendering.dart' show RenderObject;
+        Widget,
+        WidgetsBinding;
+import 'package:flutter/rendering.dart' show RenderBox, RenderObject;
 import 'package:flutter_scene/scene.dart'
-    show Node, SceneNode, SceneNodeHost, SceneSubtree;
+    show Camera, Node, SceneNode, SceneNodeHost, SceneScope, SceneSubtree;
 import 'package:vector_math/vector_math.dart' show Matrix4, Quaternion, Vector3;
 
+import '../camera_binding.dart';
 import '../geometry/alignment3d.dart';
 import '../geometry/basis3d.dart';
 import '../geometry/constraints3d.dart';
 import '../geometry/size3d.dart';
+import '../metrics.dart';
 import '../surface.dart';
 import 'framework.dart';
 
@@ -67,6 +73,9 @@ class SceneLayout3d extends StatefulWidget {
     this.constraints,
     this.basis,
     this.origin = Alignment3d.center,
+    this.camera,
+    this.binding,
+    this.viewSize,
     this.parent,
     this.position,
     this.rotation,
@@ -100,6 +109,39 @@ class SceneLayout3d extends StatefulWidget {
 
   /// The point of the laid-out box that sits at the plane's origin.
   final Alignment3d origin;
+
+  /// The camera a [binding] reads.
+  ///
+  /// Required by every binding but
+  /// [Layout3dCameraBinding.fixedDensity], which is authored rather than
+  /// derived. Usually the same camera the enclosing `SceneView` renders
+  /// with.
+  final Camera? camera;
+
+  /// Ties the surface to the [camera], and with it the unit contract.
+  ///
+  /// [Layout3dCameraBinding.screenFilling] makes the plane *be* the screen:
+  /// it derives the surface's constraints from the view frustum and its
+  /// metrics from the view's logical height, and moves the plane to face the
+  /// camera, every frame. Such a surface must not also be given a [size] or
+  /// [constraints], because the two would fight.
+  /// [Layout3dCameraBinding.billboard] turns the plane to face the camera and
+  /// touches nothing else; [Layout3dCameraBinding.fixedDensity] states an
+  /// authored scale and needs no camera at all.
+  ///
+  /// The binding is applied once per frame off the enclosing `SceneView`'s
+  /// clock, so a moving camera is followed without the application ticking
+  /// anything itself.
+  final Layout3dCameraBinding? binding;
+
+  /// The logical size of the view a [binding] derives from.
+  ///
+  /// Leave it null in the common case: the widget takes the size of the
+  /// nearest laid-out ancestor box, which under a `SceneView` is the view
+  /// itself, so nothing has to be threaded by hand. Supply it when the layout
+  /// is not mounted under the view it is bound to, or when the view renders
+  /// into a sub-rectangle of its box.
+  final Size? viewSize;
 
   /// The node the plane attaches under.
   ///
@@ -141,35 +183,152 @@ class _SceneLayout3dState extends State<SceneLayout3d> {
     return widget.constraints ?? const Constraints3d();
   }
 
+  /// The enclosing view's per-frame clock, when there is one.
+  ///
+  /// A binding has to run every frame, and the camera moves without anything
+  /// in the widget tree changing, so a rebuild is the wrong signal. The
+  /// scene's own elapsed-time notifier is the right one: it ticks once per
+  /// rendered frame, which is exactly how often the plane has to be put back
+  /// in front of the camera.
+  ValueListenable<Duration>? _frames;
+
+  bool _bindingUpdateScheduled = false;
+
   @override
   void initState() {
     super.initState();
     widget.controller?._surface = _surface;
+    assert(_debugCheckBinding());
+    _scheduleBindingUpdate();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final frames = SceneScope.maybeOf(context)?.elapsed;
+    if (identical(frames, _frames)) return;
+    _frames?.removeListener(_applyBinding);
+    _frames = frames;
+    frames?.addListener(_applyBinding);
+    _scheduleBindingUpdate();
   }
 
   @override
   void didUpdateWidget(SceneLayout3d oldWidget) {
     super.didUpdateWidget(oldWidget);
+    assert(_debugCheckBinding());
     if (!identical(widget.controller, oldWidget.controller)) {
       if (identical(oldWidget.controller?._surface, _surface)) {
         oldWidget.controller?._surface = null;
       }
       widget.controller?._surface = _surface;
     }
-    _surface.configuration = _configuration;
+    final binding = widget.binding;
+    final oldBinding = oldWidget.binding;
+    // A binding that derived a value owned it while it was there, so dropping
+    // it (or swapping it for one that derives less) hands the value back to
+    // the widget's own props and their defaults, the way a dropped basis
+    // does.
+    if (oldBinding != null && oldBinding.derivesMetrics && binding == null) {
+      _surface.metrics = Layout3dMetrics.standard;
+    }
+    if (!_bindingOwnsConfiguration) {
+      _surface.configuration = _configuration;
+    }
     _surface.origin = widget.origin;
     // A null basis means the default, not "leave the last one alone", so
     // dropping the argument on a rebuild puts the plane back upright.
     _surface.basis = widget.basis ?? LayoutBasis3d.xy;
+    if (binding != oldBinding ||
+        !identical(widget.camera, oldWidget.camera) ||
+        widget.viewSize != oldWidget.viewSize) {
+      _scheduleBindingUpdate();
+    }
   }
 
   @override
   void dispose() {
+    _frames?.removeListener(_applyBinding);
     if (identical(widget.controller?._surface, _surface)) {
       widget.controller?._surface = null;
     }
     _surface.dispose();
     super.dispose();
+  }
+
+  /// Whether a binding, rather than [SceneLayout3d.size], decides what the
+  /// root child is laid out against.
+  bool get _bindingOwnsConfiguration =>
+      widget.binding?.derivesConstraints ?? false;
+
+  bool _debugCheckBinding() {
+    final binding = widget.binding;
+    if (binding == null) return true;
+    assert(
+      !binding.needsCamera || widget.camera != null,
+      'This Layout3dCameraBinding derives the surface from a camera, so '
+      'SceneLayout3d needs one. Pass the camera the enclosing SceneView '
+      'renders with.',
+    );
+    assert(
+      !binding.derivesConstraints ||
+          (widget.size == null && widget.constraints == null),
+      'A screen-filling binding derives the surface\'s constraints from the '
+      'view frustum, so it cannot also be given a size or constraints of its '
+      'own; the two would fight every frame.',
+    );
+    return true;
+  }
+
+  /// Runs the binding once, after this frame.
+  ///
+  /// The first application cannot happen during build or layout: it reads the
+  /// enclosing view's box, and a box's size is only legible to its own parent
+  /// while a layout pass is running. After the frame, everything is laid out
+  /// and the read is free.
+  void _scheduleBindingUpdate() {
+    if (_bindingUpdateScheduled || widget.binding == null) return;
+    _bindingUpdateScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _bindingUpdateScheduled = false;
+      _applyBinding();
+    });
+  }
+
+  void _applyBinding() {
+    if (!mounted) return;
+    final binding = widget.binding;
+    if (binding == null) return;
+    final camera = widget.camera;
+    if (binding.needsCamera && camera == null) return;
+    Size? viewSize;
+    if (binding.needsViewSize) {
+      viewSize = _resolveViewSize();
+      if (viewSize == null) return;
+    }
+    binding.update(_surface, camera: camera, viewSize: viewSize);
+  }
+
+  /// The logical size of the view the binding derives from.
+  ///
+  /// [SceneLayout3d.viewSize] when it is given. Otherwise the size of the
+  /// nearest laid-out ancestor box: a declarative scene child is mounted in a
+  /// chain of zero-sized hosts (they exist to reconcile the layout tree, not
+  /// to take space), so the first ancestor with an extent is the `SceneView`
+  /// itself, whose box is the view. Null when there is no such ancestor,
+  /// which is the case for a layout pumped on its own, and which the caller
+  /// answers by passing [SceneLayout3d.viewSize].
+  Size? _resolveViewSize() {
+    final explicit = widget.viewSize;
+    if (explicit != null) return explicit;
+    RenderObject? node = context.findRenderObject();
+    while (node != null) {
+      if (node is RenderBox && node.hasSize && !node.size.isEmpty) {
+        return node.size;
+      }
+      node = node.parent;
+    }
+    return null;
   }
 
   @override

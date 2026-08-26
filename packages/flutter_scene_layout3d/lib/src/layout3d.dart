@@ -10,6 +10,7 @@ import 'geometry/constraints3d.dart';
 import 'geometry/offset3d.dart';
 import 'geometry/size3d.dart';
 import 'hit_test.dart';
+import 'metrics.dart';
 
 /// Builds the layout for one item of a lazily built view.
 ///
@@ -76,6 +77,16 @@ class Layout3dOwner {
   /// The mapping from layout space to the surface node's scene space, owned
   /// by the root and read by leaves when they place engine content.
   LayoutBasis3d basis = LayoutBasis3d.xy;
+
+  /// The unit contract in force for this tree: how many world units a logical
+  /// pixel is worth, and the dials a component library reads beside it.
+  ///
+  /// It rides here, next to [basis], rather than in an `InheritedWidget`,
+  /// because the imperative layer has no `BuildContext` and the basis already
+  /// set the precedent. Everything in the tree reaches it through
+  /// [Layout3d.metrics]; the root writes it, through
+  /// [Layout3dSurface.metrics] or a [Layout3dCameraBinding].
+  Layout3dMetrics metrics = Layout3dMetrics.standard;
 
   final List<Layout3d> _nodesNeedingLayout = <Layout3d>[];
 
@@ -163,6 +174,19 @@ abstract class Layout3d {
   ///
   /// Falls back to [LayoutBasis3d.xy] while detached.
   LayoutBasis3d get basis => _owner?.basis ?? LayoutBasis3d.xy;
+
+  /// The unit contract in force for this tree.
+  ///
+  /// How a box written against a component spec turns a dp figure into world
+  /// units: `metrics.dp(48)` is a Material touch target on whatever scale the
+  /// surface is drawn at. The root owns the value and every box below it
+  /// inherits the same one, so a component never has to be told.
+  ///
+  /// Falls back to [Layout3dMetrics.standard] while detached, which is the
+  /// authored default (one unit to a hundred logical pixels) rather than
+  /// anything derived. A box whose size depends on this must be laid out
+  /// again when it changes, which is why writing it at the root relayouts.
+  Layout3dMetrics get metrics => _owner?.metrics ?? Layout3dMetrics.standard;
 
   int _depth = 0;
 
@@ -354,6 +378,23 @@ abstract class Layout3d {
   @protected
   void invalidateLayout() {
     _needsLayout = true;
+  }
+
+  /// Marks this layout and everything below it as needing to be laid out.
+  ///
+  /// The blunt instrument, and it exists because [markNeedsLayout] is not
+  /// enough for a change to something the whole tree measures *against*: the
+  /// [basis] a leaf maps its content bounds through, or the [metrics] a
+  /// component turns a dp figure into world units with. Neither reaches a
+  /// child as a constraint, and [layout] skips a clean child whose
+  /// constraints did not change — which is the optimization that makes
+  /// relayout cheap, and exactly the one that has to be defeated here.
+  ///
+  /// Called by the root when it is handed a new tree-wide value. Nothing on
+  /// the hot path does this.
+  void markSubtreeNeedsLayout() {
+    markNeedsLayout();
+    visitChildren((child) => child.markSubtreeNeedsLayout());
   }
 
   /// Marks this layout as needing to be laid out again.
