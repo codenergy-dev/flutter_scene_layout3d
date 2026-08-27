@@ -1,12 +1,25 @@
+import 'package:flutter/gestures.dart'
+    show
+        GestureDragCancelCallback,
+        GestureDragEndCallback,
+        GestureDragStartCallback,
+        GestureDragUpdateCallback,
+        GestureLongPressCallback,
+        GestureTapCallback,
+        GestureTapCancelCallback,
+        GestureTapDownCallback,
+        GestureTapUpCallback;
 import 'package:flutter/widgets.dart'
     show
         BuildContext,
         DefaultTextStyle,
         Directionality,
+        FocusNode,
         TextAlign,
         TextDirection,
         TextOverflow,
         TextStyle,
+        ValueChanged,
         Widget;
 import 'package:flutter_scene/scene.dart' show Node;
 import 'package:vector_math/vector_math.dart' show Matrix4;
@@ -25,6 +38,11 @@ import '../geometry/constraints3d.dart';
 import '../geometry/edge_insets3d.dart';
 import '../geometry/offset3d.dart';
 import '../geometry/size3d.dart';
+import '../input/events.dart';
+import '../input/focus.dart';
+import '../input/gesture_detector.dart';
+import '../input/listener.dart';
+import '../input/tap_target.dart';
 import '../scroll/grid_delegate.dart';
 import '../scroll/grid_view.dart';
 import '../scroll/list_view.dart';
@@ -239,6 +257,252 @@ class SceneAbsorbPointer3d extends SingleChildLayout3dWidget {
   @override
   void updateLayout(BuildContext context, AbsorbPointer3d layout) {
     layout.absorbing = absorbing;
+  }
+}
+
+/// Claims a region of the plane for the pointer, the widget form of
+/// [HitTestArea3d].
+class SceneHitTestArea3d extends SingleChildLayout3dWidget {
+  /// Creates a hit-test region, opaque by default.
+  const SceneHitTestArea3d({
+    super.key,
+    this.behavior = HitTestBehavior3d.opaque,
+    super.child,
+  });
+
+  /// How the box takes part in a hit test.
+  final HitTestBehavior3d behavior;
+
+  @override
+  HitTestArea3d createLayout(BuildContext context) =>
+      HitTestArea3d(behavior: behavior);
+
+  @override
+  void updateLayout(BuildContext context, HitTestArea3d layout) {
+    layout.behavior = behavior;
+  }
+}
+
+/// Guarantees the pointer a minimum area to aim at, the widget form of
+/// [TapTarget3d].
+class SceneTapTarget3d extends SingleChildLayout3dWidget {
+  /// Creates a target at least [minimumSize] across, or 48dp square by
+  /// default.
+  const SceneTapTarget3d({super.key, this.minimumSize, super.child});
+
+  /// The smallest area the pointer is given, in world units.
+  final Size3d? minimumSize;
+
+  @override
+  TapTarget3d createLayout(BuildContext context) =>
+      TapTarget3d(minimumSize: minimumSize);
+
+  @override
+  void updateLayout(BuildContext context, TapTarget3d layout) {
+    layout.minimumSize = minimumSize;
+  }
+}
+
+/// Reports the pointer events inside it, the widget form of [Listener3d].
+class SceneListener3d extends SingleChildLayout3dWidget {
+  /// Creates a box that reports the pointer events it is handed.
+  const SceneListener3d({
+    super.key,
+    this.onPointerDown,
+    this.onPointerMove,
+    this.onPointerUp,
+    this.onPointerCancel,
+    this.onPointerHover,
+    this.onPointerEnter,
+    this.onPointerExit,
+    this.behavior = HitTestBehavior3d.deferToChild,
+    super.child,
+  });
+
+  /// Called when a pointer comes down on this box.
+  final PointerEvent3dCallback? onPointerDown;
+
+  /// Called when a pointer that came down on this box moves.
+  final PointerEvent3dCallback? onPointerMove;
+
+  /// Called when a pointer that came down on this box is lifted.
+  final PointerEvent3dCallback? onPointerUp;
+
+  /// Called when the press is abandoned without an up.
+  final PointerEvent3dCallback? onPointerCancel;
+
+  /// Called when an unpressed pointer moves over this box.
+  final PointerEvent3dCallback? onPointerHover;
+
+  /// Called when an unpressed pointer arrives over this box.
+  final PointerEvent3dCallback? onPointerEnter;
+
+  /// Called when an unpressed pointer leaves this box.
+  final PointerEvent3dCallback? onPointerExit;
+
+  /// How the box takes part in a hit test.
+  final HitTestBehavior3d behavior;
+
+  @override
+  Listener3d createLayout(BuildContext context) => Listener3d(
+    onPointerDown: onPointerDown,
+    onPointerMove: onPointerMove,
+    onPointerUp: onPointerUp,
+    onPointerCancel: onPointerCancel,
+    onPointerHover: onPointerHover,
+    onPointerEnter: onPointerEnter,
+    onPointerExit: onPointerExit,
+    behavior: behavior,
+  );
+
+  @override
+  void updateLayout(BuildContext context, Listener3d layout) {
+    layout
+      ..onPointerDown = onPointerDown
+      ..onPointerMove = onPointerMove
+      ..onPointerUp = onPointerUp
+      ..onPointerCancel = onPointerCancel
+      ..onPointerHover = onPointerHover
+      ..onPointerEnter = onPointerEnter
+      ..onPointerExit = onPointerExit
+      ..behavior = behavior;
+  }
+}
+
+/// Recognizes gestures on the plane, the widget form of [GestureDetector3d].
+class SceneGestureDetector3d extends SingleChildLayout3dWidget {
+  /// Creates a gesture detector.
+  const SceneGestureDetector3d({
+    super.key,
+    this.onTapDown,
+    this.onTapUp,
+    this.onTap,
+    this.onTapCancel,
+    this.onDoubleTap,
+    this.onLongPress,
+    this.onPanStart,
+    this.onPanUpdate,
+    this.onPanEnd,
+    this.onPanCancel,
+    this.behavior = HitTestBehavior3d.opaque,
+    super.child,
+  });
+
+  /// Called when a pointer that might turn into a tap comes down.
+  final GestureTapDownCallback? onTapDown;
+
+  /// Called when the pointer that will produce a tap is lifted.
+  final GestureTapUpCallback? onTapUp;
+
+  /// Called when a tap has happened.
+  final GestureTapCallback? onTap;
+
+  /// Called when the press will not become a tap after all.
+  final GestureTapCancelCallback? onTapCancel;
+
+  /// Called when the box is tapped twice in quick succession.
+  final GestureTapCallback? onDoubleTap;
+
+  /// Called when a long press is recognized.
+  final GestureLongPressCallback? onLongPress;
+
+  /// Called when a pan begins.
+  final GestureDragStartCallback? onPanStart;
+
+  /// Called as a recognized pan moves.
+  final GestureDragUpdateCallback? onPanUpdate;
+
+  /// Called when a recognized pan ends.
+  final GestureDragEndCallback? onPanEnd;
+
+  /// Called when a pan is abandoned.
+  final GestureDragCancelCallback? onPanCancel;
+
+  /// How the box takes part in a hit test.
+  final HitTestBehavior3d behavior;
+
+  @override
+  GestureDetector3d createLayout(BuildContext context) => GestureDetector3d(
+    onTapDown: onTapDown,
+    onTapUp: onTapUp,
+    onTap: onTap,
+    onTapCancel: onTapCancel,
+    onDoubleTap: onDoubleTap,
+    onLongPress: onLongPress,
+    onPanStart: onPanStart,
+    onPanUpdate: onPanUpdate,
+    onPanEnd: onPanEnd,
+    onPanCancel: onPanCancel,
+    behavior: behavior,
+  );
+
+  @override
+  void updateLayout(BuildContext context, GestureDetector3d layout) {
+    layout
+      ..onTapDown = onTapDown
+      ..onTapUp = onTapUp
+      ..onTap = onTap
+      ..onTapCancel = onTapCancel
+      ..onDoubleTap = onDoubleTap
+      ..onLongPress = onLongPress
+      ..onPanStart = onPanStart
+      ..onPanUpdate = onPanUpdate
+      ..onPanEnd = onPanEnd
+      ..onPanCancel = onPanCancel
+      ..behavior = behavior;
+  }
+}
+
+/// Ties a [FocusNode] to a box, the widget form of [Focus3d].
+///
+/// Pass a [focusNode] to drive it from a `Focus` widget above, or leave it
+/// null and let the box own one; dropping the node between rebuilds gives the
+/// box a fresh one rather than leaving it tied to the old.
+class SceneFocus3d extends SingleChildLayout3dWidget {
+  /// Creates a focusable box.
+  const SceneFocus3d({
+    super.key,
+    this.focusNode,
+    this.onFocusChange,
+    this.focusOnPointerDown = true,
+    this.autofocus = false,
+    this.canRequestFocus = true,
+    super.child,
+  });
+
+  /// The node holding this box's place in the focus tree, or null for one of
+  /// its own.
+  final FocusNode? focusNode;
+
+  /// Called when this box gains or loses focus.
+  final ValueChanged<bool>? onFocusChange;
+
+  /// Whether a press inside this box focuses it.
+  final bool focusOnPointerDown;
+
+  /// Whether this box takes focus as soon as it is in a laid-out tree.
+  final bool autofocus;
+
+  /// Whether this box can take focus at all.
+  final bool canRequestFocus;
+
+  @override
+  Focus3d createLayout(BuildContext context) => Focus3d(
+    focusNode: focusNode,
+    onFocusChange: onFocusChange,
+    focusOnPointerDown: focusOnPointerDown,
+    autofocus: autofocus,
+    canRequestFocus: canRequestFocus,
+  );
+
+  @override
+  void updateLayout(BuildContext context, Focus3d layout) {
+    layout
+      ..focusNode = focusNode
+      ..onFocusChange = onFocusChange
+      ..focusOnPointerDown = focusOnPointerDown
+      ..canRequestFocus = canRequestFocus
+      ..autofocus = autofocus;
   }
 }
 

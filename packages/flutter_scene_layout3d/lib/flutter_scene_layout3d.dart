@@ -35,7 +35,12 @@
 ///    many world units a logical pixel is worth, and the camera binding that
 ///    derives it by making a surface cover the view.
 ///  * [Layout3dSurface.hitTestRay] and [Layout3dPointer], the input half:
-///    what a camera ray reaches, and the drag that scrolls it.
+///    what a camera ray reaches, and what happens next. [HitTestTarget3d] is
+///    the box that receives events, [Listener3d] the raw one,
+///    [GestureDetector3d] the one that recognizes taps and drags through
+///    Flutter's own arena, [HitTestArea3d] and [TapTarget3d] the two ways of
+///    saying where a control can be aimed at, and [Focus3d] with
+///    [Focus3dTraversal] the focus half.
 ///  * [Container3d], [Padding3d], [Align3d], [Center3d], [SizedBox3d],
 ///    [ConstrainedBox3d], [Transform3d], [Row3d], [Column3d], [Depth3d],
 ///    [Stack3d], [Positioned3d], [Wrap3d], [Viewport3d], [ListView3d],
@@ -115,7 +120,18 @@ export 'src/geometry/edge_insets3d.dart' show EdgeInsets3d;
 export 'src/geometry/offset3d.dart' show Axis3d, Offset3d;
 export 'src/geometry/size3d.dart' show Size3d;
 export 'src/hit_test.dart' show HitTestEntry3d, HitTestResult3d, Ray3d;
+export 'src/input/events.dart'
+    show HitTestBehavior3d, HitTestTarget3d, PointerEvent3d, PointerSequence3d;
+export 'src/input/focus.dart' show Focus3d, Focus3dTraversal;
+export 'src/input/gesture_detector.dart' show GestureDetector3d;
+export 'src/input/listener.dart'
+    show
+        HitTestArea3d,
+        Listener3d,
+        PointerEvent3dCallback,
+        ProxyLayout3dWithHitTestBehavior;
 export 'src/input/pointer.dart' show Layout3dPointer;
+export 'src/input/tap_target.dart' show TapTarget3d;
 export 'src/layout3d.dart'
     show
         Layout3d,

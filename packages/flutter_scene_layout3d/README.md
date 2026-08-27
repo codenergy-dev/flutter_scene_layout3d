@@ -476,7 +476,10 @@ than none.
 | `IntrinsicWidth3d`, `IntrinsicHeight3d`, `IntrinsicDepth3d` | `IntrinsicWidth`, `IntrinsicHeight` |
 | `Baseline3d`, `CrossAxisAlignment3d.baseline` | `Baseline`, `CrossAxisAlignment.baseline` |
 | `IgnorePointer3d`, `AbsorbPointer3d` | `IgnorePointer`, `AbsorbPointer` |
-| `Ray3d`, `HitTestResult3d`, `Layout3dPointer` | `hitTest`, `BoxHitTestResult`, `Listener` |
+| `Ray3d`, `HitTestResult3d`, `Layout3dPointer` | `hitTest`, `BoxHitTestResult`, and `GestureBinding`'s dispatch |
+| `Listener3d`, `HitTestTarget3d`, `HitTestBehavior3d` | `Listener` + `MouseRegion`, `HitTestTarget`, `HitTestBehavior` |
+| `GestureDetector3d`, `HitTestArea3d`, `TapTarget3d` | `GestureDetector`, a bare hit-test region, Material's 48dp target |
+| `Focus3d`, `Focus3dTraversal` | `Focus`, `FocusTraversalPolicy` |
 | `NodeBox3d` | the leaf that holds content |
 | `Text3d`, `TextMeasurement3d` | `Text`, and the `TextPainter` behind it |
 | `DecoratedBox3d`, `BoxDecoration3d`, `Border3d`, `BorderRadius3d` | `DecoratedBox`, `BoxDecoration`, `Border`, `BorderRadius` |
@@ -882,28 +885,164 @@ gates them on its own extent, because its size is measured in the frame
 *before* the transform. Flutter's `RenderTransform` makes the same choice for
 the same reason.
 
-### Dragging
+### From a hit test to an event
 
-`Layout3dPointer` turns rays into scrolling:
+`Layout3dPointer` is what turns rays into events. Feed it the rays your host
+makes and it hit-tests, captures the path, dispatches along it, recognizes
+gestures, tracks hover, and drags whatever scrolling view it grabbed:
 
 ```dart
 final pointer = Layout3dPointer(surface);
 
 Listener(
-  onPointerDown: (event) => pointer.down(rayFor(event)),
-  onPointerMove: (event) => pointer.move(rayFor(event)),
-  onPointerUp: (_) => pointer.up(),
+  onPointerDown: (e) => pointer.down(rayFor(e), pointer: e.pointer),
+  onPointerMove: (e) => pointer.move(rayFor(e), pointer: e.pointer),
+  onPointerUp: (e) => pointer.up(pointer: e.pointer),
+  onPointerHover: (e) => pointer.hover(rayFor(e), pointer: e.pointer),
+  onPointerCancel: (e) => pointer.cancel(pointer: e.pointer),
   child: SceneView(scene, camera: camera),
 )
 ```
 
-It measures where the pointer lands *on the grabbed view's own plane*, not
-how far it moved across the screen, so the content stays under the finger at
-any viewing angle and perspective is accounted for by construction. A grabbed
-view keeps the drag until release, so running off the end of a list does not
-drop it. There is still no fling: a release stops the movement dead, and an
-application that wants momentum can drive the controller from its own
-animation.
+Every state it keeps is keyed by that `pointer` id, so two fingers drive two
+lists independently and a mouse and a controller can coexist.
+
+A press hit-tests once and **captures the path**. Every later event of that
+sequence goes to the boxes that path recorded, whether or not the pointer is
+still over them — the ordinary capture rule, and the reason running off the end
+of a list does not drop the drag. Each box on the path that implements
+`HitTestTarget3d` is handed the event, deepest first.
+
+`Listener3d` is the box that reports events as they come (`onPointerDown`,
+`onPointerMove`, `onPointerUp`, `onPointerCancel`, `onPointerHover`, and —
+folded in from `MouseRegion`, since hover here is a walk of the same path —
+`onPointerEnter` and `onPointerExit`). What it hands you is a `PointerEvent3d`,
+which carries two positions and means both:
+
+* `localPosition`, in **world units** on the box's own plane, worked out by
+  intersecting the ray with the plane the press landed on. It stays exact at
+  any viewing angle, and it keeps tracking after the pointer has left the box.
+* `event`, a real Flutter `PointerEvent` in **logical pixels**, through the
+  tree's `Layout3dMetrics`.
+
+The second is what makes the rest possible. Flutter's gesture recognizers are
+tuned in logical pixels — `kTouchSlop` is 18 of them — so a synthesized event
+measured in world units would put the slop most of a panel away. Measured in
+dp on the plane, the constants mean what they say, and the recognizers can be
+used exactly as they are.
+
+### Claiming the target
+
+By default a box that merely arranges others is not a target, so the padding
+that gives a button its shape is a hole. `HitTestBehavior3d` closes it, on
+`Listener3d`, on `GestureDetector3d`, or on a bare `HitTestArea3d`:
+
+```dart
+HitTestArea3d(                       // opaque: the whole face is the target
+  child: Padding3d(
+    padding: EdgeInsets3d.symmetric(horizontal: metrics.dp(24)),
+    child: IgnorePointer3d(child: Text3d('Continue')),
+  ),
+)
+```
+
+The `IgnorePointer3d` is the usual companion: a `Text3d` answers hit tests on
+its own account, and a component that wants to be one target takes its label
+out of the way. `translucent` is the third setting — the box hears the pointer
+and the ray carries on to whatever stands behind it.
+
+`TapTarget3d` is the other direction: Material's rule that anything pressable
+is at least 48dp across, without spending layout on it. The box stays its
+child's size and its neighbours stay put; it simply answers a ray that passes
+within half the shortfall. So a 24dp icon in a dense toolbar is a 48dp target
+and the toolbar is still dense.
+
+### Gestures, and the arena
+
+`GestureDetector3d` owns Flutter's own recognizers and hands them the
+synthesized events:
+
+```dart
+GestureDetector3d(
+  onTapDown: (_) => panel.stateLayer = pressed,
+  onTapCancel: () => panel.stateLayer = StateLayer3d.none,
+  onTap: submit,
+  child: panel,
+)
+```
+
+The arena is Flutter's too, and it has to be: a `GestureRecognizer` reaches for
+`GestureBinding.instance` itself and cannot be pointed at a private router.
+What is private is the *pointer id* — each sequence is given one well above the
+range the engine hands out, so a gesture on the plane cannot collide in the
+arena with the real pointer that produced it, which the widget tree around the
+`SceneView` is still handling. A tree with a `GestureDetector3d` in it
+therefore needs the binding initialized: `runApp` has done it already, and a
+test wants `TestWidgetsFlutterBinding.ensureInitialized()`.
+
+Because the arena is the real one, a tap on a list item and a drag of the list
+it sits in disambiguate exactly as they do on a screen. A scrolling view enters
+the arena as a competitor **only when something else is competing for the same
+press**: with nothing in the path but the list, the content moves from the
+first move, as it always has; with a recognizer armed, the view waits out the
+touch slop and then claims the pointer, which cancels the pending tap. Either
+way the drag itself is still measured on the grabbed view's own plane rather
+than across the screen, so the content stays under the finger at any viewing
+angle. There is still no fling: a release stops the movement dead.
+
+`details.localPosition` on a recognizer's callbacks is in dp in the box's own
+frame, exact for a box parallel to the surface, which every box is unless a
+`Transform3d` turned one. A control that needs the exact point at any angle
+reads `PointerEvent3d.localPosition` from a `Listener3d` instead.
+
+### Hover, and state layers
+
+`hover(ray)` walks a fresh hit test and diffs it against the path that pointer
+was on last time, sending `onPointerExit` to what it left, deepest first, and
+`onPointerEnter` to what it entered, outermost first — so a card knows before
+its label does. `exit()` takes the pointer off the surface entirely.
+
+That is what drives `DecoratedBox3d.stateLayer`, and neither end of it touches
+layout: the enter and exit are a walk of a recorded path, and setting a state
+layer writes one uniform and asks for a frame.
+
+```dart
+Listener3d(
+  behavior: HitTestBehavior3d.opaque,
+  onPointerEnter: (_) => panel.stateLayer = hovered,
+  onPointerExit: (_) => panel.stateLayer = StateLayer3d.none,
+  child: panel,
+)
+```
+
+### Focus
+
+`Focus3d` ties a Flutter `FocusNode` to a box. The node graph is Flutter's
+unchanged — listen to the node, hand it to `Shortcuts` and `Actions`, ask it
+for `hasPrimaryFocus` — and what the box adds is *which geometry* the focus
+belongs to, so a highlight can be drawn on it and traversal can reason about
+where it is. A press inside one focuses it, which on a plane nothing else
+would do; a component that only wants a focus ring for keyboard use should
+consult `FocusManager.instance.highlightMode` before drawing one, as Material
+does.
+
+The nodes hang under a scope of the surface's own, `Layout3dOwner.focusScope`,
+created and parented under the application's root scope the first time
+something on the surface asks for focus — a scene nobody has touched does not
+take the keyboard from the widgets around it. That scope skips Flutter's
+traversal deliberately, because Flutter's policies read a `Rect` off a
+`RenderObject` and a box on a plane has neither.
+
+Traversal inside a surface is `Focus3dTraversal`: `next` and `previous` walk
+tree order, and `inDirection` projects every candidate onto the surface plane
+and picks the way a reader would — a box sharing the source's band first, and
+the nearest of those. It is a first cut, and it is honest about being one: it
+is right for a screen of controls on one plane, and it says nothing about
+content facing different ways, or about traversal between surfaces.
+
+All five of these boxes have widget forms, like every other layout here:
+`SceneListener3d`, `SceneGestureDetector3d`, `SceneHitTestArea3d`,
+`SceneTapTarget3d` and `SceneFocus3d`.
 
 ## How it differs from Flutter
 
@@ -936,9 +1075,12 @@ animation.
 * **Hit testing walks with a ray, not a point**, so an entry reports where
   the ray *entered* the box, and a box bounds the stretch of ray its children
   can be found in.
-* **No gesture arena.** `Layout3dPointer` is a plain object driven from
-  whatever pointer events the application has; there is no recognizer team,
-  no arena, and no fling.
+* **The gesture arena is Flutter's, on a private pointer id.** Recognizers
+  reach for `GestureBinding.instance` and cannot be given a router of their
+  own, so the events a surface synthesizes go into the real arena under an id
+  no device will ever use. That is what keeps a gesture on the plane from
+  fighting the widget-level gesture the same finger is driving. There is still
+  no fling.
 * **A baseline belongs to an axis, and something has to declare it.**
   Flutter's runs across a box at the foot of its text, and text reports it;
   nothing in a scene does, so `Baseline3d` states one outright. There is no
@@ -993,9 +1135,14 @@ In the order the pieces depend on each other.
 
 **1. Hit-testing and input.** ~~Done~~: `Layout3d.hitTest` walks the tree with
 a `Ray3d`, `Layout3dSurface.hitTestRay` brings a camera ray into layout space,
-and `Layout3dPointer` turns a drag into scrolling. See *Pointing at it* above.
-What is left for later is hover and press state on the boxes themselves (the
-groundwork any `Button3d` would need) and keyboard focus.
+and `Layout3dPointer` dispatches along the path it captured — raw events to
+`Listener3d`, gestures to `GestureDetector3d` through Flutter's own arena,
+enter and exit to whatever the pointer crossed, and a drag to the scrolling
+view it grabbed. `Focus3d` is the focus half, with `Focus3dTraversal` moving
+between boxes on the plane. See *Pointing at it* above. What is left is
+traversal *between* surfaces, which only means something once overlays exist,
+and a directional policy that is genuinely three-dimensional rather than one
+that projects onto the plane first.
 
 **2. More layouts.** ~~Done~~: `Wrap3d` breaks into runs, and `GridView3d`
 lays cells out on a grid a `Grid3dDelegate` decides, with an exactly lazy
@@ -1052,9 +1199,8 @@ more, so the order is a matter of what a caller reaches for first: a
 `Text3dRenderer` that actually draws, the rest of Flutter's layout catalogue
 (`Table`, `Flow`, aspect-ratio and fractionally-sized boxes), pinned and
 floating sliver headers, lazily built child *widgets* in the declarative
-layer, hover and press state on the boxes themselves, which is the groundwork
-any `Button3d` would need, and a per-node opacity in the engine, which is what
-an `Opacity3d` is waiting on.
+layer, and a per-node opacity in the engine, which is what an `Opacity3d` is
+waiting on.
 
 ## License
 

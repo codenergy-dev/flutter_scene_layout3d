@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart'
     show VoidCallback, mustCallSuper, protected;
+import 'package:flutter/widgets.dart' show FocusManager, FocusScopeNode;
 import 'package:flutter_scene/scene.dart' show Node;
 import 'package:vector_math/vector_math.dart' show Matrix4;
 
@@ -98,6 +99,49 @@ class Layout3dOwner {
   /// A screen of Material components is a hundred boxes and a handful of
   /// shapes, and this is what collapses the one onto the other.
   final Decoration3dPainterCache painters = Decoration3dPainterCache();
+
+  FocusScopeNode? _focusScope;
+
+  /// The focus scope every [Focus3d] in this tree hangs under.
+  ///
+  /// Per-surface, and here for the same reason [basis] and [metrics] are: it
+  /// is tree-wide state both layers have to reach without a `BuildContext`.
+  ///
+  /// Made on first use and parented under the application's root scope at
+  /// that moment, which is when the surface starts taking part in the
+  /// application's focus at all — a scene nobody has clicked on should not be
+  /// holding the keyboard. The scope skips Flutter's own traversal: a policy
+  /// that reasons about `Rect`s has nothing to say about a box on a plane,
+  /// and [Focus3dTraversal] is what moves focus inside a surface.
+  ///
+  /// Needs Flutter's binding, since [FocusManager] does.
+  FocusScopeNode get focusScope {
+    final existing = _focusScope;
+    if (existing != null) return existing;
+    final scope = FocusScopeNode(
+      debugLabel: 'Layout3dOwner',
+      skipTraversal: true,
+    );
+    // The attachment is what a later `dispose` unparents through; nothing
+    // reparents through it, so the null context it is made with is never
+    // dereferenced.
+    scope.attach(null);
+    FocusManager.instance.rootScope.setFirstFocus(scope);
+    return _focusScope = scope;
+  }
+
+  /// Whether anything on this surface has ever asked for focus.
+  bool get hasFocusScope => _focusScope != null;
+
+  /// Releases what the owner made, which is the focus scope and nothing else.
+  ///
+  /// Called by [Layout3dSurface.dispose]. The layouts are not the owner's to
+  /// dispose: it collects them, it does not hold them.
+  void dispose() {
+    _focusScope?.dispose();
+    _focusScope = null;
+    _nodesNeedingLayout.clear();
+  }
 
   final List<Layout3d> _nodesNeedingLayout = <Layout3d>[];
 

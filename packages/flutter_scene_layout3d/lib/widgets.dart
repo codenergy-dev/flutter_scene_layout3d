@@ -44,6 +44,10 @@ export 'src/geometry/edge_insets3d.dart' show EdgeInsets3d;
 export 'src/geometry/offset3d.dart' show Axis3d, Offset3d;
 export 'src/geometry/size3d.dart' show Size3d;
 export 'src/hit_test.dart' show HitTestEntry3d, HitTestResult3d, Ray3d;
+export 'src/input/events.dart'
+    show HitTestBehavior3d, HitTestTarget3d, PointerEvent3d;
+export 'src/input/focus.dart' show Focus3d, Focus3dTraversal;
+export 'src/input/listener.dart' show PointerEvent3dCallback;
 export 'src/input/pointer.dart' show Layout3dPointer;
 export 'src/layout3d.dart' show Layout3d;
 export 'src/metrics.dart' show Layout3dMetrics, VisualDensity3d;
@@ -84,12 +88,16 @@ export 'src/widgets/layouts.dart'
         SceneDepth3d,
         SceneExpanded3d,
         SceneFlex3d,
+        SceneFocus3d,
         SceneFlexible3d,
+        SceneGestureDetector3d,
         SceneGridView3d,
+        SceneHitTestArea3d,
         SceneIgnorePointer3d,
         SceneIntrinsicDepth3d,
         SceneIntrinsicHeight3d,
         SceneIntrinsicWidth3d,
+        SceneListener3d,
         SceneListView3d,
         SceneNodeBox3d,
         ScenePadding3d,
@@ -101,6 +109,7 @@ export 'src/widgets/layouts.dart'
         SceneSliverToBoxAdapter3d,
         SceneSpacer3d,
         SceneStack3d,
+        SceneTapTarget3d,
         SceneText3d,
         SceneTransform3d,
         SceneViewport3d,

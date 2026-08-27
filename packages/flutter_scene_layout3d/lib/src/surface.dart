@@ -241,6 +241,7 @@ class Layout3dSurface extends SingleChildLayout3d {
   @override
   void dispose() {
     super.dispose();
+    _owner.dispose();
     _plane.remove(node);
   }
 }

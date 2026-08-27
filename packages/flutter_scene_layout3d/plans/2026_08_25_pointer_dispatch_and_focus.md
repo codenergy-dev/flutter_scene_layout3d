@@ -1,7 +1,7 @@
 ---
-status: pending
+status: completed
 created_at: 2026-08-25T20:31:04Z
-updated_at: 2026-08-25T20:31:04Z
+updated_at: 2026-08-27T13:45:00Z
 commit: d7bb9db224f8080ddddde70d019ab5481b45d05e
 ---
 
@@ -85,9 +85,6 @@ gesture semantics then match Flutter's exactly, for free, including the
 disambiguation between a tap and a drag that a `ListTile` inside a
 `ListView3d` needs on the first day.
 
-`GestureDetector3d` is then a box that owns recognizers and routes to them;
-`Listener3d` is the raw-event box beneath it.
-
 The risk to check early: Flutter's recognizers assume a global pointer-id
 space and `GestureBinding.instance.pointerRouter`. Owning a private router
 and arena per surface is supported by the classes' public constructors, but
@@ -130,32 +127,171 @@ capture rules is a trap for users.
 
 ## The work
 
-- [ ] **Phase 1 — events and dispatch.** `PointerEvent3d`, `HitTestTarget3d`,
+- [x] **Phase 1 — events and dispatch.** `PointerEvent3d`, `HitTestTarget3d`,
       path capture, `Listener3d`.
-- [ ] **Phase 2 — behaviour.** `HitTestBehavior3d` and its box.
-- [ ] **Phase 3 — recognizers.** Private router and arena per surface, the
-      plane-coordinate synthesis, `GestureDetector3d` with tap, double tap,
-      long press and pan. Verify the arena assumption first.
-- [ ] **Phase 4 — hover.** `hover(Ray)`, path diffing, enter/exit.
-- [ ] **Phase 5 — focus.** `Focus3d`, highlight plumbing, the projected
-      directional policy.
-- [ ] **Phase 6 — multiple pointers**, and the `ScenePointer` decision.
+- [x] **Phase 2 — behaviour.** `HitTestBehavior3d` and its box.
+- [x] **Phase 3 — recognizers.** ~~Private router and arena per surface~~ —
+      the global binding, on a private pointer id; the plane-coordinate
+      synthesis, in logical pixels; `GestureDetector3d` with tap, double tap,
+      long press and pan. The arena assumption was verified first, and it was
+      wrong; see below.
+- [x] **Phase 4 — hover.** `hover(Ray)`, path diffing, enter/exit, and
+      `exit()` for the pointer leaving the surface altogether.
+- [x] **Phase 5 — focus.** `Focus3d`, the surface's focus scope, and the
+      projected directional policy in `Focus3dTraversal`.
+- [x] **Phase 6 — multiple pointers**, and the `ScenePointer` decision (they
+      stay parallel; the reasoning is in `Layout3dPointer`'s dartdoc).
+
+Also landed, which the plan did not ask for:
+
+- [x] **`TapTarget3d`**, Material's 48dp minimum touch target. It belongs to
+      this plan because it is where the unit contract meets input, and every
+      icon button in the catalogue needs it. Unlike Flutter's `_InputPadding`
+      it spends no layout: the box stays its child's size and its neighbours
+      stay put, and it simply answers a ray that passes within half the
+      shortfall of its extent.
+- [x] **The widget forms**: `SceneListener3d`, `SceneGestureDetector3d`,
+      `SceneHitTestArea3d`, `SceneTapTarget3d`, `SceneFocus3d`.
+- [x] **`Layout3dOwner.focusScope`**, next to `basis`, `metrics` and
+      `painters`, for the same reason those are there.
 
 ## Tests
 
-- A synthesized ray taps a box three levels down; the path order is
-  deepest-first; an `AbsorbPointer3d` in between takes it instead.
-- `opaque` behaviour makes a padded button's padding tappable;
-  `deferToChild` does not.
-- A drag that starts on a list still scrolls it — the existing behaviour, as a
-  regression test, because it is the one thing that already works.
-- Tap versus drag disambiguation on an item inside a `ListView3d`.
-- Hover enter/exit sequences across a boundary, including leaving the surface
-  entirely.
-- Two pointers driving two scrollables independently.
-- A hidden node receives nothing (already true; pin it).
+54 new tests across `test/pointer_test.dart` (26), `test/gesture_test.dart`
+(14) and `test/focus_test.dart` (14), plus a `rayAt(surface, point)` helper in
+`test/support.dart` that aims a world ray at a named point on the plane, so an
+input test needs no camera.
+
+- [x] A synthesized ray taps a box three levels down; the path order is
+      deepest-first; an `AbsorbPointer3d` in between takes it instead.
+- [x] `opaque` behaviour makes a padded button's padding tappable;
+      `deferToChild` does not. `translucent` hears the pointer and lets the
+      ray through.
+- [x] A drag that starts on a list still scrolls it — the existing tests in
+      `hit_test_test.dart` are untouched and still pass, which was the point.
+- [x] Tap versus drag disambiguation on an item inside a `ListView3d`, both
+      ways round, including that a drag under the touch slop is still a tap
+      and that a drag past it lands the whole travel rather than lagging by a
+      slop.
+- [x] Hover enter/exit sequences across a boundary, including leaving the
+      surface entirely, and the outermost-first order of enter.
+- [x] Two pointers driving two scrollables independently, and hovering
+      independently.
+- [x] A hidden node receives nothing.
+- [x] A press and a hover drive `DecoratedBox3d.stateLayer` with
+      `surface.needsFlush` false throughout, which is the promise that plan
+      made and this one consumes.
+
+## What the plan got wrong
+
+Written down as it was found, because the next reader will believe the design
+section above otherwise.
+
+1. **A private router and arena per surface is not possible.** This was the
+   named risk and it did not survive contact:
+   `OneSequenceGestureRecognizer.startTrackingPointer` and
+   `_addPointerToArena` reach for `GestureBinding.instance` directly
+   (`recognizer.dart` lines 537 and 518), and a `GestureArenaTeam` only defers
+   the same call. There is no seam. So recognition uses the **global** router
+   and arena, and what is private instead is the **pointer id**: every
+   sequence allocates one from `1 << 24` up, far above anything the engine's
+   pointer converter reaches, so a gesture on the plane cannot collide in the
+   arena with the real pointer the widget tree is still handling. The cost is
+   that a tree with a `GestureDetector3d` in it needs Flutter's binding
+   initialized. Hit testing, dispatch, hover and the plain scroll drag still
+   need nothing, which is why the existing tests did not have to change.
+2. **The synthesized positions need a unit, and it is the logical pixel.**
+   The plan said "the target's plane coordinates" and stopped there. Plane
+   coordinates are world units, and every constant Flutter's recognizers are
+   tuned with — `kTouchSlop` at 18, `kDoubleTapSlop`, the drag thresholds —
+   is in logical pixels. Eighteen world units is most of a panel: a pan would
+   never start. The events are synthesized in dp, through
+   `Layout3dMetrics.unitsPerLogicalPixel`, and that is what makes "reuse
+   Flutter's recognizers" true rather than nearly true.
+3. **The arena resolves an uncontested pointer on a microtask.**
+   `GestureArenaManager.close` schedules `_resolveByDefault`, so a sole member
+   cannot win synchronously. A scroll drag routed through the arena therefore
+   could not start on the first `move` of a press, which is exactly what the
+   existing `Layout3dPointer` tests pin and what a list under a finger has
+   always done. The resolution: **a scrolling view joins the arena only when
+   the press is contested** — when something armed a recognizer while the down
+   was being dispatched. Uncontested, it drags immediately and touches no
+   binding at all; contested, it waits out the touch slop, claims the pointer,
+   and cancels the pending tap. `PointerSequence3d.addPointerToRecognizer` is
+   how a target says it is competing, and it is the reason that flag exists.
+4. **The down event has to be routed as well as dispatched.**
+   `GestureBinding.handleEvent` routes *every* event, the down included, and
+   several recognizers learn where the press was only from the routed down
+   (`LongPressGestureRecognizer` sets `_initialButtons` there, not in
+   `addPointer`). Dispatching to the path and skipping the router looked
+   right and quietly broke half the recognizers.
+5. **Flutter's directional policy cannot be reused, only its idea.**
+   `DirectionalFocusTraversalPolicy` reads `FocusNode.rect`, which comes off
+   the `RenderObject` behind the node's `BuildContext`; a box on a plane has
+   neither. `Focus3dTraversal` projects each candidate's eight corners onto
+   the surface plane and ranks the resulting rectangles itself. Two details
+   the 2D version hides had to be decided here: direction is judged centre to
+   centre, because two boxes in a row *touch* and an edge-gap rule finds
+   nothing to the right of anything; and sharing an edge is not sharing a
+   band, or the box diagonally below counts as "down".
+6. **A `FocusNode` cannot be parented without a `BuildContext`** through the
+   obvious route: `FocusAttachment.reparent` asserts `_node.context != null`
+   before it looks at the parent it was handed. The way through is
+   `FocusScopeNode.requestFocus(node)`, which parents an orphan node and
+   focuses it in one go — which suits a box that only ever parents itself when
+   it is being focused anyway. `node.attach(null)` is still needed, because
+   `FocusAttachment.detach` is the only public way back *out* of the tree.
+7. **`Listener3d` folds `MouseRegion`'s enter and exit in.** Flutter splits
+   them because it has a separate mouse-tracking pass; here hover is a walk of
+   the same path everything else is dispatched along, so one box serves both
+   and a component wires four callbacks on one object instead of two.
+
+## What this environment got wrong, which is not the plan's fault
+
+`LongPressGestureRecognizer` never fires in this Flutter build, and
+`DragGestureRecognizer` delivers `onStart` but never `onUpdate` or `onEnd`.
+Both were reproduced with **no code from this package involved**: a plain
+`GestureDetector(onLongPress: ...)` in a widget tree under
+`tester.longPress` counts zero presses, and a bare `PanGestureRecognizer`
+driven by hand through `GestureBinding.instance.pointerRouter` logs `start`
+and nothing after it. `TapGestureRecognizer` is unaffected, which is why the
+tap tests — including the arena disambiguation, which is the load-bearing one
+— are real.
+
+`GestureDetector3d` wires all four recognizers up regardless, because what
+this package owes them is the events, and it delivers those; the tests assert
+what can be asserted (the recognizer is armed and in `possible` state, the pan
+starts at the right point in the right units) and say in a comment why they
+stop there. Worth re-checking on the next SDK bump.
 
 ## Out of scope
 
 Text selection gestures, drag-and-drop between surfaces, IME, and the cursor
 appearance (which is a platform concern the host `SceneView` owns).
+
+## What the plans downstream of this one inherit
+
+- **Overlays** ([overlays and layered surfaces](2026_08_25_overlays_and_layered_surfaces.md))
+  need a modal barrier and a focus trap, and neither is written here. What is
+  here to build them on: a barrier is an `AbsorbPointer3d` (it answers the hit
+  itself and never asks its children) or, if it also wants the events, a
+  `Listener3d`/`HitTestArea3d` with `HitTestBehavior3d.opaque` — opaque stops
+  the ray dead, which is exactly what "nothing behind this is reachable"
+  means, and `translucent` is the setting that deliberately does not. What
+  does **not** exist yet is a barrier across *surfaces*: `Layout3dPointer`
+  tests one surface, so a `Layout3dPointerGroup` that walks surfaces front to
+  back has to decide that a surface which answered stops the walk. Focus is
+  the same shape: every `Focus3d` on a surface hangs under that surface's
+  `Layout3dOwner.focusScope`, so trapping focus in a modal means giving the
+  modal a scope of its own and pointing the traversal at it —
+  `Focus3dTraversal`'s methods all take the root to search from, which is the
+  hook for that, and `FocusScopeNode` already knows how to hold a
+  `focusedChild`. Nothing here reads `FocusManager.instance.highlightMode`
+  either; a Material focus ring should.
+- **Animation and scroll physics** get `Layout3dPointer.draggedScrollableFor`
+  and per-pointer sequences to hang a velocity tracker off; the drag applies
+  its delta in one place (`_Sequence._apply`), which is where a fling would be
+  started from.
+- **Size-driven geometry** is consumed rather than extended: pressed, hovered
+  and focused all drive `DecoratedBox3d.stateLayer`, and the tests pin that
+  none of them dirties layout.

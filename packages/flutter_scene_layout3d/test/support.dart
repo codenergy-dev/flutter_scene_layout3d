@@ -3,7 +3,7 @@
 import 'package:flutter/foundation.dart' show ChangeNotifier, FlutterError;
 import 'package:flutter_scene/scene.dart' show Node;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
-import 'package:vector_math/vector_math.dart' show Vector3;
+import 'package:vector_math/vector_math.dart' show Ray, Vector3;
 
 /// A leaf that asks for [preferred] and settles for what the constraints
 /// allow, standing in for real content.
@@ -122,6 +122,20 @@ Layout3dSurface laidOut(
   );
   surface.flush();
   return surface;
+}
+
+/// A world-space ray aimed straight at [point] on [surface]'s plane.
+///
+/// The camera-free way to point at a layout: it starts well in front of the
+/// plane and runs along the depth axis, so where it lands is exactly the
+/// layout-space point named, whatever basis or origin the surface has.
+Ray rayAt(Layout3dSurface surface, Offset3d point) {
+  final toWorld = surface.node.globalTransform;
+  final origin = toWorld.transformed3(
+    Vector3(point.x, point.y, point.z - 10.0),
+  );
+  final direction = toWorld.rotated3(Vector3(0, 0, 1));
+  return Ray.originDirection(origin, direction);
 }
 
 /// Matcher-friendly rounding, so floating point noise does not fail a test.
