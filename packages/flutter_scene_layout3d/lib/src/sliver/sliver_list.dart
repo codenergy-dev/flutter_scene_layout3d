@@ -204,7 +204,7 @@ class SliverList3d extends SliverMultiBoxAdaptor3d
       contentExtent = count * stride - _spacing;
       firstIndex = math.max(0, (windowStart / stride).floor());
       lastIndex = math.min(count - 1, (windowEnd / stride).floor());
-      if (_builder == null) {
+      if (!isLazy) {
         for (final child in children) {
           child.layout(childConstraints, parentUsesSize: true);
         }
@@ -214,7 +214,7 @@ class SliverList3d extends SliverMultiBoxAdaptor3d
         }
         releaseOutside(firstIndex, lastIndex);
       }
-    } else if (_builder == null) {
+    } else if (!isLazy) {
       resetMeasurements();
       for (final child in children) {
         child.layout(childConstraints, parentUsesSize: true);

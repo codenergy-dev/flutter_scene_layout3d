@@ -64,6 +64,79 @@ String explicitChildCountRefused({
     'explicit list of children takes its count from the $itemNoun in it. Edit '
     'the child list instead, with add, remove or syncChildren.';
 
+/// A layout that can point at the view holding its built children.
+///
+/// Two layouts answer this: a view that holds them itself, and a
+/// `BoxScrollView3d`, which is a window around one sliver and forwards
+/// everything about its children to it. The declarative layer needs the
+/// difference resolved — a `SceneListView3d.builder` creates a `ListView3d`
+/// but the manager belongs on the `SliverList3d` inside it — and this is how
+/// it asks without knowing which it has.
+abstract interface class Layout3dBuiltChildrenHost {
+  /// The view that holds the children, which may be this layout itself.
+  Layout3dBuiltChildrenMixin get builtChildren;
+}
+
+/// The view holding [layout]'s built children.
+///
+/// Throws if [layout] holds none, which for the declarative layer is a bug in
+/// a widget's `createLayout` rather than anything a caller did.
+Layout3dBuiltChildrenMixin builtChildrenOf(Layout3d layout) {
+  assert(
+    layout is Layout3dBuiltChildrenHost,
+    '${layout.runtimeType} does not build its children on demand, so it '
+    'cannot be given a child manager.',
+  );
+  return (layout as Layout3dBuiltChildrenHost).builtChildren;
+}
+
+/// Builds and disposes the children of a view that builds them on demand.
+///
+/// The 3D analogue of `RenderSliverBoxChildManager`, and the seam that lets a
+/// lazily built child be a *widget* rather than a bare [Layout3d]. A view that
+/// mixes in [Layout3dBuiltChildrenMixin] asks its manager for the child at an
+/// index instead of calling a [Layout3dItemBuilder] itself, so the same
+/// `SliverList3d` serves both shapes: the imperative builder, which is a
+/// manager over a function, and the declarative one, whose manager is an
+/// element that inflates a widget inside a build scope.
+///
+/// Every call happens inside the view's layout pass. That is legal for the
+/// same reason it is legal in Flutter — the pass runs inside Flutter's own
+/// layout phase, in the window `SliverMultiBoxAdaptorElement` builds in — but
+/// it does mean an implementation must not do anything a layout cannot do,
+/// such as marking an ancestor as needing layout.
+abstract class Layout3dChildManager {
+  /// Creates a manager. Implementations are usually elements.
+  const Layout3dChildManager();
+
+  /// How many children this manager can build, or null when it does not know.
+  ///
+  /// A view falls back to the count it was given directly when this is null.
+  int? get estimatedChildCount;
+
+  /// Builds the child standing for [index], or returns null when there is
+  /// none.
+  ///
+  /// Called once per index per pass, and only for an index the view does not
+  /// already hold. The child comes back unparented; the view adopts it.
+  Layout3d? createChild(int index);
+
+  /// Releases the child standing for [index], which the view has already
+  /// removed from its child list.
+  ///
+  /// Whoever created the child disposes it: a manager over a function does it
+  /// here and now, while an element hands the child's element to Flutter to
+  /// deactivate and lets the render tree dispose the layout when the element
+  /// is finally unmounted, so that a `GlobalKey` can still reclaim it.
+  void removeChild(int index, Layout3d child);
+
+  /// Called before a layout pass touches any child.
+  void didStartLayout() {}
+
+  /// Called after a layout pass has finished building and releasing.
+  void didFinishLayout() {}
+}
+
 /// A child list that may be built on demand, for the views that hold one.
 ///
 /// `ListView3d`, `GridView3d`, `SliverList3d` and `SliverGrid3d` all offer the
@@ -82,7 +155,11 @@ String explicitChildCountRefused({
 /// on: building and releasing children edits the child list, and those edits
 /// must not re-dirty the view that is being laid out.
 mixin Layout3dBuiltChildrenMixin<ParentDataType extends ParentData3d>
-    on Layout3dWithChildrenMixin<ParentDataType>, Layout3dLayoutPassMixin {
+    on Layout3dWithChildrenMixin<ParentDataType>, Layout3dLayoutPassMixin
+    implements Layout3dBuiltChildrenHost {
+  @override
+  Layout3dBuiltChildrenMixin get builtChildren => this;
+
   /// Builds the child standing for an index, or null when this view was given
   /// an explicit list of children instead.
   ///
@@ -104,14 +181,45 @@ mixin Layout3dBuiltChildrenMixin<ParentDataType extends ParentData3d>
   @protected
   int declaredItemCount = 0;
 
+  Layout3dChildManager? _childManager;
+
+  /// Who builds this view's children, when something other than an
+  /// [itemBuilder] does.
+  ///
+  /// Set by the declarative layer, whose element is the manager. A view with
+  /// a manager is lazy in exactly the same way a view with an [itemBuilder]
+  /// is: the two are the same mode reached from two directions, and nothing
+  /// below this line asks which of them it is.
+  Layout3dChildManager? get childManager => _childManager;
+
+  set childManager(Layout3dChildManager? value) {
+    if (identical(_childManager, value)) return;
+    assert(
+      value == null || itemBuilder == null,
+      'A view builds its children from an itemBuilder or from a child '
+      'manager, not both.',
+    );
+    // One manager, set when the element that is the manager mounts and
+    // cleared when it unmounts. Swapping one for another would leave children
+    // behind that the new manager never built and cannot release; the element
+    // layer never does it, because a new element builds a new layout.
+    assert(
+      value == null || _childManager == null,
+      'A view has one child manager, and $runtimeType already has one.',
+    );
+    _childManager = value;
+    resetMeasurements();
+    markNeedsLayout();
+  }
+
   /// How many children this view holds.
-  int get itemCount => itemBuilder == null ? childCount : declaredItemCount;
+  int get itemCount {
+    if (!isLazy) return childCount;
+    return _childManager?.estimatedChildCount ?? declaredItemCount;
+  }
 
   set itemCount(int value) {
-    assert(
-      itemBuilder != null,
-      explicitChildCountRefused(view: this, itemNoun: itemNoun),
-    );
+    assert(isLazy, explicitChildCountRefused(view: this, itemNoun: itemNoun));
     if (declaredItemCount == value) return;
     assert(value >= 0);
     declaredItemCount = value;
@@ -124,7 +232,7 @@ mixin Layout3dBuiltChildrenMixin<ParentDataType extends ParentData3d>
   }
 
   /// Whether this view builds its children on demand.
-  bool get isLazy => itemBuilder != null;
+  bool get isLazy => itemBuilder != null || _childManager != null;
 
   final Map<int, Layout3d> _active = <int, Layout3d>{};
 
@@ -138,7 +246,7 @@ mixin Layout3dBuiltChildrenMixin<ParentDataType extends ParentData3d>
   /// survive.
   void _assertNotBuilt(String method) {
     assert(
-      itemBuilder == null,
+      !isLazy,
       builtChildEditRefused(view: this, method: method, itemNoun: itemNoun),
     );
   }
@@ -181,10 +289,15 @@ mixin Layout3dBuiltChildrenMixin<ParentDataType extends ParentData3d>
   /// editing the list the builder reads from.
   void refresh() {
     resetMeasurements();
-    if (itemBuilder != null) {
-      for (final child in _active.values.toList()) {
-        super.remove(child);
-        child.dispose();
+    if (isLazy) {
+      final manager = _childManager;
+      for (final entry in _active.entries.toList()) {
+        super.remove(entry.value);
+        if (manager != null) {
+          manager.removeChild(entry.key, entry.value);
+        } else {
+          entry.value.dispose();
+        }
       }
       _active.clear();
     }
@@ -197,7 +310,16 @@ mixin Layout3dBuiltChildrenMixin<ParentDataType extends ParentData3d>
   Layout3d obtainChild(int index, Constraints3d childConstraints) {
     var child = _active[index];
     if (child == null) {
-      child = itemBuilder!(index);
+      final manager = _childManager;
+      final built = manager == null
+          ? itemBuilder!(index)
+          : manager.createChild(index);
+      assert(
+        built != null,
+        'The child manager of $runtimeType built nothing for index $index, '
+        'which is inside the $itemCount $itemNoun it says it has.',
+      );
+      child = built!;
       // Kept in index order, so the child list and the scene graph read the
       // same way round however the window arrived at this index.
       final position = _active.keys.where((i) => i < index).length;
@@ -215,14 +337,19 @@ mixin Layout3dBuiltChildrenMixin<ParentDataType extends ParentData3d>
       if (index >= first && index <= last) continue;
       final child = _active.remove(index)!;
       super.remove(child);
-      child.dispose();
+      final manager = _childManager;
+      if (manager != null) {
+        manager.removeChild(index, child);
+      } else {
+        child.dispose();
+      }
     }
   }
 
   /// The children this view has to place, with the index each one stands for.
   @protected
   Iterable<(int, Layout3d)> positionedChildren() sync* {
-    if (itemBuilder == null) {
+    if (!isLazy) {
       for (var index = 0; index < childCount; index++) {
         yield (index, childAt(index));
       }
@@ -231,6 +358,51 @@ mixin Layout3dBuiltChildrenMixin<ParentDataType extends ParentData3d>
     for (final entry in _active.entries) {
       yield (entry.key, entry.value);
     }
+  }
+
+  /// Brackets the pass with the manager's own hooks.
+  ///
+  /// [Layout3dChildManager.didStartLayout] and
+  /// [Layout3dChildManager.didFinishLayout] are where an element locks its
+  /// child bookkeeping for the duration of a pass, the way
+  /// `SliverMultiBoxAdaptorElement` does.
+  @override
+  @protected
+  void runLayoutPass(void Function() body) {
+    final manager = _childManager;
+    if (manager == null) {
+      super.runLayoutPass(body);
+      return;
+    }
+    manager.didStartLayout();
+    try {
+      super.runLayoutPass(body);
+    } finally {
+      manager.didFinishLayout();
+    }
+  }
+
+  /// Drops [child] without telling the manager, because the manager is the
+  /// one asking.
+  ///
+  /// The teardown path of the declarative layer. A widget-built child is
+  /// disposed when its element is unmounted, which for a whole tree going
+  /// away happens child-first, *before* the surface disposes what is left of
+  /// itself. Unless the child leaves this view's books on the way out, that
+  /// second walk finds it and disposes it again.
+  ///
+  /// Only for a manager. A built view otherwise owns its children outright
+  /// and releases them through [releaseOutside].
+  void forgetBuiltChild(Layout3d child) {
+    assert(_childManager != null);
+    for (final index in _active.keys.toList()) {
+      if (identical(_active[index], child)) {
+        _active.remove(index);
+        break;
+      }
+    }
+    if (identical(child.parent, this)) super.remove(child);
+    resetMeasurements();
   }
 
   @override

@@ -521,6 +521,11 @@ SceneView.declarative(
 
 Every layout has a widget with the same name under a `Scene` prefix
 (`SceneRow3d`, `SceneStack3d`, `ScenePositioned3d`, `SceneListView3d`, ...).
+The scrolling ones carry the imperative layer's second constructor too:
+`SceneListView3d.builder`, `SceneGridView3d.builder`,
+`SceneSliverList3d.builder` and `SceneSliverGrid3d.builder` build a *widget*
+per item as the window reaches it, so a long list costs the dozen rows on
+screen. See *Scrolling* below for what a built item does and does not keep.
 `SceneText3d` is the one that gains something from being a widget: it has a
 `BuildContext` to ask, so it picks up the ambient `DefaultTextStyle` and
 `Directionality` the way a Flutter `Text` does — from the widget tree the
@@ -598,6 +603,38 @@ builds items on demand: with `itemExtent` nothing off-screen is ever built,
 and without it items are measured once as they are first scrolled past, with
 the total extent estimated from the average, the same approximation
 `SliverList` makes.
+
+The declarative layer has the same two shapes. `SceneListView3d(children: ...)`
+builds every child when the enclosing widget builds; `SceneListView3d.builder`
+builds an item when the window reaches it and lets it go when the window and
+its cache have left it, and so do `SceneGridView3d.builder`,
+`SceneSliverList3d.builder` and `SceneSliverGrid3d.builder`. A built item is an
+ordinary widget in an ordinary element tree — it reads inherited state, keeps
+its own `State`, and rebuilds on its own — which is the whole point: a long
+list of stateful rows is not expressible with a `Layout3dItemBuilder`, because
+that hands back a layout object rather than a widget.
+
+```dart
+SceneListView3d.builder(
+  itemCount: rows.length,
+  itemExtent: 0.6,
+  itemBuilder: (context, index) => SceneContainer3d(
+    padding: const EdgeInsets3d.all(0.05),
+    child: SceneText3d(rows[index].label),
+  ),
+)
+```
+
+Two things to know about a built item. It is **not kept alive**: scrolling far
+enough disposes it and its `State` goes with it, so anything that has to
+survive that belongs outside the list (Flutter's `KeepAlive` has no
+counterpart here yet). And each item has to resolve to a layout — a
+`Scene*3d` widget, under as many builders, providers and stateful widgets as
+you like — because what the list places is a box on the plane; a Flutter
+`Text` in there is an error rather than a silently empty row. There is no
+widget form of `prototypeItem`, either: a prototype is measured without being
+mounted, and a widget cannot be laid out without being in the tree, so state
+the `itemExtent` when you know it.
 
 A list needs a bounded extent **across** its scroll axis, because that is what
 it gives an item to span, and it says so rather than guessing. A camera-bound
@@ -1156,11 +1193,15 @@ with `SliverList3d`, `SliverGrid3d` and `SliverToBoxAdapter3d` on top of it and
 this kind over a single sliver, as Flutter's are, so placement is written
 once. See *Slivers* above. Two pieces are left.
 Pinned and floating headers need `overlap` and `paintOrigin` threaded through
-the protocol, which is what a `SliverAppBar3d` would be built on. And building
-**widgets** lazily still has no answer: `SliverList3d.builder` is lazy on the
-imperative side, but the declarative layer builds every child widget up front,
-because doing better needs a `RenderObjectElement` of its own and a build scope
-to create children during layout.
+the protocol, which is what a `SliverAppBar3d` would be built on. Building
+**widgets** lazily is done: `SceneListView3d.builder` and its three siblings
+inflate an item as the window reaches it, through a `Layout3dChildManager` the
+view consults and a `RenderObjectElement` that implements it inside a build
+scope, the way `SliverMultiBoxAdaptorElement` does. What is left of that is
+keep-alive — an item that leaves the cache is disposed, with no counterpart to
+Flutter's `KeepAlive` — and the key remapping that would let a keyed reorder
+move an element instead of rebuilding it in place (a `GlobalKey` already
+moves).
 
 **4. Text.** ~~Measurement done~~: `Text3d` lays a string out as a box,
 sizes itself, answers intrinsics and states a baseline, over a prepare/layout
@@ -1198,9 +1239,8 @@ shader reads them.
 more, so the order is a matter of what a caller reaches for first: a
 `Text3dRenderer` that actually draws, the rest of Flutter's layout catalogue
 (`Table`, `Flow`, aspect-ratio and fractionally-sized boxes), pinned and
-floating sliver headers, lazily built child *widgets* in the declarative
-layer, and a per-node opacity in the engine, which is what an `Opacity3d` is
-waiting on.
+floating sliver headers, keep-alive for a lazily built item, and a per-node
+opacity in the engine, which is what an `Opacity3d` is waiting on.
 
 ## License
 

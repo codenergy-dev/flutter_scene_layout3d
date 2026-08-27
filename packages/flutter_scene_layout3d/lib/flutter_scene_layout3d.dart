@@ -94,10 +94,13 @@ export 'src/boxes/visibility.dart' show Offstage3d, Visibility3d;
 export 'src/boxes/wrap.dart' show Wrap3d, WrapAlignment3d, WrapCrossAlignment3d;
 export 'src/built_children.dart'
     show
+        Layout3dBuiltChildrenHost,
         Layout3dBuiltChildrenMixin,
+        Layout3dChildManager,
         Layout3dContentExtentEstimator,
         Layout3dMeasuredChildrenMixin,
-        Layout3dPrototypeBuilder;
+        Layout3dPrototypeBuilder,
+        builtChildrenOf;
 export 'src/camera_binding.dart' show Layout3dCameraBinding;
 export 'src/clip.dart' show ClipBox3d, Clip3dRegion, ClipPlane3d;
 export 'src/decoration/box_decoration.dart'

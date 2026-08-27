@@ -15,6 +15,7 @@ import 'package:flutter/widgets.dart'
         DefaultTextStyle,
         Directionality,
         FocusNode,
+        IndexedWidgetBuilder,
         TextAlign,
         TextDirection,
         TextOverflow,
@@ -1012,13 +1013,38 @@ class SceneViewport3d extends SingleChildLayout3dWidget {
 
 /// A scrollable line of children, the widget form of [ListView3d].
 ///
-/// Takes an explicit list of children, and every one of them is built when the
-/// enclosing widget builds. Lazy building lives on the imperative
-/// [ListView3d.builder]: building *widgets* on demand needs a
-/// `RenderObjectElement` of its own and a build scope to create children
-/// during layout, which this layer does not have yet.
-class SceneListView3d extends Layout3dWidget {
-  /// Creates a scrollable list.
+/// Two shapes, the same two Flutter's `ListView` has. Given [children], every
+/// one of them is built when the enclosing widget builds and laid out whether
+/// it is in the window or not. Given an [itemBuilder] and an `itemCount`, an
+/// item is built when the window reaches it and released when the window and
+/// its cache have left it again, so a list of ten thousand rows costs the
+/// dozen that are visible.
+///
+/// A built item is a widget like any other: it reads inherited state, keeps
+/// its own [State], and rebuilds on its own. It is not kept alive, though —
+/// scrolling far enough disposes it, and its [State] goes with it, so put
+/// anything that has to survive that outside the list.
+///
+/// ```dart
+/// SceneListView3d.builder(
+///   itemCount: rows.length,
+///   itemExtent: 0.6,
+///   itemBuilder: (context, index) => SceneContainer3d(
+///     padding: const EdgeInsets3d.all(0.05),
+///     child: SceneText3d(rows[index].label),
+///   ),
+/// )
+/// ```
+///
+/// An [itemExtent] is worth giving when the items are uniform: the offsets
+/// become arithmetic, so nothing outside the window is ever built, where a
+/// list that has to measure builds forward from the first item to reach a
+/// deep scroll offset. The imperative [ListView3d.builder] takes a
+/// `prototypeItem` for the same reason; there is no widget form of that,
+/// because a prototype is measured rather than mounted and a widget cannot be
+/// laid out without being in the tree.
+class SceneListView3d extends LazyLayout3dWidget {
+  /// Creates a scrollable list over an explicit set of children.
   const SceneListView3d({
     super.key,
     this.scrollDirection = Axis3d.vertical,
@@ -1030,6 +1056,20 @@ class SceneListView3d extends Layout3dWidget {
     this.cacheExtent = 0.0,
     super.children,
   });
+
+  /// Creates a scrollable list that builds its items as it reaches them.
+  const SceneListView3d.builder({
+    super.key,
+    required int itemCount,
+    required IndexedWidgetBuilder itemBuilder,
+    this.scrollDirection = Axis3d.vertical,
+    this.controller,
+    this.spacing = 0.0,
+    this.itemExtent,
+    this.crossAxisAlignment = CrossAxisAlignment3d.center,
+    this.depthAxisAlignment = CrossAxisAlignment3d.center,
+    this.cacheExtent = 0.0,
+  }) : super(itemCount: itemCount, itemBuilder: itemBuilder);
 
   /// The axis the list scrolls along.
   final Axis3d scrollDirection;
@@ -1137,8 +1177,13 @@ class SceneWrap3d extends Layout3dWidget {
 }
 
 /// A scrollable grid of equal cells, the widget form of [GridView3d].
-class SceneGridView3d extends Layout3dWidget {
-  /// Creates a grid.
+///
+/// The same two shapes [SceneListView3d] has: an explicit list of children,
+/// or an [itemBuilder] and a count. A grid knows where every cell goes by
+/// arithmetic, so a built grid is exactly lazy — only the cells the window
+/// covers are ever built, however deep the scroll offset is.
+class SceneGridView3d extends LazyLayout3dWidget {
+  /// Creates a grid over an explicit set of children.
   const SceneGridView3d({
     super.key,
     required this.gridDelegate,
@@ -1148,6 +1193,18 @@ class SceneGridView3d extends Layout3dWidget {
     this.cacheExtent = 0.0,
     super.children,
   });
+
+  /// Creates a grid that builds its cells as it reaches them.
+  const SceneGridView3d.builder({
+    super.key,
+    required this.gridDelegate,
+    required int itemCount,
+    required IndexedWidgetBuilder itemBuilder,
+    this.scrollDirection = Axis3d.vertical,
+    this.controller,
+    this.depthAxisAlignment = CrossAxisAlignment3d.center,
+    this.cacheExtent = 0.0,
+  }) : super(itemCount: itemCount, itemBuilder: itemBuilder);
 
   /// Decides the cell grid from the room available.
   final Grid3dDelegate gridDelegate;
@@ -1240,8 +1297,13 @@ class SceneSliverToBoxAdapter3d extends SingleChildLayout3dWidget {
 }
 
 /// A run of items in a sliver world, the widget form of [SliverList3d].
-class SceneSliverList3d extends Layout3dWidget {
-  /// Creates a sliver list.
+///
+/// The same two shapes [SceneListView3d] has, and the same caveats: a built
+/// item is an ordinary widget, it is not kept alive once the window and its
+/// cache have left it, and an [itemExtent] is what stops a long list from
+/// measuring its way to a deep offset.
+class SceneSliverList3d extends LazyLayout3dWidget {
+  /// Creates a sliver list over an explicit set of children.
   const SceneSliverList3d({
     super.key,
     this.spacing = 0.0,
@@ -1250,6 +1312,17 @@ class SceneSliverList3d extends Layout3dWidget {
     this.depthAxisAlignment = CrossAxisAlignment3d.center,
     super.children,
   });
+
+  /// Creates a sliver list that builds its items as it reaches them.
+  const SceneSliverList3d.builder({
+    super.key,
+    required int itemCount,
+    required IndexedWidgetBuilder itemBuilder,
+    this.spacing = 0.0,
+    this.itemExtent,
+    this.crossAxisAlignment = CrossAxisAlignment3d.center,
+    this.depthAxisAlignment = CrossAxisAlignment3d.center,
+  }) : super(itemCount: itemCount, itemBuilder: itemBuilder);
 
   /// The gap between adjacent items.
   final double spacing;
@@ -1282,14 +1355,26 @@ class SceneSliverList3d extends Layout3dWidget {
 }
 
 /// A grid of cells in a sliver world, the widget form of [SliverGrid3d].
-class SceneSliverGrid3d extends Layout3dWidget {
-  /// Creates a sliver grid.
+///
+/// The same two shapes [SceneGridView3d] has, and lazy in the same exact way:
+/// cell offsets are arithmetic, so only what the window covers is built.
+class SceneSliverGrid3d extends LazyLayout3dWidget {
+  /// Creates a sliver grid over an explicit set of children.
   const SceneSliverGrid3d({
     super.key,
     required this.gridDelegate,
     this.depthAxisAlignment = CrossAxisAlignment3d.center,
     super.children,
   });
+
+  /// Creates a sliver grid that builds its cells as it reaches them.
+  const SceneSliverGrid3d.builder({
+    super.key,
+    required this.gridDelegate,
+    required int itemCount,
+    required IndexedWidgetBuilder itemBuilder,
+    this.depthAxisAlignment = CrossAxisAlignment3d.center,
+  }) : super(itemCount: itemCount, itemBuilder: itemBuilder);
 
   /// Decides the cell grid from the room across the scroll axis.
   final Grid3dDelegate gridDelegate;

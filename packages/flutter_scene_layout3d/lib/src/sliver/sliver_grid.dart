@@ -126,7 +126,7 @@ class SliverGrid3d extends SliverMultiBoxAdaptor3d {
           max: depthLimit,
         );
 
-    if (_builder == null) {
+    if (!isLazy) {
       for (final child in children) {
         child.layout(childConstraints, parentUsesSize: true);
       }

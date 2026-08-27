@@ -1,7 +1,7 @@
 ---
-status: pending
+status: completed
 created_at: 2026-08-25T20:31:04Z
-updated_at: 2026-08-25T20:31:04Z
+updated_at: 2026-08-27T16:05:00Z
 commit: d7bb9db224f8080ddddde70d019ab5481b45d05e
 ---
 
@@ -20,6 +20,11 @@ things anyone will write against a Material catalogue — is not expressible.
 Part of [the readiness overview](2026_08_25_material3d_readiness_overview.md).
 It builds the same machinery `LayoutBuilder3d` needs, which is why
 [the boxes still missing](2026_08_25_the_boxes_still_missing.md) waits on it.
+
+**Where it landed.** `Layout3dChildManager` in `lib/src/built_children.dart`;
+`LazyLayout3dWidget`, `Layout3dLazyElement` and `Layout3dLazyRenderBox` in
+`lib/src/widgets/framework.dart`; the four `.builder` constructors in
+`lib/src/widgets/layouts.dart`; the tests in `test/lazy_widgets_test.dart`.
 
 ## What exists today
 
@@ -100,35 +105,108 @@ it to a follow-up.
 
 ## The work
 
-- [ ] **Phase 1 — `Layout3dChildManager`**, with the current builder path
-      reimplemented on top of it and every existing test still green.
-- [ ] **Phase 2 — `Layout3dLazyElement`** and a lazy host render box, proven
-      with `SceneSliverList3d.builder` alone.
-- [ ] **Phase 3 — the other three views:** `SceneListView3d.builder`,
-      `SceneGridView3d.builder`, `SceneSliverGrid3d.builder`.
-- [ ] **Phase 4 — keys and reordering**, including `GlobalKey` moves.
-- [ ] **Phase 5 — keep-alive.**
-- [ ] **Phase 6 — README.** The Scrolling section currently describes the
-      imperative builders only; it should say what a declarative builder does
-      and does not keep alive.
+- [x] **Phase 1 — `Layout3dChildManager`**, in `lib/src/built_children.dart`,
+      consulted by `Layout3dBuiltChildrenMixin` wherever it used to call
+      `itemBuilder`. Every existing test stayed green.
+- [x] **Phase 2 — `Layout3dLazyElement`** and `Layout3dLazyRenderBox`, in
+      `lib/src/widgets/framework.dart`.
+- [x] **Phase 3 — all four views:** `SceneListView3d.builder`,
+      `SceneGridView3d.builder`, `SceneSliverList3d.builder`,
+      `SceneSliverGrid3d.builder`.
+- [x] **Phase 4 — keys and reordering.** A `GlobalKey` item moves between
+      indices with its state; a local-key reorder is correct but rebuilds in
+      place. See *What the reasoning got wrong*, point 5.
+- **Phase 5 — keep-alive: out of scope, by this plan's own design section**
+      ("note it, design the manager so it can be added, and leave it to a
+      follow-up"). Not implemented, and not a gap in this plan. As it
+      says: an item that leaves the window and its cache is disposed. What a
+      follow-up needs is here already — the manager is the only thing that
+      releases a child, so parking one instead of releasing it is a change to
+      `releaseOutside` and to what `positionedChildren` yields, not to the
+      element.
+- [x] **Phase 6 — README.** *Scrolling* now covers the declarative builders
+      and what a built item does not keep; the roadmap's sliver entry no
+      longer says lazy widgets have no answer.
+
+## What the reasoning got wrong
+
+1. **The manager's shape.** `createChild(int index, {Layout3d? after})`
+   returning void was the wrong signature. Flutter needs `after` because the
+   render object holds the child list and the element calls back into it to
+   insert; here `Layout3dBuiltChildrenMixin` already keeps the index-to-child
+   map and inserts in index order, so there is nothing for `after` to
+   disambiguate. `createChild` returns the child instead, and `removeChild`
+   takes the index and the child the view has already unparented.
+   `estimateContentExtent` was dropped outright: `contentExtentEstimator` on
+   `Layout3dMeasuredChildrenMixin` already answers that question, and an
+   element knows nothing the view does not.
+2. **"The existing builder path becomes one implementation of the manager."**
+   It did not. Wrapping a function in a manager object would allocate one per
+   view and buy nothing: `obtainChild` and `releaseOutside` are the only two
+   places that ask, and each branches in a line. What did happen is that
+   every *other* site stopped asking which mode it was in — `isLazy` is now
+   the single predicate, and the two sliver layouts read it instead of their
+   own `_builder` field.
+3. **The mutation root, which the plan did not see at all.** Building during
+   layout is legal only *below a render object that has opened a layout
+   callback*, and the surface flush is driven by whichever hosting box
+   finished the outermost pass — which is often not the root, because every
+   hosting box is a relayout boundary and Flutter lays a dirty one out on its
+   own. A list built from a flush driven by a sibling subtree threw "A
+   Layout3dLazyRenderBox was mutated in Layout3dRenderBox.performLayout". Two
+   changes fix it: the flush runs inside `invokeLayoutCallback`, and
+   `Layout3dRenderBox.markNeedsLayout` dirties the chain of hosting boxes up
+   to the root, so the root is always the box that flushes and its callback
+   covers the whole surface. `test/lazy_widgets_test.dart` has the case that
+   caught it.
+4. **The widget could not stay a `Layout3dWidget`.** That class is a
+   `MultiChildRenderObjectWidget`, whose `createElement` is typed to return a
+   `MultiChildRenderObjectElement`, and a lazy view needs an element of its
+   own. So `LazyLayout3dWidget` is a sibling class on `RenderObjectWidget`,
+   and `Layout3dLazyElement` reconciles the explicit shape as well — the
+   handful of lines `MultiChildRenderObjectElement` would have contributed.
+   The four views moved to the new base; nothing a caller writes changed.
+5. **Keys.** A `GlobalKey` item moves between indices with its state, because
+   Flutter's own reparenting does that once `forgetChild` unparents the
+   layout from the view. A *local* key reorder is correct but rebuilds: there
+   is no analogue of `SliverChildDelegate.findIndexByKey` here, so an index
+   whose key changed is an index whose element is replaced.
+6. **A widget-built layout has to be disposed, and nothing did that.** The
+   declarative layer never disposed a `Layout3d` — the surface disposes the
+   whole tree at the end — but an item that comes and goes has to release its
+   painter and its focus node while the surface lives on.
+   `Layout3dRenderBox.disposeLayoutOnUnmount`, set by the element on each item
+   it builds, disposes the layout when Flutter disposes the render object that
+   owns it; `forgetBuiltChild` takes it off the view's books first, so a
+   teardown that unmounts items before the surface does not dispose them
+   twice.
 
 ## Tests
 
-- An item built lazily reads an `InheritedWidget` (a theme) declared above the
-  list.
-- A `StatefulWidget` item keeps its state while scrolled within the cache and
-  is disposed when it leaves it.
-- Keyed items reorder without rebuilding, and a `GlobalKey` item moves
-  between indices without losing state.
-- `itemCount` changing up and down rebuilds the right range.
-- The imperative `ListView3d.builder` path is untouched — the whole existing
-  scrolling suite passes unchanged.
-- A build during layout does not re-enter the surface flush (the
-  `_enterPass`/`_exitPass` guard still holds).
+`test/lazy_widgets_test.dart`, fifteen of them:
+
+- [x] An item built lazily reads an `InheritedWidget` declared above the list,
+      and follows it when it changes.
+- [x] A `StatefulWidget` item keeps its state while the window holds it and is
+      disposed when the window leaves it.
+- [x] A `GlobalKey` item moves between indices without losing state. Keyed
+      items reorder *correctly*, but they do rebuild — see point 5 above.
+- [x] `itemCount` changing up and down rebuilds the right range.
+- [x] The imperative path is untouched: the whole existing suite passes
+      unchanged (518 tests before, 533 with these).
+- [x] A build during layout does not re-enter the surface flush, and is legal
+      from a partial relayout in a sibling subtree.
+- [x] The seam plans 3 and 4 left: a released item gives its painter back to
+      `Layout3dOwner.painters` and disposes the `FocusNode` a `Focus3d` owns,
+      and a surface torn down with items standing disposes none of them twice.
 
 ## Out of scope
 
 `PageView3d` and anything with paging physics
 ([animation](2026_08_25_animation_and_scroll_physics.md)), and
 `LayoutBuilder3d` itself — which is a small plan of its own once this
-machinery exists.
+machinery exists. It has what it needs now: `LazyLayout3dWidget` for a widget
+that builds inside the layout pass, `Layout3dLazyRenderBox` for a host that
+does not mirror, and the mutation-root work above, which is what makes
+building from inside `performLayout` legal wherever the flush was driven
+from.

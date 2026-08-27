@@ -25,7 +25,8 @@ import '../sliver/sliver.dart';
 /// a ray reaches an item through the sliver, and the [Scrollable3d] it finds
 /// on the way out is this view.
 abstract class BoxScrollView3d<SliverType extends SliverMultiBoxAdaptor3d>
-    extends CustomScrollView3d {
+    extends CustomScrollView3d
+    implements Layout3dBuiltChildrenHost {
   /// Creates a view over [sliver], which holds the children.
   BoxScrollView3d({
     required this.sliver,
@@ -43,6 +44,14 @@ abstract class BoxScrollView3d<SliverType extends SliverMultiBoxAdaptor3d>
   /// The one sliver in this view's window, which holds its children and
   /// decides where each of them goes.
   final SliverType sliver;
+
+  /// The sliver, which is what actually holds the children.
+  ///
+  /// So that the declarative layer can hand a child manager to a
+  /// `SceneListView3d.builder` without knowing that a list is a window with a
+  /// sliver in it.
+  @override
+  Layout3dBuiltChildrenMixin get builtChildren => sliver;
 
   /// What this view calls its children in an assertion message: "items" for a
   /// list, "cells" for a grid.

@@ -74,7 +74,7 @@ export 'src/text/text_measurement.dart'
         TextMeasurement3d;
 export 'src/text/text_renderer.dart' show Text3dRenderRequest, Text3dRenderer;
 export 'src/widgets/framework.dart'
-    show Layout3dWidget, SingleChildLayout3dWidget;
+    show LazyLayout3dWidget, Layout3dWidget, SingleChildLayout3dWidget;
 export 'src/widgets/layouts.dart'
     show
         SceneAbsorbPointer3d,
