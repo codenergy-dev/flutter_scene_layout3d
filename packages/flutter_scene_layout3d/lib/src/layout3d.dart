@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter_scene/scene.dart' show Node;
 import 'package:vector_math/vector_math.dart' show Matrix4;
 
+import 'clip.dart';
+import 'decoration/decoration.dart';
 import 'geometry/basis3d.dart';
 import 'geometry/constraints3d.dart';
 import 'geometry/offset3d.dart';
@@ -87,6 +89,15 @@ class Layout3dOwner {
   /// [Layout3d.metrics]; the root writes it, through
   /// [Layout3dSurface.metrics] or a [Layout3dCameraBinding].
   Layout3dMetrics metrics = Layout3dMetrics.standard;
+
+  /// The painters the decorated boxes in this tree share, keyed by
+  /// [Decoration3d.cacheKey].
+  ///
+  /// Per-surface, and here for the same reason [basis] and [metrics] are: it
+  /// is tree-wide state both layers have to reach without a `BuildContext`.
+  /// A screen of Material components is a hundred boxes and a handful of
+  /// shapes, and this is what collapses the one onto the other.
+  final Decoration3dPainterCache painters = Decoration3dPainterCache();
 
   final List<Layout3d> _nodesNeedingLayout = <Layout3d>[];
 
@@ -695,6 +706,36 @@ abstract class Layout3d {
       transform.multiply(local);
     }
     _node.localTransform = transform;
+  }
+
+  // --------------------------------------------------------------- clipping
+
+  /// The clip in force for this box, in its own layout frame.
+  ///
+  /// [Clip3dRegion.none] unless some ancestor is a [ClipBox3d]. Computed by
+  /// walking up rather than pushed down, because the walk is O(depth) and
+  /// happens only when something asks — a decoration painter, a culling
+  /// sweep — while pushing would cost every box on every layout whether or
+  /// not anything in the tree clips at all.
+  ///
+  /// Only meaningful once this box and its ancestors have been laid out: a
+  /// clip is an extent, and an extent is what layout produces.
+  Clip3dRegion get clipRegion =>
+      _parent?.clipRegionForChild(this) ?? Clip3dRegion.none;
+
+  /// The clip this box imposes on [child], in the child's own frame.
+  ///
+  /// The default takes what this box inherits, pulls it back through
+  /// [localTransform] (so a rotated subtree is still clipped, exactly) and
+  /// slides it by the child's offset. [ClipBox3d] overrides this to intersect
+  /// its own extent in.
+  @protected
+  Clip3dRegion clipRegionForChild(Layout3d child) {
+    final region = clipRegion;
+    if (region.isUnbounded) return region;
+    final local = localTransform;
+    final inFrame = local == null ? region : region.transformed(local);
+    return inFrame.shifted(-child.offset);
   }
 
   // ------------------------------------------------------------ hit testing

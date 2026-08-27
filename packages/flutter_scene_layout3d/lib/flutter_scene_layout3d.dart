@@ -17,6 +17,17 @@
 ///    the value types, each the 3D counterpart of a Flutter one.
 ///  * [NodeBox3d], the leaf that puts engine content into a layout and
 ///    measures its bounds to answer how big it is.
+///  * [DecoratedBox3d] and [BoxDecoration3d], the other direction: geometry
+///    that is *told* a size rather than scaled into one, so a 12dp corner is
+///    12dp at every size. [Decoration3dPainter] is the seam that realizes
+///    one, [StateLayer3d] the overlay a control wears, and
+///    [Decoration3dPainterCache] what stops a hundred panels being a hundred
+///    materials.
+///  * [ClipBox3d], [Clip3dRegion] and [ClipPlane3d], the clip contract:
+///    whole-node culling today, plane uniforms for the materials that can
+///    take them.
+///  * [Visibility3d] and [Offstage3d], hiding a subtree with and without
+///    giving its space back.
 ///  * [Text3d], the leaf that lays a string out, with [TextMeasurement3d]
 ///    and its two policies behind it: prepare a string once, then fit it to
 ///    any width without consulting the font again.
@@ -74,6 +85,7 @@ export 'src/boxes/shifted.dart'
     show Align3d, Center3d, Padding3d, ShiftedLayout3d;
 export 'src/boxes/sized.dart' show ConstrainedBox3d, SizedBox3d, Transform3d;
 export 'src/boxes/stack.dart' show Positioned3d, Stack3d, StackFit3d;
+export 'src/boxes/visibility.dart' show Offstage3d, Visibility3d;
 export 'src/boxes/wrap.dart' show Wrap3d, WrapAlignment3d, WrapCrossAlignment3d;
 export 'src/built_children.dart'
     show
@@ -82,8 +94,22 @@ export 'src/built_children.dart'
         Layout3dMeasuredChildrenMixin,
         Layout3dPrototypeBuilder;
 export 'src/camera_binding.dart' show Layout3dCameraBinding;
+export 'src/clip.dart' show ClipBox3d, Clip3dRegion, ClipPlane3d;
+export 'src/decoration/box_decoration.dart'
+    show Border3d, BoxDecoration3d, BoxDecoration3dUniforms;
+export 'src/decoration/box_decoration_painter.dart' show BoxDecoration3dPainter;
+export 'src/decoration/decorated_box.dart' show DecoratedBox3d;
+export 'src/decoration/decoration.dart'
+    show
+        Decoration3d,
+        Decoration3dElevation,
+        Decoration3dPainter,
+        Decoration3dPainterCache,
+        Decoration3dPaintRequest,
+        StateLayer3d;
 export 'src/geometry/alignment3d.dart' show Alignment3d;
 export 'src/geometry/basis3d.dart' show LayoutBasis3d;
+export 'src/geometry/border_radius3d.dart' show BorderRadius3d;
 export 'src/geometry/constraints3d.dart' show Constraints3d;
 export 'src/geometry/edge_insets3d.dart' show EdgeInsets3d;
 export 'src/geometry/offset3d.dart' show Axis3d, Offset3d;

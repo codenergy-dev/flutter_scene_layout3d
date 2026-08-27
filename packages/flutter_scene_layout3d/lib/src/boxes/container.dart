@@ -17,9 +17,12 @@ import '../layout3d.dart';
 /// [alignment]. [transform] is applied last and, as in Flutter, affects only
 /// where the content lands, never the layout.
 ///
-/// This is a layout container. Making it *visible* (a panel, a frame, a
-/// backing plane) is a matter of putting a mesh in the tree, which is what
-/// `NodeBox3d` is for; nothing in this package draws on its own.
+/// This is a layout container and nothing else: unlike Flutter's, it has no
+/// `decoration`. Making a box *visible* is [DecoratedBox3d]'s job — wrap the
+/// container in one, or put engine content in the tree with a `NodeBox3d`.
+/// The separation is deliberate: a decoration is told a size and produces the
+/// right shape at it, which is a different relationship from anything a
+/// container does.
 class Container3d extends SingleChildLayout3d
     with Layout3dChildIntrinsicsMixin {
   /// Creates a container.

@@ -1,0 +1,136 @@
+// The panel every Material component in a flutter_scene_layout3d tree is made
+// of: one slab, one material, a rounded-box signed distance field, and no
+// geometry work at any size.
+//
+// The fragment shader never learns where it is in the box from the engine —
+// a .fmat surface is handed a world position, a normal and a UV, none of
+// which say "two thirds of the way across this card". BoxDecoration3dPainter
+// solves that by shipping a unit slab whose vertex colours are its own
+// object-space coordinates, biased into [0, 1]. Recovering the position is
+// therefore exact, and costs one subtract and one multiply.
+//
+// Every length below is in world units. The Dart side
+// (BoxDecoration3dUniforms) converts from the logical pixels a component spec
+// is written in, clamps the radii to what the box can fit and folds the state
+// layer's opacity into its alpha, so nothing here has to know about metrics.
+
+material {
+  name: "BoxDecoration3d",
+  shading_model: lit,
+  blending: alpha,
+  depth_write: true,
+  culling: back,
+
+  parameters: [
+    // Half the box's extent, in layout axes: x across, y down, z away.
+    { type: vec3, name: half_extent, default: [0.5, 0.5, 0.05] },
+    // Corner radii, clockwise from the origin corner: top-left, top-right,
+    // bottom-right, bottom-left.
+    { type: vec4, name: corner_radius, default: [0, 0, 0, 0] },
+    // How far the slab's rim is rounded along the depth axis.
+    { type: float, name: bevel, default: 0.0 },
+    // The border's thickness, drawn inside the outline. Zero for none.
+    { type: float, name: border_width, default: 0.0 },
+
+    { type: vec4, name: color, hint: source_color, default: [1, 1, 1, 1] },
+    { type: vec4, name: border_color, hint: source_color, default: [0, 0, 0, 1] },
+    // Hover / focus / press / drag, opacity already folded into alpha.
+    { type: vec4, name: state_layer, hint: source_color, default: [0, 0, 0, 0] },
+    // Material 3's elevation tint, its amount already folded into alpha.
+    { type: vec4, name: surface_tint, hint: source_color, default: [0, 0, 0, 0] },
+
+    { type: float, name: metallic, hint: range(0, 1, 0.01), default: 0.0 },
+    { type: float, name: roughness, hint: range(0, 1, 0.01), default: 0.5 },
+
+    // The clip in force, in the box's own frame (origin at the box's corner).
+    // xyz is a normal, w a distance; a fragment survives where
+    // dot(n, p) + w >= 0 for every plane. An unused slot is (0, 0, 0, 1),
+    // which keeps everything. Six is Clip3dRegion.maxPlanes, which is exactly
+    // one axis-aligned box, which is what intersecting layout clips folds to.
+    { type: vec4, name: clip_plane_0, default: [0, 0, 0, 1] },
+    { type: vec4, name: clip_plane_1, default: [0, 0, 0, 1] },
+    { type: vec4, name: clip_plane_2, default: [0, 0, 0, 1] },
+    { type: vec4, name: clip_plane_3, default: [0, 0, 0, 1] },
+    { type: vec4, name: clip_plane_4, default: [0, 0, 0, 1] },
+    { type: vec4, name: clip_plane_5, default: [0, 0, 0, 1] },
+  ],
+}
+
+fragment {
+  // The radius in force at p, picked from the four corners by which quadrant
+  // of the face p is in. Written the way every rounded-box SDF is written, so
+  // it reads the same as its source.
+  float RadiusAt(vec2 p, vec4 radii) {
+    float top = p.x > 0.0 ? radii.y : radii.x;
+    float bottom = p.x > 0.0 ? radii.z : radii.w;
+    return p.y > 0.0 ? bottom : top;
+  }
+
+  // Signed distance to a rounded box of half-extent b, negative inside.
+  float RoundedBox(vec2 p, vec2 b, float r) {
+    vec2 q = abs(p) - b + r;
+    return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
+  }
+
+  void Surface(inout MaterialInputs material) {
+    // The object-space position, recovered from the vertex colour the painter
+    // baked in. Centre of the box is the origin.
+    vec3 p = (GetVertexColor().rgb - 0.5) * 2.0 * material_params.half_extent;
+
+    // The clip runs in the box's own frame, whose origin is the corner.
+    vec3 clip_p = p + material_params.half_extent;
+    float keep = 1.0;
+    keep = min(keep, dot(material_params.clip_plane_0.xyz, clip_p) + material_params.clip_plane_0.w);
+    keep = min(keep, dot(material_params.clip_plane_1.xyz, clip_p) + material_params.clip_plane_1.w);
+    keep = min(keep, dot(material_params.clip_plane_2.xyz, clip_p) + material_params.clip_plane_2.w);
+    keep = min(keep, dot(material_params.clip_plane_3.xyz, clip_p) + material_params.clip_plane_3.w);
+    keep = min(keep, dot(material_params.clip_plane_4.xyz, clip_p) + material_params.clip_plane_4.w);
+    keep = min(keep, dot(material_params.clip_plane_5.xyz, clip_p) + material_params.clip_plane_5.w);
+    if (keep < 0.0) {
+      discard;
+    }
+
+    vec2 face = p.xy;
+    vec2 half_face = material_params.half_extent.xy;
+    float radius = RadiusAt(face, material_params.corner_radius);
+
+    // The bevel eats into the face radius as the fragment approaches the
+    // slab's rim, which is what rounds the thickness without a second SDF.
+    float rim = material_params.half_extent.z - abs(p.z);
+    float bevel = material_params.bevel;
+    float inset = bevel > 0.0
+        ? bevel - sqrt(max(bevel * bevel - max(bevel - rim, 0.0) * max(bevel - rim, 0.0), 0.0))
+        : 0.0;
+
+    float d = RoundedBox(face, half_face - vec2(inset), max(radius - inset, 0.0));
+
+    // One pixel of coverage either side of the outline, from the screen-space
+    // rate of change of the distance. This is what makes the corners
+    // resolution-independent: they are as sharp as the display is, at any
+    // size, with no geometry.
+    float aa = max(fwidth(d), 1e-6);
+    float coverage = 1.0 - smoothstep(-aa, aa, d);
+    if (coverage <= 0.0) {
+      discard;
+    }
+
+    // The border is the outer band of the same distance field.
+    float border = material_params.border_width;
+    float border_mix = border > 0.0
+        ? 1.0 - smoothstep(-border - aa, -border + aa, d)
+        : 0.0;
+
+    vec4 base = mix(material_params.color, material_params.border_color, border_mix);
+    base.rgb = mix(base.rgb, material_params.surface_tint.rgb, material_params.surface_tint.a);
+    base.rgb = mix(base.rgb, material_params.state_layer.rgb, material_params.state_layer.a);
+    base.a *= coverage;
+
+    material.base_color = base;
+    material.metallic = material_params.metallic;
+    material.roughness = material_params.roughness;
+    material.normal = GetWorldNormal();
+    material.emissive = vec3(0.0);
+    material.occlusion = 1.0;
+    PrepareMaterial(material);
+  }
+}

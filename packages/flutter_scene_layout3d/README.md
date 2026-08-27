@@ -308,6 +308,151 @@ SizedBox3d.cube(0.3, child: NodeBox3d(content: model, fit: BoxFit3d.contain))
 larger or smaller than expected and the question is whether the fit or the
 measurement is responsible.
 
+## Making a box visible
+
+`NodeBox3d` takes content that already exists and scales it into the room
+available. A panel needs the opposite: geometry that is *told* the size and
+produces the right shape at it, because scaling a rounded panel distorts its
+corners and a card with a 12dp radius needs 12dp at every size.
+
+`DecoratedBox3d` is that box. It lays its child out exactly as a pass-through
+would and then hands its own size to a painter:
+
+```dart
+DecoratedBox3d(
+  decoration: const BoxDecoration3d(
+    color: Color(0xFF1B6EF3),
+    borderRadius: BorderRadius3d.circular(12),
+    border: Border3d(width: 1, color: Color(0x33000000)),
+    elevation: 3,
+    surfaceTint: Color(0xFF6750A4),
+  ),
+  child: Padding3d(
+    padding: const EdgeInsets3d.all(0.12),
+    child: Text3d('Continue'),
+  ),
+)
+```
+
+**Every figure on a `BoxDecoration3d` is in logical pixels**, not world units —
+a 12dp corner, a 1dp outline, a 3dp elevation — and the metrics turn them into
+units at paint time. That is the same bargain `Text3d` strikes with
+`TextStyle.fontSize`, and it is what makes one decoration correct on a
+camera-bound surface and on a wall panel whose scale the author picked.
+
+### The bet: a shader, not regenerated meshes
+
+There are three ways to make a rounded panel follow a size, and the choice
+here shapes everything else. Regenerating the mesh is correct and the wrong
+default, because a screen of components animating produces mesh churn every
+frame. A 27-slice mesh avoids the churn but cannot express a border or a bevel
+that changes with state. So the default is a **signed-distance field in the
+fragment shader** over one shared slab, with the size, the radii, the border
+and the state layer as uniforms: resolution-independent corners, no geometry
+work at any size, one mesh and one material class for every panel in the
+scene.
+
+Everything downstream follows from that:
+
+* A size change scales a shared slab and rewrites parameters. It never
+  rebuilds geometry.
+* A colour, radius, border or elevation change never relayouts — `DecoratedBox3d.decoration` marks nothing dirty for layout, because a decoration has no say in any extent.
+* A **state layer** (hover, focus, press, drag) is one uniform.
+  `DecoratedBox3d.stateLayer` writes it and asks for a frame; it does not
+  even repaint through the layout pipeline.
+* Panels **share a painter** through a per-surface cache keyed by
+  `Decoration3d.cacheKey`. Every `BoxDecoration3d` returns the same key
+  whatever its numbers, so a hundred cards are a hundred boxes, one mesh and
+  one material class.
+
+### Elevation is real here
+
+Material's elevation is a painted shadow standing in for a height. In a scene
+the height is real: `BoxDecoration3d.elevation` lifts the geometry toward the
+viewer by `metrics.dp(elevation)` and the shadow is whatever the scene's own
+lights cast. Material 3's other half, the surface tint, is a uniform on the
+same shader and follows the published opacity table
+(`BoxDecoration3d.surfaceTintOpacityFor`).
+
+The lift moves the *geometry* and nothing else. The box keeps the size and
+position layout gave it, and a ray still reaches it where the layout put it —
+a raised button whose touch target drifted away from its layout box would be a
+bug. It is the same distinction `ParentData3d.sceneOffset` draws.
+
+### It does not draw on its own either
+
+Like `Text3d`, a `DecoratedBox3d` with no painter lays out, sizes itself and
+hit-tests exactly as it otherwise would, and puts nothing in the scene.
+Producing geometry needs a GPU context, which a headless test does not have
+and neither does a surface built before `Scene.initializeStaticResources()`
+resolves. `Decoration3dPainter` is the seam.
+
+The package ships the shader as `assets/box_decoration3d.fmat` and
+`BoxDecoration3dPainter` as the painter that drives it. A library cannot
+compile a `.fmat` from inside a dependency — the build hook runs in the app —
+so copy the file into your app's `assets/`, add it to your hook's
+`buildMaterials` list, and install the factory once:
+
+```dart
+final material = await loadFmatMaterial('assets/box_decoration3d.fmat');
+BoxDecoration3d.painterFactory =
+    (_) => BoxDecoration3dPainter(createMaterial: () => material);
+```
+
+The painter's own trick is worth knowing if you write a decoration of your
+own. A `.fmat` fragment shader is handed a world position, a normal and a UV,
+none of which say where in the *box* a fragment is. The shared slab is a unit
+cube whose vertex colours are its own object-space coordinates, so the shader
+recovers the position exactly with a subtract and a multiply. A caller with a
+mesh of its own passes it as `createGeometry` and keeps the same convention;
+a decoration a shader cannot express at all subclasses `Decoration3d` and
+generates whatever it likes inside its painter.
+
+### Clipping, and the contract for it
+
+`ClipBox3d` clips its child to its own extent. Layout is untouched — it is a
+pass-through — and two things happen, at different prices:
+
+```dart
+SizedBox3d(
+  width: 2,
+  height: 2,
+  child: ClipBox3d(child: Column3d(children: rows)),
+)
+```
+
+* Every descendant's `Layout3d.clipRegion` reports the clip, as a
+  `Clip3dRegion`: an intersection of `ClipPlane3d` half-spaces expressed in
+  that box's own layout frame, pulled back exactly through any transform on
+  the way down. `toPlaneBlock()` packs it as the `vec4` uniforms a material
+  reads, and the shipped panel shader discards where any plane reports
+  negative. This is the tier that clips *part* of a child.
+* With `cullNodes` (the default), descendants that fall entirely outside have
+  their scene node hidden, which also puts them out of reach of a ray. Exact
+  for whole boxes, useless for a box that is half in, and free.
+
+`clipDepth` is off by default, so a raised card inside a scrolling list still
+stands proud of it instead of being sliced off at the surface. Nesting
+axis-aligned clips folds parallel planes together, so however deep they stack
+a clip stays six planes — which is `Clip3dRegion.maxPlanes`, the number a
+consumer is required to honour. A clip taken through a rotation can exceed it,
+and `toPlaneBlock` throws rather than clipping less than it was asked to.
+
+### Hiding without decorating
+
+`Visibility3d` hides its child and keeps its space; `Offstage3d` hides it and
+gives the space back, reporting zero size and no baseline. Both work by the
+scene node's `visible` flag, which hit testing already honours, so an
+invisible box is unpointable as well as unseen. Toggling a `Visibility3d` does
+not relayout; toggling an `Offstage3d` does, because the size it reports
+depends on it.
+
+There is deliberately no `Opacity3d`. Flutter's is a `saveLayer`, and a scene
+has no such thing; fading a subtree means multiplying an alpha into every
+material under it, which needs an engine-side per-node opacity that does not
+exist yet. A wrapper that silently only faded `BoxDecoration3d` would be worse
+than none.
+
 ## What is in the box
 
 | Layout | Flutter counterpart |
@@ -334,6 +479,10 @@ measurement is responsible.
 | `Ray3d`, `HitTestResult3d`, `Layout3dPointer` | `hitTest`, `BoxHitTestResult`, `Listener` |
 | `NodeBox3d` | the leaf that holds content |
 | `Text3d`, `TextMeasurement3d` | `Text`, and the `TextPainter` behind it |
+| `DecoratedBox3d`, `BoxDecoration3d`, `Border3d`, `BorderRadius3d` | `DecoratedBox`, `BoxDecoration`, `Border`, `BorderRadius` |
+| `Decoration3dPainter`, `Decoration3dPainterCache`, `StateLayer3d` | `BoxPainter`, and Material's state layers |
+| `ClipBox3d`, `Clip3dRegion`, `ClipPlane3d` | `ClipRect`, and the clip stack behind it |
+| `Visibility3d`, `Offstage3d` | `Visibility`, `Offstage` |
 
 `Depth3d` is the axis Flutter does not have: a flex that stacks children away
 from the viewer.
@@ -885,13 +1034,27 @@ that Flutter added on top of intrinsics; it is what would let a `Wrap3d`
 report how thick it would be at a given width instead of the one-run lower
 bound it reports now.
 
+**6. Geometry that follows a box.** ~~Done, bar the pixels~~:
+`DecoratedBox3d` and `BoxDecoration3d` describe a panel, the painter cache
+shares one mesh across every panel with the same shape, elevation lifts the
+geometry toward the viewer, and a state layer is a uniform that never dirties
+layout. See *Making a box visible* above. The shader ships as
+`assets/box_decoration3d.fmat` and `BoxDecoration3dPainter` drives it, but no
+lane in this repository compiles it yet, so the GLSL is checked for its
+parameter contract and not for what it draws. Two things are known to be open:
+the shadow a rounded panel casts is the slab's, because a shadow pass does not
+run the surface shader that discards the corners; and clip planes are
+published to every material through `Clip3dRegion` but only the shipped panel
+shader reads them.
+
 **What is next.** Nothing in this list depends on anything else in it any
 more, so the order is a matter of what a caller reaches for first: a
 `Text3dRenderer` that actually draws, the rest of Flutter's layout catalogue
 (`Table`, `Flow`, aspect-ratio and fractionally-sized boxes), pinned and
 floating sliver headers, lazily built child *widgets* in the declarative
-layer, and hover and press state on the boxes themselves, which is the
-groundwork any `Button3d` would need.
+layer, hover and press state on the boxes themselves, which is the groundwork
+any `Button3d` would need, and a per-node opacity in the engine, which is what
+an `Opacity3d` is waiting on.
 
 ## License
 
