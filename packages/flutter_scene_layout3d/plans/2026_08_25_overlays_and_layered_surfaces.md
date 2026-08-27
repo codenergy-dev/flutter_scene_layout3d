@@ -1,7 +1,7 @@
 ---
-status: pending
+status: completed
 created_at: 2026-08-25T20:31:04Z
-updated_at: 2026-08-25T20:31:04Z
+updated_at: 2026-08-27T00:00:00Z
 commit: d7bb9db224f8080ddddde70d019ab5481b45d05e
 ---
 
@@ -118,29 +118,134 @@ its own scope and restore focus on pop.
 
 ## The work
 
-- [ ] **Phase 1 — `Overlay3d` in-plane.** Entries, ordering, the lift through
+- [x] **Phase 1 — `Overlay3d` in-plane.** Entries, ordering, the lift through
       `sceneOffset`, `Overlay3d.of`, insertion from a descendant.
-- [ ] **Phase 2 — the barrier**, dismissal, and modal focus trapping.
-- [ ] **Phase 3 — detached entries.** A surface per entry, parented to the
+- [x] **Phase 2 — the barrier**, dismissal, and modal focus trapping.
+- [x] **Phase 3 — detached entries.** A surface per entry, parented to the
       host plane, with its constraints derived from the host.
-- [ ] **Phase 4 — cross-surface hit routing** (`Layout3dPointerGroup`).
-- [ ] **Phase 5 — `Navigator3d`.** Push, pop, results, the transition hook.
-- [ ] **Phase 6 — README.** A section on what "in front" means here and why
+- [x] **Phase 4 — cross-surface hit routing** (`Layout3dPointerGroup`).
+- [x] **Phase 5 — `Navigator3d`.** Push, pop, results, the transition hook.
+- [x] **Phase 6 — README.** A section on what "in front" means here and why
       there are two answers.
+
+## What was built
+
+- `lib/src/overlay/overlay.dart` — `Overlay3d` (a `Stack3d` whose entries are
+  appended after its base children), `Overlay3dEntry`, and the sealed
+  `OverlayLayer3d` with `InPlaneOverlayLayer3d` and `DetachedOverlayLayer3d`.
+- `lib/src/overlay/modal_barrier.dart` — `ModalBarrier3d`.
+- `lib/src/overlay/navigator.dart` — `Navigator3d`, `Route3d`, `PageRoute3d`,
+  `Route3dTransition`.
+- `lib/src/input/pointer_group.dart` — `Layout3dPointerGroup`.
+- `lib/src/input/focus.dart` — `FocusScope3d`, `Focus3d.enclosingScope`,
+  `Focus3dTraversal.traversalRootFor`.
+- `lib/src/widgets/overlay.dart` — `SceneOverlay3d`, `Overlay3dController`,
+  `SceneModalBarrier3d`.
+- `test/overlay_test.dart` — 40 tests, including every case listed below.
+
+## What the original reasoning got wrong
+
+**`Overlay3d.of(context)` is `SceneOverlay3d.of(context)`.** `Overlay3d` is a
+layout in the core library, which has no `BuildContext` to be found through;
+`Overlay3d.of(Layout3d)` is the imperative walk (and it crosses out of a
+detached entry, which is on another surface, through an `Expando` the entry
+registers). The declarative handle is on the widget, beside `SceneLayout3d`'s
+`Layout3dController`.
+
+**An entry's content is a `Layout3d`, not a widget subtree.** The plan wrote
+`Overlay3dEntry(builder: ...)` without saying what a builder returns. It
+returns a layout: giving entries widget subtrees means an `Overlay`-style
+element with a child list of its own (Flutter's `_OverlayEntryWidget` plus
+`_RenderTheatre`), which is a second reconciliation path through
+`Layout3dLazyElement` and is not what this plan bought. The layout objects are
+the same ones the widgets drive, so nothing is out of reach, and
+`Overlay3dEntry.markNeedsBuild` disposes the old subtree and builds a new one
+in place. **Widget-built entries are the obvious follow-up** and the one thing
+`flutter_scene_material3d` may want early.
+
+**The lift is written by the entry's host box, not by the overlay's
+`performLayout`.** `Stack3d.performLayout` already writes
+`ParentData3d.sceneOffset` for its depth step, so an overlay that wrote the
+lift there would be fighting its own superclass. The entry's host overrides
+`Layout3d.sceneOffset` to add the lift instead: same mechanism, different
+writer, and the two compose. Everything the plan wanted from it holds — the
+box does not move, a `Positioned3d` inside still pins, and `hitTestChild`
+shifts by `offset` alone, so a ray finds the entry by its place in the stack.
+
+**A detached entry needs two nodes, not one.** The plan said "parented to the
+host plane", which is right until a camera binding is involved: a binding
+writes a *world* transform onto the plane (`_planeTransform` builds it from
+the inverted view matrix) and has no idea what it is hanging under. So each
+detached entry has a frame node between the anchor and the plane. It is
+identity while the entry follows the panel, and the inverse of the anchor's
+world transform once a binding drives the plane, with the plane's translation
+set to where the panel anchored the entry in world terms — so a billboarded
+dialog keeps the position the panel gave it and takes only its facing from the
+camera. That is what the "keeps facing the camera" test asserts.
+
+**And the detached surface's basis depends on whether it is bound.** Unbound,
+its plane hangs in the host's *layout* space (the host surface's basis has
+already been applied above it), so it must add none of its own:
+`DetachedOverlayLayer3d.hostBasis`, the identity. Bound, the binding's
+world-space transform is built for `LayoutBasis3d.xy`, so that is the default
+there. Getting this wrong applies the basis twice and mirrors the entry.
+
+**The barrier is its own layout, not an `AbsorbPointer3d` with a decoration.**
+It has to fill what it is given (an absorber is a proxy and takes its child's
+size) and it has to see a down *and* an up to know a tap outside from a drag
+that started on the dialog. `ModalBarrier3d` does both. The scrim is its
+child, so a caller decorates it; a translucent one still waits on per-node
+opacity in the engine, exactly as the plan said.
+
+**Focus trapping needed a change to `Focus3d`.** `requestFocus` asked
+`owner.focusScope` — the surface's — so a modal's own scope would never have
+been consulted. It now asks `enclosingScope`, the nearest `FocusScope3d`
+above it, falling back to the surface's. Restoring focus on pop also has an
+ordering constraint the plan did not foresee: disposing a focus node that
+still holds primary focus makes Flutter's manager pick a successor of its own,
+and the last request wins, so the restore has to run *after* the entry's
+subtree is disposed rather than before.
+
+**Cross-surface absorption is "the surface answered".** A `Layout3dPointer`
+returns an empty result when nothing on the surface took the hit, so
+front-to-back with a stop at the first non-empty result is the whole rule.
+`absorbs: false` per surface is the escape hatch for a HUD that must not block
+the world, and a press captures every surface that answered it.
+
+## Left open, deliberately
+
+- **Widget-built entries** (see above).
+- **Focus traversal across surfaces.** Trapping is done and
+  `Focus3dTraversal.traversalRootFor` is the hook, but a `Tab` that walks from
+  a detached entry into the panel behind it has no policy. It was named as a
+  cost of shape (B) in this plan, not as a deliverable, and it is the same
+  open item the pointer-dispatch plan left.
+- **Transitions.** `Route3dTransition` is the seam and `none` is the only
+  implementation; the animation plan fills it in. `reverse` is awaited before
+  the entry is removed, so a leaving route is on screen for the whole of it.
+- **Flutter `Navigator` interop and system back handling**, which this plan
+  puts out of scope and which stay out of it.
 
 ## Tests
 
-- An entry inserted from a deep descendant appears above every sibling and is
-  hit first.
-- The lift moves geometry and not boxes: the entry's box stays inside the
+All of these are in `test/overlay_test.dart`, plus ordering and insertion
+around a named entry, teardown (removing an entry disposes what it built, and
+disposing the surface takes the entries with it), the unit contract reaching a
+detached entry from the host, dirt inside a detached entry reaching the host's
+flush, the route stack's results, and the declarative layer.
+
+- [x] An entry inserted from a deep descendant appears above every sibling and
+  is hit first.
+- [x] The lift moves geometry and not boxes: the entry's box stays inside the
   surface, a `Positioned3d` pin inside it still lands where it was pinned.
-- A barrier absorbs a ray aimed at the content behind it; `onTapOutside`
-  fires; a tap inside the dialog does not dismiss.
-- Two surfaces, one in front of the other: the router finds the front one
+- [x] A barrier absorbs a ray aimed at the content behind it; the dismissal
+  callback fires (`onDismiss`, not `onTapOutside`); a tap inside the dialog
+  does not dismiss.
+- [x] Two surfaces, one in front of the other: the router finds the front one
   first, and the back one when the front is dismissed.
-- A detached entry survives the host panel being rotated, and (when bound)
+- [x] A detached entry survives the host panel being rotated, and (when bound)
   keeps facing the camera.
-- Pushing and popping restores focus.
+- [x] Pushing and popping restores focus.
 
 ## Out of scope
 

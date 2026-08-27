@@ -7,6 +7,7 @@ import 'package:flutter/widgets.dart'
         FocusAttachment,
         FocusNode,
         FocusOnKeyEventCallback,
+        FocusScopeNode,
         TraversalDirection,
         ValueChanged;
 import 'package:vector_math/vector_math.dart' show Matrix4, Vector3;
@@ -159,9 +160,28 @@ class Focus3d extends ProxyLayout3d implements HitTestTarget3d {
   /// scene that is only looked at should not be able to take the keyboard
   /// away from the widgets around it.
   void requestFocus() {
-    final scope = owner?.focusScope;
-    if (scope == null) return;
-    scope.requestFocus(_node);
+    if (owner == null) return;
+    enclosingScope.requestFocus(_node);
+  }
+
+  /// The scope this box's focus belongs to.
+  ///
+  /// The nearest [FocusScope3d] above it, and the surface's own scope
+  /// ([Layout3dOwner.focusScope]) when there is none. That walk is the whole
+  /// of what focus trapping is: a modal wraps its content in a scope, so
+  /// everything inside it asks that scope for focus instead of the
+  /// surface's, and focus cannot leak out of the dialog by a control simply
+  /// asking for it.
+  ///
+  /// Only meaningful once this box is attached; reading it before that throws
+  /// on the null owner.
+  FocusScopeNode get enclosingScope {
+    Layout3d? node = parent;
+    while (node != null) {
+      if (node is FocusScope3d) return node.scopeNode;
+      node = node.parent;
+    }
+    return owner!.focusScope;
   }
 
   /// Gives up focus, handing it back to the enclosing scope.
@@ -217,6 +237,94 @@ class Focus3d extends ProxyLayout3d implements HitTestTarget3d {
       'Focus3d(${hasPrimaryFocus ? 'focused' : 'not focused'})';
 }
 
+/// A [FocusScopeNode] tied to a subtree, so focus can be trapped inside it.
+///
+/// The 3D analogue of Flutter's `FocusScope`, and it exists for the reason a
+/// modal needs it: [Focus3d.requestFocus] asks the nearest scope above it,
+/// and [Focus3dTraversal.traversalRootFor] stops the walk at the same place.
+/// Wrap a dialog's content in one and the dialog's focus is its own — nothing
+/// inside it can hand focus to the page behind, and tabbing inside it cycles
+/// the dialog rather than walking out of it. [Overlay3dEntry] does exactly
+/// this for a modal entry.
+///
+/// Scopes nest the way Flutter's do: this one parents under the nearest
+/// enclosing [FocusScope3d], or under the surface's own scope
+/// ([Layout3dOwner.focusScope]) when there is none, at the moment the box
+/// joins an attached tree.
+class FocusScope3d extends ProxyLayout3d {
+  /// Creates a scope around [child].
+  ///
+  /// [node] is optional and follows the rule [Focus3d] keeps for its node:
+  /// without one this box makes a scope and disposes it with itself; with
+  /// one, the caller keeps ownership.
+  FocusScope3d({
+    FocusScopeNode? node,
+    String? debugLabel,
+    super.child,
+    super.name,
+  }) : _ownsNode = node == null {
+    _scope =
+        node ??
+        FocusScopeNode(
+          debugLabel: debugLabel ?? this.node.name,
+          skipTraversal: true,
+        );
+    // Attached with a null context for the same reason the owner's scope is:
+    // the attachment is what a later detach unparents through, and nothing
+    // ever reparents through the context.
+    _attachment = _scope.attach(null);
+  }
+
+  late final FocusScopeNode _scope;
+  late final FocusAttachment _attachment;
+  final bool _ownsNode;
+
+  /// The node this box holds focus through.
+  ///
+  /// Everything a `FocusScopeNode` can do it can do here: ask it for
+  /// `hasFocus`, hand it to a `FocusTraversalGroup`, call `unfocus` on it.
+  FocusScopeNode get scopeNode => _scope;
+
+  /// Whether focus is anywhere inside this scope.
+  bool get hasFocus => _scope.hasFocus;
+
+  @override
+  void attach(Layout3dOwner owner) {
+    super.attach(owner);
+    _parentUnderEnclosingScope(owner);
+  }
+
+  /// Hangs this scope under the one above it.
+  ///
+  /// `setFirstFocus` is Flutter's way of parenting a scope: it reparents the
+  /// child scope and names it the one focus goes to when the parent is asked.
+  /// That second half is what a dialog wants — the scope that just appeared
+  /// is where focus should land.
+  void _parentUnderEnclosingScope(Layout3dOwner owner) {
+    Layout3d? node = parent;
+    while (node != null) {
+      if (node is FocusScope3d) {
+        node.scopeNode.setFirstFocus(_scope);
+        return;
+      }
+      node = node.parent;
+    }
+    owner.focusScope.setFirstFocus(_scope);
+  }
+
+  @override
+  void dispose() {
+    // Detaching is what takes the scope back out of the focus tree; a scope
+    // that is only disposed would be left parented under its ancestor.
+    _attachment.detach();
+    if (_ownsNode) _scope.dispose();
+    super.dispose();
+  }
+
+  @override
+  String toString() => 'FocusScope3d(${hasFocus ? 'focused' : 'not focused'})';
+}
+
 /// Moving focus from box to box on a surface.
 ///
 /// Flutter's `DirectionalFocusTraversalPolicy` cannot be reused as it stands:
@@ -237,6 +345,30 @@ class Focus3d extends ProxyLayout3d implements HitTestTarget3d {
 class Focus3dTraversal {
   /// Creates a traversal policy. Subclass it to change the order.
   const Focus3dTraversal();
+
+  /// The root traversal should search from, for something at [layout].
+  ///
+  /// The nearest [FocusScope3d] at or above it, and the root of the tree when
+  /// there is none. This is the hook that makes a modal trap traversal:
+  /// every method here takes the root to search from, so a `Tab` handler that
+  /// resolves the root through this instead of reaching for the surface walks
+  /// the dialog when a dialog is up and the whole page when it is not.
+  ///
+  /// ```dart
+  /// final current = Focus3d.of(focusedBox);
+  /// final root = Focus3dTraversal.traversalRootFor(current ?? surface);
+  /// const Focus3dTraversal().next(root, current)?.requestFocus();
+  /// ```
+  static Layout3d traversalRootFor(Layout3d layout) {
+    Layout3d? node = layout;
+    var root = layout;
+    while (node != null) {
+      if (node is FocusScope3d) return node;
+      root = node;
+      node = node.parent;
+    }
+    return root;
+  }
 
   /// Every focusable box under [root], in tree order.
   ///

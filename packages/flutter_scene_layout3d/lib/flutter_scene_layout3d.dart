@@ -41,6 +41,13 @@
 ///    Flutter's own arena, [HitTestArea3d] and [TapTarget3d] the two ways of
 ///    saying where a control can be aimed at, and [Focus3d] with
 ///    [Focus3dTraversal] the focus half.
+///  * [Overlay3d] and [Overlay3dEntry], what "in front" means here: an
+///    entry lifted toward the viewer on the host surface, or one on a
+///    surface of its own, per entry through [OverlayLayer3d]. With
+///    [ModalBarrier3d] for the scrim that absorbs the ray behind it,
+///    [FocusScope3d] for the focus a modal traps, [Layout3dPointerGroup] for
+///    routing a ray across surfaces front to back, and [Navigator3d] for the
+///    route stack over the whole of it.
 ///  * [Container3d], [Padding3d], [Align3d], [Center3d], [SizedBox3d],
 ///    [ConstrainedBox3d], [Transform3d], [Row3d], [Column3d], [Depth3d],
 ///    [Stack3d], [Positioned3d], [Wrap3d], [Viewport3d], [ListView3d],
@@ -125,7 +132,7 @@ export 'src/geometry/size3d.dart' show Size3d;
 export 'src/hit_test.dart' show HitTestEntry3d, HitTestResult3d, Ray3d;
 export 'src/input/events.dart'
     show HitTestBehavior3d, HitTestTarget3d, PointerEvent3d, PointerSequence3d;
-export 'src/input/focus.dart' show Focus3d, Focus3dTraversal;
+export 'src/input/focus.dart' show Focus3d, Focus3dTraversal, FocusScope3d;
 export 'src/input/gesture_detector.dart' show GestureDetector3d;
 export 'src/input/listener.dart'
     show
@@ -134,6 +141,7 @@ export 'src/input/listener.dart'
         PointerEvent3dCallback,
         ProxyLayout3dWithHitTestBehavior;
 export 'src/input/pointer.dart' show Layout3dPointer;
+export 'src/input/pointer_group.dart' show Layout3dPointerGroup;
 export 'src/input/tap_target.dart' show TapTarget3d;
 export 'src/layout3d.dart'
     show
@@ -149,6 +157,17 @@ export 'src/layout3d.dart'
         SingleChildLayout3d;
 export 'src/layout_pass.dart' show Layout3dLayoutPassMixin;
 export 'src/metrics.dart' show Layout3dMetrics, VisualDensity3d;
+export 'src/overlay/modal_barrier.dart' show ModalBarrier3d;
+export 'src/overlay/navigator.dart'
+    show Navigator3d, PageRoute3d, Route3d, Route3dTransition;
+export 'src/overlay/overlay.dart'
+    show
+        DetachedOverlayLayer3d,
+        InPlaneOverlayLayer3d,
+        Overlay3d,
+        Overlay3dBuilder,
+        Overlay3dEntry,
+        OverlayLayer3d;
 export 'src/scroll/box_scroll_view.dart' show BoxScrollView3d;
 export 'src/scroll/grid_delegate.dart'
     show

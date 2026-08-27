@@ -46,9 +46,23 @@ export 'src/geometry/size3d.dart' show Size3d;
 export 'src/hit_test.dart' show HitTestEntry3d, HitTestResult3d, Ray3d;
 export 'src/input/events.dart'
     show HitTestBehavior3d, HitTestTarget3d, PointerEvent3d;
-export 'src/input/focus.dart' show Focus3d, Focus3dTraversal;
+export 'src/input/focus.dart' show Focus3d, Focus3dTraversal, FocusScope3d;
 export 'src/input/listener.dart' show PointerEvent3dCallback;
 export 'src/input/pointer.dart' show Layout3dPointer;
+export 'src/input/pointer_group.dart' show Layout3dPointerGroup;
+export 'src/overlay/modal_barrier.dart' show ModalBarrier3d;
+export 'src/overlay/navigator.dart'
+    show Navigator3d, PageRoute3d, Route3d, Route3dTransition;
+export 'src/overlay/overlay.dart'
+    show
+        DetachedOverlayLayer3d,
+        InPlaneOverlayLayer3d,
+        Overlay3d,
+        Overlay3dBuilder,
+        Overlay3dEntry,
+        OverlayLayer3d;
+export 'src/widgets/overlay.dart'
+    show Overlay3dController, SceneModalBarrier3d, SceneOverlay3d;
 export 'src/layout3d.dart' show Layout3d;
 export 'src/metrics.dart' show Layout3dMetrics, VisualDensity3d;
 export 'src/scroll/grid_delegate.dart'

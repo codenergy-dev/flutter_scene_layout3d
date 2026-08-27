@@ -479,7 +479,10 @@ than none.
 | `Ray3d`, `HitTestResult3d`, `Layout3dPointer` | `hitTest`, `BoxHitTestResult`, and `GestureBinding`'s dispatch |
 | `Listener3d`, `HitTestTarget3d`, `HitTestBehavior3d` | `Listener` + `MouseRegion`, `HitTestTarget`, `HitTestBehavior` |
 | `GestureDetector3d`, `HitTestArea3d`, `TapTarget3d` | `GestureDetector`, a bare hit-test region, Material's 48dp target |
-| `Focus3d`, `Focus3dTraversal` | `Focus`, `FocusTraversalPolicy` |
+| `Focus3d`, `Focus3dTraversal`, `FocusScope3d` | `Focus`, `FocusTraversalPolicy`, `FocusScope` |
+| `Overlay3d`, `Overlay3dEntry`, `OverlayLayer3d` | `Overlay`, `OverlayEntry`, and the 3D question Flutter does not have |
+| `ModalBarrier3d`, `Navigator3d`, `Route3d` | `ModalBarrier`, `Navigator`, `Route` |
+| `Layout3dPointerGroup` | routing a ray across surfaces, which a screen does not need |
 | `NodeBox3d` | the leaf that holds content |
 | `Text3d`, `TextMeasurement3d` | `Text`, and the `TextPainter` behind it |
 | `DecoratedBox3d`, `BoxDecoration3d`, `Border3d`, `BorderRadius3d` | `DecoratedBox`, `BoxDecoration`, `Border`, `BorderRadius` |
@@ -1070,16 +1073,128 @@ take the keyboard from the widgets around it. That scope skips Flutter's
 traversal deliberately, because Flutter's policies read a `Rect` off a
 `RenderObject` and a box on a plane has neither.
 
+A modal wants its own scope, and `FocusScope3d` is it: wrap a subtree in one
+and everything inside asks *that* scope for focus rather than the surface's,
+so a dialog cannot hand focus to the page behind it. `Focus3d.enclosingScope`
+is the walk that finds it, and `Overlay3dEntry` puts one in for you when the
+entry is modal.
+
 Traversal inside a surface is `Focus3dTraversal`: `next` and `previous` walk
 tree order, and `inDirection` projects every candidate onto the surface plane
 and picks the way a reader would — a box sharing the source's band first, and
-the nearest of those. It is a first cut, and it is honest about being one: it
-is right for a screen of controls on one plane, and it says nothing about
-content facing different ways, or about traversal between surfaces.
+the nearest of those. Every method takes the root to search from, which is
+where trapping lives: `Focus3dTraversal.traversalRootFor(box)` gives the
+nearest enclosing `FocusScope3d`, or the root of the tree when there is none,
+so a `Tab` handler written against it walks the dialog while a dialog is up
+and the whole page when it is not. It is a first cut, and it is honest about
+being one: it is right for a screen of controls on one plane, and it says
+nothing about content facing different ways, or about traversal *between*
+surfaces, which stays open now that detached overlay entries have made a
+second surface a real thing.
 
 All five of these boxes have widget forms, like every other layout here:
 `SceneListener3d`, `SceneGestureDetector3d`, `SceneHitTestArea3d`,
 `SceneTapTarget3d` and `SceneFocus3d`.
+
+## Overlays: what "in front" means
+
+A dialog, a menu, a snack bar and a tooltip are one mechanism wearing four
+coats: put something above everything else, possibly outside the bounds of
+whatever asked for it, dismissible from outside. `Overlay3d` is that
+mechanism. It is a stack whose ordinary children are the base content and
+whose *entries* are what has been put in front, last one nearest the viewer,
+inserted from anywhere at any time — a dialog opened from a button's callback
+is not part of that button's subtree, and outlives it.
+
+```dart
+final overlay = Overlay3d(children: [page]);
+surface.child = overlay;
+
+late final Overlay3dEntry entry;
+entry = Overlay3dEntry(
+  modal: true,
+  onDismiss: () => entry.remove(),
+  builder: (_) => Container3d(
+    size: const Size3d(1.2, 0.8, 0.05),
+    decoration: panelDecoration,
+    child: Text3d('Delete this?', renderer: renderer),
+  ),
+);
+overlay.insertEntry(entry);
+```
+
+A descendant finds it without being handed anything: `Overlay3d.of(box)` walks
+up the layout tree, and `SceneOverlay3d.of(context)` does the same through the
+element tree in the declarative layer.
+
+In two dimensions "in front" needs no explanation — later paints over earlier.
+On a plane it needs two, and which one is right depends on the dialog, so it
+is chosen per entry through `Overlay3dEntry.layer`.
+
+**In plane** is the default and the cheap one. The entry is a child of the
+overlay, laid out against the overlay's own constraints, and its *geometry* is
+pulled toward the viewer so it does not fight the panel for the depth buffer.
+The lift is written to `ParentData3d.sceneOffset`, the same mechanism
+`Stack3d.depthStep` uses, which is why it moves the geometry and nothing else:
+the entry's box stays where the overlay put it, a `Positioned3d` inside it
+still pins to the face it named, and a ray still finds the entry by its place
+in the stack rather than by how far it was lifted. One surface, one layout
+pass, hit ordering already correct. The limits are real: the entry cannot
+escape the overlay's box, so a menu cannot overhang the panel's edge, and the
+lift spends the panel's own thickness. It defaults to eight logical pixels
+taken through the tree's metrics, because a separation stated in world units
+is the wrong separation at another density.
+
+**Detached** gives the entry a `Layout3dSurface` of its own, hung under the
+overlay's node so it still follows the panel when the panel turns, and
+bindable to a camera on its own account. That second half is the thing Flutter
+has no analogue of: with `OverlayLayer3d.detached(binding:
+Layout3dCameraBinding.billboard())` the dialog faces the viewer while the
+panel behind it stays angled, and `Overlay3d.updateCameraBindings` — driven
+per frame, or by `SceneOverlay3d` off the scene's own clock — is what keeps it
+there. Its constraints are derived from the host by default: as wide and as
+tall as the overlay, and *unbounded in depth*, because escaping the panel's
+depth budget is half the reason to detach at all.
+
+A detached entry is a second surface, and a ray only ever visits one surface
+at a time. `Layout3dPointerGroup` is what routes across them: it tests
+front to back — by an explicit z-order, ties broken by distance from the
+camera when it has one — and stops at the first surface that answers. A
+surface added with `absorbs: false` is dispatched to and the walk carries on,
+which is what a HUD that must not block the world wants. A press captures the
+surfaces that answered it, so sliding a drag off the dialog and onto the panel
+behind does not hand the drag over. `group.syncDetachedEntries(overlay)`
+keeps the group in step as dialogs open and close.
+
+The barrier is `ModalBarrier3d`: it fills what it is given, answers every ray
+itself — which is what stops one reaching the content behind — and calls
+`onDismiss` when a tap both starts and ends on it, so a tap on the dialog does
+not dismiss it. `Overlay3dEntry(modal: true)` puts one in. A scrim in a scene
+is not an alpha wash over a display list, because there is no display list: it
+is geometry, a slab you decorate, which is what the barrier's child is for.
+Until a per-node opacity lands in the engine a genuinely translucent scrim is
+not expressible, and a dark material or a dimming tint is the honest fallback.
+
+A modal entry also traps focus, by wrapping its content in a `FocusScope3d`;
+removing it hands focus back to whatever held it before.
+
+`Navigator3d` is the thin route stack over all of it: `push` returns the
+future the route's result arrives on, `pop` completes it, and
+`Route3dTransition` is the seam an animation will fill — its `reverse` is
+awaited before the entry is taken out, so a leaving route is on screen for the
+whole of it. It is deliberately not wired into Flutter's own `Navigator`:
+Flutter's overlay is a stack of `RenderBox`es and its routes build 2D widgets,
+and there is no honest mapping. A 3D dialog opened from a 2D route, and the
+system back button popping this stack, are not answered here — an application
+that wants either pushes on this navigator from wherever it likes and calls
+`pop` from its own `PopScope`.
+
+One difference from Flutter's `Overlay` is worth stating plainly: an entry's
+content is a `Layout3d` built by a callback, not a widget subtree. The layout
+objects are the same ones the widgets drive, so nothing is out of reach; what
+an entry does not get is reconciliation, so a component that changes its
+dialog calls `Overlay3dEntry.markNeedsBuild`, which disposes the old subtree
+and builds a new one in place.
 
 ## How it differs from Flutter
 
@@ -1176,10 +1291,11 @@ and `Layout3dPointer` dispatches along the path it captured — raw events to
 `Listener3d`, gestures to `GestureDetector3d` through Flutter's own arena,
 enter and exit to whatever the pointer crossed, and a drag to the scrolling
 view it grabbed. `Focus3d` is the focus half, with `Focus3dTraversal` moving
-between boxes on the plane. See *Pointing at it* above. What is left is
-traversal *between* surfaces, which only means something once overlays exist,
-and a directional policy that is genuinely three-dimensional rather than one
-that projects onto the plane first.
+between boxes on the plane and `FocusScope3d` trapping it inside a modal. See
+*Pointing at it* above. Routing a ray *across* surfaces is done —
+`Layout3dPointerGroup`, see *Overlays* — but moving focus across them is not,
+and neither is a directional policy that is genuinely three-dimensional
+rather than one that projects onto the plane first.
 
 **2. More layouts.** ~~Done~~: `Wrap3d` breaks into runs, and `GridView3d`
 lays cells out on a grid a `Grid3dDelegate` decides, with an exactly lazy
@@ -1234,6 +1350,15 @@ the shadow a rounded panel casts is the slab's, because a shadow pass does not
 run the surface shader that discards the corners; and clip planes are
 published to every material through `Clip3dRegion` but only the shipped panel
 shader reads them.
+
+**7. Overlays.** ~~Done~~: `Overlay3d` holds entries in front of its base
+content, each one either lifted toward the viewer on the host surface or on a
+surface of its own, with `ModalBarrier3d` for the scrim, `FocusScope3d` for
+the focus a modal traps, `Layout3dPointerGroup` for routing a ray across
+surfaces, and `Navigator3d` for the route stack over the whole of it. See
+*Overlays* above. What is left is an entry whose content is a *widget*
+subtree rather than a built layout, focus traversal across surfaces, and the
+transitions `Route3dTransition` is the hook for.
 
 **What is next.** Nothing in this list depends on anything else in it any
 more, so the order is a matter of what a caller reaches for first: a
