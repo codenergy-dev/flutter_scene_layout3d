@@ -127,15 +127,16 @@ status: pending          # pending | in progress | completed | blocked
 reason: ...              # only when blocked or in progress: what is left, briefly
 created_at: 2026-08-25T03:32:15Z   # ISO 8601
 updated_at: 2026-08-25T03:32:15Z   # ISO 8601
-commit: 495b1ec4e93e3588c93612ef02862355d380933a   # HEAD when the plan was written
+commit: af9e94128d3d9a9a41a2cc79688a29017f27a78a   # HEAD when the plan was written
 ---
 ```
 
 The `commit` field is the commit the plan was written against, so a later
 reader can tell what the codebase looked like when it was reasoned about; it
-does not change as the plan is worked. Plans written before the package moved
-out of the engine's monorepo name a commit from that fork, which will not
-resolve here.
+does not change as the plan is worked, with one exception already spent: the
+plans that predate this package leaving the engine's monorepo had their
+`commit` realigned onto the equivalent commit here, so every one of them
+resolves.
 
 **A plan is a living document.** Update it as you implement: move `status`
 along, revise `updated_at` on every edit, tick items off, and write down what

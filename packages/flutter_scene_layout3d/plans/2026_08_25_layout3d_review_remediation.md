@@ -2,13 +2,13 @@
 status: completed
 created_at: 2026-08-25T03:32:15Z
 updated_at: 2026-08-25T17:40:00Z
-commit: 495b1ec4e93e3588c93612ef02862355d380933a
+commit: af9e94128d3d9a9a41a2cc79688a29017f27a78a
 ---
 
 # flutter_scene_layout3d review remediation
 
 Work items from the structural review of `packages/flutter_scene_layout3d` at
-commit `495b1ec4`. Baseline at the time of writing: `flutter analyze` clean,
+commit `af9e9412`. Baseline at the time of writing: `flutter analyze` clean,
 239 tests green. Every item in phase 1 was reproduced with a throwaway test
 before being written down; the reproduction is quoted with it.
 

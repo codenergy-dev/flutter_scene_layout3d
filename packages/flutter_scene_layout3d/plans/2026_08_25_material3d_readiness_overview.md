@@ -2,7 +2,7 @@
 status: completed
 created_at: 2026-08-25T20:31:04Z
 updated_at: 2026-08-28T21:10:00Z
-commit: d7bb9db224f8080ddddde70d019ab5481b45d05e
+commit: 657eef80eb8dc8085c3b3a84a8069273495506be
 ---
 
 # What a component library needs from this package
@@ -194,11 +194,11 @@ thing, and two of them are blocked on the same thing.**
    out-of-scope section. **That plan has not been written.** Writing it is the
    next step, not implementing against a plan that does not exist.
 
-**A note for anyone reading a plan's `commit:` field.** Plans written before
-this package moved out of the engine's monorepo name a commit from that fork.
-Those hashes do not resolve in this repository. They still do their job — they
-say what the code looked like when the plan was reasoned about — but do not try
-to `git show` one.
+**Every plan's `commit:` field resolves in this repository.** The plans that
+predate the move out of the engine's monorepo were written against fork
+commits; each was realigned onto the commit here that carries the same change,
+matched by subject and commit date. `git show` one and you get the layout
+package exactly as that plan's author saw it.
 
 The other seven plans are `completed` and their bodies record what the original
 reasoning got wrong. Read those sections before extending any of them; several

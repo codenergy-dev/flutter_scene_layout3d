@@ -2,7 +2,7 @@
 status: completed
 created_at: 2026-08-25T20:31:04Z
 updated_at: 2026-08-27T00:00:00Z
-commit: d7bb9db224f8080ddddde70d019ab5481b45d05e
+commit: 657eef80eb8dc8085c3b3a84a8069273495506be
 ---
 
 # Overlays: dialogs, menus, and what "in front" means

@@ -2,7 +2,7 @@
 status: completed
 created_at: 2026-08-25T15:21:54Z
 updated_at: 2026-08-25T19:43:58Z
-commit: 88e98579925771720a40c21b3d5ad607f787fdf7
+commit: f1225b07925a18ca3418da10312eb982e2aa4bc1
 ---
 
 # Give a measured list a length it can stand behind

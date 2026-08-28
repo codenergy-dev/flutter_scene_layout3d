@@ -2,7 +2,7 @@
 status: pending
 created_at: 2026-08-28T23:20:00Z
 updated_at: 2026-08-28T23:20:00Z
-commit: 3f1bd45
+commit: 3f1bd45cc0b06131a50ab145917648f9164d8f57
 ---
 
 # Tests that actually draw, and let the layout say where to look
