@@ -1,7 +1,7 @@
 ---
-status: pending
+status: completed
 created_at: 2026-08-25T20:31:04Z
-updated_at: 2026-08-25T20:31:04Z
+updated_at: 2026-08-28T21:10:00Z
 commit: d7bb9db224f8080ddddde70d019ab5481b45d05e
 ---
 
@@ -82,3 +82,81 @@ debugging time.
 - **`Layout3dOwner` is the tree-wide channel.** It already carries the basis
   and the visual-update callback; the metrics contract belongs there too, not
   in an inherited widget, so the imperative layer has it as well.
+
+## What happened
+
+All ten plans were implemented, in the order above, one commit each, between
+`e1784ba2` and `e2cd6469`. The suite went from 276 tests to **716**, and
+`dart analyze` is clean across the package and both example apps that depend
+on it.
+
+| Plan | Status | Landed as |
+| --- | --- | --- |
+| Camera-bound surfaces | completed | `e1784ba2` |
+| Text in a 3D layout | in progress | `2a9bb447` |
+| Size-driven geometry | in progress | `83cd52d8` |
+| Pointer dispatch and focus | completed | `9d4c2145` |
+| Lazily built children | completed | `b0202fc3` |
+| Overlays and layered surfaces | completed | `70723bdd` |
+| Persistent sliver headers | completed | `7b336fd6` |
+| Animation and scroll physics | completed | `bf8b3014` |
+| The boxes still missing | in progress | `74801a31` |
+| Diagnostics and semantics | completed | `e2cd6469` |
+
+The three still open are open for one reason each, recorded in their own front
+matter: text has no glyph atlas, geometry has no compiled shader, and the drag
+boxes have no drag. See *What is still missing* below.
+
+## How the seams resolved
+
+- **Clipping got built, and all three consumers use it.** Size-driven geometry
+  owned the contract as planned; `Clip3dRegion` is an intersection of planes in
+  a box's own frame, `clipRegionForChild` is the override point. Persistent
+  headers is the tier-two consumer — a pinned bar publishes a single plane and
+  a row half under it is genuinely cut, with nothing added to the material to
+  make that work. Overlays needed only the culling tier. A corner radius is
+  *not* a clip: a plane region is convex, and the radius is carved by the panel
+  shader instead.
+- **Relayout cost stayed off the animation path.** Animation landed three
+  tiers: repaint-only (decoration and state-layer setters, shader uniforms, no
+  layout), node-only (`nodeOffset`/`nodeTransform`, one matrix a frame), and
+  implicit, only when a size really changed. A test asserts
+  `debugTextParagraphCount` does not move while a container resizes a label
+  through a whole run — the guard the text plan asked for, and the test that
+  fails first if measurement gets back onto the layout path.
+- **`Layout3dOwner` carried the metrics contract**, as the overview wanted.
+  `Layout3dMetrics` sits beside the basis and a box reads it as
+  `Layout3d.metrics` inside `performLayout` — no `BuildContext`, no inherited
+  widget, so the imperative layer has it too. Writing it relayouts the subtree
+  by design, which is why nothing per-frame may touch it.
+
+## What is still missing
+
+**The package draws almost nothing by default.** This is the single largest
+gap, and it is one gap wearing two hats: `BoxDecoration3d.painterFactory` is
+null until something sets it, and `Text3dRenderer` has no in-tree
+implementation. Both are seams with real geometry behind them
+(`assets/box_decoration3d.fmat` ships; the measurement layer is exact against
+Skia at every whole width tested), and neither can be verified here, because a
+glyph atlas needs a GPU context `flutter test` does not have and no lane in
+this repository compiles a `.fmat`. The debug wireframe is currently the only
+thing in the package that puts geometry into a scene on its own account.
+
+Also open, each for a stated reason rather than for lack of time:
+
+- **Drag and drop.** `Dismissible3d`, `Draggable3d`, `DragTarget3d` and
+  reorderable lists wait on a payload-carrying drag that the pointer plan put
+  in its own out-of-scope section. It is a plan of its own.
+- **Keep-alive** for lazily built children, deferred by that plan's own text.
+- **Subtree opacity**, which needs a per-node opacity in `flutter_scene` that
+  the materials honour.
+- **A shadow pass does not run `Surface()`**, so a rounded panel casts the
+  shadow of its whole slab.
+- **`TapTarget3d` grows the ray region but not the box.** The Material 48dp
+  minimum is invisible to layout, to intrinsics, to `ensureVisible3d` and now
+  to semantics, which announces the smaller rectangle. Deliberate — it keeps
+  neighbours from moving — but it is the sharpest edge a catalogue author will
+  meet.
+- **`Layout3d.clipRegion` walks up per call**, and `DecoratedBox3d` calls it
+  every layout: O(depth²) per frame on a deep screen. Fine today, and worth
+  measuring at catalogue scale.
