@@ -180,8 +180,8 @@ reason nothing else in this package's test suite draws.
 
 ## Out of scope
 
-A visual inspector or editor integration (the
-[Flutter Scene Editor](../../../apps/flutter_scene_editor_app) is where that
-would belong), and performance profiling, which the engine's own
+A visual inspector or editor integration (the Flutter Scene Editor, which
+lives in the engine's own repository, is where that would belong), and
+performance profiling, which the engine's own
 `flutter_scene-performance` skill already covers. Both were deferred by the
 plan's own text and remain deferred.

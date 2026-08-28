@@ -11,7 +11,7 @@ import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
 import 'package:flutter_scene_layout3d/widgets.dart'
     show Layout3dController, SceneLayout3d, SceneSizedBox3d;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:vector_math/vector_math.dart' show Matrix4, Vector3;
+import 'package:vector_math/vector_math.dart' show Matrix4, Vector2, Vector3;
 
 import 'support.dart';
 
@@ -38,8 +38,10 @@ class TestOrthographicProjection extends CameraProjection {
   /// The world-space height the lens covers, at any distance.
   final double height;
 
+  // `jitter` is the engine's temporal-antialiasing offset. An orthographic
+  // test lens has no use for it, but the override has to carry it.
   @override
-  Matrix4 getProjectionMatrix(double aspectRatio) {
+  Matrix4 getProjectionMatrix(double aspectRatio, {Vector2? jitter}) {
     final halfHeight = height / 2;
     final halfWidth = halfHeight * aspectRatio;
     return Matrix4(

@@ -1757,18 +1757,19 @@ announced at its full size.
 
 ## Seeing it run
 
-Five scenes in `examples/smoke_render` render a laid-out surface headlessly and
-assert a sane frame, so a layout that stops producing geometry fails in CI
-along with the rest of the render smoke matrix: `layout3d_panel` and
-`layout3d_ground` for the two bases, then `layout3d_wrap_grid`,
-`layout3d_slivers` and `layout3d_intrinsic`.
-
-`examples/flutter_app` has a live `Layout` example with an upright panel that
-turns on its axis, the same protocol on the ground plane, and a scrolling list
-built with the declarative widgets. It is wired for input: the cursor names
-what it is over, on all three surfaces and through the turning panel, and the
-list scrolls by dragging. Wrapping, grids, slivers and intrinsics have headless
+`examples/layout3d_gallery` has a live demo with an upright panel that turns on
+its axis, the same protocol on the ground plane, and a scrolling list built
+with the declarative widgets. It is wired for input: the cursor names what it
+is over, on all three surfaces and through the turning panel, and the list
+scrolls by dragging. Wrapping, grids, slivers and intrinsics have unit
 coverage but no interactive demo yet.
+
+**There is no headless render coverage in this repository yet.** The suite is
+arithmetic only: it proves the protocol arranges correctly, and proves nothing
+about whether a frame comes out. Five smoke scenes that did exactly that lived
+in the engine monorepo this package grew up in and did not move with it; porting
+them is planned in
+[the headless render harness plan](plans/2026_08_28_headless_render_harness.md).
 
 ## Roadmap
 

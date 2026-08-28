@@ -86,22 +86,26 @@ debugging time.
 ## What happened
 
 All ten plans were implemented, in the order above, one commit each, between
-`e1784ba2` and `e2cd6469`. The suite went from 276 tests to **716**, and
+`45adb23` and `e890920`. (Those hashes are the ones in this repository. The
+work was done inside a fork of the engine's monorepo and moved here with its
+history rewritten, so the original hashes no longer resolve; the `commit:`
+field in each plan's front matter still names the fork commit the plan was
+reasoned against, which is what that field is for.) The suite went from 276 tests to **716**, and
 `dart analyze` is clean across the package and both example apps that depend
 on it.
 
 | Plan | Status | Landed as |
 | --- | --- | --- |
-| Camera-bound surfaces | completed | `e1784ba2` |
-| Text in a 3D layout | in progress | `2a9bb447` |
-| Size-driven geometry | in progress | `83cd52d8` |
-| Pointer dispatch and focus | completed | `9d4c2145` |
-| Lazily built children | completed | `b0202fc3` |
-| Overlays and layered surfaces | completed | `70723bdd` |
-| Persistent sliver headers | completed | `7b336fd6` |
-| Animation and scroll physics | completed | `bf8b3014` |
-| The boxes still missing | in progress | `74801a31` |
-| Diagnostics and semantics | completed | `e2cd6469` |
+| Camera-bound surfaces | completed | `45adb23` |
+| Text in a 3D layout | in progress | `3f15f2a` |
+| Size-driven geometry | in progress | `3646134` |
+| Pointer dispatch and focus | completed | `b20ce06` |
+| Lazily built children | completed | `4e34e72` |
+| Overlays and layered surfaces | completed | `1ab5d68` |
+| Persistent sliver headers | completed | `2bcea83` |
+| Animation and scroll physics | completed | `f98bbc0` |
+| The boxes still missing | in progress | `213245b` |
+| Diagnostics and semantics | completed | `e890920` |
 
 The three still open are open for one reason each, recorded in their own front
 matter: text has no glyph atlas, geometry has no compiled shader, and the drag
