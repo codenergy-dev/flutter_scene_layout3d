@@ -468,6 +468,8 @@ than none.
 | `Layout3dCameraBinding` | what `View` does for a Flutter tree: the thing that bounds it |
 | `Layout3dMetrics`, `VisualDensity3d` | `MediaQuery`'s scale factors, `VisualDensity` |
 | `Viewport3d`, `ListView3d`, `GridView3d`, `Scroll3dController` | `SingleChildScrollView`, `ListView`, `GridView`, `ScrollController` |
+| `Scroll3dPhysics`, `ClampingScroll3dPhysics`, `BouncingScroll3dPhysics` | `ScrollPhysics` and its two familiar shapes |
+| `ensureVisible3d`, `offsetToReveal3d` | `Scrollable.ensureVisible`, `RenderAbstractViewport.getOffsetToReveal` |
 | `Grid3dDelegate`, `Grid3dLayout` | `SliverGridDelegate`, `SliverGridLayout` |
 | `CustomScrollView3d`, `Sliver3d` | `CustomScrollView` + `Viewport`, `RenderSliver` |
 | `SliverList3d`, `SliverGrid3d`, `SliverToBoxAdapter3d` | `SliverList`, `SliverGrid`, `SliverToBoxAdapter` |
@@ -490,6 +492,9 @@ than none.
 | `Decoration3dPainter`, `Decoration3dPainterCache`, `StateLayer3d` | `BoxPainter`, and Material's state layers |
 | `ClipBox3d`, `Clip3dRegion`, `ClipPlane3d` | `ClipRect`, and the clip stack behind it |
 | `Visibility3d`, `Offstage3d` | `Visibility`, `Offstage` |
+| `Size3dTween` and its siblings | `SizeTween`, `EdgeInsetsTween`, `AlignmentTween`, `DecorationTween` |
+| `ImplicitlyAnimatedLayout3dWidget`, `SceneAnimatedContainer3d` | `ImplicitlyAnimatedWidget`, `AnimatedContainer` |
+| `Layout3d.nodeOffset`, `NodeTransform3d`, `SceneAnimatedSlide3d` | geometry that moves with no layout behind it, which Flutter has no cheap answer for |
 
 `Depth3d` is the axis Flutter does not have: a flex that stacks children away
 from the viewer.
@@ -530,7 +535,10 @@ The scrolling ones carry the imperative layer's second constructor too:
 `SceneSliverList3d.builder` and `SceneSliverGrid3d.builder` build a *widget*
 per item as the window reaches it, so a long list costs the dozen rows on
 screen. See *Scrolling* below for what a built item does and does not keep.
-`SceneText3d` is the one that gains something from being a widget: it has a
+A handful of widgets have no imperative counterpart because they *are* the
+widget layer: `SceneAnimatedContainer3d` and its siblings are stateful, and
+`SceneAnimatedSlide3d` owns the controller behind a node-only animation. See
+*Animation* below. `SceneText3d` is the one that gains something from being a widget: it has a
 `BuildContext` to ask, so it picks up the ambient `DefaultTextStyle` and
 `Directionality` the way a Flutter `Text` does — from the widget tree the
 scene is hosted in, not from anything inside the scene.
@@ -720,10 +728,59 @@ Cells are tight across both grid axes and take the depth available, with
 `depthAxisAlignment` placing a shallower child inside it — so models of
 different thicknesses line up on whichever face you pick.
 
-There is no scroll physics here. `Scroll3dController` holds a position and
-clamps it to what the content allows, and `Layout3dPointer` drives it from a
-drag; anything else (a thumbstick, a wheel, an animation) drives
-`Scroll3dController.offset` directly.
+### Physics, flings, and going somewhere
+
+`Scroll3dController` holds the position; **what happens at the ends and what a
+release does with its speed** is `Scroll3dPhysics`. `ClampingScroll3dPhysics`
+is the default and stops dead at the ends, Android-style;
+`BouncingScroll3dPhysics` lets the position be pulled past them, damping the
+drag further and further out, and springs back on release.
+
+```dart
+final scroll = Scroll3dController(physics: BouncingScroll3dPhysics());
+```
+
+`Layout3dPointer` tracks the pointer's speed on the grabbed view's own plane
+and hands it to the physics when the press lifts, so **a release flings**. It
+needs honest timestamps to do that: pass `timeStamp:` to `down`, `move` and
+`up` if you have the platform's, and it falls back to a wall clock if you do
+not. A whole drag inside one millisecond — which is what a synthesized one
+looks like — releases at rest rather than throwing the list across the room.
+
+The imperative half is `animateTo`, `fling` and `ensureVisible3d`. None of
+them is a gesture, so none of them waits on the question of what a gesture
+means in a scene:
+
+```dart
+await scroll.animateTo(0, duration: const Duration(milliseconds: 300));
+await ensureVisible3d(focusedBox, duration: const Duration(milliseconds: 200));
+```
+
+`ensureVisible3d` finds the nearest enclosing view itself, and by default
+scrolls **as little as it can**: a box already in the window does not move,
+and one that is not is brought just inside the nearer edge. That is what focus
+traversal wants. Pass `alignment:` — `0.0` leading, `1.0` trailing, `0.5`
+centred — when you want it put somewhere specific instead.
+
+Because a controller is a plain `ChangeNotifier` with no element behind it, it
+has nowhere to get a `TickerProvider` from. Give it one (`vsync:` on the
+constructor, on the property, or on the individual call) whenever there is a
+`State` in the picture, so `TickerMode` can mute the animation with the route
+it is on; without one it makes a bare `Ticker`, which works and simply cannot
+be muted.
+
+Two numbers on the controller are worth knowing about. `overscroll` is how far
+past an end the position is, which under a bouncing physics is what an
+overscroll *effect* should be driven from — and in a scene that need not be a
+glow, because you can bend, tilt or compress the content instead, on the
+node-only path described under *Animation*. `userScrollDirection` is which way
+the viewer is moving it, idle for a programmatic jump; that is what stops a
+floating header unrolling because a spring, rather than a finger, carried the
+offset backwards.
+
+Anything else — a thumbstick, a wheel, a scripted camera move — drives
+`Scroll3dController.offset` directly, or `applyUserOffset` if it wants the
+physics applied to it as though it were a finger.
 
 ## Slivers
 
@@ -1110,7 +1167,9 @@ first move, as it always has; with a recognizer armed, the view waits out the
 touch slop and then claims the pointer, which cancels the pending tap. Either
 way the drag itself is still measured on the grabbed view's own plane rather
 than across the screen, so the content stays under the finger at any viewing
-angle. There is still no fling: a release stops the movement dead.
+angle. A release throws the list: the pointer tracks its speed on that plane
+and hands it to the view's `Scroll3dPhysics`. See *Physics, flings, and going
+somewhere* above.
 
 `details.localPosition` on a recognizer's callbacks is in dp in the box's own
 frame, exact for a box parallel to the surface, which every box is unless a
@@ -1278,6 +1337,102 @@ an entry does not get is reconciliation, so a component that changes its
 dialog calls `Overlay3dEntry.markNeedsBuild`, which disposes the old subtree
 and builds a new one in place.
 
+## Animation
+
+Nothing in this package animates on its own, and everything in it is
+animatable. The declarative layouts are ordinary Flutter widgets, so an
+`AnimationController` driving `setState`, or an `AnimatedBuilder` around a
+`SceneContainer3d`, works today; every value type — `Size3d`, `Offset3d`,
+`EdgeInsets3d`, `Alignment3d`, `Constraints3d`, `BorderRadius3d`,
+`BoxDecoration3d`, `StateLayer3d` — has a static `lerp`, and a `Tween` over
+each of them (`Size3dTween` and friends) so the ordinary
+`tween.animate(controller)` spelling works.
+
+What matters here is *which* of three paths an animation takes, because they
+differ by more than a constant factor. **Relayout cost compounds in three
+dimensions**: a dirty box is measured again, and a box measured again may ask
+a `Text3d` to shape a string or a decoration to rebuild geometry. Pick the
+cheapest path the animation actually needs.
+
+### Repaint only: a colour, a corner, an elevation
+
+`DecoratedBox3d.decoration` and `.stateLayer` are setters that write shader
+uniforms and **never touch layout**. A card whose colour crossfades, a button
+whose elevation lifts, a control whose hover overlay fades in — all of that is
+this path, and it costs nothing but the uniforms:
+
+```dart
+final tween = BoxDecoration3dTween(begin: resting, end: pressed);
+controller.addListener(() => card.decoration = tween.evaluate(controller));
+```
+
+Note the `addListener`, not `setState`. Rebuilding the widget would put the
+whole subtree back through layout to deliver a number the layout does not
+read.
+
+### Node only: a slide, a lift, a depression, a turn
+
+Some animations move nothing in the layout. The box is exactly as big as it
+was, its siblings are where they were, its children's offsets have not
+changed — only where the geometry *is* has changed. Flutter has no cheap
+answer for that; here it is one `Matrix4` on one scene node.
+
+Every box has `Layout3d.nodeOffset` and `Layout3d.nodeTransform`: plain
+setters that rewrite the node's transform and ask the host for a frame,
+without calling `markNeedsLayout`. `NodeTransform3d` is the box that drives
+them from an `Animation`, and `SceneAnimatedSlide3d` is its declarative
+front:
+
+```dart
+SceneAnimatedSlide3d(
+  duration: const Duration(milliseconds: 120),
+  // Toward the viewer is negative depth.
+  offset: pressed ? const Offset3d(0, 0, 0.01) : Offset3d.zero,
+  child: button,
+)
+```
+
+A target change costs one rebuild; the run costs one matrix a frame and
+rebuilds nothing. Layout, intrinsics and hit testing never see it, which is
+the point: a hover lift or a press depression should not move the thing you
+are aiming at. `worldTransform` undoes the nudge for exactly that reason. If
+the animation *should* carry the touch target with it, it is not this path —
+animate a real inset with `SceneAnimatedPositioned3d` and pay for the
+relayout.
+
+This is the same distinction `ParentData3d.sceneOffset` draws for
+`Stack3d.depthStep`, and the two compose. Use `nodeOffset` rather than
+`sceneOffset` for an animation: `sceneOffset` belongs to the parent, and a
+stack rewrites it on every placement.
+
+### Implicit: a size, a padding, an alignment
+
+When the layout really did change, `ImplicitlyAnimatedLayout3dWidget` is the
+base and `SceneAnimatedContainer3d`, `SceneAnimatedAlign3d`,
+`SceneAnimatedPositioned3d` and `SceneAnimatedSizedBox3d` are the widgets, all
+with Flutter's `forEachTween` contract:
+
+```dart
+SceneAnimatedContainer3d(
+  duration: const Duration(milliseconds: 200),
+  curve: Curves.easeOut,
+  width: selected ? 2.0 : 1.0,
+  padding: selected ? const EdgeInsets3d.all(0.2) : EdgeInsets3d.zero,
+  child: label,
+)
+```
+
+These dirty layout on every frame, and that is correct — the boxes really are
+different sizes. It stays affordable because of two decisions made elsewhere
+in this package: `Text3d` prepares a string once and refits it to any width
+without consulting the font again, and `BoxDecoration3d` is a shader
+parameterized by size rather than a mesh rebuilt at each one. **Both of those
+guarantees are yours to lose.** Putting a new `Text3d.text`, a new
+`NodeBox3d.content`, a rebuilt `GeometryBuilder` mesh, or a change to
+`Layout3dSurface.metrics` on a per-frame path defeats them: the last one
+relayouts the entire subtree by design, and belongs to a window resize, not
+to a frame.
+
 ## How it differs from Flutter
 
 * **Two cross axes.** A flex has one main axis and two cross axes, so
@@ -1315,8 +1470,7 @@ and builds a new one in place.
   reach for `GestureBinding.instance` and cannot be given a router of their
   own, so the events a surface synthesizes go into the real arena under an id
   no device will ever use. That is what keeps a gesture on the plane from
-  fighting the widget-level gesture the same finger is driving. There is still
-  no fling.
+  fighting the widget-level gesture the same finger is driving.
 * **A baseline belongs to an axis, and something has to declare it.**
   Flutter's runs across a box at the foot of its text, and text reports it;
   nothing in a scene does, so `Baseline3d` states one outright. There is no
@@ -1446,11 +1600,26 @@ surfaces, and `Navigator3d` for the route stack over the whole of it. See
 subtree rather than a built layout, focus traversal across surfaces, and the
 transitions `Route3dTransition` is the hook for.
 
+**8. Animation and scroll physics.** ~~Done~~: three paths, cheapest first —
+decoration setters that only repaint, `Layout3d.nodeOffset` and
+`nodeTransform` for geometry that moves without any box changing size (with
+`NodeTransform3d` and `SceneAnimatedSlide3d` over them), and
+`ImplicitlyAnimatedLayout3dWidget` with `SceneAnimatedContainer3d` and its
+siblings for the animations that really do relayout. On the scroll side,
+`Scroll3dPhysics` with clamping and bouncing, a release that flings from a
+velocity `Layout3dPointer` tracks on the grabbed view's plane, and
+`animateTo`, `fling` and `ensureVisible3d` on the controller. See *Animation*
+and *Physics, flings, and going somewhere* above. What is left is
+`AnimatedOpacity3d`, which waits on a per-node opacity in the engine, and the
+overscroll effects a scene could have instead of a glow — bending, tilting or
+compressing the content — which `Scroll3dController.overscroll` exposes the
+number for but nothing here builds.
+
 **What is next.** Nothing in this list depends on anything else in it any
 more, so the order is a matter of what a caller reaches for first: a
 `Text3dRenderer` that actually draws, the rest of Flutter's layout catalogue
-(`Table`, `Flow`, aspect-ratio and fractionally-sized boxes), pinned and
-floating sliver headers, keep-alive for a lazily built item, and a per-node
+(`Table`, `Flow`, aspect-ratio and fractionally-sized boxes), keep-alive for a
+lazily built item, route transitions over `Route3dTransition`, and a per-node
 opacity in the engine, which is what an `Opacity3d` is waiting on.
 
 ## License

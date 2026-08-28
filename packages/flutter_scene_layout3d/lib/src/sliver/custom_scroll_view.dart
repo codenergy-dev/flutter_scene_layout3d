@@ -236,6 +236,7 @@ class CustomScrollView3d extends MultiChildLayout3d<ParentData3d>
           maxScrollExtent: math.max(0.0, total.scrollExtent - mainExtent),
           viewportExtent: mainExtent,
           contentExtent: total.scrollExtent,
+          unitsPerLogicalPixel: metrics.unitsPerLogicalPixel,
         );
         // Reporting the metrics can pull the offset back into range, and
         // then the pass that just ran was laid out at the wrong place.
@@ -298,6 +299,7 @@ class CustomScrollView3d extends MultiChildLayout3d<ParentData3d>
           remainingCacheExtent: math.max(0.0, remainingCache + cacheCorrection),
           cacheOrigin: correctedCacheOrigin,
           overlap: math.max(0.0, maxPaintOffset - layoutOffset),
+          userScrollDirection: controller.userScrollDirection,
         ),
       );
 

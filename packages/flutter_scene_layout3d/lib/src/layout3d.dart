@@ -733,18 +733,77 @@ abstract class Layout3d {
   /// See [ParentData3d.sceneOffset].
   Offset3d get sceneOffset => parentData?.sceneOffset ?? Offset3d.zero;
 
+  Offset3d _nodeOffset = Offset3d.zero;
+
+  /// An extra offset this box applies to its **own** scene node, which layout,
+  /// intrinsics and hit testing never see.
+  ///
+  /// The node-only animation path, and the one category of animation a 2D
+  /// framework cannot have. A slide, a hover lift, a pressed depression, a
+  /// billboard turn: they change where the geometry *is* without changing how
+  /// big any box is, so there is nothing for the layout protocol to redo.
+  /// Writing this therefore rewrites one node transform and asks the host for
+  /// a frame — it does not call [markNeedsLayout], and nothing downstream of
+  /// it measures text, rebuilds a mesh, or reads [metrics].
+  ///
+  /// It is the sibling of [ParentData3d.sceneOffset] and composes with it.
+  /// The difference is ownership: `sceneOffset` is the *parent's* nudge,
+  /// rewritten whenever the parent places this box (that is how
+  /// [Stack3d.depthStep] separates coplanar children), while this one is the
+  /// box's own and survives every relayout. An animation must use this one,
+  /// or a stack would erase it on the next pass.
+  ///
+  /// Measured in layout axes, like [offset]. [worldTransform] undoes it, so a
+  /// drag keeps tracking the box where layout put it rather than where the
+  /// animation has carried it.
+  Offset3d get nodeOffset => _nodeOffset;
+
+  set nodeOffset(Offset3d value) {
+    if (_nodeOffset == value) return;
+    _nodeOffset = value;
+    applyNodeTransform();
+    _owner?.requestVisualUpdate();
+  }
+
+  Matrix4? _nodeTransform;
+
+  /// A transform this box applies to its own scene node and to nothing else,
+  /// pivoting on the box's origin corner.
+  ///
+  /// [nodeOffset] for the rotations and scales a translation cannot express:
+  /// a card that tips under the pointer, a chip that pops, a label that turns
+  /// to face the camera. The same rule holds — no relayout, no change to any
+  /// size, and [worldTransform] undoes it — and the same warning: this is the
+  /// box's own transform, not [localTransform], which *is* a change of frame
+  /// and which layout, clipping and hit testing all take account of.
+  ///
+  /// The node ends up carrying
+  /// `T(offset + sceneOffset + nodeOffset) * nodeTransform * localTransform`.
+  Matrix4? get nodeTransform => _nodeTransform;
+
+  set nodeTransform(Matrix4? value) {
+    if (_nodeTransform == value) return;
+    _nodeTransform = value == null ? null : Matrix4.copy(value);
+    applyNodeTransform();
+    _owner?.requestVisualUpdate();
+  }
+
   /// Rewrites this layout's node transform from its offset and
   /// [localTransform].
   ///
   /// Call after changing anything [localTransform] depends on.
   @protected
   void applyNodeTransform() {
-    final position = offset + sceneOffset;
+    final position = offset + sceneOffset + _nodeOffset;
     final transform = Matrix4.translationValues(
       position.x,
       position.y,
       position.z,
     );
+    final node = _nodeTransform;
+    if (node != null) {
+      transform.multiply(node);
+    }
     final local = localTransform;
     if (local != null) {
       transform.multiply(local);
@@ -797,12 +856,13 @@ abstract class Layout3d {
 
   /// The transform taking this box's own frame to world space.
   ///
-  /// The box's node carries `T(offset + sceneOffset) * localTransform`, so the
-  /// node's world transform describes the frame this box's *children* sit in;
-  /// undoing [hitTestTransform] backs up one step to the frame this box
-  /// measures itself in, the one [HitTestEntry3d.localPosition] is expressed
-  /// in, and undoing [sceneOffset] discards the nudge the parent applied to
-  /// the geometry alone.
+  /// The box's node carries
+  /// `T(offset + sceneOffset + nodeOffset) * nodeTransform * localTransform`,
+  /// so the node's world transform describes the frame this box's *children*
+  /// sit in; undoing [hitTestTransform] backs up one step to the frame this
+  /// box measures itself in, the one [HitTestEntry3d.localPosition] is
+  /// expressed in, and undoing [nodeTransform], [sceneOffset] and
+  /// [nodeOffset] discards the nudges applied to the geometry alone.
   ///
   /// Only meaningful once the surface has been mounted in a scene and laid
   /// out. Inverting it takes a world-space ray into this box's frame, which
@@ -815,10 +875,17 @@ abstract class Layout3d {
       if (inverse.copyInverse(local) == 0.0) return world;
       world = world.multiplied(inverse);
     }
-    final nudge = sceneOffset;
+    final animated = _nodeTransform;
+    if (animated != null) {
+      final inverse = Matrix4.zero();
+      if (inverse.copyInverse(animated) == 0.0) return world;
+      world = world.multiplied(inverse);
+    }
+    final nudge = sceneOffset + _nodeOffset;
     if (nudge == Offset3d.zero) return world;
     // Translations commute, so undoing the nudge on the right of
-    // `T(offset + sceneOffset)` leaves `T(offset)`: the layout frame.
+    // `T(offset + sceneOffset + nodeOffset)` leaves `T(offset)`: the layout
+    // frame, which is where the box's extent and its children's offsets are.
     return world.multiplied(
       Matrix4.translationValues(-nudge.x, -nudge.y, -nudge.z),
     );

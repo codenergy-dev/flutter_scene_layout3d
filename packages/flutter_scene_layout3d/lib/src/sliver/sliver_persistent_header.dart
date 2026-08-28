@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import '../geometry/offset3d.dart';
 import '../layout3d.dart';
 import '../layout_pass.dart';
+import '../scroll/scroll_controller.dart';
 import 'sliver.dart';
 import 'sliver_constraints.dart';
 
@@ -247,7 +248,11 @@ class SliverPersistentHeader3d extends Sliver3d
 
     final scrollOffset = constraints.scrollOffset;
     final effectiveScrollOffset = _floating
-        ? _floatingScrollOffset(scrollOffset, maxExtent)
+        ? _floatingScrollOffset(
+            scrollOffset,
+            maxExtent,
+            constraints.userScrollDirection,
+          )
         : scrollOffset;
     _effectiveScrollOffset = effectiveScrollOffset;
     _lastActualScrollOffset = scrollOffset;
@@ -300,18 +305,28 @@ class SliverPersistentHeader3d extends Sliver3d
 
   /// The offset a floating header behaves as though it were at.
   ///
-  /// Flutter's arithmetic, less one term. There, a floating header expands
-  /// only while the *user* is dragging forward, so a fling that overscrolls
-  /// and settles backwards does not pull the bar in; that test reads
-  /// `SliverConstraints.userScrollDirection`, which this package's scroll
-  /// position does not carry. Without it the rule is the simpler one: any
-  /// backwards movement of the offset brings the header back by the same
-  /// amount, which is what a viewer dragging the list down expects and what a
-  /// programmatic jump backwards will also do.
-  double _floatingScrollOffset(double scrollOffset, double maxExtent) {
+  /// Flutter's arithmetic, with its one missing term now supplied. There, a
+  /// floating header expands only while the viewer is *scrolling* forward, so
+  /// a bouncing fling that overshoots the end and springs backwards does not
+  /// pull the bar in; that test reads `SliverConstraints.userScrollDirection`,
+  /// which this package's scroll position did not carry until it grew a
+  /// physics to have a direction at all.
+  ///
+  /// It does now, and this reads it — but only to *refuse*. A backwards
+  /// movement while the viewer is scrolling the other way (a spring settling
+  /// past the end) leaves the header where it is; anything else, including a
+  /// programmatic `jumpTo` or an `animateTo` backwards, brings it back by the
+  /// same amount, which is what a viewer expects of a menu that scrolls the
+  /// list to a chosen item.
+  double _floatingScrollOffset(
+    double scrollOffset,
+    double maxExtent,
+    ScrollDirection3d direction,
+  ) {
     var effective = _effectiveScrollOffset;
     final last = _lastActualScrollOffset;
     if (last == null || effective == null) return scrollOffset;
+    if (direction == ScrollDirection3d.reverse) return scrollOffset;
     if (scrollOffset >= last && effective >= maxExtent) return scrollOffset;
     final delta = last - scrollOffset;
     // Snapping back from far down the list starts the bar at its full height

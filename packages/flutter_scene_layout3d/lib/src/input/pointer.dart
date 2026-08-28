@@ -17,6 +17,8 @@ import 'package:flutter/gestures.dart'
         PointerMoveEvent,
         PointerUpEvent,
         computeHitSlop,
+        kMaxFlingVelocity,
+        kMinFlingVelocity,
         kPrimaryButton;
 import 'package:vector_math/vector_math.dart' show Matrix4, Ray, Vector3;
 import 'package:vector_math/vector_math_64.dart' as vm64 show Matrix4;
@@ -497,6 +499,15 @@ class _Sequence implements PointerSequence3d, GestureArenaMember {
   bool _dragAccepted = false;
   GestureArenaEntry? _arenaEntry;
 
+  /// Where the pointer has been on the grabbed view's plane, so a release can
+  /// be given a speed.
+  ///
+  /// Not Flutter's `VelocityTracker`, which reads the gesture binding's
+  /// sampling clock and so only works inside a widget test; this one is fed
+  /// the timestamps the caller already passes to [Layout3dPointer.move], on
+  /// the one axis that can move the view. See [_DragVelocity].
+  _DragVelocity? _velocity;
+
   /// The view this press grabbed, or null.
   Scrollable3d? get scrollable => _scrollable;
 
@@ -515,7 +526,7 @@ class _Sequence implements PointerSequence3d, GestureArenaMember {
       timeStamp: timeStamp,
     );
     _dispatch(event, worldRay);
-    _armDrag(worldRay);
+    _armDrag(worldRay, timeStamp);
     if (_contested) {
       // The down goes to the router as well as to the path, and after it,
       // exactly as `GestureBinding.handleEvent` does: a recognizer is armed
@@ -541,7 +552,7 @@ class _Sequence implements PointerSequence3d, GestureArenaMember {
     );
     _dispatch(event, worldRay);
     if (_contested) GestureBinding.instance.pointerRouter.route(event);
-    return _dragTo(worldRay);
+    return _dragTo(worldRay, timeStamp);
   }
 
   void end(Ray? worldRay, Duration timeStamp) {
@@ -571,6 +582,9 @@ class _Sequence implements PointerSequence3d, GestureArenaMember {
     _dispatch(event, null);
     if (_contested) GestureBinding.instance.pointerRouter.route(event);
     _arenaEntry?.resolve(GestureDisposition.rejected);
+    // A cancelled press is not a throw, whatever the finger was doing when
+    // the platform took the pointer away.
+    _velocity = null;
     _releaseDrag();
   }
 
@@ -622,7 +636,7 @@ class _Sequence implements PointerSequence3d, GestureArenaMember {
   /// a `GestureDetector3d` armed a recognizer while the down was being
   /// dispatched — the view instead enters the arena and waits for the touch
   /// slop before claiming the pointer, so a tap on a list item is a tap.
-  void _armDrag(Ray worldRay) {
+  void _armDrag(Ray worldRay, Duration timeStamp) {
     final entry = hit.entryOf<Scrollable3d>();
     if (entry == null) return;
     final scrollable = entry.layout as Scrollable3d;
@@ -631,6 +645,11 @@ class _Sequence implements PointerSequence3d, GestureArenaMember {
     _dragAxis = scrollable.scrollAxis;
     _dragDepth = entry.localPosition.z;
     _lastAlong = entry.localPosition.alongAxis(_dragAxis);
+    // Taking hold stops whatever was moving the view, before the arena has
+    // decided anything: a finger landing on a flinging list stops it dead,
+    // and it does so even if the gesture turns out to be a tap.
+    scrollable.controller.beginUserScroll();
+    _velocity = _DragVelocity()..add(timeStamp, _lastAlong);
     if (!_contested) {
       _dragAccepted = true;
       return;
@@ -638,7 +657,7 @@ class _Sequence implements PointerSequence3d, GestureArenaMember {
     _arenaEntry = GestureBinding.instance.gestureArena.add(arenaPointer, this);
   }
 
-  bool _dragTo(Ray worldRay) {
+  bool _dragTo(Ray worldRay, Duration timeStamp) {
     final layout = _scrollLayout;
     if (layout == null) return false;
     final ray = Layout3dPointer.localRayFor(layout, worldRay);
@@ -646,6 +665,7 @@ class _Sequence implements PointerSequence3d, GestureArenaMember {
     final position = Layout3dPointer.pointOnPlane(ray, _dragDepth);
     if (position == null) return false;
     final along = position.alongAxis(_dragAxis);
+    _velocity?.add(timeStamp, along);
     final delta = along - _lastAlong;
     _lastAlong = along;
     if (delta == 0.0) return false;
@@ -671,8 +691,14 @@ class _Sequence implements PointerSequence3d, GestureArenaMember {
   /// sense as a finger on a Flutter list.
   bool _apply(double delta) {
     if (delta == 0.0) return false;
-    _scrollable?.controller.jumpBy(-delta);
-    return true;
+    final controller = _scrollable?.controller;
+    if (controller == null) return false;
+    final before = controller.offset;
+    // Through the physics rather than straight onto the offset, so a
+    // bouncing view drags less and less the further past its end it is
+    // pulled.
+    controller.applyUserOffset(-delta);
+    return controller.offset != before;
   }
 
   @override
@@ -689,19 +715,113 @@ class _Sequence implements PointerSequence3d, GestureArenaMember {
   @override
   void rejectGesture(int pointer) {
     _dragAccepted = false;
+    // The hold taken at the press is given back, with no speed: something
+    // else won the pointer, so the view should sit where it is rather than
+    // fling.
+    _scrollable?.controller.endUserScroll();
     _scrollable = null;
     _scrollLayout = null;
+    _velocity = null;
     _pending = 0.0;
+  }
+
+  /// The speed the view should be let go at, in layout units per second.
+  ///
+  /// Flutter's thresholds are in logical pixels a second and this package's
+  /// distances are in world units, so the estimate is taken through the
+  /// tree's metrics to be judged and clamped, then brought back. A flick
+  /// under [kMinFlingVelocity] is not a fling at all and releases at rest.
+  double _releaseVelocity() {
+    final tracker = _velocity;
+    if (tracker == null || !_dragAccepted) return 0.0;
+    final units = tracker.estimate();
+    final pixels = units * owner.surface.metrics.logicalPixelsPerUnit;
+    if (pixels.abs() < kMinFlingVelocity) return 0.0;
+    final clamped = pixels.clamp(-kMaxFlingVelocity, kMaxFlingVelocity);
+    // Dragging the content one way throws the window the other way, the same
+    // inversion `_apply` makes.
+    return -clamped * owner.surface.metrics.unitsPerLogicalPixel;
   }
 
   void _releaseDrag() {
     _arenaEntry = null;
+    _scrollable?.controller.endUserScroll(velocity: _releaseVelocity());
     _scrollable = null;
     _scrollLayout = null;
+    _velocity = null;
   }
 
   @override
   String toString() =>
       '_Sequence(pointer $devicePointer as $arenaPointer, '
       '${hit.path.length} deep${_contested ? ', contested' : ''})';
+}
+
+/// A one-dimensional velocity estimate over the last stretch of a drag.
+///
+/// Flutter's `VelocityTracker` cannot be used here. It timestamps its own
+/// samples from `GestureBinding.instance.samplingClock`, which in a test
+/// binding asserts that a widget test is running — and this package's pointer
+/// is driven from plain `test` cases, and in an application from whatever
+/// clock the host has. Every position this sees already comes with the
+/// timestamp the caller handed [Layout3dPointer.move], so the tracker only
+/// has to do the arithmetic.
+///
+/// A straight least-squares fit over the samples inside [_horizon], which is
+/// enough for a fling: the curve a finger draws in the last tenth of a second
+/// before it lifts is close enough to a line that a quadratic fit buys
+/// nothing a scroll position can feel.
+class _DragVelocity {
+  static const Duration _horizon = Duration(milliseconds: 100);
+
+  /// Fewer samples than this is not a gesture with a direction.
+  static const int _minSamples = 3;
+
+  /// Samples spanning less time than this cannot be trusted.
+  ///
+  /// Two positions a few microseconds apart divide into an enormous speed,
+  /// and that is exactly what a synthesized drag looks like when the caller
+  /// leaves the timestamps to the wall clock — a whole gesture inside one
+  /// millisecond. Below this the release is treated as being at rest, so a
+  /// test that wants a fling passes real timestamps, which is also what a
+  /// real pointer does.
+  static const Duration _minSpan = Duration(milliseconds: 2);
+
+  final List<Duration> _times = <Duration>[];
+  final List<double> _positions = <double>[];
+
+  void add(Duration time, double position) {
+    _times.add(time);
+    _positions.add(position);
+    while (_times.length > 1 && time - _times.first > _horizon) {
+      _times.removeAt(0);
+      _positions.removeAt(0);
+    }
+  }
+
+  /// The speed the pointer was moving at, in layout units per second, or zero
+  /// when there is not enough to say.
+  double estimate() {
+    final count = _times.length;
+    if (count < _minSamples) return 0.0;
+    final span = _times.last - _times.first;
+    if (span < _minSpan) return 0.0;
+    final origin = _times.first;
+    var sumT = 0.0;
+    var sumP = 0.0;
+    var sumTT = 0.0;
+    var sumTP = 0.0;
+    for (var i = 0; i < count; i++) {
+      final t =
+          (_times[i] - origin).inMicroseconds / Duration.microsecondsPerSecond;
+      final p = _positions[i];
+      sumT += t;
+      sumP += p;
+      sumTT += t * t;
+      sumTP += t * p;
+    }
+    final denominator = count * sumTT - sumT * sumT;
+    if (denominator == 0.0) return 0.0;
+    return (count * sumTP - sumT * sumP) / denominator;
+  }
 }

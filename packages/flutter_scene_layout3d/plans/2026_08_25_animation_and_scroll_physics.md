@@ -1,11 +1,16 @@
 ---
-status: pending
+status: completed
 created_at: 2026-08-25T20:31:04Z
-updated_at: 2026-08-25T20:31:04Z
+updated_at: 2026-08-28T14:52:00Z
 commit: d7bb9db224f8080ddddde70d019ab5481b45d05e
 ---
 
 # Animation, and the scroll physics that is missing with it
+
+> **Shipped.** Everything below from "What is missing" down to "Scroll:
+> physics" is the reasoning as it was written, kept because it is why the
+> shape is what it is; read *The work*, *Tests* and *What the original
+> reasoning got wrong* for what is actually in the package now.
 
 Nothing in this package animates. Material is mostly animation: the ripple,
 the elevation change under a press, the switch thumb, indeterminate progress,
@@ -98,32 +103,122 @@ do not build it before clamping and bouncing work.
 
 ## The work
 
-- [ ] **Phase 1 — tweens.** The five `Tween` subclasses, tested against the
-      existing `lerp`s.
-- [ ] **Phase 2 — implicit animation base** and `AnimatedContainer3d`,
-      `AnimatedAlign3d`, `AnimatedPositioned3d`, `AnimatedSizedBox3d`.
-- [ ] **Phase 3 — the node-only path.** The rule, the base widget, and
-      `AnimatedSlide3d` as its first user.
-- [ ] **Phase 4 — `animateTo` and `ensureVisible`.**
-- [ ] **Phase 5 — physics and fling**, with velocity tracking in
+- [x] **Phase 1 — tweens.** `lib/src/animation/tweens.dart`. Eight rather
+      than five: the plan's `Size3dTween`, `Offset3dTween`,
+      `EdgeInsets3dTween`, `Alignment3dTween` and `Constraints3dTween`, plus
+      `BorderRadius3dTween`, `BoxDecoration3dTween` and `StateLayer3dTween`,
+      because the decoration `lerp`s already existed and the decoration setter
+      is the *cheapest* animation path in the package — the one a Material
+      catalogue reaches for first. Leaving them out would have pointed
+      catalogue authors at the expensive path.
+- [x] **Phase 2 — implicit animation base**,
+      `lib/src/animation/implicit.dart`: `ImplicitlyAnimatedLayout3dWidget`,
+      `ImplicitlyAnimatedLayout3dWidgetState`,
+      `AnimatedLayout3dWidgetBaseState`, `Layout3dTweenVisitor` and
+      `Layout3dTweenConstructor`, with `SceneAnimatedContainer3d`,
+      `SceneAnimatedAlign3d`, `SceneAnimatedPositioned3d` and
+      `SceneAnimatedSizedBox3d`.
+- [x] **Phase 3 — the node-only path.** `Layout3d.nodeOffset` and
+      `Layout3d.nodeTransform` in `layout3d.dart` (composed into
+      `applyNodeTransform`, undone by `worldTransform`),
+      `NodeTransform3d` in `lib/src/animation/node_transform.dart`, and
+      `SceneNodeTransform3d` with `SceneAnimatedSlide3d` in
+      `lib/src/animation/node_widgets.dart`.
+- [x] **Phase 4 — `animateTo` and `ensureVisible`.**
+      `Scroll3dController.animateTo`, `.fling`, `.stopAnimation`,
+      `.isAnimating`, and free functions `ensureVisible3d` /
+      `offsetToReveal3d` with `Scrollable3d.of` in `scrollable.dart`.
+- [x] **Phase 5 — physics and fling.** `lib/src/scroll/scroll_physics.dart`
+      with `Scroll3dPhysics`, `ClampingScroll3dPhysics` and
+      `BouncingScroll3dPhysics`; velocity tracking and a fling on release in
       `Layout3dPointer`.
-- [ ] **Phase 6 — README.** The Scrolling section currently states outright
-      that there is no fling and that a release stops movement dead; it
-      changes in the same pass.
+- [x] **Phase 6 — README.** The "no scroll physics" paragraph is now
+      *Physics, flings, and going somewhere*; "there is still no fling"
+      is gone from both places it appeared; there is a new *Animation*
+      section covering the three paths, and roadmap item 8.
 
 ## Tests
 
-- Each tween's endpoints and midpoint agree with the corresponding `lerp`.
-- An implicit animation reaches its target and rests there without further
-  dirt.
-- A node-only animation asserts that no layout was marked dirty across its
-  whole run — the load-bearing test of phase 3.
-- `animateTo` clamps to the scroll range and completes; a second call
-  interrupts the first cleanly.
-- `ensureVisible` finds an offset that puts a target inside the window, for a
-  target above and below it.
-- A fling decelerates to rest and stays clamped; a bouncing physics returns
-  from beyond the end.
+All in `test/animation_test.dart` (25 tests; the suite is 618 and green,
+`dart analyze` clean).
+
+- [x] Each tween's endpoints and midpoint agree with the corresponding `lerp`.
+- [x] An implicit animation reaches its target and rests there without further
+      dirt (`needsFlush` false, no frame scheduled), and a retarget carries on
+      from where it had got to.
+- [x] A node-only animation marks nothing dirty across its whole run — asserted
+      every frame, plus that the child's layout count and layout offset never
+      move, plus that a ray still finds the box where layout put it.
+- [x] `animateTo` clamps to the scroll range and completes; a second call
+      interrupts the first cleanly and the interrupted future still answers.
+- [x] `ensureVisible3d` for a target below the window, above it, already
+      inside it, and at each `alignment`.
+- [x] A fling decelerates to rest and stays clamped; a bouncing physics
+      returns from beyond the end; a bouncing drag past the end moves less
+      than the finger.
+- [x] `debugTextParagraphCount` does not move while a `SceneAnimatedContainer3d`
+      resizes a `SceneText3d` through fifty widths — plan 2's ask, and the
+      test that fails first if measurement ever gets back onto the layout
+      path.
+
+## What the original reasoning got wrong
+
+**Naming.** The plan called the widgets `AnimatedContainer3d`,
+`AnimatedAlign3d`, `AnimatedPositioned3d`, `AnimatedSizedBox3d` and
+`AnimatedSlide3d`. This package's convention is that a *widget* mounting an
+object carries the `Scene` prefix, so they shipped as
+`SceneAnimatedContainer3d` and so on, with the abstract bases
+(`ImplicitlyAnimatedLayout3dWidget`) unprefixed the way `Layout3dWidget` and
+`SingleChildLayout3dWidget` are. `AnimatedOpacity3d` is still waiting on a
+per-node opacity, as the plan said.
+
+**The node-only path needed a new field, not `sceneOffset`.** The plan
+pointed at `ParentData3d.sceneOffset`, but that field belongs to the *parent*
+and is rewritten on every `place` — `Stack3d.depthStep` writes it — so an
+animation stored there is erased by the next relayout of a stack. The seam
+shipped as `Layout3d.nodeOffset` and `Layout3d.nodeTransform`, the box's own,
+composed with `sceneOffset` in `applyNodeTransform` and undone alongside it in
+`worldTransform`.
+
+**Flutter's `VelocityTracker` cannot be used here.** It timestamps its own
+samples from `GestureBinding.instance.samplingClock`, which asserts that a
+widget test is running; this package's pointer is driven from plain `test`
+cases and, in an application, from whatever clock the host has. `_DragVelocity`
+in `pointer.dart` does a straight least-squares fit over the timestamps the
+caller already passes to `Layout3dPointer.move`. It refuses to estimate from
+samples spanning under 2ms, which is what a synthesized drag looks like — so a
+fling needs honest timestamps, and that is documented.
+
+**Simulations are tuned in logical pixels, and this package measures in world
+units.** A world unit is a hundred logical pixels by default, and
+`ClampingScrollSimulation`'s duration goes as `v^0.735`, so feeding it layout
+units would have made every fling about thirty times too short. The controller
+therefore records `unitsPerLogicalPixel` from the view that laid it out (a new
+optional argument to `applyViewportMetrics`), the physics runs Flutter's
+simulations in pixels, and `Scroll3dPhysics.scaled` wraps the result back into
+layout units.
+
+**`applyBoundaryConditions` is not a clamp.** Flutter's clamping physics
+deliberately lets an already-out-of-range position move *toward* the range, so
+a plain `applyBoundaryConditions` in `applyViewportMetrics` would have stopped
+a shrinking list from snapping its offset back this frame. `Scroll3dPhysics`
+grew `allowsOverscroll`: a physics that cannot overscroll snaps, one that can
+keeps the position and gets a ballistic settle.
+
+**`userScrollDirection` was added after all.** Plan 7 flagged that the
+floating `SliverPersistentHeader3d` was missing Flutter's
+`SliverConstraints.userScrollDirection` term. Physics gave the position a
+direction, so `ScrollDirection3d` and `Scroll3dController.userScrollDirection`
+now exist, `SliverConstraints3d` carries it, and the floating header uses it
+*only to refuse*: a backwards movement while the viewer is scrolling the other
+way (a bouncing spring settling) no longer pulls the bar in, while a
+programmatic `jumpTo` or `animateTo` still does.
+
+**`ensureVisible` defaults to minimal scrolling.** Flutter's
+`getOffsetToReveal` takes `alignment: 0.0`; `offsetToReveal3d` takes
+`double? alignment` where null means "move as little as possible", because
+that is what focus traversal actually wants and it was going to be written by
+hand at every call site otherwise.
 
 ## Out of scope
 
@@ -131,3 +226,12 @@ Ripple rendering (that is a shader in the component package, driven from this
 plan's press state), route transitions
 ([overlays](2026_08_25_overlays_and_layered_surfaces.md) owns the hook), and
 physically simulated UI via the physics backends.
+
+Two things this plan's own text defers, and which are therefore out of scope
+rather than open: `AnimatedOpacity3d`, which waits on
+[size-driven geometry](2026_08_25_size_driven_geometry.md) giving the engine a
+per-node opacity; and the scene-native overscroll effect — content that bends,
+tilts or compresses instead of glowing — which the plan says to note as an
+option and not build before clamping and bouncing work.
+`Scroll3dController.overscroll` is the number it would be driven from, and the
+node-only path is where it belongs.

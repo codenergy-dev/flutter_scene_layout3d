@@ -1,5 +1,6 @@
 import '../geometry/constraints3d.dart';
 import '../geometry/offset3d.dart';
+import '../scroll/scroll_controller.dart';
 
 /// What a viewport tells a sliver about the room it is scrolling through, the
 /// 3D analogue of [SliverConstraints].
@@ -30,11 +31,23 @@ class SliverConstraints3d {
     required this.remainingCacheExtent,
     required this.cacheOrigin,
     this.overlap = 0.0,
+    this.userScrollDirection = ScrollDirection3d.idle,
   }) : assert(scrollOffset >= 0.0),
        assert(cacheOrigin <= 0.0);
 
   /// The axis the viewport scrolls along.
   final Axis3d axis;
+
+  /// Which way the viewer is moving the scroll position, or
+  /// [ScrollDirection3d.idle] when nothing is.
+  ///
+  /// [Scroll3dController.userScrollDirection], handed down. A sliver reads it
+  /// when its behaviour depends on the *gesture* rather than on the offset:
+  /// a floating [SliverPersistentHeader3d] comes back when the viewer scrolls
+  /// forward, and must not come back merely because a bouncing fling
+  /// overshot the end and the spring is carrying the offset backwards on its
+  /// own.
+  final ScrollDirection3d userScrollDirection;
 
   /// How much of this sliver has already scrolled past the leading edge.
   ///
@@ -140,6 +153,7 @@ class SliverConstraints3d {
     double? remainingCacheExtent,
     double? cacheOrigin,
     double? overlap,
+    ScrollDirection3d? userScrollDirection,
   }) => SliverConstraints3d(
     axis: axis ?? this.axis,
     scrollOffset: scrollOffset ?? this.scrollOffset,
@@ -152,6 +166,7 @@ class SliverConstraints3d {
     remainingCacheExtent: remainingCacheExtent ?? this.remainingCacheExtent,
     cacheOrigin: cacheOrigin ?? this.cacheOrigin,
     overlap: overlap ?? this.overlap,
+    userScrollDirection: userScrollDirection ?? this.userScrollDirection,
   );
 
   @override
@@ -166,7 +181,8 @@ class SliverConstraints3d {
       other.viewportMainAxisExtent == viewportMainAxisExtent &&
       other.remainingCacheExtent == remainingCacheExtent &&
       other.cacheOrigin == cacheOrigin &&
-      other.overlap == overlap;
+      other.overlap == overlap &&
+      other.userScrollDirection == userScrollDirection;
 
   @override
   int get hashCode => Object.hash(
@@ -180,6 +196,7 @@ class SliverConstraints3d {
     remainingCacheExtent,
     cacheOrigin,
     overlap,
+    userScrollDirection,
   );
 
   @override

@@ -1,6 +1,9 @@
+import 'package:flutter/animation.dart' show Curve, Curves;
 import 'package:flutter/foundation.dart' show protected;
+import 'package:flutter/scheduler.dart' show TickerProvider;
 
 import '../geometry/offset3d.dart';
+import '../layout3d.dart';
 import '../layout_pass.dart';
 import 'scroll_controller.dart';
 
@@ -21,6 +24,99 @@ abstract interface class Scrollable3d {
 
   /// The position, and the metrics the view measured for it.
   Scroll3dController get controller;
+
+  /// The nearest scrolling view at or above [descendant], or null.
+  ///
+  /// The tree walk behind [ensureVisible3d]: focus traversal and a menu both
+  /// have a box in hand and need the view it lives in, and neither has any
+  /// other way to find it. Every view here is a [Layout3d] as well as a
+  /// [Scrollable3d], so the walk is an ordinary parent chain.
+  static Scrollable3d? of(Layout3d descendant) {
+    Layout3d? node = descendant;
+    while (node != null) {
+      if (node is Scrollable3d) return node as Scrollable3d;
+      node = node.parent;
+    }
+    return null;
+  }
+}
+
+/// The scroll offset that would put [target] inside [view]'s window, or null
+/// when [target] is not inside [view] or either has yet to be laid out.
+///
+/// [alignment] says where in the window the target should land: `0.0` puts
+/// its leading edge on the window's leading edge, `1.0` its trailing edge on
+/// the window's trailing edge, `0.5` centres it. **Null, the default, is the
+/// minimal scroll**: a target already fully visible does not move at all, and
+/// one that is not is brought just inside the nearer edge. That is what focus
+/// traversal wants — arrowing down a list should slide it by one row, not
+/// jump the focused row to the top — and it is why the default here differs
+/// from Flutter's `RenderAbstractViewport.getOffsetToReveal`, which has no
+/// such mode and takes 0.0.
+///
+/// The walk sums the layout offsets between the two, so a
+/// [Layout3d.localTransform] in between (a `Transform3d`, a rotated
+/// container) is not accounted for: the answer is where the target is on the
+/// scroll axis before any such turn. Scene-only nudges
+/// ([ParentData3d.sceneOffset], [Layout3d.nodeOffset]) are ignored by
+/// construction, which is right — a box being animated toward the viewer has
+/// not moved down the list.
+double? offsetToReveal3d(
+  Scrollable3d view,
+  Layout3d target, {
+  double? alignment,
+}) {
+  final axis = view.scrollAxis;
+  final controller = view.controller;
+  var along = 0.0;
+  Layout3d? node = target;
+  while (node != null && !identical(node, view)) {
+    along += node.offset.alongAxis(axis);
+    node = node.parent;
+  }
+  if (node == null || !target.hasSize) return null;
+  // The view places its content at minus the scroll offset, however many
+  // boxes deep, so undoing that turns a position in the window into a
+  // position in the content.
+  final leading = along + controller.offset;
+  final extent = target.size.alongAxis(axis);
+  final window = controller.viewportExtent;
+  if (alignment != null) return leading - alignment * (window - extent);
+  final trailing = leading + extent;
+  if (leading < controller.offset) return leading;
+  if (trailing > controller.offset + window) return trailing - window;
+  return controller.offset;
+}
+
+/// Scrolls the view [target] lives in until [target] is inside its window.
+///
+/// The hard requirement behind focus traversal and menus: something has been
+/// focused, or chosen, and it may be off-screen. Finds the nearest enclosing
+/// [Scrollable3d] — pass [within] to name one further up — works out where it
+/// would have to be scrolled to (see [offsetToReveal3d] for [alignment]), and
+/// animates there over [duration], which defaults to jumping.
+///
+/// Answers a future that completes when the motion stops, and completes at
+/// once when there is nothing to do: no enclosing view, a target that is
+/// already visible, or a view with nothing to scroll.
+Future<void> ensureVisible3d(
+  Layout3d target, {
+  double? alignment,
+  Duration duration = Duration.zero,
+  Curve curve = Curves.easeInOut,
+  TickerProvider? vsync,
+  Scrollable3d? within,
+}) {
+  final view = within ?? Scrollable3d.of(target.parent ?? target);
+  if (view == null) return Future<void>.value();
+  final to = offsetToReveal3d(view, target, alignment: alignment);
+  if (to == null) return Future<void>.value();
+  return view.controller.animateTo(
+    to,
+    duration: duration,
+    curve: curve,
+    vsync: vsync,
+  );
 }
 
 /// The scroll position a view holds, and the ownership rule that goes with it.

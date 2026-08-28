@@ -60,6 +60,14 @@
 ///    for sections that share one scroll position. [ListView3d] and [GridView3d] are built on it, each a
 ///    viewport over a single sliver, the way Flutter's are; [BoxScrollView3d]
 ///    is that shape.
+///  * [Scroll3dPhysics], [Scroll3dController.animateTo] and [ensureVisible3d],
+///    the half of scrolling that is not a gesture: what the ends feel like,
+///    what a release throws, and how a menu or a focus traversal brings
+///    something into view.
+///  * [Layout3d.nodeOffset], [Layout3d.nodeTransform] and [NodeTransform3d],
+///    the node-only animation path: geometry that moves without any box
+///    changing size, so nothing is laid out again. With the [Size3dTween]
+///    family for the animations that do change a size.
 ///  * [Layout3dBuiltChildrenMixin] and [Layout3dMeasuredChildrenMixin], the
 ///    bookkeeping every view built from an [Layout3dItemBuilder] needs, for
 ///    writing one of your own, with [Layout3dLayoutPassMixin] and
@@ -70,6 +78,17 @@
 /// `build` method, is in `package:flutter_scene_layout3d/widgets.dart`.
 library;
 
+export 'src/animation/node_transform.dart' show NodeTransform3d;
+export 'src/animation/tweens.dart'
+    show
+        Alignment3dTween,
+        BorderRadius3dTween,
+        BoxDecoration3dTween,
+        Constraints3dTween,
+        EdgeInsets3dTween,
+        Offset3dTween,
+        Size3dTween,
+        StateLayer3dTween;
 export 'src/boxes/container.dart' show Container3d;
 export 'src/boxes/flex.dart'
     show
@@ -177,9 +196,17 @@ export 'src/scroll/grid_delegate.dart'
         Grid3dLayout;
 export 'src/scroll/grid_view.dart' show Grid3dItemBuilder, GridView3d;
 export 'src/scroll/list_view.dart' show ListView3d;
-export 'src/scroll/scroll_controller.dart' show Scroll3dController;
+export 'src/scroll/scroll_controller.dart'
+    show ScrollDirection3d, Scroll3dController;
+export 'src/scroll/scroll_physics.dart'
+    show BouncingScroll3dPhysics, ClampingScroll3dPhysics, Scroll3dPhysics;
 export 'src/scroll/scrollable.dart'
-    show Scroll3dHolderMixin, Scrollable3d, noIntrinsicExtent;
+    show
+        Scroll3dHolderMixin,
+        Scrollable3d,
+        ensureVisible3d,
+        noIntrinsicExtent,
+        offsetToReveal3d;
 export 'src/sliver/custom_scroll_view.dart' show CustomScrollView3d;
 export 'src/sliver/sliver.dart'
     show Sliver3d, SliverMultiBoxAdaptor3d, SliverToBoxAdapter3d;

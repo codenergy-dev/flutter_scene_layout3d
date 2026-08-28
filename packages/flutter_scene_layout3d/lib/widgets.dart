@@ -31,6 +31,30 @@
 /// ```
 library;
 
+export 'src/animation/implicit.dart'
+    show
+        AnimatedLayout3dWidgetBaseState,
+        ImplicitlyAnimatedLayout3dWidget,
+        ImplicitlyAnimatedLayout3dWidgetState,
+        Layout3dTweenConstructor,
+        Layout3dTweenVisitor,
+        SceneAnimatedAlign3d,
+        SceneAnimatedContainer3d,
+        SceneAnimatedPositioned3d,
+        SceneAnimatedSizedBox3d;
+export 'src/animation/node_transform.dart' show NodeTransform3d;
+export 'src/animation/node_widgets.dart'
+    show SceneAnimatedSlide3d, SceneNodeTransform3d;
+export 'src/animation/tweens.dart'
+    show
+        Alignment3dTween,
+        BorderRadius3dTween,
+        BoxDecoration3dTween,
+        Constraints3dTween,
+        EdgeInsets3dTween,
+        Offset3dTween,
+        Size3dTween,
+        StateLayer3dTween;
 export 'src/boxes/flex.dart'
     show CrossAxisAlignment3d, FlexFit3d, MainAxisAlignment3d, MainAxisSize3d;
 export 'src/boxes/node_box.dart' show BoxFit3d;
@@ -71,8 +95,12 @@ export 'src/scroll/grid_delegate.dart'
         Grid3dDelegateWithFixedCrossAxisCount,
         Grid3dDelegateWithMaxCrossAxisExtent,
         Grid3dLayout;
-export 'src/scroll/scroll_controller.dart' show Scroll3dController;
-export 'src/scroll/scrollable.dart' show Scrollable3d;
+export 'src/scroll/scroll_controller.dart'
+    show ScrollDirection3d, Scroll3dController;
+export 'src/scroll/scroll_physics.dart'
+    show BouncingScroll3dPhysics, ClampingScroll3dPhysics, Scroll3dPhysics;
+export 'src/scroll/scrollable.dart'
+    show Scrollable3d, ensureVisible3d, offsetToReveal3d;
 export 'src/sliver/sliver.dart' show Sliver3d;
 export 'src/sliver/sliver_constraints.dart'
     show SliverConstraints3d, SliverGeometry3d;
