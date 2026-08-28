@@ -145,6 +145,8 @@ Skia at every whole width tested), and neither can be verified here, because a
 glyph atlas needs a GPU context `flutter test` does not have and no lane in
 this repository compiles a `.fmat`. The debug wireframe is currently the only
 thing in the package that puts geometry into a scene on its own account.
+[Render coverage](2026_08_28_render_coverage.md) plans the lane that closes
+this.
 
 Also open, each for a stated reason rather than for lack of time:
 
@@ -164,3 +166,40 @@ Also open, each for a stated reason rather than for lack of time:
 - **`Layout3d.clipRegion` walks up per call**, and `DecoratedBox3d` calls it
   every layout: O(depth²) per frame on a deep screen. Fine today, and worth
   measuring at catalogue scale.
+
+## Where to pick up
+
+Everything below is enough context to hand a single plan to an implementer who
+has read only that plan and this section.
+
+**The three plans still marked `in progress` are each blocked on one named
+thing, and two of them are blocked on the same thing.**
+
+1. **[Render coverage](2026_08_28_render_coverage.md) is the unblocker, and
+   should go first.** It builds the lane that draws a real frame and probes it
+   at the pixels layout says to check. Nothing depends on it being done to
+   *start* something else, but two open items cannot be finished without it.
+2. **[Text](2026_08_25_text_in_a_3d_layout.md) phase 4** — the glyph atlas —
+   and **phase 5**, `RichText3d`. Both need a GPU context, so they want the
+   render lane first. The measurement layer below them is done and exact.
+3. **[Size-driven geometry](2026_08_25_size_driven_geometry.md)**, two items:
+   the shipped `.fmat` has never been compiled by anything, which is the render
+   lane's phase 5; and subtree opacity, which is blocked on `flutter_scene`
+   growing a per-node opacity the materials honour, and is therefore not
+   actionable here at all.
+4. **[The boxes still missing](2026_08_25_the_boxes_still_missing.md)** — only
+   `Dismissible3d`, `Draggable3d`, `DragTarget3d` and reorderable lists remain,
+   and they wait on payload-carrying drag recognition that
+   [pointer dispatch](2026_08_25_pointer_dispatch_and_focus.md) put in its own
+   out-of-scope section. **That plan has not been written.** Writing it is the
+   next step, not implementing against a plan that does not exist.
+
+**A note for anyone reading a plan's `commit:` field.** Plans written before
+this package moved out of the engine's monorepo name a commit from that fork.
+Those hashes do not resolve in this repository. They still do their job — they
+say what the code looked like when the plan was reasoned about — but do not try
+to `git show` one.
+
+The other seven plans are `completed` and their bodies record what the original
+reasoning got wrong. Read those sections before extending any of them; several
+of the corrections are load-bearing.

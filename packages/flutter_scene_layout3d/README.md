@@ -1767,9 +1767,10 @@ coverage but no interactive demo yet.
 **There is no headless render coverage in this repository yet.** The suite is
 arithmetic only: it proves the protocol arranges correctly, and proves nothing
 about whether a frame comes out. Five smoke scenes that did exactly that lived
-in the engine monorepo this package grew up in and did not move with it; porting
-them is planned in
-[the headless render harness plan](plans/2026_08_28_headless_render_harness.md).
+in the engine monorepo this package grew up in and did not move with it.
+[The render coverage plan](plans/2026_08_28_render_coverage.md) replaces them
+with something sharper: tests that draw real primitives through the layout
+boxes and let the layout itself say which pixels to check.
 
 ## Roadmap
 

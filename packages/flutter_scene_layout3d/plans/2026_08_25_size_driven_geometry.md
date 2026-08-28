@@ -6,8 +6,9 @@ reason: >
   (1) No lane compiles the shipped `assets/box_decoration3d.fmat`, so the
   panel shader is checked for its parameter contract and never for what it
   draws — which leaves the plan's render-level silhouette-versus-shadow check
-  and the worked raised-card example undone. Wiring it into
-  `examples/smoke_render` needs `impellerc` and a device. (2) Phase 6's
+  and the worked raised-card example undone. That lane is now planned as
+  `2026_08_28_render_coverage.md`, phase 5, which is the thing to do before
+  picking this item up. (2) Phase 6's
   subtree opacity is designed and not implemented: it needs a per-node
   opacity or tint in `flutter_scene` that the materials honour, and the plan
   itself says not to ship an `Opacity3d` that only works on

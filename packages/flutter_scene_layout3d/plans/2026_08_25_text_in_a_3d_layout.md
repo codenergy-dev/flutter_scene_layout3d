@@ -2,7 +2,8 @@
 status: in progress
 reason: phases 1-3 and 6 are done; phases 4 (the atlas renderer) and 5
   (RichText3d) are not, because a glyph atlas needs a GPU context that
-  `flutter test` does not have. See "What was left out, and why".
+  `flutter test` does not have. `2026_08_28_render_coverage.md` builds that
+  lane and is the thing to do first. See "What was left out, and why".
 created_at: 2026-08-25T20:31:04Z
 updated_at: 2026-08-26T22:51:13Z
 commit: d7bb9db224f8080ddddde70d019ab5481b45d05e

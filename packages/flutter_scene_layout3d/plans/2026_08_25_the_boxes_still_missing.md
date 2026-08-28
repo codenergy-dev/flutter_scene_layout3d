@@ -6,7 +6,8 @@ reason: >-
   recognition that carries a payload between boxes and across surfaces, which
   the pointer plan put in its own "Out of scope" section, so the dependency
   this plan names does not exist yet. It is a plan of its own, not remaining
-  work here; nothing else in this file is open.
+  work here, and that plan has not been written — writing it is the next step
+  for this item. Nothing else in this file is open.
 created_at: 2026-08-25T20:31:04Z
 updated_at: 2026-08-28T14:16:51Z
 commit: d7bb9db224f8080ddddde70d019ab5481b45d05e
