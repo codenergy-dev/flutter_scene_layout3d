@@ -1,6 +1,11 @@
 import 'dart:ui' show Size;
 
-import 'package:flutter/foundation.dart' show VoidCallback;
+import 'package:flutter/foundation.dart'
+    show
+        DiagnosticPropertiesBuilder,
+        IntProperty,
+        IterableProperty,
+        VoidCallback;
 import 'package:flutter/widgets.dart' show FocusManager, FocusNode;
 import 'package:flutter_scene/scene.dart' show Camera, Node;
 import 'package:vector_math/vector_math.dart' show Matrix4, Vector3;
@@ -814,5 +819,15 @@ class Overlay3d extends Stack3d {
   }
 
   @override
-  String toString() => 'Overlay3d(${_entries.length} entries)';
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(IntProperty('entries', _entries.length));
+    properties.add(
+      IterableProperty<Overlay3dEntry>(
+        'inserted',
+        _entries,
+        ifEmpty: 'nothing in front',
+      ),
+    );
+  }
 }

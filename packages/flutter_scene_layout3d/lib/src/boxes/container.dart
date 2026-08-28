@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart'
+    show DiagnosticPropertiesBuilder, DiagnosticsProperty;
 import 'package:vector_math/vector_math.dart' show Matrix4;
 
 import '../geometry/alignment3d.dart';
@@ -259,5 +261,41 @@ class Container3d extends SingleChildLayout3d
             : alignment.inscribe(childSize, contentBox));
     child.place(childOffset);
     applyNodeTransform();
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(
+      DiagnosticsProperty<Alignment3d>(
+        'alignment',
+        alignment,
+        defaultValue: null,
+      ),
+    );
+    properties.add(
+      DiagnosticsProperty<EdgeInsets3d>(
+        'padding',
+        padding,
+        defaultValue: EdgeInsets3d.zero,
+      ),
+    );
+    properties.add(
+      DiagnosticsProperty<EdgeInsets3d>(
+        'margin',
+        margin,
+        defaultValue: EdgeInsets3d.zero,
+      ),
+    );
+    properties.add(
+      DiagnosticsProperty<Constraints3d>(
+        'additionalConstraints',
+        additionalConstraints,
+        defaultValue: null,
+      ),
+    );
+    properties.add(
+      DiagnosticsProperty<Matrix4>('transform', transform, defaultValue: null),
+    );
   }
 }

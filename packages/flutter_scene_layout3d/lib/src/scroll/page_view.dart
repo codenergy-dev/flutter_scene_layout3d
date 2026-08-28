@@ -1,4 +1,6 @@
 import 'package:flutter/animation.dart' show Curve, Curves;
+import 'package:flutter/foundation.dart'
+    show DiagnosticPropertiesBuilder, DoubleProperty;
 import 'package:flutter/scheduler.dart' show TickerProvider;
 
 import '../boxes/flex.dart' show CrossAxisAlignment3d;
@@ -178,5 +180,20 @@ class PageView3d extends BoxScrollView3d<SliverList3d> {
       if (sliver.itemExtent != extent) sliver.itemExtent = extent;
     }
     super.performLayout();
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(
+      DoubleProperty('page', hasSize ? page : null, defaultValue: null),
+    );
+    properties.add(
+      DoubleProperty(
+        'pageExtent',
+        hasSize ? pageExtent : null,
+        defaultValue: null,
+      ),
+    );
   }
 }

@@ -9,6 +9,7 @@ import 'package:flutter/gestures.dart'
         GestureTapCancelCallback,
         GestureTapDownCallback,
         GestureTapUpCallback;
+import 'package:flutter/semantics.dart' show SemanticsProperties;
 import 'package:flutter/widgets.dart'
     show
         BuildContext,
@@ -31,12 +32,12 @@ import '../boxes/custom_layout.dart';
 import '../boxes/fitted.dart';
 import '../boxes/flex.dart';
 import '../boxes/flow.dart';
-import '../boxes/indexed_stack.dart';
-import '../boxes/layout_builder.dart';
-import '../boxes/overflow.dart';
 import '../boxes/ignore_pointer.dart';
+import '../boxes/indexed_stack.dart';
 import '../boxes/intrinsic.dart';
+import '../boxes/layout_builder.dart';
 import '../boxes/node_box.dart';
+import '../boxes/overflow.dart';
 import '../boxes/shifted.dart';
 import '../boxes/sized.dart';
 import '../boxes/stack.dart';
@@ -56,9 +57,10 @@ import '../scroll/grid_delegate.dart';
 import '../scroll/grid_view.dart';
 import '../scroll/list_view.dart';
 import '../scroll/page_view.dart';
-import '../scroll/scroll_physics.dart';
 import '../scroll/scroll_controller.dart';
+import '../scroll/scroll_physics.dart';
 import '../scroll/viewport.dart';
+import '../semantics.dart';
 import '../sliver/custom_scroll_view.dart';
 import '../sliver/sliver.dart';
 import '../sliver/sliver_grid.dart';
@@ -269,6 +271,58 @@ class SceneAbsorbPointer3d extends SingleChildLayout3dWidget {
   @override
   void updateLayout(BuildContext context, AbsorbPointer3d layout) {
     layout.absorbing = absorbing;
+  }
+}
+
+/// Publishes its subtree to assistive technology, the widget form of
+/// [Semantics3d].
+///
+/// The same [SemanticsProperties] a 2D `Semantics` widget takes, so a control
+/// declares its accessibility once and in one vocabulary whether it is drawn
+/// with pixels or with geometry.
+///
+/// ```dart
+/// SceneSemantics3d(
+///   properties: const SemanticsProperties(
+///     label: 'Play',
+///     button: true,
+///     textDirection: TextDirection.ltr,
+///   ),
+///   child: SceneGestureDetector3d(onTap: play, child: playButton),
+/// )
+/// ```
+class SceneSemantics3d extends SingleChildLayout3dWidget {
+  /// Creates a semantics box over [child].
+  const SceneSemantics3d({
+    super.key,
+    required this.properties,
+    this.sortOrder,
+    this.enabled = true,
+    super.child,
+  });
+
+  /// What this box tells the platform its subtree is.
+  final SemanticsProperties properties;
+
+  /// Where this box reads in traversal order, or null to follow layout order.
+  final double? sortOrder;
+
+  /// Whether the subtree is published at all.
+  final bool enabled;
+
+  @override
+  Semantics3d createLayout(BuildContext context) => Semantics3d(
+    properties: properties,
+    sortOrder: sortOrder,
+    enabled: enabled,
+  );
+
+  @override
+  void updateLayout(BuildContext context, Semantics3d layout) {
+    layout
+      ..properties = properties
+      ..sortOrder = sortOrder
+      ..enabled = enabled;
   }
 }
 

@@ -1,4 +1,10 @@
-import 'package:flutter/foundation.dart' show protected;
+import 'package:flutter/foundation.dart'
+    show
+        DiagnosticPropertiesBuilder,
+        FlagProperty,
+        IntProperty,
+        IterableProperty,
+        protected;
 
 import '../built_children.dart';
 import '../layout3d.dart';
@@ -144,4 +150,18 @@ abstract class BoxScrollView3d<SliverType extends SliverMultiBoxAdaptor3d>
 
   /// Rebuilds every child, for when the data behind the builder changed.
   void refresh() => sliver.refresh();
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(IntProperty('itemCount', itemCount));
+    properties.add(FlagProperty('isLazy', value: isLazy, ifTrue: 'lazy'));
+    properties.add(
+      IterableProperty<int>(
+        'activeIndices',
+        isLazy ? activeIndices : null,
+        defaultValue: null,
+      ),
+    );
+  }
 }

@@ -1,7 +1,9 @@
-import 'package:flutter/foundation.dart' show VoidCallback;
+import 'package:flutter/foundation.dart'
+    show DiagnosticPropertiesBuilder, DiagnosticsProperty, VoidCallback;
 import 'package:flutter_scene/scene.dart' show Node;
 import 'package:vector_math/vector_math.dart' show Matrix4, Ray, Vector3;
 
+import 'debug/wireframe.dart';
 import 'geometry/alignment3d.dart';
 import 'geometry/basis3d.dart';
 import 'geometry/constraints3d.dart';
@@ -157,6 +159,13 @@ class Layout3dSurface extends SingleChildLayout3d {
   void flush() {
     layout(_configuration);
     _owner.flushLayout();
+    // The debug overlay is synced here rather than by each box as it is laid
+    // out, because the flag can be set at any moment and a box that was not
+    // relaid out this frame still has to gain (or lose) its lines.
+    assert(() {
+      debugSyncLayout3dWireframes(this);
+      return true;
+    }());
   }
 
   // ------------------------------------------------------------ hit testing
@@ -243,5 +252,16 @@ class Layout3dSurface extends SingleChildLayout3d {
     super.dispose();
     _owner.dispose();
     _plane.remove(node);
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(
+      DiagnosticsProperty<Constraints3d>('configuration', configuration),
+    );
+    properties.add(DiagnosticsProperty<Alignment3d>('origin', origin));
+    properties.add(DiagnosticsProperty<LayoutBasis3d>('basis', basis));
+    properties.add(DiagnosticsProperty<Layout3dMetrics>('metrics', metrics));
   }
 }

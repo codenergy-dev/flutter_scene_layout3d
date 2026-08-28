@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show protected;
+import 'package:flutter/foundation.dart'
+    show DiagnosticPropertiesBuilder, DiagnosticsProperty, protected;
 
 import '../built_children.dart';
 import '../geometry/offset3d.dart';
@@ -100,6 +101,19 @@ abstract class Sliver3d extends Layout3d {
           depthAxis,
           constraints.depthExtent.isFinite ? constraints.depthExtent : 0.0,
         );
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(
+      DiagnosticsProperty<SliverConstraints3d>(
+        'sliverConstraints',
+        hasSliverConstraints ? sliverConstraints : null,
+        ifNull: 'MISSING',
+      ),
+    );
+    properties.add(DiagnosticsProperty<SliverGeometry3d>('geometry', geometry));
   }
 }
 

@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'dart:ui' show Rect;
 
+import 'package:flutter/foundation.dart'
+    show DiagnosticPropertiesBuilder, FlagProperty, StringProperty;
 import 'package:flutter/gestures.dart' show PointerDownEvent;
 import 'package:flutter/widgets.dart'
     show
@@ -233,8 +235,33 @@ class Focus3d extends ProxyLayout3d implements HitTestTarget3d {
   }
 
   @override
-  String toString() =>
-      'Focus3d(${hasPrimaryFocus ? 'focused' : 'not focused'})';
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(
+      FlagProperty('hasFocus', value: hasFocus, ifTrue: 'FOCUSED'),
+    );
+    properties.add(
+      FlagProperty(
+        'hasPrimaryFocus',
+        value: hasPrimaryFocus,
+        ifTrue: 'PRIMARY',
+      ),
+    );
+    properties.add(
+      FlagProperty(
+        'canRequestFocus',
+        value: canRequestFocus,
+        ifFalse: 'cannot request focus',
+      ),
+    );
+    properties.add(
+      FlagProperty(
+        'focusOnPointerDown',
+        value: focusOnPointerDown,
+        ifFalse: 'not focusable by pointer',
+      ),
+    );
+  }
 }
 
 /// A [FocusScopeNode] tied to a subtree, so focus can be trapped inside it.
@@ -322,7 +349,15 @@ class FocusScope3d extends ProxyLayout3d {
   }
 
   @override
-  String toString() => 'FocusScope3d(${hasFocus ? 'focused' : 'not focused'})';
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(
+      FlagProperty('hasFocus', value: hasFocus, ifTrue: 'FOCUSED'),
+    );
+    properties.add(
+      StringProperty('debugLabel', scopeNode.debugLabel, quoted: true),
+    );
+  }
 }
 
 /// Moving focus from box to box on a surface.

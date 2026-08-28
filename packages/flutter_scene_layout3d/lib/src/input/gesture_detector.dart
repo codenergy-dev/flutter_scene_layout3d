@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart'
+    show DiagnosticPropertiesBuilder, IterableProperty;
 import 'package:flutter/gestures.dart'
     show
         DoubleTapGestureRecognizer,
@@ -249,5 +251,17 @@ class GestureDetector3d extends ProxyLayout3dWithHitTestBehavior
     _longPress = _disposed(_longPress);
     _pan = _disposed(_pan);
     super.dispose();
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(
+      IterableProperty<String>(
+        'recognizers',
+        recognizers.map((r) => r.runtimeType.toString()),
+        ifEmpty: 'none',
+      ),
+    );
   }
 }

@@ -1,6 +1,12 @@
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show protected;
+import 'package:flutter/foundation.dart'
+    show
+        DiagnosticPropertiesBuilder,
+        DiagnosticsProperty,
+        EnumProperty,
+        protected,
+        StringProperty;
 import 'package:flutter_scene/scene.dart' show Node;
 import 'package:vector_math/vector_math.dart' show Aabb3, Matrix4;
 
@@ -265,5 +271,21 @@ class NodeBox3d extends Layout3d {
       scale = math.min(scale, limit / extent);
     }
     return scale.isFinite ? scale : 1.0;
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(EnumProperty<BoxFit3d>('fit', fit));
+    properties.add(DiagnosticsProperty<Alignment3d>('alignment', alignment));
+    properties.add(
+      DiagnosticsProperty<Size3d>(
+        'explicitSize',
+        explicitSize,
+        defaultValue: null,
+      ),
+    );
+    properties.add(DiagnosticsProperty<Size3d>('intrinsicSize', intrinsicSize));
+    properties.add(StringProperty('content', content.name, quoted: true));
   }
 }

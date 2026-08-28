@@ -1,3 +1,6 @@
+import 'package:flutter/foundation.dart'
+    show DiagnosticPropertiesBuilder, DiagnosticsProperty;
+
 import '../geometry/offset3d.dart';
 import '../geometry/size3d.dart';
 import '../layout3d.dart';
@@ -47,6 +50,12 @@ class Visibility3d extends ProxyLayout3d {
     // The scrolling views cull by writing this flag too, and the last writer
     // during a layout pass should be the box that owns the decision.
     node.visible = _visible;
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<bool>('visible', visible));
   }
 }
 
@@ -121,5 +130,11 @@ class Offstage3d extends SingleChildLayout3d with Layout3dChildIntrinsicsMixin {
       child.place(Offset3d.zero);
     }
     node.visible = true;
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<bool>('offstage', offstage));
   }
 }

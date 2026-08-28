@@ -1,3 +1,6 @@
+import 'package:flutter/foundation.dart'
+    show DiagnosticPropertiesBuilder, DiagnosticsProperty;
+
 import '../geometry/offset3d.dart';
 import '../geometry/size3d.dart';
 import '../hit_test.dart';
@@ -107,5 +110,20 @@ class TapTarget3d extends ProxyLayout3d {
     hitTestChildren(result, ray: ray.clampedTo(range.near, range.far));
     result.add(HitTestEntry3d(this, entry));
     return true;
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(
+      DiagnosticsProperty<Size3d>(
+        'minimumSize',
+        minimumSize,
+        defaultValue: null,
+      ),
+    );
+    properties.add(
+      DiagnosticsProperty<Size3d>('effectiveMinimumSize', effectiveMinimumSize),
+    );
   }
 }

@@ -1,3 +1,6 @@
+import 'package:flutter/foundation.dart'
+    show DiagnosticPropertiesBuilder, DiagnosticsProperty;
+
 import '../boxes/flex.dart' show CrossAxisAlignment3d;
 import '../geometry/offset3d.dart';
 import '../layout3d.dart';
@@ -108,4 +111,19 @@ class GridView3d extends BoxScrollView3d<SliverGrid3d> {
 
   /// The cell grid in force after the most recent layout.
   Grid3dLayout? get gridLayout => sliver.gridLayout;
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(
+      DiagnosticsProperty<Grid3dDelegate>('gridDelegate', gridDelegate),
+    );
+    properties.add(
+      DiagnosticsProperty<Grid3dLayout>(
+        'gridLayout',
+        gridLayout,
+        defaultValue: null,
+      ),
+    );
+  }
 }

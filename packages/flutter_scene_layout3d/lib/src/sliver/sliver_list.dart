@@ -1,5 +1,8 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart'
+    show DiagnosticPropertiesBuilder, DoubleProperty, EnumProperty;
+
 import '../boxes/flex.dart' show CrossAxisAlignment3d;
 import '../built_children.dart';
 import '../geometry/constraints3d.dart';
@@ -288,5 +291,17 @@ class SliverList3d extends SliverMultiBoxAdaptor3d
       );
       child.node.visible = start + extent > visibleStart && start < visibleEnd;
     }
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DoubleProperty('spacing', itemSpacing, defaultValue: 0.0));
+    properties.add(
+      EnumProperty<CrossAxisAlignment3d>(
+        'crossAxisAlignment',
+        crossAxisAlignment,
+      ),
+    );
   }
 }

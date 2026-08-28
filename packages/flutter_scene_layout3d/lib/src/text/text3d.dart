@@ -1,5 +1,13 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart'
+    show
+        DiagnosticPropertiesBuilder,
+        DoubleProperty,
+        EnumProperty,
+        FlagProperty,
+        IntProperty,
+        StringProperty;
 import 'package:flutter/painting.dart'
     show TextAlign, TextDirection, TextOverflow, TextStyle;
 
@@ -416,8 +424,19 @@ class Text3d extends Layout3d {
   }
 
   @override
-  String toString() {
-    final text = _data.length > 20 ? '${_data.substring(0, 20)}…' : _data;
-    return 'Text3d("$text", ${hasSize ? size : 'not laid out'})';
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(StringProperty('data', data, quoted: true));
+    properties.add(EnumProperty<TextAlign>('textAlign', textAlign));
+    properties.add(EnumProperty<TextDirection>('textDirection', textDirection));
+    properties.add(EnumProperty<TextOverflow>('overflow', overflow));
+    properties.add(
+      FlagProperty('softWrap', value: softWrap, ifFalse: 'no wrap'),
+    );
+    properties.add(IntProperty('maxLines', maxLines, defaultValue: null));
+    properties.add(
+      IntProperty('lines', textLayout?.lines.length, defaultValue: null),
+    );
+    properties.add(DoubleProperty('logicalPixelScale', logicalPixelScale));
   }
 }

@@ -1,3 +1,9 @@
+import 'package:flutter/foundation.dart'
+    show
+        DiagnosticPropertiesBuilder,
+        DiagnosticsProperty,
+        DoubleProperty,
+        FlagProperty;
 import 'package:vector_math/vector_math.dart' show Matrix4;
 
 import '../geometry/offset3d.dart';
@@ -227,8 +233,25 @@ class DecoratedBox3d extends SingleChildLayout3d
   }
 
   @override
-  String toString() {
-    final sizeText = hasSize ? '$size' : 'not laid out';
-    return 'DecoratedBox3d($_decoration, $sizeText)';
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<Decoration3d>('decoration', decoration));
+    properties.add(
+      DiagnosticsProperty<StateLayer3d>(
+        'stateLayer',
+        stateLayer,
+        defaultValue: StateLayer3d.none,
+      ),
+    );
+    properties.add(
+      DoubleProperty(
+        'elevationUnits',
+        hasSize ? elevationUnits : null,
+        defaultValue: 0.0,
+      ),
+    );
+    properties.add(
+      FlagProperty('painter', value: painter != null, ifFalse: 'not painting'),
+    );
   }
 }

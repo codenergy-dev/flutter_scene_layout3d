@@ -1,3 +1,6 @@
+import 'package:flutter/foundation.dart'
+    show DiagnosticPropertiesBuilder, DiagnosticsProperty, FlagProperty;
+
 import '../built_children.dart';
 import '../geometry/constraints3d.dart';
 import '../geometry/offset3d.dart';
@@ -200,5 +203,20 @@ class LayoutBuilder3d extends MultiChildLayout3d<ParentData3d>
       size = constraints.constrain(child.size);
       child.place(Offset3d.zero);
     });
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(
+      DiagnosticsProperty<Constraints3d>(
+        'builtConstraints',
+        builtConstraints,
+        defaultValue: null,
+      ),
+    );
+    properties.add(
+      FlagProperty('lazy', value: itemBuilder != null, ifTrue: 'builds items'),
+    );
   }
 }

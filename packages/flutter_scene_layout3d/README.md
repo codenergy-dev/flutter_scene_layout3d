@@ -1495,6 +1495,187 @@ guarantees are yours to lose.** Putting a new `Text3d.text`, a new
 relayouts the entire subtree by design, and belongs to a window resize, not
 to a frame.
 
+## Debugging what you cannot see
+
+A layout on a plane produces no pixels of its own. Nothing draws a box, so a
+wrong size, a padding applied to the wrong axis, or a child standing out
+through the front of a panel are all invisible until the geometry looks odd,
+and by then the symptom reads as a rendering artefact rather than as a layout
+mistake. That is the reason this package carries a debugging story rather than
+leaving it to the inspector: there is nothing on screen to inspect.
+
+Every box is a `DiagnosticableTree`, so it dumps the way a render tree does:
+
+```dart
+surface.flush();
+debugDumpLayout3dTree(surface);
+```
+
+```
+Column3d#b0dd0
+ │ constraints: Constraints3d(w: 4.0..4.0, h: 3.0..3.0, d: 1.0..1.0)
+ │ size: Size3d(4.000, 3.000, 1.000)
+ │ direction: vertical
+ │ mainAxisAlignment: center
+ │
+ └─child: Padding3d#a16bc
+   │ constraints: Constraints3d(w: 0.0..4.0, h: 0.0..Infinity, d: 0.0..1.0)
+   │ size: Size3d(2.000, 2.000, 1.000)
+   │ offset: Offset3d(1.000, 0.500, 0.000)
+   │ padding: EdgeInsets3d(0.5, 0.5, 0.5, 0.5, 0.5, 0.5)
+   │
+   └─child: SizedBox3d#dbb42
+       constraints: Constraints3d(w: 0.0..3.0, h: 0.0..Infinity, d: 0.0..0.0)
+       size: Size3d(1.000, 1.000, 0.000)
+       offset: Offset3d(0.500, 0.500, 0.500)
+```
+
+Read it the way you read a render tree dump: constraints came down, sizes went
+up, `offset` is where the parent put the box. A box that was never laid out
+says `size: MISSING` and `NEEDS-LAYOUT` rather than printing a zero that looks
+like an answer, which is the distinction a bare `Size3d` in a test failure
+cannot make. `debugDescribeLayout3dTree` returns the same string without
+printing it — a golden tree is a much better assertion than a size comparison,
+because it says what went wrong — and `debugDescribeLayout3dAncestry` prints
+the chain from one box up to the root, which is the list of suspects when a
+box came out wrong.
+
+Raising the level to `DiagnosticLevel.fine` adds the fields you only want when
+something is not updating at all:
+
+```dart
+print(box.toStringShallow(minLevel: DiagnosticLevel.fine));
+// … relayoutBoundary: "up2", sizedByParent, nodeOffset: …
+```
+
+`relayoutBoundary: "up2"` is the answer to *why did marking this box dirty lay
+the whole plane out again*: dirt stops at the boundary, and this one is two
+levels above. `nodeOffset` and `nodeTransform` show up here too, which is how
+you tell a box the layout moved from a box an animation moved.
+
+### The trap that used to be silent
+
+The declarative layer mirrors the render tree onto the layout tree, and it
+mirrors only the zero-sized hosts that carry a `Layout3d`. Most Flutter
+widgets are transparent to that — a `StatelessWidget`, a `StatefulWidget`, an
+`InheritedWidget`, a `Builder`, a `Consumer` create no render object, so their
+children are still the host's children, and a component library depends on
+that being true. But one ordinary `Padding`, `Opacity` or `SizedBox` reached
+for out of habit *does* create a render object, and everything below it used
+to vanish: no error, no layout, nothing in the scene.
+
+It is now an error that names both ends of the problem:
+
+```
+A RenderPadding was placed between two 3D layout widgets.
+The Padding widget creates a render object of its own, so everything below
+it — starting with SizedBox3d — is not part of the layout tree at all.
+Only widgets that create no render object may sit between two 3D layout
+widgets … For layout, use the 3D widget with the same name —
+ScenePadding3d for Padding, SceneSizedBox3d for SizedBox.
+```
+
+### Overflow, and why depth is the one that bites
+
+A box whose content did not fit reports it. `Flex3d` reports the children it
+could not fit on any of the three axes, and `UnconstrainedBox3d` reports a
+child it measured without limits and then could not hold — the same two places
+Flutter draws its yellow-and-black stripes, for the same reasons.
+
+Depth is why this matters more here than in Flutter. A row 40 pixels too wide
+is at least visibly clipped; a card whose content is a millimetre too deep is
+a chip floating out of the front of it, and nothing about that looks like an
+overflow. So the report names the edge the content came out of, `back`
+included:
+
+```
+A Depth3d overflowed the back by 3.000.
+```
+
+Reports go through `FlutterError.reportError` by default, so an overflow fails
+a `flutter_test` run like any other layout error. Point
+`debugLayout3dOverflowReporter` somewhere else to collect them instead — a
+test that means to overflow, a debug HUD that lists what did — and read
+`Layout3dOverflowReportingMixin.debugOverflow` for the current amount on a
+box. The same overflow is reported once rather than on every frame, so a list
+flung past an overflowing row does not fill the console. Mix
+`Layout3dOverflowReportingMixin` into a layout of your own and call
+`debugReportOverflow` from `performLayout` to join in.
+
+### Drawing the boxes
+
+`debugPaintSize`, with real lines:
+
+```dart
+debugPaintLayout3dSize = true;
+debugPaintLayout3dBaselines = true;  // baselines, and the offset from the parent
+surface.flush();                     // the flush is what syncs the overlay
+```
+
+Every laid-out box hangs a wireframe of its own extent under its scene node,
+in `LineSegmentsGeometry`, and the second flag adds the two things that are
+otherwise entirely invisible: the baseline a `Baseline3d` or a
+`CrossAxisAlignment3d.baseline` moved content by, and a line from the parent's
+origin corner back to this box's, which is what tells a misplaced child from a
+mis-sized one. Clearing the flag and flushing again takes every line back out
+of the scene. A culled or hidden subtree draws nothing, so what a `ListView3d`
+has scrolled out of its window has no lines either.
+
+The overlay is one shared unit cube and one shared unit segment, scaled per
+box, so a box that animates its size rebuilds nothing — the same economy
+`BoxDecoration3d` runs on. It needs the engine to be ready
+(`Scene.isReadyToRender`) because building line geometry allocates a device
+buffer; before that, and in a headless test, the flag draws nothing rather
+than throwing. Replace `debugLayout3dWireframeFactory` to draw the overlay
+some other way, or with a recording `Layout3dWireframe` to assert on what a
+test *would* have drawn.
+
+### Accessibility
+
+Scene content is opaque to a screen reader: a button built out of geometry is,
+to the platform, a picture. `Semantics3d` is the way out, and what a component
+author writes is Flutter's own `SemanticsProperties`, unchanged:
+
+```dart
+SceneSemantics3d(
+  properties: const SemanticsProperties(
+    label: 'Continue',
+    button: true,
+    textDirection: TextDirection.ltr,
+  ),
+  child: SceneGestureDetector3d(onTap: submit, child: continueButton),
+)
+```
+
+It attaches a `SemanticsComponent` to the box's scene node, which `SceneView`
+turns into a real Flutter semantics node whose focus rectangle is projected
+through the camera — so the ring lands on the control, tracks it as the plane
+turns, and disappears when the control is culled.
+
+Two decisions in it are worth knowing. **The bounds come from layout, not from
+the geometry.** Left alone, a `SemanticsComponent` projects whatever meshes
+happen to hang under the node, which for a control is the icon and the label
+rather than the target they sit in; `Semantics3d` overrides them with the
+box's own `size`, so the rectangle is the padded control the layout protocol
+produced. **Traversal order is layout order**, without anything being said:
+reading order follows the scene graph, and here the scene graph *is* the
+layout tree, so a `Column3d` of controls reads top to bottom for the same
+reason it lays out that way. Set `sortOrder` only where that is wrong.
+
+Focus and semantics have to be declared on the same boxes or the two trees
+disagree — keyboard traversal visits five things and the reader announces
+three. `debugFocusableBoxesWithoutSemantics` is the check:
+
+```dart
+expect(debugFocusableBoxesWithoutSemantics(surface), isEmpty);
+```
+
+One caveat while building controls: `TapTarget3d` grows the region a *ray*
+reaches without growing the box, so a semantics rectangle taken from the box
+is smaller than the touch target around it. Put the minimum size in the layout
+(a `ConstrainedBox3d`, a `SizedBox3d`) as well when the target has to be
+announced at its full size.
+
 ## How it differs from Flutter
 
 * **Two cross axes.** A flex has one main axis and two cross axes, so
@@ -1689,6 +1870,18 @@ and *Physics, flings, and going somewhere* above. What is left is
 overscroll effects a scene could have instead of a glow — bending, tilting or
 compressing the content — which `Scroll3dController.overscroll` exposes the
 number for but nothing here builds.
+
+**9. Diagnostics and accessibility.** ~~Done~~: every box is a
+`DiagnosticableTree`, so `toStringDeep` and `debugDumpLayout3dTree` print what
+came down and what went up; an ordinary Flutter render object interposed
+between two `Scene*3d` widgets is now an error that names both ends of it
+rather than a silently missing subtree; `Flex3d` and `UnconstrainedBox3d`
+report an overflow with the axis and the amount; `debugPaintLayout3dSize`
+hangs a wireframe of every box's extent under its node, with baselines and
+placement offsets behind a second flag; and `Semantics3d` publishes a control
+to assistive technology with the bounds layout gave it. See *Debugging what
+you cannot see* above. What is left is a visual inspector, which belongs to
+the Flutter Scene Editor rather than here.
 
 **What is next.** Nothing in this list depends on anything else in it any
 more, so the order is a matter of what a caller reaches for first: a

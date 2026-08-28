@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart'
+    show DiagnosticPropertiesBuilder, DiagnosticsProperty, EnumProperty;
 import 'package:vector_math/vector_math.dart' show Matrix4, Vector3;
 
 import '../geometry/alignment3d.dart';
@@ -193,5 +195,19 @@ class FittedBox3d extends SingleChildLayout3d
       return true;
     }
     return false;
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(EnumProperty<BoxFit3d>('fit', fit));
+    properties.add(DiagnosticsProperty<Alignment3d>('alignment', alignment));
+    properties.add(
+      DiagnosticsProperty<Vector3>(
+        'scale',
+        hasSize ? scale : null,
+        defaultValue: null,
+      ),
+    );
   }
 }

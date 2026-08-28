@@ -1,5 +1,14 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart'
+    show
+        DiagnosticPropertiesBuilder,
+        DiagnosticsProperty,
+        DoubleProperty,
+        EnumProperty,
+        IntProperty;
+
+import '../debug/overflow.dart';
 import '../geometry/constraints3d.dart';
 import '../geometry/offset3d.dart';
 import '../geometry/size3d.dart';
@@ -111,6 +120,13 @@ class Flexible3d extends ProxyLayout3d {
     _fit = value;
     markParentNeedsLayout();
   }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(IntProperty('flex', flex));
+    properties.add(EnumProperty<FlexFit3d>('fit', fit));
+  }
 }
 
 /// A [Flexible3d] whose child must fill its share, the 3D analogue of
@@ -155,7 +171,8 @@ class _EmptyBox3d extends Layout3d {
 /// [depthAxisAlignment] is depth; for a [Column3d] (main `y`)
 /// [crossAxisAlignment] is horizontal and [depthAxisAlignment] is depth; for
 /// a [Depth3d] (main `z`) they are horizontal and vertical.
-class Flex3d extends MultiChildLayout3d<ParentData3d> {
+class Flex3d extends MultiChildLayout3d<ParentData3d>
+    with Layout3dOverflowReportingMixin {
   /// Creates a flex line along [direction].
   Flex3d({
     required Axis3d direction,
@@ -495,6 +512,19 @@ class Flex3d extends MultiChildLayout3d<ParentData3d> {
       0.0,
       actualMainSize - (allocatedSize + totalSpacing),
     );
+    // What the children asked for against what the line got. Flutter reports
+    // the same number as a stripe when it paints; there is nothing to paint
+    // here, so the line says so out loud instead.
+    debugReportOverflow(
+      Size3d.zero
+          .withAxis(mainAxis, allocatedSize + totalSpacing - actualMainSize)
+          .withAxis(firstCross, firstCrossSize - actualFirstCross)
+          .withAxis(secondCross, secondCrossSize - actualSecondCross),
+      hint:
+          'Either the children are too big for the room this $runtimeType '
+          'was given, or one of them should be Flexible3d so it takes only '
+          'what is left over.',
+    );
     final gaps = math.max(0, childCount - 1);
     final (leadingSpace, betweenSpace) = switch (_mainAxisAlignment) {
       MainAxisAlignment3d.start => (0.0, 0.0),
@@ -563,6 +593,37 @@ class Flex3d extends MultiChildLayout3d<ParentData3d> {
     CrossAxisAlignment3d.end => extent - childExtent,
     CrossAxisAlignment3d.center => (extent - childExtent) / 2.0,
   };
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(EnumProperty<Axis3d>('direction', direction));
+    properties.add(
+      EnumProperty<MainAxisAlignment3d>('mainAxisAlignment', mainAxisAlignment),
+    );
+    properties.add(EnumProperty<MainAxisSize3d>('mainAxisSize', mainAxisSize));
+    properties.add(
+      EnumProperty<CrossAxisAlignment3d>(
+        'crossAxisAlignment',
+        crossAxisAlignment,
+      ),
+    );
+    properties.add(
+      EnumProperty<CrossAxisAlignment3d>(
+        'depthAxisAlignment',
+        depthAxisAlignment,
+        defaultValue: CrossAxisAlignment3d.center,
+      ),
+    );
+    properties.add(DoubleProperty('spacing', spacing, defaultValue: 0.0));
+    properties.add(
+      DiagnosticsProperty<Size3d>(
+        'overflow',
+        debugOverflow,
+        defaultValue: Size3d.zero,
+      ),
+    );
+  }
 }
 
 /// A [Flex3d] running left to right, the 3D analogue of [Row].

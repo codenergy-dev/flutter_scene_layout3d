@@ -1,5 +1,12 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart'
+    show
+        DiagnosticPropertiesBuilder,
+        DiagnosticsProperty,
+        DoubleProperty,
+        IntProperty;
+
 import '../geometry/constraints3d.dart';
 import '../geometry/offset3d.dart';
 import '../geometry/size3d.dart';
@@ -618,5 +625,22 @@ class Table3d extends MultiChildLayout3d<ParentData3d> {
       CrossAxisAlignment3d.end => tableDepth - depth,
       CrossAxisAlignment3d.center => (tableDepth - depth) / 2.0,
     };
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(IntProperty('columnCount', columnCount));
+    properties.add(IntProperty('rowCount', rowCount));
+    properties.add(
+      DiagnosticsProperty<TableColumnWidth3d>(
+        'defaultColumnWidth',
+        defaultColumnWidth,
+      ),
+    );
+    properties.add(
+      DoubleProperty('columnSpacing', columnSpacing, defaultValue: 0.0),
+    );
+    properties.add(DoubleProperty('rowSpacing', rowSpacing, defaultValue: 0.0));
   }
 }

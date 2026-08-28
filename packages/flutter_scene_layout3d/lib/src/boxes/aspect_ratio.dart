@@ -1,3 +1,6 @@
+import 'package:flutter/foundation.dart'
+    show DiagnosticPropertiesBuilder, DoubleProperty, EnumProperty;
+
 import '../geometry/constraints3d.dart';
 import '../geometry/offset3d.dart';
 import '../geometry/size3d.dart';
@@ -213,5 +216,13 @@ class AspectRatio3d extends SingleChildLayout3d
         .withAxis(_relativeTo, crossExtent)
         .withAxis(free, constraints.constrainAlong(free, freeExtent));
     child?.place(Offset3d.zero);
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DoubleProperty('aspectRatio', aspectRatio));
+    properties.add(EnumProperty<Axis3d>('axis', axis));
+    properties.add(EnumProperty<Axis3d>('relativeTo', relativeTo));
   }
 }

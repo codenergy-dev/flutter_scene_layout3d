@@ -1,5 +1,6 @@
 import 'package:flutter/animation.dart' show Curve, Curves;
-import 'package:flutter/foundation.dart' show protected;
+import 'package:flutter/foundation.dart'
+    show DiagnosticPropertiesBuilder, DoubleProperty, FlagProperty, protected;
 import 'package:flutter/scheduler.dart' show TickerProvider;
 
 import '../geometry/offset3d.dart';
@@ -198,6 +199,26 @@ mixin Scroll3dHolderMixin on Layout3dLayoutPassMixin implements Scrollable3d {
       if (_ownsController) held.dispose();
     }
     super.dispose();
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DoubleProperty('offset', controller.offset));
+    properties.add(
+      DoubleProperty('minScrollExtent', controller.minScrollExtent),
+    );
+    properties.add(
+      DoubleProperty('maxScrollExtent', controller.maxScrollExtent),
+    );
+    properties.add(DoubleProperty('viewportExtent', controller.viewportExtent));
+    properties.add(
+      FlagProperty(
+        'outOfRange',
+        value: controller.outOfRange,
+        ifTrue: 'OUT-OF-RANGE',
+      ),
+    );
   }
 }
 

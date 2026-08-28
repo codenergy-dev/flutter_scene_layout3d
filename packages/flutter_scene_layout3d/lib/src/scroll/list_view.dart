@@ -1,3 +1,6 @@
+import 'package:flutter/foundation.dart'
+    show DiagnosticPropertiesBuilder, DoubleProperty, EnumProperty;
+
 import '../boxes/flex.dart' show CrossAxisAlignment3d;
 import '../built_children.dart';
 import '../geometry/offset3d.dart';
@@ -156,4 +159,19 @@ class ListView3d extends BoxScrollView3d<SliverList3d> {
 
   set depthAxisAlignment(CrossAxisAlignment3d value) =>
       sliver.depthAxisAlignment = value;
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DoubleProperty('spacing', spacing, defaultValue: 0.0));
+    properties.add(
+      DoubleProperty('itemExtent', itemExtent, defaultValue: null),
+    );
+    properties.add(
+      EnumProperty<CrossAxisAlignment3d>(
+        'crossAxisAlignment',
+        crossAxisAlignment,
+      ),
+    );
+  }
 }

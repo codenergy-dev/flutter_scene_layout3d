@@ -1,5 +1,8 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart'
+    show DiagnosticPropertiesBuilder, DiagnosticsProperty;
+
 import '../geometry/edge_insets3d.dart';
 import '../geometry/offset3d.dart';
 import '../layout3d.dart';
@@ -187,5 +190,11 @@ class SliverPadding3d extends Sliver3d with Layout3dWithChildMixin {
           .withAxis(depthAxis, _padding.lowAlong(depthAxis)),
     );
     child.node.visible = childGeometry.visible;
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<EdgeInsets3d>('padding', padding));
   }
 }

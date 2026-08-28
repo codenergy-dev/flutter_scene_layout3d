@@ -3,7 +3,9 @@ import 'dart:collection' show HashSet, SplayTreeMap;
 import 'package:flutter/foundation.dart'
     show
         DiagnosticsNode,
+        DiagnosticsTreeStyle,
         ErrorDescription,
+        ErrorHint,
         ErrorSummary,
         FlutterError,
         protected;
@@ -25,6 +27,7 @@ import 'package:flutter/widgets.dart'
         ElementVisitor,
         IndexedSlot,
         IndexedWidgetBuilder,
+        DebugCreator,
         InheritedWidget,
         MultiChildRenderObjectWidget,
         RenderObjectElement,
@@ -123,6 +126,8 @@ class Layout3dRenderBox extends RenderBox
       child.layout(hostConstraints);
       if (child is Layout3dRenderBox) {
         layouts.add(child.layout3d);
+      } else {
+        assert(debugCheckNoInterposedRenderObject(child));
       }
       child = childAfter(child);
     }
@@ -197,6 +202,81 @@ class Layout3dRenderBox extends RenderBox
 
   @override
   bool hitTestSelf(Offset position) => false;
+}
+
+/// Throws when an ordinary Flutter render object has been put between two
+/// `Scene*3d` widgets, hiding the layout subtree below it.
+///
+/// The trap this exists for is the most expensive one in the declarative
+/// layer, and it is silent. [Layout3dRenderBox.layoutChildBoxes] mirrors the
+/// render tree onto the layout tree by collecting its render children that
+/// are [Layout3dRenderBox]es; anything else is not one, so its whole subtree
+/// — every `Scene*3d` widget below it — is simply not collected. Nothing
+/// throws, nothing is laid out, and nothing appears in the scene.
+///
+/// What makes it easy to hit is that most Flutter widgets *are* transparent
+/// here, and correctly so: a `StatelessWidget`, a `StatefulWidget`, an
+/// `InheritedWidget`, a `Builder`, a `Consumer` create no render object of
+/// their own, so their children are the hosting boxes' children and
+/// everything works. Writing a component library depends on that. But one
+/// `Padding`, one `Opacity`, one `SizedBox` reaching for the 2D spelling out
+/// of habit creates a render object, and the subtree vanishes.
+///
+/// Returns true so it can be used inside an `assert`; throws otherwise.
+/// Debug-only, and it costs one walk of an interposed subtree, which in a
+/// correct tree does not exist.
+bool debugCheckNoInterposedRenderObject(RenderObject interposed) {
+  final lost = _findLayout3dDescendant(interposed);
+  if (lost == null) return true;
+  throw FlutterError.fromParts(<DiagnosticsNode>[
+    ErrorSummary(
+      'A ${interposed.runtimeType} was placed between two 3D layout widgets.',
+    ),
+    ErrorDescription(
+      'The 3D layout tree is mirrored from the render tree, and only the '
+      'zero-sized hosts that carry a Layout3d are mirrored. '
+      '${_describeCreator(interposed)} creates a render object of its own, so '
+      'everything below it — starting with ${lost.layout3d.runtimeType} — is '
+      'not part of the layout tree at all. It is never laid out and never '
+      'reaches the scene.',
+    ),
+    ErrorHint(
+      'Only widgets that create no render object may sit between two 3D '
+      'layout widgets: StatelessWidget, StatefulWidget, InheritedWidget, '
+      'Builder, and anything else that only builds. For layout, use the 3D '
+      'widget with the same name — ScenePadding3d for Padding, '
+      'SceneSizedBox3d for SizedBox, SceneAlign3d for Align.',
+    ),
+    interposed.toDiagnosticsNode(
+      name: 'The interposed render object was',
+      style: DiagnosticsTreeStyle.errorProperty,
+    ),
+  ]);
+}
+
+/// The first [Layout3dRenderBox] anywhere below [node], or null.
+Layout3dRenderBox? _findLayout3dDescendant(RenderObject node) {
+  Layout3dRenderBox? found;
+  void visit(RenderObject child) {
+    if (found != null) return;
+    if (child is Layout3dRenderBox) {
+      found = child;
+      return;
+    }
+    child.visitChildren(visit);
+  }
+
+  node.visitChildren(visit);
+  return found;
+}
+
+/// What made [object], in the words a developer wrote, when Flutter knows.
+String _describeCreator(RenderObject object) {
+  final creator = object.debugCreator;
+  if (creator is DebugCreator) {
+    return 'The ${creator.element.widget.runtimeType} widget';
+  }
+  return 'It';
 }
 
 /// Parent data for the zero-sized hosting boxes.

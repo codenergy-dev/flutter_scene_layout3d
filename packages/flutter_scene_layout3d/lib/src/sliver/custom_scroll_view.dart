@@ -1,5 +1,8 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart'
+    show DiagnosticPropertiesBuilder, DoubleProperty, EnumProperty;
+
 import '../clip.dart';
 import '../geometry/offset3d.dart';
 import '../geometry/size3d.dart';
@@ -345,5 +348,14 @@ class CustomScrollView3d extends MultiChildLayout3d<ParentData3d>
     }
 
     return (scrollExtent: precedingScrollExtent, correction: null);
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(EnumProperty<Axis3d>('scrollDirection', scrollDirection));
+    properties.add(
+      DoubleProperty('cacheExtent', cacheExtent, defaultValue: 0.0),
+    );
   }
 }

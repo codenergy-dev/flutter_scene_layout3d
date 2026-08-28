@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart'
+    show DiagnosticPropertiesBuilder, EnumProperty;
 import 'package:flutter/gestures.dart'
     show
         PointerCancelEvent,
@@ -72,6 +74,12 @@ abstract class ProxyLayout3dWithHitTestBehavior extends ProxyLayout3d {
       result.add(HitTestEntry3d(this, entry));
     }
     return hit;
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(EnumProperty<HitTestBehavior3d>('behavior', behavior));
   }
 }
 

@@ -1,5 +1,12 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart'
+    show
+        DiagnosticPropertiesBuilder,
+        DiagnosticsProperty,
+        DoubleProperty,
+        EnumProperty;
+
 import '../geometry/alignment3d.dart';
 import '../geometry/constraints3d.dart';
 import '../geometry/offset3d.dart';
@@ -191,6 +198,20 @@ class Positioned3d extends ProxyLayout3d {
     Axis3d.vertical => height,
     Axis3d.depth => depth,
   };
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DoubleProperty('left', left, defaultValue: null));
+    properties.add(DoubleProperty('top', top, defaultValue: null));
+    properties.add(DoubleProperty('right', right, defaultValue: null));
+    properties.add(DoubleProperty('bottom', bottom, defaultValue: null));
+    properties.add(DoubleProperty('front', front, defaultValue: null));
+    properties.add(DoubleProperty('back', back, defaultValue: null));
+    properties.add(DoubleProperty('width', width, defaultValue: null));
+    properties.add(DoubleProperty('height', height, defaultValue: null));
+    properties.add(DoubleProperty('depth', depth, defaultValue: null));
+  }
 }
 
 /// Overlays its children, the 3D analogue of [Stack].
@@ -403,5 +424,13 @@ class Stack3d extends MultiChildLayout3d<ParentData3d> {
       result = result.withAxis(axis, value);
     }
     return result;
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<Alignment3d>('alignment', alignment));
+    properties.add(EnumProperty<StackFit3d>('fit', fit));
+    properties.add(DoubleProperty('depthStep', depthStep, defaultValue: 0.0));
   }
 }

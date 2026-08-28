@@ -1,3 +1,6 @@
+import 'package:flutter/foundation.dart'
+    show DiagnosticPropertiesBuilder, DiagnosticsProperty;
+
 import '../geometry/offset3d.dart';
 import '../hit_test.dart';
 import '../layout3d.dart';
@@ -33,6 +36,12 @@ class IgnorePointer3d extends ProxyLayout3d {
   @override
   bool hitTest(HitTestResult3d result, {required Ray3d ray}) =>
       _ignoring ? false : super.hitTest(result, ray: ray);
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<bool>('ignoring', ignoring));
+  }
 }
 
 /// Takes the hit its subtree would have taken, the 3D analogue of
@@ -67,4 +76,10 @@ class AbsorbPointer3d extends ProxyLayout3d {
   @override
   bool hitTestChildren(HitTestResult3d result, {required Ray3d ray}) =>
       _absorbing ? false : super.hitTestChildren(result, ray: ray);
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<bool>('absorbing', absorbing));
+  }
 }

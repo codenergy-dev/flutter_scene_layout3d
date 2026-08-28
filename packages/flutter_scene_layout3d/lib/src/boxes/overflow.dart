@@ -1,5 +1,13 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart'
+    show
+        DiagnosticPropertiesBuilder,
+        DiagnosticsProperty,
+        DoubleProperty,
+        IterableProperty;
+
+import '../debug/overflow.dart';
 import '../geometry/alignment3d.dart';
 import '../geometry/constraints3d.dart';
 import '../geometry/offset3d.dart';
@@ -129,6 +137,20 @@ class LimitedBox3d extends SingleChildLayout3d
     size = constraints.constrain(child.size);
     child.place(Offset3d.zero);
   }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(
+      DoubleProperty('maxWidth', maxWidth, defaultValue: double.infinity),
+    );
+    properties.add(
+      DoubleProperty('maxHeight', maxHeight, defaultValue: double.infinity),
+    );
+    properties.add(
+      DoubleProperty('maxDepth', maxDepth, defaultValue: double.infinity),
+    );
+  }
 }
 
 /// A box that hands its child more room than it was given itself, the 3D
@@ -150,7 +172,7 @@ class LimitedBox3d extends SingleChildLayout3d
 /// case here: a panel may overflow across the surface without poking through
 /// it.
 class UnconstrainedBox3d extends SingleChildLayout3d
-    with Layout3dChildIntrinsicsMixin {
+    with Layout3dChildIntrinsicsMixin, Layout3dOverflowReportingMixin {
   /// Creates a box that frees its child's constraints.
   UnconstrainedBox3d({
     Alignment3d alignment = Alignment3d.center,
@@ -205,6 +227,41 @@ class UnconstrainedBox3d extends SingleChildLayout3d
     child.layout(childConstraints, parentUsesSize: true);
     size = constraints.constrain(child.size);
     child.place(_alignment.inscribe(child.size, size));
+    // The child was measured without limits and the box was not, so the two
+    // disagreeing is the whole failure mode of this box: it reports a size
+    // that fits and holds a child that does not. Flutter's
+    // `RenderConstraintsTransformBox` stripes exactly this.
+    debugReportOverflow(
+      Size3d(
+        child.size.width - size.width,
+        child.size.height - size.height,
+        child.size.depth - size.depth,
+      ),
+      hint:
+          'This box measured its child without constraints on '
+          '${_constrainedAxes.isEmpty ? 'any axis' : 'some axes'}, so the '
+          'child is free to be larger than the room this box was given.',
+    );
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<Alignment3d>('alignment', alignment));
+    properties.add(
+      IterableProperty<Axis3d>(
+        'constrainedAxes',
+        constrainedAxes,
+        ifEmpty: 'none',
+      ),
+    );
+    properties.add(
+      DiagnosticsProperty<Size3d>(
+        'overflow',
+        debugOverflow,
+        defaultValue: Size3d.zero,
+      ),
+    );
   }
 }
 
@@ -358,6 +415,18 @@ class OverflowBox3d extends SingleChildLayout3d
     size = chosen;
     child.place(_alignment.inscribe(child.size, size));
   }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DoubleProperty('minWidth', minWidth, defaultValue: null));
+    properties.add(DoubleProperty('maxWidth', maxWidth, defaultValue: null));
+    properties.add(DoubleProperty('minHeight', minHeight, defaultValue: null));
+    properties.add(DoubleProperty('maxHeight', maxHeight, defaultValue: null));
+    properties.add(DoubleProperty('minDepth', minDepth, defaultValue: null));
+    properties.add(DoubleProperty('maxDepth', maxDepth, defaultValue: null));
+    properties.add(DiagnosticsProperty<Alignment3d>('alignment', alignment));
+  }
 }
 
 /// A box that sizes its child to a fraction of the room it was given, the 3D
@@ -488,5 +557,20 @@ class FractionallySizedBox3d extends SingleChildLayout3d
     }
     size = chosen;
     child.place(_alignment.inscribe(child.size, size));
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(
+      DoubleProperty('widthFactor', widthFactor, defaultValue: null),
+    );
+    properties.add(
+      DoubleProperty('heightFactor', heightFactor, defaultValue: null),
+    );
+    properties.add(
+      DoubleProperty('depthFactor', depthFactor, defaultValue: null),
+    );
+    properties.add(DiagnosticsProperty<Alignment3d>('alignment', alignment));
   }
 }

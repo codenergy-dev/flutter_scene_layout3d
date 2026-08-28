@@ -1,3 +1,6 @@
+import 'package:flutter/foundation.dart'
+    show DiagnosticPropertiesBuilder, IntProperty;
+
 import '../layout3d.dart';
 import 'stack.dart';
 
@@ -88,5 +91,11 @@ class IndexedStack3d extends Stack3d {
     // hidden while it was outside some other view's window is shown again by
     // the stack if it is the one selected, which is what a caller means.
     _applyVisibility();
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(IntProperty('index', index, ifNull: 'none shown'));
   }
 }

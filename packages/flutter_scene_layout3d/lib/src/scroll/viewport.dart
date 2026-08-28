@@ -1,5 +1,8 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart'
+    show DiagnosticPropertiesBuilder, EnumProperty;
+
 import '../geometry/offset3d.dart';
 import '../geometry/size3d.dart';
 import '../layout3d.dart';
@@ -86,5 +89,11 @@ class Viewport3d extends SingleChildLayout3d
       unitsPerLogicalPixel: metrics.unitsPerLogicalPixel,
     );
     child.place(Offset3d.along(axis, -controller.offset));
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(EnumProperty<Axis3d>('axis', axis));
   }
 }

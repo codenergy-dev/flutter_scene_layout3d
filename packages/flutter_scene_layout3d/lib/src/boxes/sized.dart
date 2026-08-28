@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart'
+    show DiagnosticPropertiesBuilder, DiagnosticsProperty;
 import 'package:vector_math/vector_math.dart' show Matrix4, Quaternion, Vector3;
 
 import '../geometry/alignment3d.dart';
@@ -80,6 +82,17 @@ class ConstrainedBox3d extends SingleChildLayout3d
     child.layout(combined, parentUsesSize: true);
     size = child.size;
     child.place(Offset3d.zero);
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(
+      DiagnosticsProperty<Constraints3d>(
+        'additionalConstraints',
+        additionalConstraints,
+      ),
+    );
   }
 }
 
@@ -270,5 +283,12 @@ class Transform3d extends SingleChildLayout3d
     child.place(Offset3d.zero);
     // The transform pivots around a point derived from the size just chosen.
     applyNodeTransform();
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<Matrix4>('transform', transform));
+    properties.add(DiagnosticsProperty<Alignment3d>('alignment', alignment));
   }
 }

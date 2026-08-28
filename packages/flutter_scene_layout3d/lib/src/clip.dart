@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart'
+    show DiagnosticPropertiesBuilder, FlagProperty;
 import 'package:vector_math/vector_math.dart' show Matrix4, Vector4;
 
 import 'geometry/offset3d.dart';
@@ -413,5 +415,16 @@ class ClipBox3d extends ProxyLayout3d {
   void dispose() {
     _culled.clear();
     super.dispose();
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(
+      FlagProperty('clipDepth', value: clipDepth, ifTrue: 'clips depth'),
+    );
+    properties.add(
+      FlagProperty('cullNodes', value: cullNodes, ifFalse: 'no culling'),
+    );
   }
 }

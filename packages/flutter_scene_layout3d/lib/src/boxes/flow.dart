@@ -1,4 +1,5 @@
-import 'package:flutter/foundation.dart' show Listenable;
+import 'package:flutter/foundation.dart'
+    show DiagnosticPropertiesBuilder, DiagnosticsProperty, Listenable;
 import 'package:vector_math/vector_math.dart' show Matrix4;
 
 import '../geometry/constraints3d.dart';
@@ -302,5 +303,11 @@ class Flow3d extends MultiChildLayout3d<ParentData3d>
       if (child.hitTest(result, ray: childRay)) return true;
     }
     return false;
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<Flow3dDelegate>('delegate', delegate));
   }
 }

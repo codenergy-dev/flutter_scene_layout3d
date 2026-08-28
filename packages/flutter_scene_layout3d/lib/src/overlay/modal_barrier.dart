@@ -1,4 +1,9 @@
-import 'package:flutter/foundation.dart' show VoidCallback;
+import 'package:flutter/foundation.dart'
+    show
+        DiagnosticPropertiesBuilder,
+        DoubleProperty,
+        FlagProperty,
+        VoidCallback;
 import 'package:flutter/gestures.dart'
     show PointerCancelEvent, PointerDownEvent, PointerUpEvent;
 
@@ -137,6 +142,11 @@ class ModalBarrier3d extends SingleChildLayout3d implements HitTestTarget3d {
   }
 
   @override
-  String toString() =>
-      'ModalBarrier3d(${_dismissible ? 'dismissible' : 'inert'})';
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(
+      FlagProperty('dismissible', value: dismissible, ifFalse: 'inert'),
+    );
+    properties.add(DoubleProperty('thickness', thickness));
+  }
 }

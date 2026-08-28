@@ -1,9 +1,12 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart'
+    show DiagnosticPropertiesBuilder, DiagnosticsProperty;
+
 import '../boxes/flex.dart' show CrossAxisAlignment3d;
+import '../built_children.dart';
 import '../geometry/constraints3d.dart';
 import '../geometry/offset3d.dart';
-import '../built_children.dart';
 import '../layout3d.dart';
 import '../scroll/grid_delegate.dart' show Grid3dDelegate, Grid3dLayout;
 import 'sliver.dart';
@@ -166,5 +169,13 @@ class SliverGrid3d extends SliverMultiBoxAdaptor3d {
       child.node.visible =
           start + grid.cellMainAxisExtent > visibleStart && start < visibleEnd;
     }
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(
+      DiagnosticsProperty<Grid3dDelegate>('gridDelegate', gridDelegate),
+    );
   }
 }

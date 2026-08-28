@@ -1,5 +1,8 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart'
+    show DiagnosticPropertiesBuilder, DoubleProperty, FlagProperty;
+
 import '../geometry/offset3d.dart';
 import '../layout3d.dart';
 import '../layout_pass.dart';
@@ -485,5 +488,16 @@ class SliverPersistentHeader3d extends Sliver3d
     if (old == null) return;
     child = null;
     old.dispose();
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(FlagProperty('pinned', value: pinned, ifTrue: 'pinned'));
+    properties.add(
+      FlagProperty('floating', value: floating, ifTrue: 'floating'),
+    );
+    properties.add(DoubleProperty('lift', lift, defaultValue: null));
+    properties.add(DoubleProperty('obstructedExtent', obstructedExtent));
   }
 }

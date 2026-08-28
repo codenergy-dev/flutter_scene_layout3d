@@ -1,4 +1,5 @@
-import 'package:flutter/foundation.dart' show protected;
+import 'package:flutter/foundation.dart'
+    show DiagnosticPropertiesBuilder, DiagnosticsProperty, protected;
 
 import '../geometry/constraints3d.dart';
 import '../geometry/offset3d.dart';
@@ -33,6 +34,12 @@ class LayoutId3d extends ProxyLayout3d {
     // The parent's delegate looks children up by id, so the arrangement it
     // produced was for the old one.
     markParentNeedsLayout();
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<Object>('id', id));
   }
 }
 
@@ -285,5 +292,13 @@ class CustomMultiChildLayout3d extends MultiChildLayout3d<ParentData3d> {
   void performLayout() {
     size = constraints.constrain(_delegate.getSize(constraints));
     _delegate._run(size, childrenById());
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(
+      DiagnosticsProperty<MultiChildLayout3dDelegate>('delegate', delegate),
+    );
   }
 }

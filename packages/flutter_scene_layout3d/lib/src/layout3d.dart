@@ -1,12 +1,24 @@
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart'
-    show VoidCallback, mustCallSuper, protected;
+    show
+        DiagnosticLevel,
+        DiagnosticPropertiesBuilder,
+        DiagnosticableTreeMixin,
+        DiagnosticsNode,
+        DiagnosticsProperty,
+        FlagProperty,
+        StringProperty,
+        VoidCallback,
+        describeIdentity,
+        mustCallSuper,
+        protected;
 import 'package:flutter/widgets.dart' show FocusManager, FocusScopeNode;
 import 'package:flutter_scene/scene.dart' show Node;
 import 'package:vector_math/vector_math.dart' show Matrix4;
 
 import 'clip.dart';
+import 'debug/wireframe.dart';
 import 'decoration/decoration.dart';
 import 'geometry/basis3d.dart';
 import 'geometry/constraints3d.dart';
@@ -133,6 +145,30 @@ class Layout3dOwner {
   /// Whether anything on this surface has ever asked for focus.
   bool get hasFocusScope => _focusScope != null;
 
+  Layout3dWireframe? _debugWireframe;
+
+  /// Whether a debug wireframe is currently drawing this tree.
+  ///
+  /// See [debugPaintLayout3dSize]. Always false unless something set that
+  /// flag and flushed.
+  bool get debugHasWireframe => _debugWireframe != null;
+
+  /// The wireframe drawing this tree's debug overlay, made on first use.
+  ///
+  /// Per-surface for the same reason [painters] is: one set of shared line
+  /// geometries serves every box on the plane, and they have to be reachable
+  /// without a `BuildContext`. Returns null while [factory] cannot build one,
+  /// which is what a headless test and a not-yet-ready engine both look like.
+  Layout3dWireframe? debugAcquireWireframe(
+    Layout3dWireframe? Function() factory,
+  ) => _debugWireframe ??= factory();
+
+  /// Drops the debug wireframe and everything it built.
+  void debugReleaseWireframe() {
+    _debugWireframe?.dispose();
+    _debugWireframe = null;
+  }
+
   /// Releases what the owner made, which is the focus scope and nothing else.
   ///
   /// Called by [Layout3dSurface.dispose]. The layouts are not the owner's to
@@ -140,6 +176,7 @@ class Layout3dOwner {
   void dispose() {
     _focusScope?.dispose();
     _focusScope = null;
+    debugReleaseWireframe();
     _nodesNeedingLayout.clear();
   }
 
@@ -197,7 +234,7 @@ class Layout3dOwner {
 ///
 /// Subclass [SingleChildLayout3d] or [MultiChildLayout3d] rather than this
 /// class directly unless the box is a leaf.
-abstract class Layout3d {
+abstract class Layout3d with DiagnosticableTreeMixin {
   /// Creates a layout, optionally naming its scene [Node].
   Layout3d({String? name}) : _node = Node() {
     _node.name = name ?? '$runtimeType';
@@ -964,10 +1001,156 @@ abstract class Layout3d {
     return child.hitTest(result, ray: ray.shifted(child.offset));
   }
 
+  // ------------------------------------------------------------ diagnostics
+
+  /// Describes this box for [toStringDeep], [toStringShallow] and the error
+  /// messages that quote a box.
+  ///
+  /// The 3D counterpart of `RenderObject.debugFillProperties`, and it exists
+  /// for the same reason: a layout here produces no pixels, so when a test
+  /// says a box is `Size3d(0.000, 0.000, 0.000)` there is nothing to look at
+  /// and no way to tell a box that was never laid out from one that was
+  /// squeezed to nothing by its parent. The properties below are the ones
+  /// that answer that question — what came down, what went up, where the
+  /// parent put it, and whether the answer is current.
+  ///
+  /// Subclasses add what they were configured with (a padding, an alignment,
+  /// a flex factor) and call `super`. Everything here is debug-only:
+  /// [DiagnosticPropertiesBuilder] work is stripped in release.
   @override
-  String toString() {
-    final sizeText = _size == null ? 'not laid out' : '$_size';
-    return '$runtimeType($sizeText)';
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    final name = _node.name;
+    properties.add(
+      StringProperty(
+        'name',
+        name,
+        quoted: true,
+        // The node is named after its runtime type unless the caller named
+        // it, and repeating the type in every line of a tree dump is noise.
+        defaultValue: '$runtimeType',
+      ),
+    );
+    properties.add(
+      DiagnosticsProperty<Constraints3d>(
+        'constraints',
+        _constraints,
+        missingIfNull: true,
+      ),
+    );
+    properties.add(
+      DiagnosticsProperty<Size3d>(
+        'size',
+        _size,
+        // A box with no size has not been laid out, and saying so is more
+        // useful than printing `null`.
+        ifNull: 'MISSING',
+      ),
+    );
+    properties.add(
+      DiagnosticsProperty<Offset3d>(
+        'offset',
+        offset,
+        defaultValue: Offset3d.zero,
+      ),
+    );
+    properties.add(
+      DiagnosticsProperty<Offset3d>(
+        'sceneOffset',
+        sceneOffset,
+        defaultValue: Offset3d.zero,
+        description: sceneOffset == Offset3d.zero
+            ? null
+            : 'sceneOffset: $sceneOffset (geometry only)',
+      ),
+    );
+    properties.add(
+      DiagnosticsProperty<Offset3d>(
+        'nodeOffset',
+        _nodeOffset,
+        defaultValue: Offset3d.zero,
+      ),
+    );
+    properties.add(
+      DiagnosticsProperty<Matrix4>(
+        'nodeTransform',
+        _nodeTransform,
+        defaultValue: null,
+      ),
+    );
+    properties.add(
+      FlagProperty(
+        'sizedByParent',
+        value: sizedByParent,
+        ifTrue: 'sizedByParent',
+        level: DiagnosticLevel.fine,
+      ),
+    );
+    properties.add(
+      StringProperty(
+        'relayoutBoundary',
+        _debugRelayoutBoundaryDescription,
+        level: DiagnosticLevel.fine,
+      ),
+    );
+    properties.add(
+      FlagProperty('needsLayout', value: _needsLayout, ifTrue: 'NEEDS-LAYOUT'),
+    );
+    properties.add(
+      FlagProperty('attached', value: attached, ifFalse: 'DETACHED'),
+    );
+    properties.add(
+      FlagProperty('debugDisposed', value: debugDisposed, ifTrue: 'DISPOSED'),
+    );
+  }
+
+  /// How far up the tree this box's relayout boundary sits, in Flutter's
+  /// `up{n}` spelling, or null when there is none yet.
+  ///
+  /// The single most useful number when a change is not showing up: dirt
+  /// stops at the boundary, so a box whose boundary is `up3` is relaid out
+  /// by a box three levels above it, and marking *it* dirty does nothing the
+  /// parent has not already been told.
+  String? get _debugRelayoutBoundaryDescription {
+    final boundary = _relayoutBoundary;
+    if (boundary == null) return null;
+    var steps = 0;
+    Layout3d? node = this;
+    while (node != null && !identical(node, boundary)) {
+      steps += 1;
+      node = node._parent;
+    }
+    if (node == null) return 'elsewhere';
+    return steps == 0 ? 'this' : 'up$steps';
+  }
+
+  /// The children of this box, as diagnostics nodes.
+  ///
+  /// Taken from [visitChildren], so a box that arranges its children in an
+  /// order of its own dumps them in that order too. A single child is named
+  /// `child`; a list is numbered from one, as Flutter numbers a
+  /// `RenderFlex`'s.
+  @override
+  List<DiagnosticsNode> debugDescribeChildren() {
+    final children = <Layout3d>[];
+    visitChildren(children.add);
+    if (children.isEmpty) return const <DiagnosticsNode>[];
+    if (children.length == 1) {
+      return <DiagnosticsNode>[
+        children.single.toDiagnosticsNode(name: 'child'),
+      ];
+    }
+    return <DiagnosticsNode>[
+      for (var i = 0; i < children.length; i += 1)
+        children[i].toDiagnosticsNode(name: 'child ${i + 1}'),
+    ];
+  }
+
+  @override
+  String toStringShort() {
+    final buffer = StringBuffer(describeIdentity(this));
+    if (_debugDisposed) buffer.write(' DISPOSED');
+    return buffer.toString();
   }
 }
 

@@ -1,3 +1,6 @@
+import 'package:flutter/foundation.dart'
+    show DiagnosticPropertiesBuilder, DoubleProperty, EnumProperty;
+
 import '../geometry/offset3d.dart';
 import '../geometry/size3d.dart';
 import '../layout3d.dart';
@@ -124,6 +127,13 @@ class IntrinsicExtent3d extends SingleChildLayout3d
     size = child.size;
     child.place(Offset3d.zero);
   }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(EnumProperty<Axis3d>('axis', axis));
+    properties.add(DoubleProperty('step', step, defaultValue: null));
+  }
 }
 
 /// Sizes its child to its own preferred width, the 3D analogue of
@@ -217,5 +227,12 @@ class Baseline3d extends ShiftedLayout3d {
       childSize.withAxis(_axis, shift + childSize.alongAxis(_axis)),
     );
     child.place(Offset3d.along(_axis, shift));
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DoubleProperty('baseline', baseline));
+    properties.add(EnumProperty<Axis3d>('axis', axis));
   }
 }

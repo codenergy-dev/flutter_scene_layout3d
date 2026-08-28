@@ -1,5 +1,8 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart'
+    show DiagnosticPropertiesBuilder, DoubleProperty, EnumProperty;
+
 import '../geometry/constraints3d.dart';
 import '../geometry/offset3d.dart';
 import '../geometry/size3d.dart';
@@ -357,4 +360,26 @@ class Wrap3d extends MultiChildLayout3d<ParentData3d> {
     WrapCrossAlignment3d.end => extent - childExtent,
     WrapCrossAlignment3d.center => (extent - childExtent) / 2.0,
   };
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(EnumProperty<Axis3d>('direction', direction));
+    properties.add(EnumProperty<WrapAlignment3d>('alignment', alignment));
+    properties.add(DoubleProperty('spacing', spacing, defaultValue: 0.0));
+    properties.add(EnumProperty<WrapAlignment3d>('runAlignment', runAlignment));
+    properties.add(DoubleProperty('runSpacing', runSpacing, defaultValue: 0.0));
+    properties.add(
+      EnumProperty<WrapCrossAlignment3d>(
+        'crossAxisAlignment',
+        crossAxisAlignment,
+      ),
+    );
+    properties.add(
+      EnumProperty<WrapCrossAlignment3d>(
+        'depthAxisAlignment',
+        depthAxisAlignment,
+      ),
+    );
+  }
 }

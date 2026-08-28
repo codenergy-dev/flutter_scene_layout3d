@@ -71,6 +71,16 @@ export 'src/boxes/table.dart'
         TableColumnWidth3d;
 export 'src/boxes/wrap.dart' show WrapAlignment3d, WrapCrossAlignment3d;
 export 'src/camera_binding.dart' show Layout3dCameraBinding;
+export 'src/debug/diagnostics.dart'
+    show debugDescribeLayout3dTree, debugDumpLayout3dTree;
+export 'src/debug/overflow.dart'
+    show Layout3dOverflow, debugLayout3dOverflowReporter;
+export 'src/debug/wireframe.dart'
+    show
+        Layout3dWireframe,
+        debugLayout3dWireframeFactory,
+        debugPaintLayout3dBaselines,
+        debugPaintLayout3dSize;
 export 'src/geometry/alignment3d.dart' show Alignment3d;
 export 'src/geometry/basis3d.dart' show LayoutBasis3d;
 export 'src/geometry/constraints3d.dart' show Constraints3d;
@@ -99,6 +109,8 @@ export 'src/widgets/overlay.dart'
     show Overlay3dController, SceneModalBarrier3d, SceneOverlay3d;
 export 'src/layout3d.dart' show Layout3d;
 export 'src/metrics.dart' show Layout3dMetrics, VisualDensity3d;
+export 'src/semantics.dart'
+    show Semantics3d, debugFocusableBoxesWithoutSemantics;
 export 'src/scroll/grid_delegate.dart'
     show
         Grid3dDelegate,
@@ -130,7 +142,11 @@ export 'src/text/text_measurement.dart'
         TextMeasurement3d;
 export 'src/text/text_renderer.dart' show Text3dRenderRequest, Text3dRenderer;
 export 'src/widgets/framework.dart'
-    show LazyLayout3dWidget, Layout3dWidget, SingleChildLayout3dWidget;
+    show
+        LazyLayout3dWidget,
+        Layout3dWidget,
+        SingleChildLayout3dWidget,
+        debugCheckNoInterposedRenderObject;
 export 'src/widgets/layouts.dart'
     show
         Layout3dWidgetBuilder,
@@ -171,6 +187,7 @@ export 'src/widgets/layouts.dart'
         ScenePadding3d,
         ScenePositioned3d,
         SceneRow3d,
+        SceneSemantics3d,
         SceneSizedBox3d,
         SceneSliverGrid3d,
         SceneSliverList3d,

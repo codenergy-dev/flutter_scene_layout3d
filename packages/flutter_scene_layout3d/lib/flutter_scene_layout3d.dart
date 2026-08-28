@@ -68,6 +68,12 @@
 ///    the node-only animation path: geometry that moves without any box
 ///    changing size, so nothing is laid out again. With the [Size3dTween]
 ///    family for the animations that do change a size.
+///  * [debugDumpLayout3dTree], [debugPaintLayout3dSize] and
+///    [Layout3dOverflowReportingMixin], the debugging half: a layout that
+///    paints nothing has nothing to inspect, so every box is a
+///    `DiagnosticableTree`, an overflow is reported with its axis and its
+///    amount, and the extents can be drawn as real lines. [Semantics3d] is
+///    the accessibility half, sized from the box rather than from the meshes.
 ///  * [Layout3dBuiltChildrenMixin] and [Layout3dMeasuredChildrenMixin], the
 ///    bookkeeping every view built from an [Layout3dItemBuilder] needs, for
 ///    writing one of your own, with [Layout3dLayoutPassMixin] and
@@ -150,6 +156,33 @@ export 'src/built_children.dart'
         Layout3dPrototypeBuilder,
         builtChildrenOf;
 export 'src/camera_binding.dart' show Layout3dCameraBinding;
+export 'src/debug/diagnostics.dart'
+    show
+        debugDescribeLayout3dAncestry,
+        debugDescribeLayout3dTree,
+        debugDumpLayout3dTree,
+        layout3dTreeStyle;
+export 'src/debug/overflow.dart'
+    show
+        Layout3dOverflow,
+        Layout3dOverflowReporter,
+        Layout3dOverflowReportingMixin,
+        debugLayout3dOverflowReporter,
+        defaultLayout3dOverflowReporter;
+export 'src/debug/wireframe.dart'
+    show
+        Layout3dWireframe,
+        Layout3dWireframeLine,
+        Layout3dWireframeRequest,
+        LineSegments3dWireframe,
+        debugLayout3dWireframeFactory,
+        debugPaintLayout3dBaselineColor,
+        debugPaintLayout3dBaselines,
+        debugPaintLayout3dOffsetColor,
+        debugPaintLayout3dSize,
+        debugPaintLayout3dSizeColor,
+        debugSyncLayout3dWireframes,
+        defaultLayout3dWireframeFactory;
 export 'src/clip.dart' show ClipBox3d, Clip3dRegion, ClipPlane3d;
 export 'src/decoration/box_decoration.dart'
     show Border3d, BoxDecoration3d, BoxDecoration3dUniforms;
@@ -210,6 +243,8 @@ export 'src/overlay/overlay.dart'
         Overlay3dEntry,
         OverlayLayer3d;
 export 'src/scroll/box_scroll_view.dart' show BoxScrollView3d;
+export 'src/semantics.dart'
+    show Semantics3d, debugFocusableBoxesWithoutSemantics;
 export 'src/scroll/grid_delegate.dart'
     show
         Grid3dDelegate,

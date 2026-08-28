@@ -1,5 +1,8 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart'
+    show DiagnosticPropertiesBuilder, DiagnosticsProperty, DoubleProperty;
+
 import '../geometry/alignment3d.dart';
 import '../geometry/edge_insets3d.dart';
 import '../geometry/offset3d.dart';
@@ -74,6 +77,12 @@ class Padding3d extends ShiftedLayout3d {
     child.layout(constraints.deflate(_padding), parentUsesSize: true);
     size = constraints.constrain(_padding.inflateSize(child.size));
     child.place(_padding.topLeftFront);
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<EdgeInsets3d>('padding', padding));
   }
 }
 
@@ -183,6 +192,21 @@ class Align3d extends ShiftedLayout3d {
       ),
     );
     child.place(_alignment.inscribe(childSize, size));
+  }
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<Alignment3d>('alignment', alignment));
+    properties.add(
+      DoubleProperty('widthFactor', widthFactor, defaultValue: null),
+    );
+    properties.add(
+      DoubleProperty('heightFactor', heightFactor, defaultValue: null),
+    );
+    properties.add(
+      DoubleProperty('depthFactor', depthFactor, defaultValue: null),
+    );
   }
 }
 
