@@ -57,8 +57,18 @@ export 'src/animation/tweens.dart'
         StateLayer3dTween;
 export 'src/boxes/flex.dart'
     show CrossAxisAlignment3d, FlexFit3d, MainAxisAlignment3d, MainAxisSize3d;
+export 'src/boxes/custom_layout.dart' show MultiChildLayout3dDelegate;
+export 'src/boxes/flow.dart' show Flow3dDelegate, Flow3dPaintingContext;
 export 'src/boxes/node_box.dart' show BoxFit3d;
 export 'src/boxes/stack.dart' show StackFit3d;
+export 'src/boxes/table.dart'
+    show
+        FixedColumnWidth3d,
+        FlexColumnWidth3d,
+        FractionColumnWidth3d,
+        IntrinsicColumnWidth3d,
+        TableCellAlignment3d,
+        TableColumnWidth3d;
 export 'src/boxes/wrap.dart' show WrapAlignment3d, WrapCrossAlignment3d;
 export 'src/camera_binding.dart' show Layout3dCameraBinding;
 export 'src/geometry/alignment3d.dart' show Alignment3d;
@@ -98,7 +108,11 @@ export 'src/scroll/grid_delegate.dart'
 export 'src/scroll/scroll_controller.dart'
     show ScrollDirection3d, Scroll3dController;
 export 'src/scroll/scroll_physics.dart'
-    show BouncingScroll3dPhysics, ClampingScroll3dPhysics, Scroll3dPhysics;
+    show
+        BouncingScroll3dPhysics,
+        ClampingScroll3dPhysics,
+        PageScroll3dPhysics,
+        Scroll3dPhysics;
 export 'src/scroll/scrollable.dart'
     show Scrollable3d, ensureVisible3d, offsetToReveal3d;
 export 'src/sliver/sliver.dart' show Sliver3d;
@@ -119,16 +133,22 @@ export 'src/widgets/framework.dart'
     show LazyLayout3dWidget, Layout3dWidget, SingleChildLayout3dWidget;
 export 'src/widgets/layouts.dart'
     show
+        Layout3dWidgetBuilder,
         SceneAbsorbPointer3d,
         SceneAlign3d,
+        SceneAspectRatio3d,
         SceneBaseline3d,
         SceneCenter3d,
         SceneColumn3d,
         SceneConstrainedBox3d,
+        SceneCustomMultiChildLayout3d,
         SceneCustomScrollView3d,
         SceneContainer3d,
         SceneDepth3d,
         SceneExpanded3d,
+        SceneFittedBox3d,
+        SceneFlow3d,
+        SceneFractionallySizedBox3d,
         SceneFlex3d,
         SceneFocus3d,
         SceneFlexible3d,
@@ -136,24 +156,33 @@ export 'src/widgets/layouts.dart'
         SceneGridView3d,
         SceneHitTestArea3d,
         SceneIgnorePointer3d,
+        SceneIndexedStack3d,
         SceneIntrinsicDepth3d,
         SceneIntrinsicHeight3d,
         SceneIntrinsicWidth3d,
+        SceneLayoutBuilder3d,
+        SceneLayoutId3d,
+        SceneLimitedBox3d,
         SceneListener3d,
         SceneListView3d,
         SceneNodeBox3d,
+        SceneOverflowBox3d,
+        ScenePageView3d,
         ScenePadding3d,
         ScenePositioned3d,
         SceneRow3d,
         SceneSizedBox3d,
         SceneSliverGrid3d,
         SceneSliverList3d,
+        SceneSliverPadding3d,
         SceneSliverToBoxAdapter3d,
         SceneSpacer3d,
         SceneStack3d,
+        SceneTable3d,
         SceneTapTarget3d,
         SceneText3d,
         SceneTransform3d,
+        SceneUnconstrainedBox3d,
         SceneViewport3d,
         SceneWrap3d;
 export 'src/widgets/surface.dart' show Layout3dController, SceneLayout3d;

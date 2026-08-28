@@ -89,7 +89,11 @@ export 'src/animation/tweens.dart'
         Offset3dTween,
         Size3dTween,
         StateLayer3dTween;
+export 'src/boxes/aspect_ratio.dart' show AspectRatio3d;
 export 'src/boxes/container.dart' show Container3d;
+export 'src/boxes/custom_layout.dart'
+    show CustomMultiChildLayout3d, LayoutId3d, MultiChildLayout3dDelegate;
+export 'src/boxes/fitted.dart' show FittedBox3d;
 export 'src/boxes/flex.dart'
     show
         Column3d,
@@ -103,7 +107,9 @@ export 'src/boxes/flex.dart'
         MainAxisSize3d,
         Row3d,
         Spacer3d;
+export 'src/boxes/flow.dart' show Flow3d, Flow3dDelegate, Flow3dPaintingContext;
 export 'src/boxes/ignore_pointer.dart' show AbsorbPointer3d, IgnorePointer3d;
+export 'src/boxes/indexed_stack.dart' show IndexedStack3d;
 export 'src/boxes/intrinsic.dart'
     show
         Baseline3d,
@@ -111,11 +117,27 @@ export 'src/boxes/intrinsic.dart'
         IntrinsicExtent3d,
         IntrinsicHeight3d,
         IntrinsicWidth3d;
+export 'src/boxes/layout_builder.dart' show Layout3dBuilder, LayoutBuilder3d;
 export 'src/boxes/node_box.dart' show BoxFit3d, NodeBox3d;
+export 'src/boxes/overflow.dart'
+    show
+        FractionallySizedBox3d,
+        LimitedBox3d,
+        OverflowBox3d,
+        UnconstrainedBox3d;
 export 'src/boxes/shifted.dart'
     show Align3d, Center3d, Padding3d, ShiftedLayout3d;
 export 'src/boxes/sized.dart' show ConstrainedBox3d, SizedBox3d, Transform3d;
 export 'src/boxes/stack.dart' show Positioned3d, Stack3d, StackFit3d;
+export 'src/boxes/table.dart'
+    show
+        FixedColumnWidth3d,
+        FlexColumnWidth3d,
+        FractionColumnWidth3d,
+        IntrinsicColumnWidth3d,
+        Table3d,
+        TableCellAlignment3d,
+        TableColumnWidth3d;
 export 'src/boxes/visibility.dart' show Offstage3d, Visibility3d;
 export 'src/boxes/wrap.dart' show Wrap3d, WrapAlignment3d, WrapCrossAlignment3d;
 export 'src/built_children.dart'
@@ -196,10 +218,15 @@ export 'src/scroll/grid_delegate.dart'
         Grid3dLayout;
 export 'src/scroll/grid_view.dart' show Grid3dItemBuilder, GridView3d;
 export 'src/scroll/list_view.dart' show ListView3d;
+export 'src/scroll/page_view.dart' show PageView3d;
 export 'src/scroll/scroll_controller.dart'
     show ScrollDirection3d, Scroll3dController;
 export 'src/scroll/scroll_physics.dart'
-    show BouncingScroll3dPhysics, ClampingScroll3dPhysics, Scroll3dPhysics;
+    show
+        BouncingScroll3dPhysics,
+        ClampingScroll3dPhysics,
+        PageScroll3dPhysics,
+        Scroll3dPhysics;
 export 'src/scroll/scrollable.dart'
     show
         Scroll3dHolderMixin,
@@ -216,6 +243,7 @@ export 'src/sliver/sliver_grid.dart' show SliverGrid3d;
 export 'src/sliver/sliver_persistent_header.dart'
     show SliverPersistentHeader3d, SliverPersistentHeader3dDelegate;
 export 'src/sliver/sliver_list.dart' show Sliver3dItemBuilder, SliverList3d;
+export 'src/sliver/sliver_padding.dart' show SliverPadding3d;
 export 'src/text/break_rules.dart'
     show OverflowWrap3d, TextBreakRules3d, TextWhitespace3d, WordBreak3d;
 export 'src/text/line_break.dart' show TextBreak3d;

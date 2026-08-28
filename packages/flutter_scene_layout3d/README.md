@@ -465,14 +465,22 @@ than none.
 | `Row3d`, `Column3d`, `Depth3d`, `Flexible3d`, `Expanded3d`, `Spacer3d` | `Row`, `Column`, `Flexible`, `Expanded`, `Spacer` |
 | `Stack3d`, `Positioned3d` | `Stack`, `Positioned` |
 | `Wrap3d` | `Wrap` |
+| `LimitedBox3d`, `UnconstrainedBox3d`, `OverflowBox3d`, `FractionallySizedBox3d` | `LimitedBox`, `UnconstrainedBox`, `OverflowBox`, `FractionallySizedBox` |
+| `AspectRatio3d`, `FittedBox3d`, `IndexedStack3d` | `AspectRatio`, `FittedBox`, `IndexedStack` |
+| `Table3d`, `TableColumnWidth3d` and its four policies | `Table`, `TableColumnWidth` and its own |
+| `LayoutBuilder3d` | `LayoutBuilder` |
+| `CustomMultiChildLayout3d`, `MultiChildLayout3dDelegate`, `LayoutId3d` | `CustomMultiChildLayout`, `MultiChildLayoutDelegate`, `LayoutId` |
+| `Flow3d`, `Flow3dDelegate` | `Flow`, `FlowDelegate`, at node-transform cost rather than repaint cost |
 | `Layout3dCameraBinding` | what `View` does for a Flutter tree: the thing that bounds it |
 | `Layout3dMetrics`, `VisualDensity3d` | `MediaQuery`'s scale factors, `VisualDensity` |
 | `Viewport3d`, `ListView3d`, `GridView3d`, `Scroll3dController` | `SingleChildScrollView`, `ListView`, `GridView`, `ScrollController` |
 | `Scroll3dPhysics`, `ClampingScroll3dPhysics`, `BouncingScroll3dPhysics` | `ScrollPhysics` and its two familiar shapes |
+| `PageView3d`, `PageScroll3dPhysics` | `PageView`, `PageScrollPhysics` |
 | `ensureVisible3d`, `offsetToReveal3d` | `Scrollable.ensureVisible`, `RenderAbstractViewport.getOffsetToReveal` |
 | `Grid3dDelegate`, `Grid3dLayout` | `SliverGridDelegate`, `SliverGridLayout` |
 | `CustomScrollView3d`, `Sliver3d` | `CustomScrollView` + `Viewport`, `RenderSliver` |
 | `SliverList3d`, `SliverGrid3d`, `SliverToBoxAdapter3d` | `SliverList`, `SliverGrid`, `SliverToBoxAdapter` |
+| `SliverPadding3d` | `SliverPadding` |
 | `SliverPersistentHeader3d`, `SliverPersistentHeader3dDelegate` | `SliverPersistentHeader`, `SliverPersistentHeaderDelegate` |
 | `BoxScrollView3d`, `SliverMultiBoxAdaptor3d` | `BoxScrollView`, `RenderSliverMultiBoxAdaptor` |
 | `SliverConstraints3d`, `SliverGeometry3d` | `SliverConstraints`, `SliverGeometry` |
@@ -596,6 +604,51 @@ Wrap3d(
   children: [for (final model in models) SizedBox3d.cube(0.4, child: ...)],
 )
 ```
+
+## Building from the room you got
+
+Three boxes hand the decision back to you when the algebra of rows, stacks and
+wraps does not have the shape you want.
+
+`LayoutBuilder3d` builds a *different subtree* depending on the constraints it
+was given, which is what a responsive component is made of: show the label
+only if it fits, put the navigation at the side of a wide panel and along the
+bottom of a narrow one.
+
+```dart
+SceneLayoutBuilder3d(
+  builder: (context, constraints) => constraints.maxWidth > 6
+      ? SceneRow3d(children: [rail, body])
+      : SceneColumn3d(children: [body, bar]),
+)
+```
+
+The builder runs *during* the layout pass, which is the same window a lazily
+built list inflates its items in: the surface lays out inside a Flutter layout
+callback, and inserting render objects below the box that opened one is
+exactly what it permits. Two consequences follow. A builder must not have side
+effects on the tree above it — no `setState` on an ancestor from inside one —
+because the pass is already past that point. And an intrinsic query is
+refused, because it asks how big this box would be under constraints it has
+not been given, and answering would mean building a subtree nobody is going to
+lay out. When the constraints change, the child is reconciled rather than
+rebuilt from nothing, so state, focus nodes and painters below it survive a
+resize.
+
+`CustomMultiChildLayout3d` is the other escape hatch: children tagged with
+`LayoutId3d`, and a `MultiChildLayout3dDelegate` that lays each one out and
+positions it by name. It is what a `Scaffold3d` is — the body gets the room
+the bar left over — and the delegate API is Flutter's, with `Size3d`,
+`Offset3d` and `Constraints3d` substituted.
+
+`Flow3d` is cheaper here than in Flutter. Its delegate places children by
+writing *node* transforms rather than by laying anything out, so an
+arrangement can animate every frame — a menu fanning out, a carousel curving
+toward the back of the plane — without a box being measured again. It is the
+one box where a node transform is taken account of by a ray, and deliberately
+so: in a flow, layout put every child at the origin corner, and the
+delegate's transform is the child's real position, so a ray that ignored it
+would always find the last child.
 
 ## Scrolling
 
@@ -781,6 +834,15 @@ offset backwards.
 Anything else — a thumbstick, a wheel, a scripted camera move — drives
 `Scroll3dController.offset` directly, or `applyUserOffset` if it wants the
 physics applied to it as though it were a finger.
+
+A `PageView3d` is a list with two things decided for it: every item is exactly
+as long as the window, and the release settles on an item boundary instead of
+wherever friction left it. The snapping is `PageScroll3dPhysics`, which the
+view puts on the position it creates for itself; hand it a controller of your
+own and the physics is yours to choose. The stride is the window by default,
+and stating one — `PageScroll3dPhysics(pageExtent: cardExtent + spacing)` —
+snaps a plain `ListView3d` to something that is not a whole page, which is how
+a carousel with peeking neighbours is built.
 
 ## Slivers
 
@@ -1497,6 +1559,14 @@ to a frame.
 * **The plane node moves in scene coordinates.** `surface.plane.position` is
   an ordinary engine transform; only what is *inside* the layout speaks layout
   space.
+* **An aspect ratio is between two named axes, not all three.**
+  `AspectRatio3d(aspectRatio: 16 / 9)` is width : height, the 2D habit, and
+  the depth axis is passed through untouched. Say `axis:` and `relativeTo:`
+  for any other pairing. Scaling a whole subtree into a shape is a different
+  operation, and it is `FittedBox3d`.
+* **A `Table3d` is a plane of cells.** Rows and columns, with depth as an
+  alignment axis rather than a third index — the choice `Wrap3d` already made.
+  Cells are given in row-major order, `columnCount` to a row.
 * **A scrolling view on an unbounded depth axis has no depth.** It takes the
   depth it is given, and an unbounded axis gives it none, so items thicker
   than nothing stand out of the front of a view that is only as deep as a
@@ -1535,11 +1605,16 @@ between boxes on the plane and `FocusScope3d` trapping it inside a modal. See
 and neither is a directional policy that is genuinely three-dimensional
 rather than one that projects onto the plane first.
 
-**2. More layouts.** ~~Done~~: `Wrap3d` breaks into runs, and `GridView3d`
-lays cells out on a grid a `Grid3dDelegate` decides, with an exactly lazy
-builder. What is left in this direction is the rest of Flutter's catalogue
-(`Table`, `Flow`, aspect-ratio and fractionally-sized boxes), which is
-breadth rather than new machinery.
+**2. More layouts.** ~~Done~~: `Wrap3d` breaks into runs, `GridView3d` lays
+cells out on a grid a `Grid3dDelegate` decides, and the rest of Flutter's
+catalogue is here — `LimitedBox3d`, `UnconstrainedBox3d`, `OverflowBox3d`,
+`FractionallySizedBox3d`, `AspectRatio3d`, `FittedBox3d`, `IndexedStack3d`,
+`Table3d`, `CustomMultiChildLayout3d`, `Flow3d`, `PageView3d` and the
+`LayoutBuilder3d` that lets any of them be chosen from the room available.
+See *Building from the room you got* above. What is left of the catalogue is
+the family that needs drag-and-drop — `Draggable3d`, `DragTarget3d`,
+`Dismissible3d`, reorderable lists — and that waits on drag recognition
+*between* surfaces, which the pointer layer deliberately does not have.
 
 **3. Slivers.** ~~Mostly done~~: `CustomScrollView3d` drives the protocol,
 with `SliverList3d`, `SliverGrid3d` and `SliverToBoxAdapter3d` on top of it and
@@ -1548,8 +1623,8 @@ floating or scrolling away on top of `overlap` and `paintOrigin`, which is
 what a `SliverAppBar3d` is built on. `ListView3d` and `GridView3d` are views
 of this kind over a single sliver, as Flutter's are, so placement is written
 once. See *Slivers* above. What is left of the protocol is small and
-independent: `SliverPadding3d`, `SliverFillRemaining3d`, a reverse growth
-direction and a `center` sliver. Building
+independent: `SliverFillRemaining3d`, a reverse growth direction and a
+`center` sliver (`SliverPadding3d` is here). Building
 **widgets** lazily is done: `SceneListView3d.builder` and its three siblings
 inflate an item as the window reaches it, through a `Layout3dChildManager` the
 view consults and a `RenderObjectElement` that implements it inside a build
@@ -1617,10 +1692,10 @@ number for but nothing here builds.
 
 **What is next.** Nothing in this list depends on anything else in it any
 more, so the order is a matter of what a caller reaches for first: a
-`Text3dRenderer` that actually draws, the rest of Flutter's layout catalogue
-(`Table`, `Flow`, aspect-ratio and fractionally-sized boxes), keep-alive for a
-lazily built item, route transitions over `Route3dTransition`, and a per-node
-opacity in the engine, which is what an `Opacity3d` is waiting on.
+`Text3dRenderer` that actually draws, drag-and-drop between surfaces and the
+`Draggable3d` family over it, keep-alive for a lazily built item, route
+transitions over `Route3dTransition`, and a per-node opacity in the engine,
+which is what an `Opacity3d` is waiting on.
 
 ## License
 

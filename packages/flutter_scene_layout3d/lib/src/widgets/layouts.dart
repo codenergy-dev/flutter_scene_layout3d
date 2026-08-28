@@ -25,14 +25,22 @@ import 'package:flutter/widgets.dart'
 import 'package:flutter_scene/scene.dart' show Node;
 import 'package:vector_math/vector_math.dart' show Matrix4;
 
+import '../boxes/aspect_ratio.dart';
 import '../boxes/container.dart';
+import '../boxes/custom_layout.dart';
+import '../boxes/fitted.dart';
 import '../boxes/flex.dart';
+import '../boxes/flow.dart';
+import '../boxes/indexed_stack.dart';
+import '../boxes/layout_builder.dart';
+import '../boxes/overflow.dart';
 import '../boxes/ignore_pointer.dart';
 import '../boxes/intrinsic.dart';
 import '../boxes/node_box.dart';
 import '../boxes/shifted.dart';
 import '../boxes/sized.dart';
 import '../boxes/stack.dart';
+import '../boxes/table.dart';
 import '../boxes/wrap.dart';
 import '../geometry/alignment3d.dart';
 import '../geometry/constraints3d.dart';
@@ -47,12 +55,15 @@ import '../input/tap_target.dart';
 import '../scroll/grid_delegate.dart';
 import '../scroll/grid_view.dart';
 import '../scroll/list_view.dart';
+import '../scroll/page_view.dart';
+import '../scroll/scroll_physics.dart';
 import '../scroll/scroll_controller.dart';
 import '../scroll/viewport.dart';
 import '../sliver/custom_scroll_view.dart';
 import '../sliver/sliver.dart';
 import '../sliver/sliver_grid.dart';
 import '../sliver/sliver_list.dart';
+import '../sliver/sliver_padding.dart';
 import '../text/break_rules.dart';
 import '../text/text3d.dart';
 import '../text/text_measurement.dart';
@@ -1497,5 +1508,546 @@ class SceneText3d extends Layout3dWidget {
       ..rules = rules
       ..measurement = measurement ?? SegmentedTextMeasurement3d.shared
       ..renderer = renderer;
+  }
+}
+
+/// Caps an unbounded axis, the widget form of [LimitedBox3d].
+class SceneLimitedBox3d extends SingleChildLayout3dWidget {
+  /// Creates a box that limits its child's unbounded axes.
+  const SceneLimitedBox3d({
+    super.key,
+    this.maxWidth = double.infinity,
+    this.maxHeight = double.infinity,
+    this.maxDepth = double.infinity,
+    super.child,
+  });
+
+  /// The width to use when the incoming width is unbounded.
+  final double maxWidth;
+
+  /// The height to use when the incoming height is unbounded.
+  final double maxHeight;
+
+  /// The depth to use when the incoming depth is unbounded.
+  final double maxDepth;
+
+  @override
+  LimitedBox3d createLayout(BuildContext context) => LimitedBox3d(
+    maxWidth: maxWidth,
+    maxHeight: maxHeight,
+    maxDepth: maxDepth,
+  );
+
+  @override
+  void updateLayout(BuildContext context, LimitedBox3d layout) {
+    layout
+      ..maxWidth = maxWidth
+      ..maxHeight = maxHeight
+      ..maxDepth = maxDepth;
+  }
+}
+
+/// Frees its child's constraints, the widget form of [UnconstrainedBox3d].
+class SceneUnconstrainedBox3d extends SingleChildLayout3dWidget {
+  /// Creates a box that hands its child unbounded room.
+  const SceneUnconstrainedBox3d({
+    super.key,
+    this.alignment = Alignment3d.center,
+    this.constrainedAxes = const <Axis3d>{},
+    super.child,
+  });
+
+  /// Where the child sits inside the room this box was given.
+  final Alignment3d alignment;
+
+  /// The axes that keep the constraints this box was given.
+  final Set<Axis3d> constrainedAxes;
+
+  @override
+  UnconstrainedBox3d createLayout(BuildContext context) => UnconstrainedBox3d(
+    alignment: alignment,
+    constrainedAxes: constrainedAxes,
+  );
+
+  @override
+  void updateLayout(BuildContext context, UnconstrainedBox3d layout) {
+    layout
+      ..alignment = alignment
+      ..constrainedAxes = constrainedAxes;
+  }
+}
+
+/// Lets its child spill out of the size it reports, the widget form of
+/// [OverflowBox3d].
+class SceneOverflowBox3d extends SingleChildLayout3dWidget {
+  /// Creates a box that overrides the bounds given, per axis.
+  const SceneOverflowBox3d({
+    super.key,
+    this.minWidth,
+    this.maxWidth,
+    this.minHeight,
+    this.maxHeight,
+    this.minDepth,
+    this.maxDepth,
+    this.alignment = Alignment3d.center,
+    super.child,
+  });
+
+  /// The minimum width handed down, or null to keep the incoming one.
+  final double? minWidth;
+
+  /// The maximum width handed down, or null to keep the incoming one.
+  final double? maxWidth;
+
+  /// The minimum height handed down, or null to keep the incoming one.
+  final double? minHeight;
+
+  /// The maximum height handed down, or null to keep the incoming one.
+  final double? maxHeight;
+
+  /// The minimum depth handed down, or null to keep the incoming one.
+  final double? minDepth;
+
+  /// The maximum depth handed down, or null to keep the incoming one.
+  final double? maxDepth;
+
+  /// Where the child sits inside the room this box reports.
+  final Alignment3d alignment;
+
+  @override
+  OverflowBox3d createLayout(BuildContext context) => OverflowBox3d(
+    minWidth: minWidth,
+    maxWidth: maxWidth,
+    minHeight: minHeight,
+    maxHeight: maxHeight,
+    minDepth: minDepth,
+    maxDepth: maxDepth,
+    alignment: alignment,
+  );
+
+  @override
+  void updateLayout(BuildContext context, OverflowBox3d layout) {
+    layout
+      ..minWidth = minWidth
+      ..maxWidth = maxWidth
+      ..minHeight = minHeight
+      ..maxHeight = maxHeight
+      ..minDepth = minDepth
+      ..maxDepth = maxDepth
+      ..alignment = alignment;
+  }
+}
+
+/// Sizes its child to a fraction of the room available, the widget form of
+/// [FractionallySizedBox3d].
+class SceneFractionallySizedBox3d extends SingleChildLayout3dWidget {
+  /// Creates a box sizing its child to a fraction of its own room.
+  const SceneFractionallySizedBox3d({
+    super.key,
+    this.widthFactor,
+    this.heightFactor,
+    this.depthFactor,
+    this.alignment = Alignment3d.center,
+    super.child,
+  });
+
+  /// The fraction of the available width the child is given.
+  final double? widthFactor;
+
+  /// The fraction of the available height the child is given.
+  final double? heightFactor;
+
+  /// The fraction of the available depth the child is given.
+  final double? depthFactor;
+
+  /// Where the child sits inside this box.
+  final Alignment3d alignment;
+
+  @override
+  FractionallySizedBox3d createLayout(BuildContext context) =>
+      FractionallySizedBox3d(
+        widthFactor: widthFactor,
+        heightFactor: heightFactor,
+        depthFactor: depthFactor,
+        alignment: alignment,
+      );
+
+  @override
+  void updateLayout(BuildContext context, FractionallySizedBox3d layout) {
+    layout
+      ..widthFactor = widthFactor
+      ..heightFactor = heightFactor
+      ..depthFactor = depthFactor
+      ..alignment = alignment;
+  }
+}
+
+/// Shows one of its children, the widget form of [IndexedStack3d].
+///
+/// Every child keeps its state and its place while it is hidden, so this is
+/// how a tab body or a wizard step is built.
+class SceneIndexedStack3d extends Layout3dWidget {
+  /// Creates a stack showing the child at [index].
+  const SceneIndexedStack3d({
+    super.key,
+    this.index = 0,
+    this.alignment = Alignment3d.topLeftFront,
+    this.fit = StackFit3d.loose,
+    this.depthStep = 0.0,
+    super.children,
+  });
+
+  /// Which child is shown, or null for none.
+  final int? index;
+
+  /// Where the children sit inside the stack.
+  final Alignment3d alignment;
+
+  /// How the children are sized.
+  final StackFit3d fit;
+
+  /// How far toward the viewer each successive child's geometry is pulled.
+  final double depthStep;
+
+  @override
+  IndexedStack3d createLayout(BuildContext context) => IndexedStack3d(
+    index: index,
+    alignment: alignment,
+    fit: fit,
+    depthStep: depthStep,
+  );
+
+  @override
+  void updateLayout(BuildContext context, IndexedStack3d layout) {
+    layout
+      ..alignment = alignment
+      ..fit = fit
+      ..depthStep = depthStep
+      ..index = index;
+  }
+}
+
+/// Holds two of its axes in a fixed ratio, the widget form of [AspectRatio3d].
+class SceneAspectRatio3d extends SingleChildLayout3dWidget {
+  /// Creates a box with a fixed ratio between [axis] and [relativeTo].
+  const SceneAspectRatio3d({
+    super.key,
+    required this.aspectRatio,
+    this.axis = Axis3d.horizontal,
+    this.relativeTo = Axis3d.vertical,
+    super.child,
+  });
+
+  /// The extent along [axis] divided by the extent along [relativeTo].
+  final double aspectRatio;
+
+  /// The numerator of the ratio.
+  final Axis3d axis;
+
+  /// The denominator of the ratio.
+  final Axis3d relativeTo;
+
+  @override
+  AspectRatio3d createLayout(BuildContext context) => AspectRatio3d(
+    aspectRatio: aspectRatio,
+    axis: axis,
+    relativeTo: relativeTo,
+  );
+
+  @override
+  void updateLayout(BuildContext context, AspectRatio3d layout) {
+    layout
+      ..aspectRatio = aspectRatio
+      ..axis = axis
+      ..relativeTo = relativeTo;
+  }
+}
+
+/// Scales its child into the room available, the widget form of
+/// [FittedBox3d].
+class SceneFittedBox3d extends SingleChildLayout3dWidget {
+  /// Creates a box that scales its child.
+  const SceneFittedBox3d({
+    super.key,
+    this.fit = BoxFit3d.contain,
+    this.alignment = Alignment3d.center,
+    super.child,
+  });
+
+  /// How the child is scaled into the room available.
+  final BoxFit3d fit;
+
+  /// Where the scaled child sits inside this box.
+  final Alignment3d alignment;
+
+  @override
+  FittedBox3d createLayout(BuildContext context) =>
+      FittedBox3d(fit: fit, alignment: alignment);
+
+  @override
+  void updateLayout(BuildContext context, FittedBox3d layout) {
+    layout
+      ..fit = fit
+      ..alignment = alignment;
+  }
+}
+
+/// A grid of cells whose columns are negotiated across every row, the widget
+/// form of [Table3d].
+class SceneTable3d extends Layout3dWidget {
+  /// Creates a table of [columnCount] columns from cells in row-major order.
+  const SceneTable3d({
+    super.key,
+    required this.columnCount,
+    this.columnWidths = const <int, TableColumnWidth3d>{},
+    this.defaultColumnWidth = const FlexColumnWidth3d(),
+    this.defaultVerticalAlignment = TableCellAlignment3d.top,
+    this.depthAxisAlignment = CrossAxisAlignment3d.center,
+    this.columnSpacing = 0.0,
+    this.rowSpacing = 0.0,
+    super.children,
+  });
+
+  /// How many cells make a row.
+  final int columnCount;
+
+  /// The width policy of individual columns, by index.
+  final Map<int, TableColumnWidth3d> columnWidths;
+
+  /// The width policy of every other column.
+  final TableColumnWidth3d defaultColumnWidth;
+
+  /// Where a cell sits in its row.
+  final TableCellAlignment3d defaultVerticalAlignment;
+
+  /// Where a cell sits in the table's depth.
+  final CrossAxisAlignment3d depthAxisAlignment;
+
+  /// The gap between adjacent columns.
+  final double columnSpacing;
+
+  /// The gap between adjacent rows.
+  final double rowSpacing;
+
+  @override
+  Table3d createLayout(BuildContext context) => Table3d(
+    columnCount: columnCount,
+    columnWidths: columnWidths,
+    defaultColumnWidth: defaultColumnWidth,
+    defaultVerticalAlignment: defaultVerticalAlignment,
+    depthAxisAlignment: depthAxisAlignment,
+    columnSpacing: columnSpacing,
+    rowSpacing: rowSpacing,
+  );
+
+  @override
+  void updateLayout(BuildContext context, Table3d layout) {
+    layout
+      ..columnCount = columnCount
+      ..columnWidths = columnWidths
+      ..defaultColumnWidth = defaultColumnWidth
+      ..defaultVerticalAlignment = defaultVerticalAlignment
+      ..depthAxisAlignment = depthAxisAlignment
+      ..columnSpacing = columnSpacing
+      ..rowSpacing = rowSpacing;
+  }
+}
+
+/// Tags a child of a [SceneCustomMultiChildLayout3d], the widget form of
+/// [LayoutId3d].
+class SceneLayoutId3d extends SingleChildLayout3dWidget {
+  /// Tags [child] with [id].
+  const SceneLayoutId3d({super.key, required this.id, super.child});
+
+  /// The name the delegate knows this child by.
+  final Object id;
+
+  @override
+  LayoutId3d createLayout(BuildContext context) => LayoutId3d(id: id);
+
+  @override
+  void updateLayout(BuildContext context, LayoutId3d layout) {
+    layout.id = id;
+  }
+}
+
+/// Arranges children a delegate knows by name, the widget form of
+/// [CustomMultiChildLayout3d].
+///
+/// Every child is a [SceneLayoutId3d].
+class SceneCustomMultiChildLayout3d extends Layout3dWidget {
+  /// Creates a box arranged by [delegate].
+  const SceneCustomMultiChildLayout3d({
+    super.key,
+    required this.delegate,
+    super.children,
+  });
+
+  /// The delegate deciding the arrangement.
+  final MultiChildLayout3dDelegate delegate;
+
+  @override
+  CustomMultiChildLayout3d createLayout(BuildContext context) =>
+      CustomMultiChildLayout3d(delegate: delegate);
+
+  @override
+  void updateLayout(BuildContext context, CustomMultiChildLayout3d layout) {
+    layout.delegate = delegate;
+  }
+}
+
+/// Arranges its children by moving their geometry, the widget form of
+/// [Flow3d].
+class SceneFlow3d extends Layout3dWidget {
+  /// Creates a flow arranged by [delegate].
+  const SceneFlow3d({super.key, required this.delegate, super.children});
+
+  /// The delegate deciding where the children go.
+  final Flow3dDelegate delegate;
+
+  @override
+  Flow3d createLayout(BuildContext context) => Flow3d(delegate: delegate);
+
+  @override
+  void updateLayout(BuildContext context, Flow3d layout) {
+    layout.delegate = delegate;
+  }
+}
+
+/// Insets a sliver, the widget form of [SliverPadding3d].
+class SceneSliverPadding3d extends SingleChildLayout3dWidget {
+  /// Creates a sliver that insets [sliver].
+  const SceneSliverPadding3d({
+    super.key,
+    this.padding = EdgeInsets3d.zero,
+    Widget? sliver,
+  }) : super(child: sliver);
+
+  /// The inset on each of the six faces.
+  final EdgeInsets3d padding;
+
+  @override
+  SliverPadding3d createLayout(BuildContext context) =>
+      SliverPadding3d(padding: padding);
+
+  @override
+  void updateLayout(BuildContext context, SliverPadding3d layout) {
+    layout.padding = padding;
+  }
+}
+
+/// Builds a subtree from the constraints a [SceneLayoutBuilder3d] was given,
+/// the 3D analogue of [LayoutWidgetBuilder].
+typedef Layout3dWidgetBuilder =
+    Widget Function(BuildContext context, Constraints3d constraints);
+
+/// Builds its child from the constraints it is given, the widget form of
+/// [LayoutBuilder3d].
+///
+/// The one widget here that runs its builder during layout, which is what
+/// lets a component change *shape* with the room it is given:
+///
+/// ```dart
+/// SceneLayoutBuilder3d(
+///   builder: (context, constraints) => constraints.maxWidth > 6
+///       ? SceneRow3d(children: [rail, body])
+///       : SceneColumn3d(children: [body, bar]),
+/// )
+/// ```
+///
+/// The builder is called on the first layout and again whenever the
+/// constraints change; a rebuild reconciles onto the element already there,
+/// so state below survives a resize. It must not have side effects on the
+/// tree above it — no `setState` on an ancestor from inside it — because the
+/// pass it runs in has already been past that point. See [LayoutBuilder3d].
+class SceneLayoutBuilder3d extends LazyLayout3dWidget {
+  /// Creates a box that builds its child from its constraints.
+  const SceneLayoutBuilder3d({super.key, required this.builder})
+    : super(itemCount: 1);
+
+  /// Builds the child from the constraints this box was given.
+  final Layout3dWidgetBuilder builder;
+
+  /// Always: the child is built during layout, through the element that is
+  /// this widget's child manager, however the child is described.
+  @override
+  bool get isLazy => true;
+
+  /// Never in the build phase. The constraints are only true inside the pass,
+  /// so a rebuild here asks the layout to build and waits for it.
+  @override
+  bool get rebuildsItemsOnBuild => false;
+
+  @override
+  Widget? buildChild(BuildContext context, int index, LayoutBuilder3d layout) =>
+      index == 0 ? builder(context, layout.constraints) : null;
+
+  @override
+  LayoutBuilder3d createLayout(BuildContext context) => LayoutBuilder3d();
+
+  @override
+  void updateLayout(BuildContext context, LayoutBuilder3d layout) {
+    // A new closure may build anything, so the child is rebuilt — in the next
+    // pass, where the constraints it is built from are the ones in force.
+    layout.markNeedsBuild();
+  }
+}
+
+/// A scrolling view whose children are each as big as the window, the widget
+/// form of [PageView3d].
+///
+/// The same two shapes [SceneListView3d] has. The position snaps to a page
+/// boundary unless a [controller] of your own says otherwise; see
+/// [PageScroll3dPhysics].
+class ScenePageView3d extends LazyLayout3dWidget {
+  /// Creates a page view over an explicit set of pages.
+  const ScenePageView3d({
+    super.key,
+    this.scrollDirection = Axis3d.horizontal,
+    this.controller,
+    this.crossAxisAlignment = CrossAxisAlignment3d.stretch,
+    this.depthAxisAlignment = CrossAxisAlignment3d.center,
+    super.children,
+  });
+
+  /// Creates a page view that builds its pages as it reaches them.
+  const ScenePageView3d.builder({
+    super.key,
+    required int itemCount,
+    required IndexedWidgetBuilder itemBuilder,
+    this.scrollDirection = Axis3d.horizontal,
+    this.controller,
+    this.crossAxisAlignment = CrossAxisAlignment3d.stretch,
+    this.depthAxisAlignment = CrossAxisAlignment3d.center,
+  }) : super(itemCount: itemCount, itemBuilder: itemBuilder);
+
+  /// The axis the pages are laid out along.
+  final Axis3d scrollDirection;
+
+  /// The scroll position. One is created and owned, with page physics, when
+  /// this is null.
+  final Scroll3dController? controller;
+
+  /// How pages are positioned on the first cross axis.
+  final CrossAxisAlignment3d crossAxisAlignment;
+
+  /// How pages are positioned on the second cross axis.
+  final CrossAxisAlignment3d depthAxisAlignment;
+
+  @override
+  PageView3d createLayout(BuildContext context) => PageView3d(
+    scrollDirection: scrollDirection,
+    controller: controller,
+    crossAxisAlignment: crossAxisAlignment,
+    depthAxisAlignment: depthAxisAlignment,
+  );
+
+  @override
+  void updateLayout(BuildContext context, PageView3d layout) {
+    layout
+      ..scrollDirection = scrollDirection
+      ..crossAxisAlignment = crossAxisAlignment
+      ..depthAxisAlignment = depthAxisAlignment;
+    layout.controller = controller;
   }
 }

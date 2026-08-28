@@ -283,3 +283,103 @@ class BouncingScroll3dPhysics extends Scroll3dPhysics {
     );
   }
 }
+
+/// A scroll position that comes to rest on a page boundary, the 3D analogue
+/// of [PageScrollPhysics].
+///
+/// The ends behave exactly as [ClampingScroll3dPhysics] — this extends it —
+/// and what differs is the release: instead of coasting to a stop wherever
+/// friction leaves it, the position springs to the nearest page. Which page
+/// is "nearest" takes the throw into account, the way Flutter's does: any
+/// deliberate flick carries a whole page, however short it was, while a slow
+/// release settles back onto whichever page it is more than half onto.
+///
+/// [pageExtent] is the stride, and defaults to the whole window, which is
+/// what [PageView3d] wants. State it to snap something that is not a full
+/// page — a carousel of cards in a `ListView3d` with an `itemExtent`, where
+/// the neighbours are meant to peek in:
+///
+/// ```dart
+/// Scroll3dController(
+///   physics: PageScroll3dPhysics(pageExtent: cardExtent + spacing),
+/// )
+/// ```
+class PageScroll3dPhysics extends ClampingScroll3dPhysics {
+  /// Creates a snapping physics.
+  PageScroll3dPhysics({
+    this.pageExtent,
+    SpringDescription? spring,
+    super.friction,
+  }) : spring = spring ?? Scroll3dPhysics.defaultSpring,
+       assert(pageExtent == null || pageExtent > 0.0);
+
+  /// The distance between two resting places, or null for the window's own
+  /// extent.
+  final double? pageExtent;
+
+  /// The spring that carries the position onto the page it settled for.
+  final SpringDescription spring;
+
+  /// The stride in force for [position], in layout units.
+  double strideFor(Scroll3dController position) =>
+      pageExtent ?? position.viewportExtent;
+
+  /// Where [position] is, counted in pages.
+  ///
+  /// Fractional between two of them, which is what a page indicator reads to
+  /// follow a drag rather than jumping when it ends.
+  double pageOf(Scroll3dController position) {
+    final stride = strideFor(position);
+    if (stride <= 0.0) return 0.0;
+    return position.offset / stride;
+  }
+
+  /// The offset a release at [velocity] layout units per second settles on.
+  ///
+  /// Half a page of bias in the direction of the throw, so a flick that
+  /// barely moved still turns the page, and then rounded and held inside the
+  /// scrollable range.
+  double targetOffset(Scroll3dController position, double velocity) {
+    final stride = strideFor(position);
+    if (stride <= 0.0) return position.offset;
+    var page = pageOf(position);
+    final speed = velocity / position.unitsPerLogicalPixel;
+    if (speed < -tolerance.velocity) {
+      page -= 0.5;
+    } else if (speed > tolerance.velocity) {
+      page += 0.5;
+    }
+    return (page.roundToDouble() * stride).clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+  }
+
+  @override
+  Simulation? createBallisticSimulation(
+    Scroll3dController position,
+    double velocity,
+  ) {
+    // A throw off the end has nothing to snap to; the clamping physics is
+    // already the right answer there, and it is the one that stops dead.
+    if ((velocity <= 0.0 && position.offset <= position.minScrollExtent) ||
+        (velocity >= 0.0 && position.offset >= position.maxScrollExtent)) {
+      return super.createBallisticSimulation(position, velocity);
+    }
+    final target = targetOffset(position, velocity);
+    final scale = position.unitsPerLogicalPixel;
+    if (((target - position.offset) / scale).abs() < tolerance.distance) {
+      return null;
+    }
+    return Scroll3dPhysics.scaled(
+      ScrollSpringSimulation(
+        spring,
+        position.offset / scale,
+        target / scale,
+        velocity / scale,
+        tolerance: tolerance,
+      ),
+      scale,
+    );
+  }
+}

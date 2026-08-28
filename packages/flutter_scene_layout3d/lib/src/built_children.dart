@@ -330,6 +330,41 @@ mixin Layout3dBuiltChildrenMixin<ParentDataType extends ParentData3d>
     return child;
   }
 
+  /// The child standing for [index], rebuilt from the manager even though one
+  /// is already standing there.
+  ///
+  /// [obtainChild] builds an index once and then keeps it, which is what a
+  /// scrolling view wants: the item at index 7 does not change because the
+  /// window moved. A `LayoutBuilder3d` is the other case — its one child is a
+  /// function of the constraints, so a new set of constraints means asking
+  /// for it again — and this is that ask.
+  ///
+  /// The manager reconciles rather than rebuilds from nothing, so the item's
+  /// element, and everything it holds, survives. It may still hand back a
+  /// different layout (a widget that changed type), and the one it replaced
+  /// is unparented here; disposing it belongs to whoever created it, which
+  /// for the declarative layer is the element being unmounted.
+  ///
+  /// Returns what stands for [index] afterwards, or null when the manager
+  /// built nothing.
+  @protected
+  Layout3d? rebuildChild(int index) {
+    final manager = _childManager;
+    if (manager == null) return _active[index];
+    final previous = _active[index];
+    final built = manager.createChild(index);
+    if (identical(previous, built)) return built;
+    if (previous != null) {
+      _active.remove(index);
+      if (identical(previous.parent, this)) super.remove(previous);
+    }
+    if (built == null) return null;
+    final position = _active.keys.where((i) => i < index).length;
+    _active[index] = built;
+    if (!identical(built.parent, this)) super.insert(built, index: position);
+    return built;
+  }
+
   /// Disposes every built child outside `[first, last]`.
   @protected
   void releaseOutside(int first, int last) {

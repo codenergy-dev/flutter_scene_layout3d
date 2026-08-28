@@ -445,7 +445,55 @@ abstract class LazyLayout3dWidget extends RenderObjectWidget {
   final IndexedWidgetBuilder? itemBuilder;
 
   /// Whether this widget builds its children on demand.
+  ///
+  /// Overridden by a widget whose children are built from something other
+  /// than an [itemBuilder] — a `SceneLayoutBuilder3d` builds its one child
+  /// from the constraints — which must then override [buildChild] as well.
   bool get isLazy => itemBuilder != null;
+
+  /// Whether rebuilding this widget rebuilds the items standing now, there
+  /// and then in the build phase.
+  ///
+  /// True for a view built from a list: the builder is a new closure that may
+  /// return anything, so every item in the window is reconciled against it at
+  /// once, which is what `SliverChildBuilderDelegate.shouldRebuild` says by
+  /// always returning true.
+  ///
+  /// False for a widget whose children are a function of the layout's own
+  /// state. A `SceneLayoutBuilder3d` rebuilt in the build phase would be
+  /// built from the constraints of the *last* pass, and then built again in
+  /// the pass that follows; instead it marks its layout as needing to build
+  /// and lets that pass do it once, with the constraints that are true.
+  ///
+  /// An item that is dirty in its own right — because it holds state, or
+  /// depends on an [InheritedWidget] that changed — is rebuilt by Flutter
+  /// either way. This is only about the items being rebuilt *because this
+  /// widget was*.
+  bool get rebuildsItemsOnBuild => true;
+
+  /// The widget standing for [index], or null when there is none.
+  ///
+  /// The seam between "which children exist" and "what they are". By default
+  /// the answer is [itemBuilder] over the range [itemCount] describes, which
+  /// is every view built from a list. A widget that decides otherwise
+  /// overrides this: [layout] is the layout object that asked, handed over
+  /// because the interesting case is a widget built from the layout's own
+  /// state — the constraints a `LayoutBuilder3d` was given — and a layout
+  /// mid-pass is not something the element tree can be asked for.
+  ///
+  /// Called inside the layout pass, in the build scope the element opens.
+  @protected
+  Widget? buildChild(
+    BuildContext context,
+    int index,
+    covariant Layout3d layout,
+  ) {
+    final builder = itemBuilder;
+    final count = itemCount;
+    if (builder == null || count == null) return null;
+    if (index < 0 || index >= count) return null;
+    return builder(context, index);
+  }
 
   /// Creates the layout object this widget describes.
   @protected
@@ -476,11 +524,12 @@ abstract class LazyLayout3dWidget extends RenderObjectWidget {
     covariant Layout3dRenderBox renderObject,
   ) {
     updateLayout(context, renderObject.layout3d);
-    if (isLazy) {
+    final count = itemCount;
+    if (isLazy && count != null) {
       // Before the items are rebuilt, so that a count which shrank has
       // already released the indices past the end by the time anything walks
       // them.
-      builtChildrenOf(renderObject.layout3d).itemCount = itemCount!;
+      builtChildrenOf(renderObject.layout3d).itemCount = count;
     }
   }
 }
@@ -548,9 +597,9 @@ class Layout3dLazyElement extends RenderObjectElement
       _children = _inflateChildren(widget.children);
       return;
     }
-    _view
-      ..childManager = this
-      ..itemCount = widget.itemCount!;
+    _view.childManager = this;
+    final count = widget.itemCount;
+    if (count != null) _view.itemCount = count;
   }
 
   List<Element> _inflateChildren(List<Widget> widgets) {
@@ -599,7 +648,7 @@ class Layout3dLazyElement extends RenderObjectElement
   @override
   void performRebuild() {
     super.performRebuild();
-    if (!_lazy) return;
+    if (!_lazy || !widget.rebuildsItemsOnBuild) return;
     assert(_currentlyUpdatingChildIndex == null);
     for (final index in _childElements.keys.toList()) {
       final Element? updated;
@@ -642,10 +691,8 @@ class Layout3dLazyElement extends RenderObjectElement
     if (layout != null && !layout.debugDisposed) _view.forgetBuiltChild(layout);
   }
 
-  Widget? _build(int index) {
-    if (index < 0 || index >= widget.itemCount!) return null;
-    return widget.itemBuilder!(this, index);
-  }
+  Widget? _build(int index) =>
+      widget.buildChild(this, index, renderObject.layout3d);
 
   Layout3dRenderBox _hostOf(Element child, int index) {
     final render = child.renderObject;
