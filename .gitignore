@@ -1,0 +1,38 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.buildlog/
+.history
+.svn/
+migrate_working_dir/
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# Flutter/Dart/Pub related
+# Libraries should not include pubspec.lock, per
+# https://dart.dev/guides/libraries/private-files#pubspeclock.
+pubspec.lock
+**/doc/api/
+.dart_tool/
+.packages
+.flutter-plugins-dependencies
+build/
+**/ephemeral/
+pubspec_overrides.yaml
+
+# The example app commits no platform scaffolding; generate it with
+# `flutter create .` before running. See examples/layout3d_gallery/README.md.
+examples/layout3d_gallery/android/
+examples/layout3d_gallery/ios/
+examples/layout3d_gallery/linux/
+examples/layout3d_gallery/macos/
+examples/layout3d_gallery/web/
+examples/layout3d_gallery/windows/

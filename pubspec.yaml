@@ -1,0 +1,9 @@
+name: flutter_scene_layout3d_workspace
+publish_to: none
+
+environment:
+  sdk: ^3.10.0
+
+workspace:
+  - packages/flutter_scene_layout3d
+  - examples/layout3d_gallery

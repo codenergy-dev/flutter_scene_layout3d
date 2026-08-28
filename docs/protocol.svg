@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 400" width="900" height="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <rect width="900" height="400" rx="10" fill="#f6f8fa"/>
+
+  <text x="32" y="42" font-size="17" font-weight="600" fill="#1f2328">The same protocol you already know</text>
+  <text x="32" y="66" font-size="13.5" fill="#57606a">Constraints go down, sizes come up, the parent positions the child.</text>
+
+  <!-- ── left: the tree ── -->
+  <g>
+    <rect x="150" y="96" width="140" height="34" rx="6" fill="#ffffff" stroke="#8c959f" stroke-width="1.5"/>
+    <text x="220" y="118" font-size="13" fill="#1f2328" text-anchor="middle">Column3d</text>
+
+    <rect x="86" y="196" width="120" height="34" rx="6" fill="#ffffff" stroke="#8c959f" stroke-width="1.5"/>
+    <text x="146" y="218" font-size="13" fill="#1f2328" text-anchor="middle">Text3d</text>
+
+    <rect x="234" y="196" width="120" height="34" rx="6" fill="#ffffff" stroke="#8c959f" stroke-width="1.5"/>
+    <text x="294" y="218" font-size="13" fill="#1f2328" text-anchor="middle">NodeBox3d</text>
+
+    <!-- tree edges -->
+    <path d="M195 130 L160 196" stroke="#8c959f" stroke-width="1.5" fill="none"/>
+    <path d="M245 130 L280 196" stroke="#8c959f" stroke-width="1.5" fill="none"/>
+
+    <!-- constraints down -->
+    <path d="M120 140 L120 186" stroke="#0969da" stroke-width="2" fill="none" marker-end="url(#blue)"/>
+    <text x="112" y="167" font-size="11.5" fill="#0969da" text-anchor="end">Constraints3d</text>
+
+    <!-- sizes up -->
+    <path d="M330 186 L330 140" stroke="#1a7f37" stroke-width="2" fill="none" marker-end="url(#green)"/>
+    <text x="340" y="167" font-size="11.5" fill="#1a7f37">Size3d</text>
+
+    <text x="220" y="276" font-size="12" fill="#57606a" text-anchor="middle">a tree of boxes,</text>
+    <text x="220" y="294" font-size="12" fill="#57606a" text-anchor="middle">laid out on the CPU</text>
+  </g>
+
+  <!-- ── the bridge ── -->
+  <path d="M392 200 L452 200" stroke="#8250df" stroke-width="2" fill="none" marker-end="url(#purple)"/>
+  <text x="422" y="188" font-size="11.5" fill="#8250df" text-anchor="middle">mounts</text>
+
+  <!-- ── right: the plane in the scene ── -->
+  <g>
+    <!-- the plane, in perspective -->
+    <path d="M520 120 L850 96 L850 300 L520 324 Z" fill="#ffffff" stroke="#8c959f" stroke-width="1.5"/>
+
+    <!-- laid-out children on the plane -->
+    <path d="M548 152 L700 141 L700 189 L548 200 Z" fill="#ddf4ff" stroke="#0969da" stroke-width="1.5"/>
+    <text x="624" y="177" font-size="12" fill="#0969da" text-anchor="middle">Text3d</text>
+
+    <path d="M548 224 L700 213 L700 285 L548 296 Z" fill="#dafbe1" stroke="#1a7f37" stroke-width="1.5"/>
+    <text x="624" y="257" font-size="12" fill="#1a7f37" text-anchor="middle">NodeBox3d</text>
+
+    <!-- depth hint: the node box stands proud of the plane -->
+    <path d="M700 213 L722 205 L722 277 L700 285 Z" fill="#aceebb" stroke="#1a7f37" stroke-width="1.2"/>
+    <path d="M548 224 L570 216 L722 205 L700 213 Z" fill="#c9f5d3" stroke="#1a7f37" stroke-width="1.2"/>
+
+    <text x="685" y="352" font-size="12" fill="#57606a" text-anchor="middle">real geometry, on a plane you can put anywhere</text>
+  </g>
+
+  <defs>
+    <marker id="blue" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto">
+      <path d="M0,0 L7,3.2 L0,6.4 Z" fill="#0969da"/>
+    </marker>
+    <marker id="green" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto">
+      <path d="M0,0 L7,3.2 L0,6.4 Z" fill="#1a7f37"/>
+    </marker>
+    <marker id="purple" markerWidth="9" markerHeight="9" refX="7" refY="3.2" orient="auto">
+      <path d="M0,0 L7,3.2 L0,6.4 Z" fill="#8250df"/>
+    </marker>
+  </defs>
+</svg>
