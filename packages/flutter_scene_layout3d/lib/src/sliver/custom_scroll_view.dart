@@ -1,7 +1,9 @@
 import 'dart:math' as math;
 
+import '../clip.dart';
 import '../geometry/offset3d.dart';
 import '../geometry/size3d.dart';
+import '../hit_test.dart';
 import '../layout3d.dart';
 import '../layout_pass.dart';
 import '../scroll/scroll_controller.dart';
@@ -114,6 +116,67 @@ class CustomScrollView3d extends MultiChildLayout3d<ParentData3d>
   @override
   bool hitTestSelf(Offset3d position) => true;
 
+  /// Tests slivers in scroll order, first one first, which is the reverse of
+  /// what a [MultiChildLayout3d] does by default.
+  ///
+  /// A viewport's children do not sit side by side the way a `Stack3d`'s do:
+  /// the leading ones are in *front*. A pinned header holds the leading edge
+  /// while the list slides underneath it, so the header is what the viewer
+  /// sees there and the header is what a ray aimed there must find, even
+  /// though the row behind it is still a laid-out box at the same place.
+  /// Flutter's viewport orders its children the same way and for the same
+  /// reason — `childrenInHitTestOrder` is the reverse of a paint order that
+  /// draws the first sliver last.
+  @override
+  bool hitTestChildren(HitTestResult3d result, {required Ray3d ray}) {
+    for (final child in heldChildren) {
+      if (hitTestChild(result, child, ray: ray)) return true;
+    }
+    return false;
+  }
+
+  /// How far into each sliver, from its own leading edge, the content is
+  /// covered by a sliver that holds its place in front of it.
+  ///
+  /// Written by the layout pass and read by [clipRegionForChild]. Keyed by
+  /// child rather than kept in parent data because it is a property of one
+  /// pass over a list that is otherwise plain [ParentData3d]; a sliver that
+  /// is not in here is not covered by anything.
+  final Map<Layout3d, double> _obstructedTo = <Layout3d, double>{};
+
+  /// The clip a sliver inherits, cut at the trailing edge of whatever pinned
+  /// sliver is sitting on top of it.
+  ///
+  /// This is the half of a persistent header that two dimensions get for
+  /// free. In Flutter a pinned bar simply paints over the list and the list
+  /// is clipped to the viewport, so a row half under the bar shows its bottom
+  /// half and no more. Nothing paints here, so the row is geometry that
+  /// really is there, in front of nothing, and without a clip it draws
+  /// straight through the bar.
+  ///
+  /// One plane is enough for it: the band is bounded on one side, at the
+  /// point along the scroll axis where the bar stops. Whole-node culling
+  /// cannot express it (the row is half in), and a clip box cannot either (a
+  /// box is six planes and would also cut the row off at the far edge of the
+  /// window, which is a different decision this viewport has not made). What
+  /// a descendant does with the plane is the descendant's business: a
+  /// [BoxDecoration3d] hands it to its shader, and a leaf holding an
+  /// application's own material ignores it.
+  @override
+  Clip3dRegion clipRegionForChild(Layout3d child) {
+    final base = super.clipRegionForChild(child);
+    final obstructed = _obstructedTo[child];
+    if (obstructed == null || obstructed <= 0.0) return base;
+    // In the child's own frame, so no shift: the band is measured from the
+    // child's leading edge, and `super` has already moved the inherited
+    // region there.
+    return base.intersect(
+      Clip3dRegion(<ClipPlane3d>[
+        ClipPlane3d(Offset3d.along(_axis, 1.0), -obstructed),
+      ]),
+    );
+  }
+
   @override
   double computeMinIntrinsicExtent(Axis3d axis, Size3d limits) =>
       noIntrinsicExtent(this, axis);
@@ -199,10 +262,17 @@ class CustomScrollView3d extends MultiChildLayout3d<ParentData3d>
     required double depthExtent,
   }) {
     final axis = _axis;
+    _obstructedTo.clear();
     // What is left of the window as the slivers eat into it, in the same
     // bookkeeping Flutter's viewport keeps.
     var remainingScroll = scrollOffset;
     var layoutOffset = 0.0;
+    // How far down the window anything laid out so far still reaches. It runs
+    // ahead of [layoutOffset] exactly when a sliver holds its place — a
+    // pinned header whose layout extent has shrunk to nothing but which is
+    // still sitting on the leading edge — and the gap between the two is the
+    // `overlap` the next sliver is told about.
+    var maxPaintOffset = 0.0;
     var precedingScrollExtent = 0.0;
     var cacheOrigin = math.max(-_cacheExtent, -scrollOffset);
     var remainingCache =
@@ -227,6 +297,7 @@ class CustomScrollView3d extends MultiChildLayout3d<ParentData3d>
           viewportMainAxisExtent: mainExtent,
           remainingCacheExtent: math.max(0.0, remainingCache + cacheCorrection),
           cacheOrigin: correctedCacheOrigin,
+          overlap: math.max(0.0, maxPaintOffset - layoutOffset),
         ),
       );
 
@@ -235,17 +306,30 @@ class CustomScrollView3d extends MultiChildLayout3d<ParentData3d>
         return (scrollExtent: 0.0, correction: geometry.scrollOffsetCorrection);
       }
 
+      // Where the sliver's visible part actually sits, which is where it was
+      // laid out unless it asked to be somewhere else. A pinned header uses
+      // the difference to stay on the leading edge while the offset that
+      // positions everything after it keeps advancing.
+      final paintOffset = layoutOffset + geometry.paintOrigin;
+
       // A sliver that has nothing in the window still needs somewhere to be:
       // park it where its leading edge would fall, so what the cache keeps
       // alive is in the right place when it scrolls back in.
-      sliver.place(
-        Offset3d.along(
-          axis,
-          geometry.visible ? layoutOffset : -sliverScrollOffset + layoutOffset,
-        ),
-      );
+      final placement = geometry.visible
+          ? paintOffset
+          : -sliverScrollOffset + layoutOffset;
+      sliver.place(Offset3d.along(axis, placement));
       sliver.node.visible = geometry.visible;
+      // What of this sliver is underneath something that came before it,
+      // measured from its own leading edge; see [clipRegionForChild].
+      if (geometry.visible && maxPaintOffset > placement) {
+        _obstructedTo[sliver] = maxPaintOffset - placement;
+      }
 
+      maxPaintOffset = math.max(
+        maxPaintOffset,
+        paintOffset + geometry.paintExtent,
+      );
       remainingScroll -= geometry.scrollExtent;
       precedingScrollExtent += geometry.scrollExtent;
       layoutOffset += geometry.layoutExtent;

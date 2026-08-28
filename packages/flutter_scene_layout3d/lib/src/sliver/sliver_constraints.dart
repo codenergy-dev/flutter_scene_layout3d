@@ -29,6 +29,7 @@ class SliverConstraints3d {
     required this.viewportMainAxisExtent,
     required this.remainingCacheExtent,
     required this.cacheOrigin,
+    this.overlap = 0.0,
   }) : assert(scrollOffset >= 0.0),
        assert(cacheOrigin <= 0.0);
 
@@ -61,6 +62,23 @@ class SliverConstraints3d {
 
   /// How far before [scrollOffset] the cache reaches, never above zero.
   final double cacheOrigin;
+
+  /// How much of this sliver's leading edge is already covered by an earlier
+  /// sliver that holds its place.
+  ///
+  /// Zero for a viewport of ordinary slivers, because they follow one another
+  /// and nothing lingers. It is a persistent header that makes it nonzero: a
+  /// pinned bar keeps painting at the leading edge after its layout extent
+  /// has gone to nothing, and this is how much of the window it is sitting
+  /// on when this sliver's turn comes.
+  ///
+  /// A sliver reads it for two reasons. It is room it should not count on —
+  /// [SliverPersistentHeader3d] subtracts it from [remainingPaintExtent] so a
+  /// second pinned bar stacks under the first rather than through it — and it
+  /// is the band its own content is *underneath*, which is what
+  /// `CustomScrollView3d` turns into a clip plane so a row sliding under a
+  /// bar is cut at the bar's edge instead of showing through it.
+  final double overlap;
 
   /// The two axes that are not [axis], in canonical order.
   (Axis3d, Axis3d) get crossAxes => axis.others;
@@ -121,6 +139,7 @@ class SliverConstraints3d {
     double? viewportMainAxisExtent,
     double? remainingCacheExtent,
     double? cacheOrigin,
+    double? overlap,
   }) => SliverConstraints3d(
     axis: axis ?? this.axis,
     scrollOffset: scrollOffset ?? this.scrollOffset,
@@ -132,6 +151,7 @@ class SliverConstraints3d {
         viewportMainAxisExtent ?? this.viewportMainAxisExtent,
     remainingCacheExtent: remainingCacheExtent ?? this.remainingCacheExtent,
     cacheOrigin: cacheOrigin ?? this.cacheOrigin,
+    overlap: overlap ?? this.overlap,
   );
 
   @override
@@ -145,7 +165,8 @@ class SliverConstraints3d {
       other.depthExtent == depthExtent &&
       other.viewportMainAxisExtent == viewportMainAxisExtent &&
       other.remainingCacheExtent == remainingCacheExtent &&
-      other.cacheOrigin == cacheOrigin;
+      other.cacheOrigin == cacheOrigin &&
+      other.overlap == overlap;
 
   @override
   int get hashCode => Object.hash(
@@ -158,6 +179,7 @@ class SliverConstraints3d {
     viewportMainAxisExtent,
     remainingCacheExtent,
     cacheOrigin,
+    overlap,
   );
 
   @override
@@ -179,6 +201,8 @@ class SliverGeometry3d {
   const SliverGeometry3d({
     this.scrollExtent = 0.0,
     this.paintExtent = 0.0,
+    this.paintOrigin = 0.0,
+    this.maxScrollObstructionExtent = 0.0,
     double? layoutExtent,
     double? maxPaintExtent,
     double? hitTestExtent,
@@ -187,6 +211,7 @@ class SliverGeometry3d {
     this.scrollOffsetCorrection,
   }) : assert(scrollExtent >= 0.0),
        assert(paintExtent >= 0.0),
+       assert(maxScrollObstructionExtent >= 0.0),
        assert(
          scrollOffsetCorrection != 0.0,
          'A scrollOffsetCorrection of zero asks the viewport to redo its '
@@ -206,6 +231,34 @@ class SliverGeometry3d {
 
   /// How much of the visible window this sliver took.
   final double paintExtent;
+
+  /// Where this sliver's visible part sits relative to where the viewport
+  /// laid it out, along the scroll axis.
+  ///
+  /// Zero for a sliver that shows up where it was put, which is every sliver
+  /// that simply scrolls. It is nonzero for one that holds its place while
+  /// its scroll offset advances: a pinned header reports
+  /// `paintOrigin: constraints.overlap`, which pushes it clear of whatever
+  /// pinned sliver is already sitting on the leading edge, and a floating one
+  /// reports `min(overlap, 0)` so that it can hang back over the content it
+  /// is about to cover.
+  ///
+  /// The viewport adds it to the layout offset when it places the sliver's
+  /// node, so it moves the sliver in the scene without moving anything that
+  /// comes after it — which is the whole trick. Do not confuse it with
+  /// [layoutExtent], which moves what comes after and not this.
+  final double paintOrigin;
+
+  /// How much of the window this sliver will never give back, however far the
+  /// viewport scrolls.
+  ///
+  /// A pinned header reports its `minExtent` here: once the list has scrolled
+  /// past, that band at the leading edge is permanently occupied. Zero for
+  /// everything that scrolls away. `CustomScrollView3d` does not need it to
+  /// place anything — the running paint offset already tells it that — but a
+  /// caller sizing content around the bars does, the way Flutter's
+  /// `SliverOverlapAbsorber` and `MediaQuery` padding do.
+  final double maxScrollObstructionExtent;
 
   final double? _layoutExtent;
 
@@ -248,6 +301,8 @@ class SliverGeometry3d {
   SliverGeometry3d copyWith({
     double? scrollExtent,
     double? paintExtent,
+    double? paintOrigin,
+    double? maxScrollObstructionExtent,
     double? layoutExtent,
     double? maxPaintExtent,
     double? hitTestExtent,
@@ -257,6 +312,9 @@ class SliverGeometry3d {
   }) => SliverGeometry3d(
     scrollExtent: scrollExtent ?? this.scrollExtent,
     paintExtent: paintExtent ?? this.paintExtent,
+    paintOrigin: paintOrigin ?? this.paintOrigin,
+    maxScrollObstructionExtent:
+        maxScrollObstructionExtent ?? this.maxScrollObstructionExtent,
     layoutExtent: layoutExtent ?? _layoutExtent,
     maxPaintExtent: maxPaintExtent ?? _maxPaintExtent,
     hitTestExtent: hitTestExtent ?? _hitTestExtent,

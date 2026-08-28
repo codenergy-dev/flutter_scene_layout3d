@@ -1,7 +1,7 @@
 ---
-status: pending
+status: completed
 created_at: 2026-08-25T20:31:04Z
-updated_at: 2026-08-25T20:31:04Z
+updated_at: 2026-08-28T13:16:55Z
 commit: d7bb9db224f8080ddddde70d019ab5481b45d05e
 ---
 
@@ -92,19 +92,83 @@ build them when a component asks.
 
 ## The work
 
-- [ ] **Phase 1 — the fields.** `overlap` on the constraints,
+- [x] **Phase 1 — the fields.** `overlap` on the constraints,
       `paintOrigin` and `maxScrollObstructionExtent` on the geometry, threaded
       through `CustomScrollView3d`'s placement loop, with the existing sliver
       suite green.
-- [ ] **Phase 2 — `SliverPersistentHeader3d`** and its delegate, non-pinned
+- [x] **Phase 2 — `SliverPersistentHeader3d`** and its delegate, non-pinned
       first (a header that scrolls away and shrinks).
-- [ ] **Phase 3 — pinned**, with the depth lift.
-- [ ] **Phase 4 — floating**, which is where `scrollOffsetCorrection` finally
-      gets a built-in user.
-- [ ] **Phase 5 — clipping**, once the clip-plane contract exists.
-- [ ] **Phase 6 — README.** The *How it differs from Flutter* bullet that
-      says pinned and floating headers do not exist has to change in the same
-      pass, and gain the depth-lift explanation.
+- [x] **Phase 3 — pinned**, with the depth lift.
+- [x] **Phase 4 — floating**, ~~which is where `scrollOffsetCorrection`
+      finally gets a built-in user~~ — it is not; see below.
+- [x] **Phase 5 — clipping**, which the clip-plane contract already supports:
+      the viewport publishes one plane at the obstruction's trailing edge.
+- [x] **Phase 6 — README.**
+
+## What the original reasoning got wrong
+
+- **Floating headers do not use `scrollOffsetCorrection`, and should not.**
+  The plan expected phase 4 to be the correction machinery's first built-in
+  user. It is not, in Flutter either: `RenderSliverFloatingPersistentHeader`
+  keeps a `_effectiveScrollOffset` of its own and reports a `paintExtent`
+  larger than its `layoutExtent`, so the bar comes back *over* the content
+  without moving it. Asking the viewport to move the scroll offset instead
+  would drag the list under the viewer's finger, which is the opposite of
+  what floating is for. Implemented Flutter's way; the correction machinery
+  is still unused by any built-in, and the README still says so.
+
+- **The choice between depth and clipping was not a choice.** The plan
+  recommended "(1) now, (2) when it exists" and the clip contract landed
+  first (plan 3), so both shipped together — and they are not alternatives.
+  The lift alone leaves a row visible past the bar's silhouette; the clip
+  alone leaves a material that ignores planes interpenetrating the bar. Both
+  are on, and `lift: 0` turns the first off for a caller who has the second
+  covered. The default lift is one logical pixel read from
+  `Layout3d.metrics`, not a constant, so it is the same distance on any
+  scale.
+
+- **Nothing had to be added to make a material read the plane block.**
+  `DecoratedBox3d` already passes its `clipRegion` into the paint request and
+  `BoxDecoration3d` already packs `Clip3dRegion.toPlaneBlock()` into its
+  uniforms, so publishing the plane from the viewport was the whole of tier
+  two for the shipped decoration. A leaf holding an application's own
+  material still ignores it, which is what the lift is for.
+
+- **The delegate cannot be Flutter's `build` verbatim.** Flutter rebuilds a
+  *widget* per layout and lets the element tree diff it; there is no element
+  tree under this layer, and building a fresh `Layout3d` subtree every frame
+  would churn scene nodes. `build(shrinkOffset, overlapsContent:)` keeps the
+  plan's spelling and is still called every layout, but the header adopts
+  what it is handed only when it is not what it already holds, and disposes
+  what it drops — so the ordinary delegate keeps one subtree and mutates it.
+
+- **`userScrollDirection` does not exist here**, so a floating header cannot
+  gate its expansion on the drag direction the way Flutter's does. Any
+  backwards movement of the offset brings the bar back by the same amount,
+  which is what a viewer dragging the list down expects. If a fling that
+  settles backwards ever looks wrong, the fix is a direction on
+  `Scroll3dController`, not on the header.
+
+- **Hit test order had to change.** A viewport's leading slivers are in
+  *front* of the ones after them, not beside them, so `CustomScrollView3d`
+  now tests its slivers in scroll order rather than taking
+  `MultiChildLayout3d`'s back-to-front default. Flutter's viewport orders
+  them the same way, for the same reason. The lift cannot do this job:
+  `ParentData3d.sceneOffset` is undone by `worldTransform`, exactly so that
+  moving geometry for the depth buffer does not move a box for a ray.
+
+## Where it landed
+
+- `lib/src/sliver/sliver_constraints.dart`: `SliverConstraints3d.overlap`,
+  `SliverGeometry3d.paintOrigin` and
+  `SliverGeometry3d.maxScrollObstructionExtent`.
+- `lib/src/sliver/custom_scroll_view.dart`: the running paint offset that
+  computes `overlap`, placement through `paintOrigin`, sliver-order hit
+  testing, and `clipRegionForChild` publishing the obstruction plane.
+- `lib/src/sliver/sliver_persistent_header.dart`: `SliverPersistentHeader3d`
+  and `SliverPersistentHeader3dDelegate`, with `pinned`, `floating` and
+  `lift`.
+- `test/persistent_header_test.dart`: twenty tests, and the whole suite green.
 
 ## Tests
 
@@ -113,14 +177,18 @@ build them when a component asks.
 - A pinned header stays at the leading edge: its node's placement is constant
   while the sliver after it moves.
 - `overlap` reaches the sliver after a pinned header, and is zero without one.
-- A floating header re-entering applies a `scrollOffsetCorrection` and the
-  pass re-runs (the existing correction machinery, exercised for the first
-  time by a built-in).
+- A floating header re-entering leaves the scroll position and the content
+  where they are — the corrected expectation; see *What the original
+  reasoning got wrong*.
 - A ray aimed at the header finds the header, not the content behind it.
 - Hit testing respects `hitTestExtent` for a partially visible header.
 
 ## Out of scope
 
+`SliverPadding3d`, `SliverFillRemaining3d`, reverse growth and a `center`
+sliver, as listed above; a declarative `SceneSliverPersistentHeader3d`, which
+wants a build scope for the delegate the way the lazy list widgets have one
+and is a widget-layer piece rather than a header one;
 `NestedScrollView`, snapping animations (they belong to
 [animation](2026_08_25_animation_and_scroll_physics.md)), and `SliverAppBar3d`
 itself, which lives in the component package.

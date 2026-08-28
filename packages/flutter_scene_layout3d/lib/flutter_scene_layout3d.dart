@@ -56,8 +56,8 @@
 ///    the measurement protocol, with [IntrinsicWidth3d] and [Baseline3d] as
 ///    the boxes that use it.
 ///  * [CustomScrollView3d] and the slivers ([SliverList3d], [SliverGrid3d],
-///    [SliverToBoxAdapter3d]), a second protocol for sections that share one
-///    scroll position. [ListView3d] and [GridView3d] are built on it, each a
+///    [SliverToBoxAdapter3d], [SliverPersistentHeader3d]), a second protocol
+///    for sections that share one scroll position. [ListView3d] and [GridView3d] are built on it, each a
 ///    viewport over a single sliver, the way Flutter's are; [BoxScrollView3d]
 ///    is that shape.
 ///  * [Layout3dBuiltChildrenMixin] and [Layout3dMeasuredChildrenMixin], the
@@ -186,6 +186,8 @@ export 'src/sliver/sliver.dart'
 export 'src/sliver/sliver_constraints.dart'
     show SliverConstraints3d, SliverGeometry3d;
 export 'src/sliver/sliver_grid.dart' show SliverGrid3d;
+export 'src/sliver/sliver_persistent_header.dart'
+    show SliverPersistentHeader3d, SliverPersistentHeader3dDelegate;
 export 'src/sliver/sliver_list.dart' show Sliver3dItemBuilder, SliverList3d;
 export 'src/text/break_rules.dart'
     show OverflowWrap3d, TextBreakRules3d, TextWhitespace3d, WordBreak3d;

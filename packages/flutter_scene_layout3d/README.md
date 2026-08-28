@@ -471,6 +471,7 @@ than none.
 | `Grid3dDelegate`, `Grid3dLayout` | `SliverGridDelegate`, `SliverGridLayout` |
 | `CustomScrollView3d`, `Sliver3d` | `CustomScrollView` + `Viewport`, `RenderSliver` |
 | `SliverList3d`, `SliverGrid3d`, `SliverToBoxAdapter3d` | `SliverList`, `SliverGrid`, `SliverToBoxAdapter` |
+| `SliverPersistentHeader3d`, `SliverPersistentHeader3dDelegate` | `SliverPersistentHeader`, `SliverPersistentHeaderDelegate` |
 | `BoxScrollView3d`, `SliverMultiBoxAdaptor3d` | `BoxScrollView`, `RenderSliverMultiBoxAdaptor` |
 | `SliverConstraints3d`, `SliverGeometry3d` | `SliverConstraints`, `SliverGeometry` |
 | `IntrinsicWidth3d`, `IntrinsicHeight3d`, `IntrinsicDepth3d` | `IntrinsicWidth`, `IntrinsicHeight` |
@@ -799,6 +800,87 @@ SliverList3d.builder(
   itemBuilder: (index) => chapterCard(chapters[index]),
 )
 ```
+
+### Persistent headers
+
+A `SliverPersistentHeader3d` is a section that stays at the leading edge while
+the rest scrolls past it, shrinking as it goes: the sliver a `SliverAppBar` is
+built on. Its content comes from a delegate, which states how tall the header
+is at rest and how far it may collapse, and builds the content for a given
+*shrink offset*:
+
+```dart
+class _Bar extends SliverPersistentHeader3dDelegate {
+  _Bar(this._panel, this._metrics);
+
+  final DecoratedBox3d _panel;
+  final Layout3dMetrics _metrics;
+
+  // Both extents are along the scroll axis, in layout units, so a bar stated
+  // in logical pixels converts through the tree's metrics.
+  @override
+  double get minExtent => _metrics.dp(64);
+
+  @override
+  double get maxExtent => _metrics.dp(180);
+
+  @override
+  Layout3d build(double shrinkOffset, {required bool overlapsContent}) {
+    // One subtree, told what the scroll position did to it.
+    _panel.decoration = overlapsContent ? _raised : _flat;
+    return _panel;
+  }
+
+  @override
+  bool shouldRebuild(_Bar old) => !identical(old._panel, _panel);
+}
+
+CustomScrollView3d(
+  slivers: [
+    SliverPersistentHeader3d(delegate: _Bar(panel, metrics), pinned: true),
+    SliverList3d.builder(itemCount: 500, itemBuilder: row),
+  ],
+)
+```
+
+`pinned` keeps the header on the leading edge once it has collapsed, `floating`
+brings it back as soon as the viewer scrolls the other way, and both together
+do both. The protocol carries them the way Flutter's does: `overlap` on
+`SliverConstraints3d` is how much of a sliver's leading edge an earlier sliver
+is already sitting on, `paintOrigin` on `SliverGeometry3d` is where a sliver's
+visible part sits relative to where it was laid out, and
+`maxScrollObstructionExtent` is how much of the window a pinned bar will never
+give back.
+
+**Build is called on every layout**, which while scrolling is every frame. The
+delegate is expected to keep one subtree and hand the same instance back — the
+header adopts what it is given only when it is not what it already holds, and
+disposes what it drops. A delegate that returns a fresh subtree per frame will
+build and dispose geometry at frame rate.
+
+The part that is not a port is what "under the bar" means. In two dimensions a
+pinned bar paints over the rows and the viewport clips them, so a row half
+under the bar shows its bottom half. Here the row is geometry in front of
+nothing, and left alone it draws straight through the bar. Two mechanisms
+answer that, and a pinned header wants both:
+
+* **The header is lifted toward the viewer** by `lift`, one logical pixel by
+  default, so content passes *behind* it. It is written to the scene node
+  alone — `ParentData3d.sceneOffset`, the same trade `Stack3d.depthStep`
+  makes — so the header's box does not move and hit testing is untouched. For
+  an opaque bar spanning the cross axis this is already the 2D picture.
+* **The viewport publishes a clip plane** at the trailing edge of whatever a
+  pinned header is obstructing, which reaches the content through
+  `Layout3d.clipRegion`. That is what cuts a row *in half* at the bar's edge:
+  culling can only hide a whole row, and a clip box would also cut the row off
+  at the far edge of the window, which is a different decision. A material
+  that reads clip planes honours it — a `BoxDecoration3d` does — and one that
+  does not is still behind the bar rather than through it.
+
+A ray aimed at the bar finds the bar. The viewport hit-tests its slivers in
+scroll order, first one first, because a viewport's leading children are in
+front rather than beside; Flutter's orders them the same way and for the same
+reason.
 
 ## Measuring
 
@@ -1221,9 +1303,11 @@ and builds a new one in place.
 * **A sliver has no growth direction and no centre child.** Slivers run one
   way from the start of the viewport; there is no reverse list and no
   `center` key yet.
-* **No pinned or floating headers**, so `SliverConstraints3d` carries no
-  `overlap` and `SliverGeometry3d` no `paintOrigin`. They are the fields those
-  headers need, and they can arrive with them.
+* **A pinned header stands in front of the content, it does not paint over
+  it.** Nothing paints here, so a row scrolling under a bar is geometry that
+  is really there. A `SliverPersistentHeader3d` answers with both a small
+  push toward the viewer and a clip plane the viewport publishes; see
+  *Persistent headers*.
 * **Hit testing walks with a ray, not a point**, so an entry reports where
   the ray *entered* the box, and a box bounds the stretch of ray its children
   can be found in.
@@ -1305,11 +1389,13 @@ breadth rather than new machinery.
 
 **3. Slivers.** ~~Mostly done~~: `CustomScrollView3d` drives the protocol,
 with `SliverList3d`, `SliverGrid3d` and `SliverToBoxAdapter3d` on top of it and
-`scrollOffsetCorrection` honoured. `ListView3d` and `GridView3d` are views of
-this kind over a single sliver, as Flutter's are, so placement is written
-once. See *Slivers* above. Two pieces are left.
-Pinned and floating headers need `overlap` and `paintOrigin` threaded through
-the protocol, which is what a `SliverAppBar3d` would be built on. Building
+`scrollOffsetCorrection` honoured, and `SliverPersistentHeader3d` pinning,
+floating or scrolling away on top of `overlap` and `paintOrigin`, which is
+what a `SliverAppBar3d` is built on. `ListView3d` and `GridView3d` are views
+of this kind over a single sliver, as Flutter's are, so placement is written
+once. See *Slivers* above. What is left of the protocol is small and
+independent: `SliverPadding3d`, `SliverFillRemaining3d`, a reverse growth
+direction and a `center` sliver. Building
 **widgets** lazily is done: `SceneListView3d.builder` and its three siblings
 inflate an item as the window reaches it, through a `Layout3dChildManager` the
 view consults and a `RenderObjectElement` that implements it inside a build
