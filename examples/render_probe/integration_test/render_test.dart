@@ -45,6 +45,7 @@ Future<_Capture> _draw(WidgetTester tester, ProbeScene probe) async {
   await tester.pump();
 
   await Scene.initializeStaticResources();
+  await probe.preload?.call();
 
   final key = GlobalKey<ProbeSceneViewState>();
   await tester.pumpWidget(
@@ -310,18 +311,15 @@ void main() {
       // Sampling the centre reads the front child's colour, and the back
       // child is only visible around it.
       final centre = capture.centerOf('front');
-      final centreColor = capture.frame.colorAt(
-        centre.dx.round(),
-        centre.dy.round(),
-      )!;
+      final centreColor = capture.frame.meanColorAt(centre, radius: 5)!;
 
-      final back = capture.state.content.probes['back']!;
-      final backBounds = back.screenBounds(
-        capture.state.camera,
-        capture.viewSize,
-      )!;
       // A point inside the big back cube but outside the small front one.
-      final ring = ui.Offset(backBounds.left + 8, centre.dy);
+      // Taken as a fraction of the back box's own front face: the front cube
+      // is half the back one's extent and centred, so it spans 0.25 to 0.75,
+      // and a tenth of the way across is clear of it. screenBounds would be
+      // the wrong tool here — it bounds all eight corners including the depth
+      // extrusion, so its left edge is outside the face being probed.
+      final ring = capture.pointOf('back', const Offset3d(0.1, 0.5, 0));
       final ringColor = capture.frame.colorAt(
         ring.dx.round(),
         ring.dy.round(),
@@ -332,10 +330,142 @@ void main() {
         greaterThan(0.8),
         reason: 'the back cube should be visible around the front one',
       );
+      // A mean over a disc, and a margin — not two exact pixel values. The
+      // first version compared ARGB words and was flaky for the reason this
+      // whole harness is built to avoid.
       expect(
-        centreColor.toARGB32(),
-        isNot(ringColor.toARGB32()),
-        reason: 'the front child should occlude the back one at the centre',
+        FrameProbe.colorDistance(centreColor, ringColor),
+        greaterThan(0.1),
+        reason:
+            'the front child should occlude the back one at the centre; '
+            'read $centreColor in the middle and $ringColor around it',
+      );
+    });
+    testWidgets('a clip box culls the child outside it', (tester) async {
+      final capture = await _draw(tester, kProbeScenes.byId('clipped_row'));
+
+      // Layout still places the overflowing child — the clip is about what is
+      // drawn, not about where boxes go — so it still projects to a pixel.
+      // That pixel is what must be empty.
+      expect(
+        capture.frame.coverageAt(capture.centerOf('inside'), radius: 8),
+        greaterThan(0.8),
+        reason: 'the child inside the clip should be drawn',
+      );
+      expect(
+        capture.frame.coverageAt(capture.centerOf('outside'), radius: 8),
+        lessThan(0.05),
+        reason: 'the child outside the clip box was drawn anyway',
+      );
+    });
+
+    testWidgets('scrolling brings later items in and culls earlier ones', (
+      tester,
+    ) async {
+      final capture = await _draw(tester, kProbeScenes.byId('scrolled_list'));
+
+      // Items are 0.7 with 0.25 spacing, so each step is 0.95 and the 1.9
+      // jump is exactly two of them: item0 and item1 are above the viewport,
+      // item2 onward are in it.
+      //
+      // An item scrolled out of the list is *not* off the view — the view is
+      // larger than the surface — so "is it inside the frame" is the wrong
+      // question and the first version of this test asked it. The right one
+      // is whether the viewport still draws it.
+      for (final gone in ['item0', 'item1']) {
+        final box = capture.state.content.probes[gone]!;
+        // A released item has no size at all, which is a stronger form of the
+        // same claim; a retained one must at least not be drawn.
+        final point = box.screenCenter(capture.state.camera, capture.viewSize);
+        if (point == null) continue;
+        expect(
+          capture.frame.coverageAt(point, radius: 5),
+          lessThan(0.05),
+          reason: '$gone scrolled out of the viewport but was still drawn',
+        );
+      }
+
+      for (final visible in ['item2', 'item3']) {
+        expect(
+          capture.frame.coverageAt(capture.centerOf(visible), radius: 5),
+          greaterThan(0.7),
+          reason: '$visible should be in the viewport after scrolling',
+        );
+      }
+
+      // And they are in the order the list put them.
+      expect(
+        capture.centerOf('item2').dy,
+        lessThan(capture.centerOf('item3').dy),
+      );
+    });
+  });
+
+  // The seam nothing could reach until now. `box_decoration3d.fmat` ships with
+  // the package and, until this app's build hook compiled it, no lane in
+  // either this repository or the engine's had ever run impellerc over it: a
+  // unit test parses the file and checks that every parameter the Dart side
+  // writes is declared, which catches a silent mismatch but not invalid GLSL.
+  // These two tests are the first thing to ask the compiler, and then the
+  // rasterizer, whether the shader is real.
+  group('the decoration shader', () {
+    testWidgets('the panel shader compiles, runs, and rounds its corners', (
+      tester,
+    ) async {
+      // One test rather than two, because the square panel is the *control*.
+      // "The rounded panel's corner is empty" on its own could equally mean
+      // the panel never drew; the claim only means something next to a panel
+      // that is identical but for the radius.
+      //
+      // Absolute coverage thresholds at a corner are a trap here: the probe
+      // disc straddles the panel edge and reads somewhere in the middle
+      // whatever the shader does. Comparing the two at the same relative spot
+      // asks the real question and does not depend on where exactly the edge
+      // lands.
+      // A point on the panel's own front face, near the top-left corner.
+      //
+      // Taken as a fraction of the panel rather than off screenBounds, which
+      // bounds all eight corners including the depth extrusion and so sits
+      // outside the face. The panel is 3.6 x 1.8 with a 0.6 radius, so this
+      // lands 0.108 units in on both axes: a diagonal of 0.153, comfortably
+      // inside the 0.248 the arc carves away, and comfortably inside the body
+      // of a panel that has no radius.
+      double cornerCoverage(_Capture capture) => capture.frame.coverageAt(
+        capture.pointOf('panel', const Offset3d(0.03, 0.06, 0)),
+        radius: 4,
+      );
+
+      final square = await _draw(tester, kProbeScenes.byId('square_panel'));
+      expect(
+        square.frame.coverageAt(square.centerOf('panel'), radius: 20),
+        greaterThan(0.95),
+        reason:
+            'the panel did not draw at all. Either the shader failed to '
+            'compile, or the painter is not installed.',
+      );
+      final squareCorner = cornerCoverage(square);
+
+      final rounded = await _draw(tester, kProbeScenes.byId('rounded_panel'));
+      expect(
+        rounded.frame.coverageAt(rounded.centerOf('panel'), radius: 20),
+        greaterThan(0.95),
+        reason: 'the rounded panel did not draw in the middle either',
+      );
+      final roundedCorner = cornerCoverage(rounded);
+
+      // The control really is square there.
+      expect(
+        squareCorner,
+        greaterThan(0.9),
+        reason: 'a panel with no radius should be solid near its corner',
+      );
+      // And the radius really took the corner away.
+      expect(
+        roundedCorner,
+        lessThan(squareCorner - 0.5),
+        reason:
+            'the corner radius did not carve the corner away: square read '
+            '$squareCorner, rounded read $roundedCorner',
       );
     });
   });

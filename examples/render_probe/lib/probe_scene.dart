@@ -35,7 +35,13 @@ class ProbeSceneContent {
 
 /// A named, deterministic scene the render test can draw and probe.
 class ProbeScene {
-  const ProbeScene(this.id, this.build, {this.camera, this.viewSize});
+  const ProbeScene(
+    this.id,
+    this.build, {
+    this.camera,
+    this.viewSize,
+    this.preload,
+  });
 
   /// Stable identifier, used in the test name and the capture filename.
   final String id;
@@ -50,6 +56,14 @@ class ProbeScene {
   /// The size the view is given. Fixed so a probe's arithmetic does not depend
   /// on the window the test happens to run in.
   final Size? viewSize;
+
+  /// Anything asynchronous the scene needs before [build] can run.
+  ///
+  /// Loading a compiled material is the case that matters: a decoration draws
+  /// nothing until `BoxDecoration3d.painterFactory` is installed, and
+  /// installing it means awaiting `loadFmatMaterial`. Called after the engine
+  /// is ready and before [build], never during a frame.
+  final Future<void> Function()? preload;
 
   static const Size defaultViewSize = Size(640, 480);
 

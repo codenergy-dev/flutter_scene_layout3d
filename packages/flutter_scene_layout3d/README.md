@@ -1764,13 +1764,29 @@ is over, on all three surfaces and through the turning panel, and the list
 scrolls by dragging. Wrapping, grids, slivers and intrinsics have unit
 coverage but no interactive demo yet.
 
-**There is no headless render coverage in this repository yet.** The suite is
-arithmetic only: it proves the protocol arranges correctly, and proves nothing
-about whether a frame comes out. Five smoke scenes that did exactly that lived
-in the engine monorepo this package grew up in and did not move with it.
-[The render coverage plan](plans/2026_08_28_render_coverage.md) replaces them
-with something sharper: tests that draw real primitives through the layout
-boxes and let the layout itself say which pixels to check.
+`examples/render_probe` draws real geometry through the layout boxes on a GPU
+and then checks the frame against the layout. It does not compare against a
+stored image; it asks the layout tree where a box went, projects that to a
+pixel with `Layout3d.screenCenter`, and asserts the frame has geometry there
+and clear space in the gaps:
+
+```dart
+expect(frame.coverageAt(capture.centerOf('left'), radius: 10), greaterThan(0.8));
+```
+
+Twenty of them, over cuboids and spheres arranged by `Row3d`, `Column3d`,
+`Stack3d`, `Padding3d`, `ListView3d`, `ClipBox3d` and the `xz` basis. It is
+also the only lane that compiles `assets/box_decoration3d.fmat`, so it is what
+would catch a syntax error in the panel shader.
+
+```sh
+cd examples/render_probe
+flutter drive --driver=test_driver/integration_test.dart \
+  --target=integration_test/render_test.dart -d macos --enable-flutter-gpu
+```
+
+The package's own `flutter test` suite remains arithmetic only, by necessity:
+it has no Flutter GPU context.
 
 ## Roadmap
 

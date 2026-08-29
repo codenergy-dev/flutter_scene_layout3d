@@ -182,7 +182,9 @@ seam. Today the debug wireframe is the only thing that puts geometry into a
 scene on its own account.
 
 So: the arithmetic is trustworthy and well covered by tests. The pixels are
-your side of the seam, for now.
+your side of the seam, for now — though `examples/render_probe` now draws real
+geometry on a GPU and checks the frame against the layout, and it is what
+compiles the panel shader, so the seam is a shorter reach than it was.
 
 Also open, each for a stated reason: drag and drop, keep-alive for lazily built
 children, subtree opacity, and a shadow pass that respects a rounded panel's
@@ -202,6 +204,16 @@ package.
 ```sh
 flutter pub get                                     # resolves the workspace
 cd packages/flutter_scene_layout3d && flutter test   # the suite
+```
+
+The suite is arithmetic and runs headless. To check that a frame actually comes
+out, `examples/render_probe` draws the layout on a GPU and probes the result at
+the pixels layout says to check:
+
+```sh
+cd examples/render_probe
+flutter drive --driver=test_driver/integration_test.dart \
+  --target=integration_test/render_test.dart -d macos --enable-flutter-gpu
 ```
 
 The example app commits no platform scaffolding, so generate a platform first:

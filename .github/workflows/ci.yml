@@ -30,9 +30,36 @@ jobs:
       - name: Analyze
         run: dart analyze
 
-      # The suite is headless. Anything needing a GPU context — the decoration
-      # painter, a glyph atlas — is a seam with no in-tree implementation, and
-      # is deliberately not covered here. See AGENTS.md.
+      # The package suite is headless: arithmetic only, no frame is drawn.
       - name: Test
         run: flutter test
         working-directory: packages/flutter_scene_layout3d
+
+  render:
+    name: Render tests
+    # macos-14 and later are Apple silicon with a real GPU, which Flutter GPU
+    # needs. A software backend has not been tried; until it has, do not
+    # assume a cheaper runner works.
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Resolve workspace dependencies
+        run: flutter pub get
+
+      # Draws real geometry through the layout boxes and probes the frame at
+      # the pixels layout says to check. This is also the only lane that
+      # compiles packages/flutter_scene_layout3d/assets/box_decoration3d.fmat,
+      # so a syntax error in the panel shader fails here and nowhere else.
+      - name: Render probes
+        run: |
+          flutter drive \
+            --driver=test_driver/integration_test.dart \
+            --target=integration_test/render_test.dart \
+            -d macos --enable-flutter-gpu
+        working-directory: examples/render_probe

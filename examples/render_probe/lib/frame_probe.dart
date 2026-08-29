@@ -154,6 +154,44 @@ class FrameProbe {
     return seen.length;
   }
 
+  /// The mean colour of the non-clear pixels within [radius] of [center].
+  ///
+  /// Null when nothing is covered there. Averaging over a disc rather than
+  /// reading one pixel is the difference between a stable assertion and one
+  /// that fails on an anti-aliased edge or a lighting gradient.
+  ui.Color? meanColorAt(ui.Offset center, {double radius = 4}) {
+    var r = 0.0, g = 0.0, b = 0.0;
+    var count = 0;
+    final cx = center.dx.round();
+    final cy = center.dy.round();
+    final span = radius.ceil();
+    for (var dy = -span; dy <= span; dy++) {
+      for (var dx = -span; dx <= span; dx++) {
+        if (dx * dx + dy * dy > radius * radius) continue;
+        final color = colorAt(cx + dx, cy + dy);
+        if (color == null || _isClear(color)) continue;
+        r += color.r;
+        g += color.g;
+        b += color.b;
+        count++;
+      }
+    }
+    if (count == 0) return null;
+    return ui.Color.from(
+      alpha: 1,
+      red: r / count,
+      green: g / count,
+      blue: b / count,
+    );
+  }
+
+  /// How far apart two colours are, as the largest per-channel difference in
+  /// 0..1. Zero for identical colours, one for black against white.
+  static double colorDistance(ui.Color a, ui.Color b) => math.max(
+    (a.r - b.r).abs(),
+    math.max((a.g - b.g).abs(), (a.b - b.b).abs()),
+  );
+
   /// The horizontal centre of mass of the covered pixels in a band of rows,
   /// or null when the band is empty.
   ///

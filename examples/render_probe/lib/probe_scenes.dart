@@ -6,11 +6,30 @@ import 'package:flutter_scene/scene.dart'
         Node,
         PerspectiveCamera,
         PhysicallyBasedMaterial,
-        SphereGeometry;
+        SphereGeometry,
+        loadFmatMaterial;
+import 'package:flutter/painting.dart' show Color;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
 import 'package:vector_math/vector_math.dart' show Vector3, Vector4;
 
 import 'probe_scene.dart';
+
+/// Installs the panel painter, once.
+///
+/// `BoxDecoration3d` measures and lays out perfectly well with no painter and
+/// draws nothing at all, which is how the package ships. This is the wiring an
+/// application does at startup, and the only thing standing between a
+/// decoration and a visible panel.
+///
+/// `assets/box_decoration3d.fmat` is a symlink to the package's own shader, so
+/// what is compiled and loaded here is the shipped file rather than a copy of
+/// it that could drift.
+Future<void> installPanelPainter() async {
+  if (BoxDecoration3d.painterFactory != null) return;
+  final material = await loadFmatMaterial('assets/box_decoration3d.fmat');
+  BoxDecoration3d.painterFactory = (_) =>
+      BoxDecoration3dPainter(createMaterial: () => material);
+}
 
 // Every NodeBox3d here uses BoxFit3d.contain rather than the default
 // BoxFit3d.none. It matters more than it looks: with `none` the content keeps
@@ -213,13 +232,25 @@ final List<ProbeScene> kProbeScenes = <ProbeScene>[
     // Stack3d steps each child toward the viewer, so the last child is in
     // front. Both are at the same place on the plane; only depth separates
     // them, and the front one must be what the frame shows.
+    //
+    // The children are deliberately *thin*. A child thicker than the depth
+    // step is not separated by it: a 1.6-deep back slab centred on the plane
+    // reaches further toward the viewer than a 0.8-deep child stepped 0.35,
+    // so the back one wins the depth test and the stack looks broken. The
+    // first version of this scene did exactly that and passed once, on
+    // z-fighting, before failing.
+    // `fill`, not `contain`, and that distinction is the whole reason this
+    // scene took three tries. `contain` scales uniformly to fit the *smallest*
+    // bounded axis, so a cube in a 1.6 x 1.6 x 0.1 slot comes out a 0.1 cube —
+    // a speck. `fill` scales each axis on its own and gives the slab the box
+    // actually describes.
     final back = NodeBox3d(
-      fit: BoxFit3d.contain,
+      fit: BoxFit3d.fill,
       content: _solid(_cube, _amber),
       name: 'back',
     );
     final front = NodeBox3d(
-      fit: BoxFit3d.contain,
+      fit: BoxFit3d.fill,
       content: _solid(_cube, _violet),
       name: 'front',
     );
@@ -231,8 +262,8 @@ final List<ProbeScene> kProbeScenes = <ProbeScene>[
             alignment: Alignment3d.center,
             depthStep: 0.35,
             children: [
-              SizedBox3d.cube(1.6, child: back),
-              SizedBox3d.cube(0.8, child: front),
+              SizedBox3d(width: 1.6, height: 1.6, depth: 0.1, child: back),
+              SizedBox3d(width: 0.8, height: 0.8, depth: 0.1, child: front),
             ],
           ),
         ),
@@ -240,4 +271,117 @@ final List<ProbeScene> kProbeScenes = <ProbeScene>[
       probes: {'back': back, 'front': front},
     );
   }),
+
+  ProbeScene('clipped_row', () {
+    // A row wider than the ClipBox3d around it. The clipping contract is
+    // whole-node culling here: a child entirely outside the box is not drawn
+    // at all, and one inside is. Three plans depend on this contract, and
+    // until now nothing had ever looked at what it does to a frame.
+    final inside = NodeBox3d(
+      fit: BoxFit3d.contain,
+      content: _solid(_cube, _teal),
+      name: 'inside',
+    );
+    final outside = NodeBox3d(
+      fit: BoxFit3d.contain,
+      content: _solid(_cube, _violet),
+      name: 'outside',
+    );
+    return ProbeSceneContent(
+      surfaces: [
+        Layout3dSurface(
+          constraints: Constraints3d.tight(const Size3d(1.6, 1.4, 1)),
+          child: ClipBox3d(
+            child: OverflowBox3d(
+              maxWidth: double.infinity,
+              alignment: Alignment3d.centerLeft,
+              child: Row3d(
+                crossAxisAlignment: CrossAxisAlignment3d.center,
+                spacing: 1.4,
+                children: [
+                  SizedBox3d.cube(1, child: inside),
+                  SizedBox3d.cube(1, child: outside),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+      probes: {'inside': inside, 'outside': outside},
+    );
+  }),
+
+  ProbeScene('scrolled_list', () {
+    // A list scrolled by a known offset. The item that was at the top is
+    // gone; the one that took its place is drawn. Layout says where each one
+    // landed, and the frame is asked to agree.
+    final controller = Scroll3dController();
+    final items = <NodeBox3d>[
+      for (var i = 0; i < 6; i++)
+        NodeBox3d(
+          fit: BoxFit3d.contain,
+          content: _solid(_cube, i.isEven ? _amber : _teal),
+          name: 'item$i',
+        ),
+    ];
+    final list = ListView3d(
+      controller: controller,
+      spacing: 0.25,
+      children: [for (final item in items) SizedBox3d.cube(0.7, child: item)],
+    );
+    final surface = Layout3dSurface(
+      constraints: Constraints3d.tight(const Size3d(1.2, 2.6, 1)),
+      child: ClipBox3d(child: list),
+    );
+    // Lay out once so the viewport knows its extent, then scroll and let the
+    // caller flush again.
+    surface.flush();
+    controller.jumpTo(1.9);
+    return ProbeSceneContent(
+      surfaces: [surface],
+      probes: {for (var i = 0; i < items.length; i++) 'item$i': items[i]},
+    );
+  }),
+
+  // ── The seam no unit test can reach: does the shader draw? ────────────
+  ProbeScene('rounded_panel', () {
+    // A panel with a corner radius of a third of its height. The corners
+    // the SDF carves away are the assertion: geometry in the middle, clear
+    // space where the radius took it.
+    final panel = DecoratedBox3d(
+      decoration: const BoxDecoration3d(
+        color: Color(0xFFEA9F26),
+        borderRadius: BorderRadius3d.circular(60),
+      ),
+      name: 'panel',
+    );
+    return ProbeSceneContent(
+      surfaces: [
+        Layout3dSurface(
+          constraints: Constraints3d.tight(const Size3d(3.6, 1.8, 0.2)),
+          child: panel,
+        ),
+      ],
+      probes: {'panel': panel},
+    );
+  }, preload: installPanelPainter),
+
+  ProbeScene('square_panel', () {
+    // The same panel with no radius, which is what makes the rounded one
+    // meaningful: without a square control, "the corner is empty" could
+    // just as well mean the panel never drew.
+    final panel = DecoratedBox3d(
+      decoration: const BoxDecoration3d(color: Color(0xFF26B3A8)),
+      name: 'panel',
+    );
+    return ProbeSceneContent(
+      surfaces: [
+        Layout3dSurface(
+          constraints: Constraints3d.tight(const Size3d(3.6, 1.8, 0.2)),
+          child: panel,
+        ),
+      ],
+      probes: {'panel': panel},
+    );
+  }, preload: installPanelPainter),
 ];

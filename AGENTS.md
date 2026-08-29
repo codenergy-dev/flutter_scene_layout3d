@@ -25,6 +25,7 @@ once it became clear the scope was its own project. That history is preserved:
 | --- | --- |
 | `packages/flutter_scene_layout3d` | The layout protocol. Constraints, intrinsics, baselines, flex, stack, wrap, slivers, scrolling, text measurement, decoration, clipping, pointer dispatch, focus, overlays, animation, diagnostics. |
 | `examples/layout3d_gallery` | The example app. Three surfaces — an upright panel, a ground plane, a scrolling list — all hit-testable. |
+| `examples/render_probe` | Render tests. Draws the layout on a GPU and probes the frame at the pixels layout says to check. Commits its platform scaffolding, unlike the gallery. |
 
 `flutter_scene_material3d`, a Material catalogue (`Button3d`, `Card3d`,
 `Scaffold3d`, `AppBar3d`) built as real geometry on this protocol, is the
@@ -96,9 +97,15 @@ These cost real time and are not obvious from the code.
   placement, so an animation stored there is silently erased. Use `nodeOffset`.
 - **The package draws almost nothing by default.**
   `BoxDecoration3d.painterFactory` is null until something sets it, and
-  `Text3dRenderer` has no in-tree implementation. Both are deliberate seams
-  with real geometry behind them; neither can be verified in `flutter test`,
-  which has no GPU context.
+  `Text3dRenderer` has no in-tree implementation. Both are deliberate seams;
+  neither can be verified in `flutter test`, which has no GPU context.
+  `examples/render_probe` installs the panel painter and does verify it.
+- **A panel's size is in world units; its corner radius is in logical
+  pixels.** `BorderRadius3d`, `bevel`, `border` and `elevation` are all
+  written the way a Material shape token is, and the metrics convert them at
+  paint time. `BorderRadius3d.circular(0.6)` asks for 0.6dp — at the default
+  rate, 0.006 world units, an indistinguishably square corner. You almost
+  certainly meant `circular(60)`.
 - **`TapTarget3d` grows the ray region but not the box.** The Material 48dp
   minimum is invisible to layout, to intrinsics, to `ensureVisible3d` and to
   semantics. Deliberate — it keeps neighbours from moving — but sharp.
@@ -153,8 +160,25 @@ committed — both, every time, no exceptions. This repository is not bound by
 the engine's test conventions, so cover the edge cases properly: the protocol
 is arithmetic, and arithmetic is cheap to pin down.
 
-What cannot be covered headlessly is anything needing a GPU context. Say so
-explicitly rather than leaving a gap unmarked.
+What cannot be covered headlessly goes in `examples/render_probe`, which draws
+real geometry and asks the frame whether it matches the layout:
+
+```sh
+cd examples/render_probe
+flutter drive --driver=test_driver/integration_test.dart \
+  --target=integration_test/render_test.dart -d macos --enable-flutter-gpu
+```
+
+Two things about it that cost time to learn. Probe scenes must use
+`BoxFit3d.contain`, not the default `BoxFit3d.none`, or a box's screen bounds
+enclose empty space and "where the box is" stops meaning "where the geometry
+is". And `screenBounds` bounds all eight corners including the depth
+extrusion, so probing a *face* wants `screenPointOf` with an explicit z
+fraction. `examples/render_probe/README.md` has the rest.
+
+That lane is also the only thing that compiles
+`packages/flutter_scene_layout3d/assets/box_decoration3d.fmat`. A syntax error
+in the panel shader fails there and nowhere else.
 
 ### Suggest a commit message each round
 

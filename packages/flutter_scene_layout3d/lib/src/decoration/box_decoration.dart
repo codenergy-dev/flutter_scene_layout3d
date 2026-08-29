@@ -205,8 +205,13 @@ class BoxDecoration3d extends Decoration3d implements Decoration3dElevation {
   /// ```dart
   /// final material = await loadFmatMaterial('assets/box_decoration3d.fmat');
   /// BoxDecoration3d.painterFactory =
-  ///     (decoration) => BoxDecoration3dPainter(createMaterial: material.clone);
+  ///     (decoration) => BoxDecoration3dPainter(createMaterial: () => material);
   /// ```
+  ///
+  /// Handing every box the same instance is the cheap path, and right while
+  /// the panels on a surface look alike — the last one painted wins the
+  /// parameter block. Call `loadFmatMaterial` per box for a screen of panels
+  /// in different colours.
   ///
   /// Left null — in a headless test, before `initializeStaticResources`
   /// resolves, in an application that decorates with its own meshes — every
