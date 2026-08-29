@@ -31,7 +31,7 @@
     <!-- ground plane in perspective -->
     <path d="M560 176 L790 152 L840 268 L540 300 Z" fill="#ffffff" stroke="#8c959f" stroke-width="1.5"/>
 
-    <!-- rows receding away from the camera -->
+    <!-- rows advancing toward the viewer -->
     <path d="M572 186 L780 164 L790 190 L576 213 Z" fill="#ddf4ff" stroke="#0969da" stroke-width="1.3"/>
     <path d="M578 221 L792 198 L804 228 L583 252 Z" fill="#ddf4ff" stroke="#0969da" stroke-width="1.3"/>
     <path d="M585 260 L806 236 L819 270 L590 295 Z" fill="#ddf4ff" stroke="#0969da" stroke-width="1.3"/>
@@ -39,7 +39,7 @@
     <!-- down arrow, receding -->
     <path d="M520 168 L500 292" stroke="#cf222e" stroke-width="2" fill="none" marker-end="url(#red2)"/>
     <text x="494" y="232" font-size="12" fill="#cf222e" text-anchor="end">down</text>
-    <text x="672" y="332" font-size="12" fill="#57606a" text-anchor="middle">&#8220;down&#8221; now runs away from the camera</text>
+    <text x="672" y="332" font-size="12" fill="#57606a" text-anchor="middle">&#8220;down&#8221; now walks toward the viewer</text>
   </g>
 
   <defs>

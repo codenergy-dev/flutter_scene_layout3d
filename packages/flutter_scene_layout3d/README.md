@@ -53,8 +53,8 @@ an upright panel facing you          a plane on the ground
    |  [A]        |  Column3d runs        | [A][B]  |   Row3d runs across
    |  [B]        |  down the plane       | [C][D]  |   the floor
    |  [C]        |                       +---------+
-   +-------------+                            v  layout y runs away
-        layout x runs right                      from the camera
+   +-------------+                            v  layout y runs toward
+        layout x runs right                        the viewer
 ```
 
 The axis signs are not the obvious ones, and this is worth knowing before you

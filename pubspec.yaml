@@ -7,3 +7,4 @@ environment:
 workspace:
   - packages/flutter_scene_layout3d
   - examples/layout3d_gallery
+  - examples/render_probe

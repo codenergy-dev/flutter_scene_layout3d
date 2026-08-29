@@ -87,8 +87,8 @@ Layout3dSurface(basis: LayoutBasis3d.xz, ...);  // the same tree, on the ground
 ```
 
 The arithmetic is identical. A `Column3d` still stacks along layout's `y`. What
-changes is where `y` points: on the ground plane, "down the column" runs away
-from the camera, so the same code that builds a menu builds a row of tiles
+changes is where `y` points: on the ground plane, "down the column" walks
+toward the viewer, so the same code that builds a menu builds a row of tiles
 laid out on a table. This is why the protocol was worth porting rather than
 reinventing — the hard part was always the measuring and the space
 distribution, and none of that cares which way is down.

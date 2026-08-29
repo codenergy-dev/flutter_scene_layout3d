@@ -162,6 +162,7 @@ export 'src/debug/diagnostics.dart'
         debugDescribeLayout3dTree,
         debugDumpLayout3dTree,
         layout3dTreeStyle;
+export 'src/debug/screen_projection.dart' show Layout3dScreenProjection;
 export 'src/debug/overflow.dart'
     show
         Layout3dOverflow,

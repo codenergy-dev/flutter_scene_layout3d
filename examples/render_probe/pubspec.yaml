@@ -1,0 +1,33 @@
+name: render_probe
+description: >-
+  Render tests for flutter_scene_layout3d. Draws real geometry through the
+  layout boxes and probes the frame at the pixels layout says to check.
+publish_to: none
+version: 1.0.0+1
+
+resolution: workspace
+
+environment:
+  sdk: ^3.10.0
+
+dependencies:
+  hooks: ^2.0.0
+  flutter:
+    sdk: flutter
+  flutter_scene: ^0.23.0
+  flutter_scene_layout3d:
+    path: ../../packages/flutter_scene_layout3d
+  vector_math: ^2.1.4
+
+dev_dependencies:
+  flutter_lints: ^5.0.0
+  flutter_test:
+    sdk: flutter
+  integration_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+  assets:
+    # Everything hook/build.dart generates, loaded by source path.
+    - flutter_scene_generated/
