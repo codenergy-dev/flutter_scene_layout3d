@@ -192,8 +192,11 @@ class Draggable3d<T extends Object> extends ProxyLayout3dWithHitTestBehavior
 
   /// Which plane the feedback is carried on.
   ///
-  /// Only [Drag3dAnchor.originPlane] is implemented; the session carries the
-  /// value so that a later re-anchoring pass can read it.
+  /// Only [Drag3dAnchor.originPlane] is implemented — a cross-surface drag
+  /// carries its feedback on the plane it was picked up from and lands on the
+  /// target all the same. [Drag3dAnchor.targetPlane] is reserved and says
+  /// there why. The session carries the value either way, so that a
+  /// re-anchoring pass can read it without a new seam.
   Drag3dAnchor anchor;
 
   /// The overlay the feedback goes into, or null for the nearest one above.

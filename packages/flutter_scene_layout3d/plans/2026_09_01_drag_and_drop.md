@@ -1,10 +1,10 @@
 ---
 status: in progress
-reason: phases 1 to 4 have landed; phases 5 to 8 (targetPlane anchoring,
-  ReorderableList3d, autoscroll, and the render probes and documentation pass)
-  have not been started
+reason: phases 1 to 4 and 6 have landed, and phase 5 has been decided against
+  and written up rather than built; phases 7 and 8 (autoscroll, and the render
+  probes and documentation pass) have not been started
 created_at: 2026-09-01T15:40:55Z
-updated_at: 2026-09-01T21:40:00Z
+updated_at: 2026-09-02T00:20:00Z
 commit: e78eb5e28533b37a92779379f8f00c0095023521
 ---
 
@@ -334,13 +334,21 @@ Take them in order; each phase is a thing that can be demonstrated.
       that follows a confirmed dismiss. The resize is the one part of this
       plan that is genuinely an implicit animation rather than a node one,
       because an extent really does change.
-- [ ] **Phase 5 — `targetPlane` anchoring.** Re-anchoring the feedback to
-      the surface of a target on another plane, on target change only. The
-      least certain phase; see *Where I am unsure*.
-- [ ] **Phase 6 — `ReorderableList3d`.** The hidden source item, the
+- [x] **Phase 5 — `targetPlane` anchoring.** *Decided against, not built.*
+      `Drag3dAnchor.targetPlane` stays in the enum, reserved, and behaves as
+      `originPlane`; its dartdoc now says so and says why. The mechanism this
+      plan named — moving the overlay entry to the target surface's overlay —
+      is the wrong one, and the right one is a different design. See
+      *What the original reasoning got wrong*.
+- [x] **Phase 6 — `ReorderableList3d`.** The hidden source item, the
       node-tier gap, the insert-index arithmetic against the visible
       children, and `onReorder(oldIndex, newIndex)`. Built over
-      `SliverList3d` so `ListView3d`'s placement is not written twice.
+      `SliverList3d` so `ListView3d`'s placement is not written twice:
+      `SliverReorderableList3d` extends it, and `ReorderableList3d` is the
+      viewport around one, exactly as `ListView3d` is around a `SliverList3d`.
+      `test/reorderable_test.dart` holds the seventeen tests, including the
+      twenty-move `needsFlush` run and the assertion that the index-to-child
+      map does not move between the lift and the drop.
 - [ ] **Phase 7 — autoscroll.** The ticker, the edge band, the velocity
       ramp, and `tick()` re-running target resolution. Last because it is the
       only piece that improves an interaction which already works without it.
@@ -376,7 +384,10 @@ already added:
   the *captured* surface set did not change;
 - the reorder arithmetic: insert index against uneven extents, the gap
   offsets as `nodeOffset` values, and that no `createChild`/`removeChild` call
-  happens between the drag starting and the drop;
+  happens between the drag starting and the drop. (As landed, in
+  `test/reorderable_test.dart`: all three, plus the drop's index pair, the
+  long press competing with the list's own scroll, and a surface torn down
+  mid-flight.);
 - autoscroll under `tester.pump`, including that the insert index moves while
   the pointer does not.
 
@@ -490,6 +501,115 @@ that turned out to be untrue.
   resize already under way. Worth knowing before writing the next animated
   test; it cost a wrong assertion here.
 
+### Written as phases 5 and 6 landed
+
+- **Phase 5 is not worth what it costs, and the mechanism this plan named is
+  the wrong one.** `Drag3dAnchor.targetPlane` stays in the enum, reserved,
+  behaving as `originPlane`, and its dartdoc now carries the reasoning so a
+  reader who reaches for it is not left guessing. Three findings, in order of
+  how much they matter:
+
+  * **Moving the entry between overlays is two layout passes and a rebuild**,
+    in the middle of the one interaction the whole design keeps off the
+    relayout path — and with no hysteresis anywhere, a drag that wanders back
+    and forth across the boundary between two surfaces pays them again on
+    every crossing. "On target change, never per move" sounds bounded until
+    you notice that a target change is a thing the finger can do at 120Hz.
+  * **A rebuilt feedback has no size on the frame it arrives**, which is
+    already recorded below as the reason `_homeOver` is computed lazily. At
+    the *start* of a drag nobody sees it. In the middle of one it is a visible
+    pop to the overlay's own alignment and back.
+  * **Where the card should sit on the new plane is under-determined.** The
+    grab offset — where in the card the finger is holding it — is measured on
+    the origin plane and cannot be carried onto a plane with a different
+    basis; the only well-defined answer is to centre the feedback on the ray's
+    hit point on the target, which is a snap, not a re-anchoring. That is the
+    "two planes with different bases" problem this plan flagged, and it does
+    not go away by being renamed.
+
+  **The design that would work is a different one**: a
+  `OverlayLayer3d.detached` feedback owns a surface of its own, so re-anchoring
+  is *re-aiming that surface's plane node* — a node write, no rebuild, no
+  layout pass, and a rotation that interpolates. That is worth building if the
+  gallery ever says the feature is wanted. It is not what this plan described,
+  and building the described version would have shipped the worse of the two.
+  The experiment that settles whether it is wanted at all is still the one
+  named below, and it still needs a GPU.
+
+- **Hiding the dragged item takes the list out of reach of the ray, exactly
+  where it matters.** `Layout3d.hitTestChild` skips children whose node is
+  hidden — "nothing invisible is pointable" — so the gap a reorder opens is a
+  hole in the hit path, and the pointer spends most of a drag in it. Without
+  something answering there the drag is over nothing the moment it stops being
+  over a *neighbour*, and the gap sticks. Hence
+  `SliverReorderableList3d.hitTestSelf`, which answers on the list's own
+  account while and only while a reorder is live. Nothing in the plan
+  anticipated it, and it is the one line without which none of this works.
+
+- **`Layout3d.offset` and the hit point are already in the same frame, and
+  that is what makes the gap stable.** Hit testing deliberately ignores
+  `nodeOffset`, so the point that reaches the drop target is measured against
+  the items where *layout* put them, not where the slide animation has moved
+  them; and `child.offset` is the same unshifted slot. So the insert index is
+  read off the leading edges of the laid-out slots, the answer does not change
+  because something slid aside to reveal the gap, and the arithmetic needs no
+  hysteresis. With equal extents the index does not oscillate at all.
+
+- **The end of a reorder has to be the session's, not the draggable's.** A
+  caller who reorders its data inside `onReorder` and calls `refresh` disposes
+  every built item, the one under the finger included — and a disposed
+  `Draggable3d` clears its own session before the end listeners run, so its
+  `onDragEnd` never fires. The list therefore registers on
+  `Drag3dSession.addEndListener` itself. The plan's own note that "the session
+  must hold the payload and the feedback, never the source layout" is the same
+  fact one step further on: nothing that has to survive the drop may hang off
+  the item.
+
+- **A reorder costs a third layout pass, at the end, and it should.** The
+  dragged item is hidden, and what an item's visibility ought to be is a
+  question only the window can answer — so the end of a drag calls
+  `markNeedsLayout` rather than guessing. It is free: the feedback is coming
+  out of the overlay on that same frame, which is a layout either way. The
+  twenty-move assertion is untouched.
+
+- **The dragged item has to outlive the window.** Disposing it would dispose
+  the `Draggable3d` wrapped around it, which cancels the session, which ends
+  the drag — the card would vanish mid-flight. `releaseOutside` is therefore
+  widened to reach the dragged index. It costs nothing today, because a drag
+  holds the pointer and the window cannot move under it; **phase 7 is what
+  makes it matter**, and phase 7 is also what makes the kept run long. If that
+  becomes real the fix is a release-with-exception in
+  `Layout3dBuiltChildrenMixin`, not a wider range.
+
+- **There is no `SceneReorderableList3d`, and there cannot be one without a
+  new seam.** The list wraps every item in a `Draggable3d` of its own — which
+  is what buys the whole of phase 2's machinery for free and is why this plan
+  did not need a fourth hand-rolled recognizer. But a wrapped item is not what
+  the child manager built, and the declarative layer's contract is that
+  `Layout3dChildManager.removeChild(index, child)` is handed back the very
+  layout `createChild` returned. Wrapping breaks it. The ways out are a hook
+  in `Layout3dBuiltChildrenMixin` that lets a view adopt what the manager
+  built (and a `removeChild` that unwraps), or a fifth recognizer on the list
+  itself so items need no wrapper at all — which is also the design that would
+  make an explicit child list possible. Neither is a line of this plan, and
+  both are worth more thought than a widget form deserves on its own.
+
+- **`onReorder`'s `newIndex` is where the item ends up.** Flutter's
+  `ReorderableListView` reports an index measured *before* the item is taken
+  out, so a caller who moved something down the list has to decrement it
+  first; that off-by-one is the most reported confusion about that widget and
+  there is nothing to be gained by inheriting it. `Reorder3dCallback` says so
+  in as many words, because a reader will assume Flutter's semantics.
+
+- **A reorderable list has no explicit-children constructor.** `onReorder`
+  hands back a pair of indices into the caller's data and expects the next
+  build to reflect them, so the list has to be a function of that data to mean
+  anything at all. `itemCount` and `itemBuilder`, and `refresh` when the data
+  changes. Supporting a child list as well would mean mapping the caller's
+  boxes to the wrappers around them through `insert`, `remove`, `syncChildren`
+  and the `children` getter — four places to get an index wrong, in aid of a
+  spelling that cannot express what the callback is for.
+
 ## Out of scope
 
 - **Dragging between the layout tree and Flutter's widget tree.** A
@@ -521,7 +641,10 @@ that turned out to be untrue.
   dependency does not exist and that writing this plan is the next step;
   reread it when this one completes, and reread the README's roadmap
   (sections 1 and 2 and *What is next*), which says the same thing in three
-  places.
+  places. **All three of those phases have now landed**, so the dependency is
+  discharged and only this plan's own tail — autoscroll and the documentation
+  pass — stands between that plan and `completed`. Whoever closes phase 8
+  closes it.
 - **`flutter_scene_material3d`** gets the four components and, more usefully,
   `Drag3dTarget` as a bare interface: a Material drop zone can implement it
   without inheriting a generic class, and its highlight is a
@@ -565,6 +688,13 @@ names the question.
    blocks it: a cross-surface drop works today with the feedback left on the
    plane it was picked up from, and whether that reads as wrong is a question
    only the gallery can answer.
+
+   **Answered as far as it can be without one: it does not ship.** Not because
+   the question was settled, but because the *mechanism* was — it is the wrong
+   one, for three reasons written up under *What the original reasoning got
+   wrong*. The question of whether the feature is wanted is still open and
+   still needs the gallery; if the answer turns out to be yes, build the
+   detached-surface version described there rather than the one above.
 2. ~~**Whether the arena accepts a member added during the down dispatch in
    every ordering.**~~ **Settled in phase 1**, by three tests under *the arena
    seam* in `test/drag_test.dart`. Three findings, and the third was not
@@ -594,6 +724,12 @@ names the question.
    easy; whether it *feels* right when a 40dp row is dragged past a 200dp
    card is not something a headless test can answer, and Flutter's own answer
    visibly jitters. Worth building the gallery page for before tuning.
+   Half of it turned out not to be a question: because hit testing ignores
+   `nodeOffset`, the index is read against the *unshifted* slots and cannot
+   oscillate with what has slid aside — see *What the original reasoning got
+   wrong*. The rule that landed is "the last leading edge the pointer passed",
+   and the part still open is only how that reads when the extents differ by a
+   factor of five.
 4. **Whether autoscroll should go through the physics after all.** `jumpBy`
    is the right call for the ordinary case, but a drag held past the end of a
    bouncing list will simply stop dead rather than resist, which may read as

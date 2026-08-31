@@ -273,6 +273,7 @@ export 'src/scroll/grid_delegate.dart'
 export 'src/scroll/grid_view.dart' show Grid3dItemBuilder, GridView3d;
 export 'src/scroll/list_view.dart' show ListView3d;
 export 'src/scroll/page_view.dart' show PageView3d;
+export 'src/scroll/reorderable_list.dart' show ReorderableList3d;
 export 'src/scroll/scroll_controller.dart'
     show ScrollDirection3d, Scroll3dController;
 export 'src/scroll/scroll_physics.dart'
@@ -298,6 +299,8 @@ export 'src/sliver/sliver_persistent_header.dart'
     show SliverPersistentHeader3d, SliverPersistentHeader3dDelegate;
 export 'src/sliver/sliver_list.dart' show Sliver3dItemBuilder, SliverList3d;
 export 'src/sliver/sliver_padding.dart' show SliverPadding3d;
+export 'src/sliver/sliver_reorderable_list.dart'
+    show Reorder3dCallback, SliverReorderableList3d;
 export 'src/text/atlas_text_renderer.dart'
     show AtlasText3dRenderer, linearColor;
 export 'src/text/break_rules.dart'

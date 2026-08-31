@@ -48,11 +48,24 @@ enum Drag3dAnchor {
   /// The feedback re-anchors to the plane of the target it is over.
   ///
   /// So that a card visibly lands on the table it is being dropped onto.
-  /// Re-anchoring moves the feedback between overlays, which is a rebuild, so
-  /// it can only happen on a target change and never per move.
   ///
-  /// Not implemented yet; a session asked for this behaves as
-  /// [originPlane] until it is.
+  /// **Reserved, and deliberately not implemented: a session asked for this
+  /// behaves as [originPlane].** The mechanism it was planned around — moving
+  /// the overlay entry to the target surface's overlay — turned out to be the
+  /// wrong one. An insert and a remove are two layout passes and a rebuild of
+  /// the feedback, in the middle of the one interaction this whole design
+  /// keeps off the relayout path, and they would be paid again every time the
+  /// drag wandered back across the boundary. A feedback rebuilt that way also
+  /// has no size on the frame it arrives, so it draws one frame at the
+  /// overlay's own alignment before the correction that covers the pointer
+  /// can be computed.
+  ///
+  /// The shape that would work is a detached feedback entry whose
+  /// own surface is *re-aimed* at the target's plane — a node write, no
+  /// rebuild, no layout, and a rotation that can be interpolated. Whether the
+  /// result reads better than a card that stays on the panel it was picked up
+  /// from is a question only a rendered scene can answer, and it has not been
+  /// asked yet. See `plans/2026_09_01_drag_and_drop.md`.
   targetPlane,
 }
 
@@ -215,7 +228,8 @@ class Drag3dSession {
 
   /// Which plane the feedback is carried on.
   ///
-  /// Read by whoever owns the feedback, not by the session itself.
+  /// Read by whoever owns the feedback, not by the session itself. Only
+  /// [Drag3dAnchor.originPlane] has an implementation; see there.
   final Drag3dAnchor anchor;
 
   /// A name for this session in diagnostics.
