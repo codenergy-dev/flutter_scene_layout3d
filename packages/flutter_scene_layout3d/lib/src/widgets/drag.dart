@@ -1,9 +1,10 @@
 import 'package:flutter/animation.dart' show Curve, Curves;
 import 'package:flutter/foundation.dart' show ValueChanged, VoidCallback;
 import 'package:flutter/scheduler.dart' show TickerProvider;
-import 'package:flutter/widgets.dart' show BuildContext;
+import 'package:flutter/widgets.dart' show BuildContext, Widget;
 
 import '../geometry/offset3d.dart';
+import '../input/dismissible.dart';
 import '../input/drag.dart';
 import '../input/draggable.dart';
 import '../input/events.dart';
@@ -206,5 +207,161 @@ class SceneDragTarget3d<T extends Object> extends SingleChildLayout3dWidget {
       ..onLeave = onLeave
       ..onAccept = onAccept
       ..behavior = behavior;
+  }
+}
+
+/// A box that is swiped away, the widget form of [Dismissible3d].
+///
+/// ```dart
+/// SceneDismissible3d(
+///   background: SceneDecoratedBox3d(decoration: deleteRed),
+///   onDismissed: (_) => setState(() => items.removeAt(index)),
+///   child: row,
+/// )
+/// ```
+///
+/// The three slots are mirrored onto the layout as one ordered child list, so
+/// the same two rules apply here as there: a background needs a child, and a
+/// secondary background needs a background.
+///
+/// [onDismissed] is the one callback that usually *does* call `setState`, and
+/// it is the only one that should: it fires once, after the gap has closed,
+/// and taking the item out of the list is a rebuild by definition. [onUpdate]
+/// runs every frame of the swipe — write a decoration or a state layer from
+/// it, never a rebuild.
+class SceneDismissible3d extends Layout3dWidget {
+  /// Creates a box that can be swiped away.
+  const SceneDismissible3d({
+    super.key,
+    this.child,
+    this.background,
+    this.secondaryBackground,
+    this.axis = Axis3d.horizontal,
+    this.direction = Dismiss3dDirection.both,
+    this.dismissThreshold = 0.4,
+    this.flingVelocity = 700.0,
+    this.movementDuration = const Duration(milliseconds: 200),
+    this.resizeDuration = const Duration(milliseconds: 300),
+    this.movementCurve = Curves.easeOut,
+    this.resizeCurve = Curves.easeInOut,
+    this.backgroundDepthStep = 0.0,
+    this.behavior = HitTestBehavior3d.opaque,
+    this.vsync,
+    this.confirmDismiss,
+    this.onUpdate,
+    this.onResize,
+    this.onDismissed,
+  }) : assert(
+         child != null || (background == null && secondaryBackground == null),
+         'SceneDismissible3d has nothing to swipe: a background needs a '
+         'child.',
+       ),
+       assert(
+         background != null || secondaryBackground == null,
+         'SceneDismissible3d.secondaryBackground needs a background beside '
+         'it.',
+       );
+
+  /// What is swiped.
+  final Widget? child;
+
+  /// What shows behind a [Dismiss3dDirection.forward] swipe.
+  final Widget? background;
+
+  /// What shows behind a [Dismiss3dDirection.reverse] swipe.
+  final Widget? secondaryBackground;
+
+  /// The axis the swipe runs along.
+  final Axis3d axis;
+
+  /// Which way along [axis] a swipe may go.
+  final Dismiss3dDirection direction;
+
+  /// The fraction of the extent a swipe must reach to count.
+  final double dismissThreshold;
+
+  /// The flick speed that dismisses whatever distance it covered, in logical
+  /// pixels a second.
+  final double flingVelocity;
+
+  /// How long the child takes to settle back, or to fly out.
+  final Duration movementDuration;
+
+  /// How long the box takes to close up, or null to skip the resize.
+  final Duration? resizeDuration;
+
+  /// The curve the settle and the fly-out follow.
+  final Curve movementCurve;
+
+  /// The curve the resize follows.
+  final Curve resizeCurve;
+
+  /// How far behind the child the backgrounds are pushed, in world units.
+  final double backgroundDepthStep;
+
+  /// How the box takes part in a hit test.
+  final HitTestBehavior3d behavior;
+
+  /// The ticker provider for the two animations, or null for bare `Ticker`s.
+  final TickerProvider? vsync;
+
+  /// Asked before a swipe past the threshold becomes a dismiss.
+  final Dismiss3dConfirmCallback? confirmDismiss;
+
+  /// Called as the swipe moves, with the signed progress.
+  final ValueChanged<double>? onUpdate;
+
+  /// Called on every tick of the resize.
+  final VoidCallback? onResize;
+
+  /// Called once the box has closed up.
+  final ValueChanged<Dismiss3dDirection>? onDismissed;
+
+  @override
+  List<Widget> get children => <Widget>[
+    if (child != null) child!,
+    if (background != null) background!,
+    if (secondaryBackground != null) secondaryBackground!,
+  ];
+
+  @override
+  Dismissible3d createLayout(BuildContext context) => Dismissible3d(
+    axis: axis,
+    direction: direction,
+    dismissThreshold: dismissThreshold,
+    flingVelocity: flingVelocity,
+    movementDuration: movementDuration,
+    resizeDuration: resizeDuration,
+    movementCurve: movementCurve,
+    resizeCurve: resizeCurve,
+    backgroundDepthStep: backgroundDepthStep,
+    behavior: behavior,
+    vsync: vsync,
+    confirmDismiss: confirmDismiss,
+    onUpdate: onUpdate,
+    onResize: onResize,
+    onDismissed: onDismissed,
+  );
+
+  @override
+  void updateLayout(BuildContext context, Dismissible3d layout) {
+    // The slots are not written here: they are children, and the framework
+    // mirrors the reconciled child list onto the layout for us.
+    layout
+      ..axis = axis
+      ..direction = direction
+      ..dismissThreshold = dismissThreshold
+      ..flingVelocity = flingVelocity
+      ..movementDuration = movementDuration
+      ..resizeDuration = resizeDuration
+      ..movementCurve = movementCurve
+      ..resizeCurve = resizeCurve
+      ..backgroundDepthStep = backgroundDepthStep
+      ..behavior = behavior
+      ..vsync = vsync
+      ..confirmDismiss = confirmDismiss
+      ..onUpdate = onUpdate
+      ..onResize = onResize
+      ..onDismissed = onDismissed;
   }
 }

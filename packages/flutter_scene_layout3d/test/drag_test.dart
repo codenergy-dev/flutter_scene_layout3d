@@ -18,6 +18,7 @@ import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
 import 'package:flutter_scene_layout3d/widgets.dart'
     show
         Layout3dController,
+        SceneDismissible3d,
         SceneDragTarget3d,
         SceneDraggable3d,
         SceneLayout3d,
@@ -1050,6 +1051,611 @@ void main() {
         ..up();
 
       expect(accepted, 'drawing');
+    });
+  });
+  group('across surfaces', () {
+    // Two coincident planes, one in front of the other, which is what a
+    // dialog standing over a panel is: the same layout coordinates on both,
+    // so a ray aimed at a point reaches whichever surface answers there
+    // first. `plate` in `overlay_test.dart` builds them the same way.
+    Layout3dSurface plate(Layout3d child) {
+      final surface = laidOut(
+        child,
+        constraints: Constraints3d.tight(const Size3d(2, 1, 0)),
+      );
+      addTearDown(surface.dispose);
+      return surface;
+    }
+
+    test('a drag started on the panel drops on the dialog in front', () {
+      final log = <String>[];
+      final source = Draggable3d<String>(data: 'photo', child: solid());
+      final behind = Recorder('behind', log, child: solid());
+      final panel = plate(Row3d(children: <Layout3d>[source, behind]));
+      final front = Recorder('front', log, child: solid());
+      final dialog = plate(
+        // Nothing in the left half of the dialog answers, so the press at
+        // 0.5 goes straight past it to the panel behind.
+        Padding3d(padding: const EdgeInsets3d.only(left: 1.0), child: front),
+      );
+      final group = Layout3dPointerGroup()
+        ..addSurface(panel)
+        ..addSurface(dialog, zOrder: 1);
+      addTearDown(group.dispose);
+
+      group
+        ..down(rayAt(panel, const Offset3d(0.5, 0.5, 0)))
+        ..move(rayAt(panel, const Offset3d(0.9, 0.5, 0)));
+
+      // The press landed on the panel and only the panel: capture is what
+      // events follow, and it is not what the drag search follows.
+      expect(group.capturedBy(0), <Layout3dSurface>[panel]);
+      expect(group.dragFor(0), isNotNull);
+      expect(group.isDraggingPayload, isTrue);
+
+      group
+        ..move(rayAt(panel, const Offset3d(1.5, 0.5, 0)))
+        ..up(worldRay: rayAt(panel, const Offset3d(1.5, 0.5, 0)));
+
+      // The dialog answered where the panel's own target sits, so the target
+      // behind it never heard about the drag at all: a drop lands where a tap
+      // would land.
+      expect(log, ['front enter', 'front move', 'front drop']);
+      expect(group.capturedBy(0), isEmpty);
+    });
+
+    test('the captured surface no longer resolves the drag on its own', () {
+      final panel = plate(solid(const Size3d(2, 1, 0)));
+      final group = Layout3dPointerGroup()..addSurface(panel);
+      addTearDown(group.dispose);
+
+      // The group answers "what is this drag over" for every pointer it
+      // holds, so a session would otherwise be resolved twice a move — the
+      // first time against a path that stops at one plane.
+      expect(group.pointerFor(panel)!.resolvesDrags, isFalse);
+
+      final pointer = group.removeSurface(panel)!;
+      expect(pointer.resolvesDrags, isTrue);
+    });
+
+    test('a surface that answers nothing is walked straight past', () {
+      final log = <String>[];
+      final source = Draggable3d<String>(data: 'photo', child: solid());
+      final panel = plate(Row3d(children: <Layout3d>[source, solid()]));
+      final front = Recorder('front', log, child: solid());
+      final dialog = plate(
+        Padding3d(padding: const EdgeInsets3d.only(left: 1.0), child: front),
+      );
+      // What a detached piece of feedback is: a surface of its own, whose
+      // root is an `IgnorePointer3d`, sitting in front of everything. It
+      // answers empty, so it absorbs nothing and the drag it is the feedback
+      // *for* can still find its target.
+      final feedback = plate(
+        IgnorePointer3d(child: solid(const Size3d(2, 1, 0))),
+      );
+      final group = Layout3dPointerGroup()
+        ..addSurface(panel)
+        ..addSurface(dialog, zOrder: 1)
+        ..addSurface(feedback, zOrder: 2);
+      addTearDown(group.dispose);
+
+      group
+        ..down(rayAt(panel, const Offset3d(0.5, 0.5, 0)))
+        ..move(rayAt(panel, const Offset3d(0.9, 0.5, 0)))
+        ..move(rayAt(panel, const Offset3d(1.5, 0.5, 0)));
+
+      expect(log, ['front enter']);
+    });
+
+    test('a drop over nothing on any surface is not a drop', () {
+      var accepts = 0;
+      final source = Draggable3d<String>(data: 'photo', child: solid());
+      final panel = plate(Row3d(children: <Layout3d>[source, solid()]));
+      final zone = DragTarget3d<String>(
+        onAccept: (_, _) => accepts++,
+        child: solid(),
+      );
+      final dialog = plate(
+        Padding3d(padding: const EdgeInsets3d.only(left: 1.0), child: zone),
+      );
+      final group = Layout3dPointerGroup()
+        ..addSurface(panel)
+        ..addSurface(dialog, zOrder: 1);
+      addTearDown(group.dispose);
+
+      group
+        ..down(rayAt(panel, const Offset3d(0.5, 0.5, 0)))
+        ..move(rayAt(panel, const Offset3d(1.5, 0.5, 0)))
+        // Back over the half of the dialog that answers nothing, and over
+        // nothing on the panel either.
+        ..move(rayAt(panel, const Offset3d(0.5, 0.5, 0)))
+        ..up(worldRay: rayAt(panel, const Offset3d(0.5, 0.5, 0)));
+
+      expect(accepts, 0);
+    });
+
+    test('nothing a cross-surface drag does reaches the relayout path', () {
+      final overlay = Overlay3d();
+      final source = Draggable3d<String>(
+        data: 'photo',
+        dropDuration: Duration.zero,
+        feedbackBuilder: (_) => TestBox(const Size3d(0.4, 0.4, 0)),
+        child: solid(),
+      );
+      overlay.syncChildren(<Layout3d>[
+        Row3d(children: <Layout3d>[source, solid()]),
+      ]);
+      final panel = plate(overlay);
+      final dialog = plate(
+        Padding3d(
+          padding: const EdgeInsets3d.only(left: 1.0),
+          child: DragTarget3d<String>(child: solid()),
+        ),
+      );
+      final group = Layout3dPointerGroup()
+        ..addSurface(panel)
+        ..addSurface(dialog, zOrder: 1);
+      addTearDown(group.dispose);
+
+      group
+        ..down(rayAt(panel, const Offset3d(0.5, 0.5, 0)))
+        ..move(rayAt(panel, const Offset3d(0.9, 0.5, 0)));
+      // The feedback going into the overlay is a layout pass, and it is the
+      // panel's alone: the dialog is only ever hit-tested.
+      expect(panel.needsFlush, isTrue);
+      expect(dialog.needsFlush, isFalse);
+      panel.flush();
+
+      for (var i = 0; i <= 20; i++) {
+        group.move(rayAt(panel, Offset3d(0.9 + i * 0.05, 0.5, 0)));
+        expect(panel.needsFlush, isFalse, reason: 'move $i dirtied the panel');
+        expect(
+          dialog.needsFlush,
+          isFalse,
+          reason: 'move $i dirtied the dialog',
+        );
+      }
+      group.up(worldRay: rayAt(panel, const Offset3d(1.9, 0.5, 0)));
+
+      // And the removal is the second and last one, again on the panel only.
+      expect(panel.needsFlush, isTrue);
+      expect(dialog.needsFlush, isFalse);
+    });
+  });
+  group('Dismissible3d', () {
+    // A two-unit-wide row on the standard metrics: the touch slop is 18dp,
+    // which is 0.18 units, and the default threshold of 0.4 is 0.8 of them.
+    ({Layout3dSurface surface, Layout3dPointer pointer}) swiper(
+      Dismissible3d row,
+    ) {
+      final surface = laidOut(
+        row,
+        constraints: Constraints3d.tight(const Size3d(2, 1, 0)),
+      );
+      addTearDown(surface.dispose);
+      return (surface: surface, pointer: Layout3dPointer(surface));
+    }
+
+    test('a swipe past the threshold dismisses, the way it went', () {
+      Dismiss3dDirection? dismissed;
+      final row = Dismissible3d(
+        movementDuration: Duration.zero,
+        resizeDuration: null,
+        onDismissed: (direction) => dismissed = direction,
+        child: solid(const Size3d(2, 1, 0)),
+      );
+      final it = swiper(row);
+
+      it.pointer
+        ..down(rayAt(it.surface, const Offset3d(0.5, 0.5, 0)))
+        ..move(rayAt(it.surface, const Offset3d(1.0, 0.5, 0)))
+        ..move(rayAt(it.surface, const Offset3d(1.6, 0.5, 0)))
+        ..up();
+
+      expect(dismissed, Dismiss3dDirection.forward);
+      expect(row.isDismissed, isTrue);
+      expect(row.resizeFactor, 0.0);
+    });
+
+    test('a slow swipe under the threshold settles back', () {
+      var dismissals = 0;
+      final row = Dismissible3d(
+        movementDuration: Duration.zero,
+        resizeDuration: null,
+        onDismissed: (_) => dismissals++,
+        child: solid(const Size3d(2, 1, 0)),
+      );
+      final it = swiper(row);
+
+      // Real timestamps, because the velocity estimate is what tells this
+      // apart from a flick: half a unit over three hundred milliseconds is
+      // 1.7 units a second, well under the 7 that 700dp/s comes to.
+      it.pointer
+        ..down(
+          rayAt(it.surface, const Offset3d(0.5, 0.5, 0)),
+          timeStamp: Duration.zero,
+        )
+        ..move(
+          rayAt(it.surface, const Offset3d(0.7, 0.5, 0)),
+          timeStamp: const Duration(milliseconds: 100),
+        )
+        ..move(
+          rayAt(it.surface, const Offset3d(0.9, 0.5, 0)),
+          timeStamp: const Duration(milliseconds: 200),
+        )
+        ..move(
+          rayAt(it.surface, const Offset3d(1.0, 0.5, 0)),
+          timeStamp: const Duration(milliseconds: 300),
+        );
+      expect(row.swipeOffset, closeTo(0.5, 1e-6));
+      expect(row.progress, closeTo(0.25, 1e-6));
+
+      it.pointer.up(timeStamp: const Duration(milliseconds: 320));
+
+      expect(dismissals, 0);
+      expect(row.swipeOffset, 0.0);
+      expect(row.isDismissed, isFalse);
+    });
+
+    test('a flick dismisses whatever distance it covered', () {
+      Dismiss3dDirection? dismissed;
+      final row = Dismissible3d(
+        movementDuration: Duration.zero,
+        resizeDuration: null,
+        onDismissed: (direction) => dismissed = direction,
+        child: solid(const Size3d(2, 1, 0)),
+      );
+      final it = swiper(row);
+
+      // The same half unit as the test above, in twelve milliseconds instead
+      // of three hundred: forty units a second, which is a flick.
+      it.pointer
+        ..down(
+          rayAt(it.surface, const Offset3d(1.5, 0.5, 0)),
+          timeStamp: Duration.zero,
+        )
+        ..move(
+          rayAt(it.surface, const Offset3d(1.3, 0.5, 0)),
+          timeStamp: const Duration(milliseconds: 4),
+        )
+        ..move(
+          rayAt(it.surface, const Offset3d(1.1, 0.5, 0)),
+          timeStamp: const Duration(milliseconds: 8),
+        )
+        ..move(
+          rayAt(it.surface, const Offset3d(1.0, 0.5, 0)),
+          timeStamp: const Duration(milliseconds: 12),
+        )
+        ..up(timeStamp: const Duration(milliseconds: 13));
+
+      expect(dismissed, Dismiss3dDirection.reverse);
+    });
+
+    test('a direction refuses the swipe that goes the other way', () {
+      var dismissals = 0;
+      final row = Dismissible3d(
+        direction: Dismiss3dDirection.forward,
+        movementDuration: Duration.zero,
+        resizeDuration: null,
+        onDismissed: (_) => dismissals++,
+        child: solid(const Size3d(2, 1, 0)),
+      );
+      final it = swiper(row);
+
+      it.pointer
+        ..down(rayAt(it.surface, const Offset3d(1.5, 0.5, 0)))
+        ..move(rayAt(it.surface, const Offset3d(1.0, 0.5, 0)))
+        ..move(rayAt(it.surface, const Offset3d(0.4, 0.5, 0)))
+        ..up();
+
+      // Committed the way this row does not go: the pointer was left to
+      // whatever else wanted it, and nothing moved.
+      expect(row.isSwiping, isFalse);
+      expect(row.swipeOffset, 0.0);
+      expect(dismissals, 0);
+    });
+
+    test('an axis keeps a row and the list it is in out of each other way', () {
+      final row = Dismissible3d(
+        axis: Axis3d.vertical,
+        movementDuration: Duration.zero,
+        resizeDuration: null,
+        child: solid(const Size3d(2, 1, 0)),
+      );
+      final it = swiper(row);
+
+      it.pointer
+        ..down(rayAt(it.surface, const Offset3d(0.5, 0.5, 0)))
+        ..move(rayAt(it.surface, const Offset3d(1.9, 0.5, 0)));
+
+      // A whole unit and more across, which is seven times the slop, and none
+      // of it on the axis this row swipes along.
+      expect(row.isSwiping, isFalse);
+      expect(row.swipeOffset, 0.0);
+      it.pointer.up();
+    });
+
+    test('the backgrounds show on the side the child came off', () {
+      final background = TestBox(const Size3d(2, 1, 0));
+      final secondary = TestBox(const Size3d(2, 1, 0));
+      final row = Dismissible3d(
+        movementDuration: Duration.zero,
+        resizeDuration: null,
+        background: background,
+        secondaryBackground: secondary,
+        child: solid(const Size3d(2, 1, 0)),
+      );
+      final it = swiper(row);
+
+      // At rest neither is drawn, so neither fights the child for the depth
+      // buffer, and `node.visible` costs no layout either way.
+      expect(background.node.visible, isFalse);
+      expect(secondary.node.visible, isFalse);
+
+      it.pointer
+        ..down(rayAt(it.surface, const Offset3d(1.0, 0.5, 0)))
+        ..move(rayAt(it.surface, const Offset3d(1.5, 0.5, 0)));
+      expect(background.node.visible, isTrue);
+      expect(secondary.node.visible, isFalse);
+
+      it.pointer.move(rayAt(it.surface, const Offset3d(0.5, 0.5, 0)));
+      expect(background.node.visible, isFalse);
+      expect(secondary.node.visible, isTrue);
+
+      it.pointer.up();
+      expect(background.node.visible, isFalse);
+      expect(secondary.node.visible, isFalse);
+    });
+
+    test('the swipe is node-tier and only the resize is not', () {
+      final row = Dismissible3d(
+        movementDuration: Duration.zero,
+        resizeDuration: null,
+        child: solid(const Size3d(2, 1, 0)),
+      );
+      final it = swiper(row);
+      expect(it.surface.needsFlush, isFalse);
+
+      it.pointer.down(rayAt(it.surface, const Offset3d(0.2, 0.5, 0)));
+      for (var i = 0; i <= 20; i++) {
+        it.pointer.move(rayAt(it.surface, Offset3d(0.4 + i * 0.05, 0.5, 0)));
+        expect(row.swipeOffset, greaterThan(0.0));
+        expect(it.surface.needsFlush, isFalse, reason: 'move $i laid out');
+      }
+
+      // The dismissal is the one thing here that genuinely changes an extent,
+      // and an extent that changed is a relayout. That is the whole reason
+      // this one animation is on the implicit tier.
+      it.pointer.up();
+      expect(it.surface.needsFlush, isTrue);
+
+      it.surface.flush();
+      expect(row.size.width, 0.0);
+    });
+
+    test('a refused confirmation puts the row back', () async {
+      var dismissals = 0;
+      var asked = 0;
+      final row = Dismissible3d(
+        movementDuration: Duration.zero,
+        resizeDuration: null,
+        confirmDismiss: (_) async {
+          asked++;
+          return false;
+        },
+        onDismissed: (_) => dismissals++,
+        child: solid(const Size3d(2, 1, 0)),
+      );
+      final it = swiper(row);
+
+      it.pointer
+        ..down(rayAt(it.surface, const Offset3d(0.2, 0.5, 0)))
+        ..move(rayAt(it.surface, const Offset3d(0.6, 0.5, 0)))
+        ..move(rayAt(it.surface, const Offset3d(1.6, 0.5, 0)))
+        ..up();
+      // The row waits off to one side while the question is open, which is
+      // what makes the confirmation worth awaiting at all.
+      expect(row.swipeOffset, closeTo(2.0, 1e-6));
+
+      await Future<void>.delayed(Duration.zero);
+
+      expect(asked, 1);
+      expect(dismissals, 0);
+      expect(row.swipeOffset, 0.0);
+      expect(row.isDismissed, isFalse);
+    });
+
+    test('a dismissed row can be put back', () {
+      final row = Dismissible3d(
+        movementDuration: Duration.zero,
+        resizeDuration: null,
+        child: solid(const Size3d(2, 1, 0)),
+      );
+      final it = swiper(row);
+
+      it.pointer
+        ..down(rayAt(it.surface, const Offset3d(0.2, 0.5, 0)))
+        ..move(rayAt(it.surface, const Offset3d(1.6, 0.5, 0)))
+        ..up();
+      it.surface.flush();
+      expect(row.size.width, 0.0);
+
+      row.reset();
+      it.surface.flush();
+
+      expect(row.isDismissed, isFalse);
+      expect(row.size.width, 2.0);
+      expect(row.child!.node.visible, isTrue);
+    });
+
+    test(
+      'a horizontal row and the list it is in each claim their own axis',
+      () {
+        final controller = Scroll3dController();
+        addTearDown(controller.dispose);
+        final row = Dismissible3d(
+          movementDuration: Duration.zero,
+          resizeDuration: null,
+          child: solid(),
+        );
+        final list = ListView3d(
+          controller: controller,
+          children: <Layout3d>[
+            row,
+            TestBox(const Size3d(1, 4, 0), pointable: true),
+          ],
+        );
+        final surface = laidOut(
+          list,
+          constraints: Constraints3d.tight(const Size3d(1, 1, 0)),
+        );
+        addTearDown(surface.dispose);
+        final pointer = Layout3dPointer(surface);
+
+        // Down the list, which is not the row's axis: entering the arena still
+        // marked the sequence contested, so the view waited for the slop rather
+        // than scrolling out from under a swipe that never came.
+        pointer
+          ..down(rayAt(surface, const Offset3d(0.5, 0.5, 0)))
+          ..move(rayAt(surface, const Offset3d(0.5, 0.1, 0)));
+        expect(row.isSwiping, isFalse);
+        expect(controller.offset, greaterThan(0.0));
+        pointer.up();
+
+        // Across it, which is: the row claims the pointer and the list is left
+        // where it was.
+        final scrolled = controller.offset;
+        pointer
+          ..down(rayAt(surface, const Offset3d(0.5, 0.5, 0)))
+          ..move(rayAt(surface, const Offset3d(0.9, 0.5, 0)));
+        expect(row.isSwiping, isTrue);
+        expect(controller.offset, scrolled);
+        pointer.up();
+      },
+    );
+
+    testWidgets('a row disposed mid-swipe stops what it was running', (
+      tester,
+    ) async {
+      var dismissals = 0;
+      final row = Dismissible3d(
+        onDismissed: (_) => dismissals++,
+        child: solid(const Size3d(2, 1, 0)),
+      );
+      final surface = laidOut(
+        row,
+        constraints: Constraints3d.tight(const Size3d(2, 1, 0)),
+      );
+      final pointer = Layout3dPointer(surface);
+
+      pointer
+        ..down(rayAt(surface, const Offset3d(0.2, 0.5, 0)))
+        ..move(rayAt(surface, const Offset3d(1.6, 0.5, 0)))
+        ..up();
+
+      // A fly-out is running, which is a scheduler callback the row holds.
+      // Tearing the tree down has to let go of it: a ticker left behind fails
+      // the test binding, and would go on animating a disposed box.
+      surface.dispose();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(dismissals, 0);
+    });
+  });
+
+  group('a dismissal under a clock', () {
+    testWidgets('flies out, then closes the gap it left', (tester) async {
+      Dismiss3dDirection? dismissed;
+      var resizes = 0;
+      final row = Dismissible3d(
+        movementDuration: const Duration(milliseconds: 200),
+        resizeDuration: const Duration(milliseconds: 300),
+        onResize: () => resizes++,
+        onDismissed: (direction) => dismissed = direction,
+        child: solid(const Size3d(2, 1, 0)),
+      );
+      final surface = laidOut(
+        row,
+        constraints: Constraints3d.tight(const Size3d(2, 1, 0)),
+      );
+      addTearDown(surface.dispose);
+      final pointer = Layout3dPointer(surface);
+
+      pointer
+        ..down(rayAt(surface, const Offset3d(0.2, 0.5, 0)))
+        ..move(rayAt(surface, const Offset3d(0.6, 0.5, 0)))
+        ..move(rayAt(surface, const Offset3d(1.4, 0.5, 0)))
+        ..up();
+
+      // The fly-out is a tween on the node tier, so the box is still its full
+      // size and nothing has been laid out again.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(row.swipeOffset, greaterThan(1.2));
+      expect(row.swipeOffset, lessThan(2.0));
+      expect(surface.needsFlush, isFalse, reason: 'the fly-out is node-tier');
+      expect(dismissed, isNull);
+
+      // The fly-out finishes, which is what arms the resize — the one
+      // animation here that has to relayout, because the extent really is
+      // changing.
+      await tester.pump(const Duration(milliseconds: 150));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(row.resizeFactor, lessThan(1.0));
+      expect(surface.needsFlush, isTrue);
+      surface.flush();
+      expect(row.size.width, lessThan(2.0));
+      expect(row.size.width, greaterThan(0.0));
+      expect(resizes, greaterThan(0));
+
+      await tester.pump(const Duration(milliseconds: 400));
+      surface.flush();
+      expect(dismissed, Dismiss3dDirection.forward);
+      expect(row.size.width, 0.0);
+    });
+  });
+
+  group('the widget form of a dismissible', () {
+    testWidgets('mirrors its three slots onto the layout', (tester) async {
+      final parent = Node();
+      final controller = Layout3dController();
+      var dismissals = 0;
+
+      Widget frame(Dismiss3dDirection direction) => SceneLayout3d(
+        parent: parent,
+        size: const Size3d(2, 1, 0),
+        controller: controller,
+        child: SceneDismissible3d(
+          direction: direction,
+          movementDuration: Duration.zero,
+          resizeDuration: null,
+          onDismissed: (_) => dismissals++,
+          background: const SceneSizedBox3d(width: 2, height: 1),
+          child: const SceneSizedBox3d(width: 2, height: 1),
+        ),
+      );
+
+      await tester.pumpWidget(frame(Dismiss3dDirection.forward));
+      final row = controller.surface!.child! as Dismissible3d;
+      expect(row.direction, Dismiss3dDirection.forward);
+      expect(row.child, isNotNull);
+      expect(row.background, isNotNull);
+      expect(row.secondaryBackground, isNull);
+
+      // A rebuild reconciles onto the same layout object and writes the new
+      // properties through, slots included.
+      await tester.pumpWidget(frame(Dismiss3dDirection.both));
+      expect(controller.surface!.child!, same(row));
+      expect(row.direction, Dismiss3dDirection.both);
+
+      final surface = controller.surface!;
+      final pointer = Layout3dPointer(surface);
+      pointer
+        ..down(rayAt(surface, const Offset3d(0.2, 0.5, 0)))
+        ..move(rayAt(surface, const Offset3d(1.6, 0.5, 0)))
+        ..up();
+
+      expect(dismissals, 1);
     });
   });
 }

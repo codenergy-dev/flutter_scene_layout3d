@@ -88,6 +88,8 @@ export 'src/geometry/edge_insets3d.dart' show EdgeInsets3d;
 export 'src/geometry/offset3d.dart' show Axis3d, Offset3d;
 export 'src/geometry/size3d.dart' show Size3d;
 export 'src/hit_test.dart' show HitTestEntry3d, HitTestResult3d, Ray3d;
+export 'src/input/dismissible.dart'
+    show Dismiss3dConfirmCallback, Dismiss3dDirection, Dismissible3d;
 export 'src/input/drag.dart'
     show
         Drag3dAnchor,
@@ -157,7 +159,8 @@ export 'src/text/text_measurement.dart'
         SegmentedTextMeasurement3d,
         TextMeasurement3d;
 export 'src/text/text_renderer.dart' show Text3dRenderRequest, Text3dRenderer;
-export 'src/widgets/drag.dart' show SceneDragTarget3d, SceneDraggable3d;
+export 'src/widgets/drag.dart'
+    show SceneDismissible3d, SceneDragTarget3d, SceneDraggable3d;
 export 'src/widgets/framework.dart'
     show
         LazyLayout3dWidget,

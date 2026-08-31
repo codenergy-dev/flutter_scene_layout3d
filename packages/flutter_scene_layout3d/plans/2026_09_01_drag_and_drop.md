@@ -1,10 +1,10 @@
 ---
 status: in progress
-reason: phases 1 and 2 have landed; phases 3 to 8 (cross-surface, Dismissible3d,
-  targetPlane anchoring, ReorderableList3d, autoscroll, render probes and docs)
+reason: phases 1 to 4 have landed; phases 5 to 8 (targetPlane anchoring,
+  ReorderableList3d, autoscroll, and the render probes and documentation pass)
   have not been started
 created_at: 2026-09-01T15:40:55Z
-updated_at: 2026-09-01T19:24:00Z
+updated_at: 2026-09-01T21:40:00Z
 commit: e78eb5e28533b37a92779379f8f00c0095023521
 ---
 
@@ -324,11 +324,11 @@ Take them in order; each phase is a thing that can be demonstrated.
       drop animation, and the single disposal path. The widget forms
       `SceneDraggable3d` and `SceneDragTarget3d` land with them, per the
       package convention.
-- [ ] **Phase 3 — across surfaces.** The drag-aware pass in
+- [x] **Phase 3 — across surfaces.** The drag-aware pass in
       `Layout3dPointerGroup`: while a session is live, hit-test every member
       front to back rather than only the captured ones. A drag that starts on
       a panel and drops on a dialog in front of it.
-- [ ] **Phase 4 — `Dismissible3d`.** The thinnest consumer, and the one that
+- [x] **Phase 4 — `Dismissible3d`.** The thinnest consumer, and the one that
       needs no drop target at all: an axis, a fraction threshold, a fling
       threshold, background and secondary background, and the resize-away
       that follows a confirmed dismiss. The resize is the one part of this
@@ -435,6 +435,61 @@ that turned out to be untrue.
   translucent for the same reason. Ancestors are on the hit path regardless,
   so a list and the row inside it still both light up.
 
+- **The group needed the pointer to *stop* resolving, which nothing
+  anticipated.** `Layout3dPointer.move` already hands its live session the
+  fresh hit it computes, and that is exactly right for one surface and wrong
+  for a group: the session would be resolved twice a move, once against a path
+  that stops at the surface the press captured. A target on the panel *behind*
+  the dialog the drag has wandered onto would then enter and leave on every
+  single move. Hence `Layout3dPointer.resolvesDrags`, which a
+  `Layout3dPointerGroup` sets false on every pointer it holds and restores
+  when it hands one back. Only `move` and `up` are gated; the resolution
+  `startDrag` does is not, because a long-press drag is recognized by a timer,
+  with no pointer event to hang a group pass on.
+- **`Layout3dPointerGroup.up` has to resolve before it dispatches**, not
+  after: the up is what drops the session, so by the time
+  `Layout3dPointer.up` returns the drag is over and its targets are gone. The
+  same fact, from the other end, is why the group's pass in `move` runs
+  *after* the dispatch — a drag recognized by that very move has to resolve
+  against the path the same event found.
+- **The drag search reuses what the captured surfaces already computed.**
+  `Layout3dPointer.move` hit-tests afresh before it dispatches, so its
+  `lastHit` *is* this ray's answer for that surface; the walk only pays a new
+  hit test for the surfaces that did not hold the press. A drag across a panel
+  and a dialog therefore costs one extra hit test a move, not two.
+- **A `Dismissible3d` has three slots and the widget layer can only mirror a
+  list.** `adoptLayoutChildren` knows `Layout3dWithChildMixin` and
+  `Layout3dWithChildrenMixin` and nothing else, so hand-rolled named slots
+  would have made `SceneDismissible3d` impossible without changing the
+  framework. The slots are therefore one ordered child list — child,
+  background, secondary background — with two rules the constructor asserts: a
+  background needs a child, and a secondary background needs a background.
+  Flutter's `Dismissible` asserts the second one already, for its own reasons.
+- **The resize does not resize the child.** Shrinking the box by laying its
+  subtree out smaller every tick is the expensive reading of "an extent really
+  changes", and it is not the one this needs: the row has already been carried
+  off the box and hidden by then. So the child is laid out once, with the
+  *same* constraints on every tick — an identical layout call is one the child
+  skips — and only the dismissible's own extent shrinks. The parent relayouts,
+  which is the point; nothing under the swiped row re-measures a string.
+  The size it reports is deliberately not re-constrained, so a dismissible
+  under a *tight* main-axis constraint closes up instantly rather than
+  smoothly. There is no room for it to do anything else.
+- **`Dismissible3d.offset` was not available.** `Layout3d.offset` is where the
+  parent put the box, and a getter of that name on a box is already spoken
+  for; the swipe's own displacement is `swipeOffset`.
+- **The velocity tracker moved out of `pointer.dart`.** A dismissal can be won
+  by speed rather than by distance, and the scroll drag's `_DragVelocity` was
+  already the right arithmetic — Flutter's own `VelocityTracker` cannot be
+  used here at all, for the reason its dartdoc gives. It is now
+  `Drag3dVelocityTracker` in `input/velocity.dart`, internal to the package,
+  used by both.
+- **A `Ticker` started inside a frame takes that frame's timestamp as its
+  start.** So the tick after it reports real elapsed time rather than zero,
+  and a test that pumps the fly-out and the resize back to back sees the
+  resize already under way. Worth knowing before writing the next animated
+  test; it cost a wrong assertion here.
+
 ## Out of scope
 
 - **Dragging between the layout tree and Flutter's widget tree.** A
@@ -506,6 +561,10 @@ names the question.
    simply lands. **What would settle it: build phase 3 first and drag between
    two angled surfaces in the gallery.** If it reads as wrong, phase 5 is
    worth the work; if it reads fine, phase 5 becomes an `Out of scope` entry.
+   Phase 3 has landed, so the experiment is now available and nothing else
+   blocks it: a cross-surface drop works today with the feedback left on the
+   plane it was picked up from, and whether that reads as wrong is a question
+   only the gallery can answer.
 2. ~~**Whether the arena accepts a member added during the down dispatch in
    every ordering.**~~ **Settled in phase 1**, by three tests under *the arena
    seam* in `test/drag_test.dart`. Three findings, and the third was not

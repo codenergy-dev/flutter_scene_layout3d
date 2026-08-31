@@ -5,6 +5,7 @@ import 'package:vector_math/vector_math.dart' show Matrix4, Ray, Vector3;
 import '../hit_test.dart';
 import '../overlay/overlay.dart';
 import '../surface.dart';
+import 'drag.dart';
 import 'pointer.dart';
 
 /// One surface in a [Layout3dPointerGroup], and where it stands.
@@ -80,6 +81,34 @@ class _Member {
 /// [Layout3dPointer] captures a path: every later event of that sequence goes
 /// to the same surfaces, so sliding a drag off the dialog and onto the panel
 /// behind does not hand the drag to the panel.
+///
+/// ## A drag-and-drop deliberately ignores capture
+///
+/// Capture is right for every gesture that is about the thing it started on,
+/// and wrong for the one gesture that is defined by leaving it. A
+/// [Draggable3d] picked up on a panel and carried onto a dialog in front has
+/// to find the drop target on the dialog — a surface the press never touched
+/// and which the capture set therefore excludes.
+///
+/// So while a [Drag3dSession] is in flight on a pointer, every [move] and the
+/// [up] that ends it add one pass: walk the members front to back with the
+/// ordinary ordering and absorption rules, and hand the front-most answering
+/// path to the session. *Where events go* and *what the drag is over* are two
+/// different questions, and conflating them is what makes a cross-surface
+/// drop impossible.
+///
+/// The pass costs one hit test per surface per move, which is what a mouse
+/// move already costs for hover, and less than that in practice: a surface
+/// that just handled the move has the answer for this ray already and is not
+/// asked twice. The group also takes over resolution entirely — every pointer
+/// it holds has [Layout3dPointer.resolvesDrags] set false — so a session is
+/// resolved once a move, against the whole scene rather than one plane of it.
+///
+/// Nothing here is laid out: a drag search is a hit test and a path diff.
+/// Feedback that has to hang over the edge of its panel is an
+/// [OverlayLayer3d.detached] entry, and a detached entry whose root is an
+/// [IgnorePointer3d] answers empty, so this walk goes straight past it and
+/// the feedback cannot steal its own drop.
 class Layout3dPointerGroup {
   /// Creates a group, optionally ordered by distance from [camera].
   Layout3dPointerGroup({this.camera});
@@ -163,6 +192,9 @@ class Layout3dPointerGroup {
       sequence: _nextSequence++,
       owned: owned,
     );
+    // From here the group answers "what is this drag over" for this pointer,
+    // across every surface rather than this one. See the class dartdoc.
+    pointer.resolvesDrags = false;
     _members.add(member);
     _bySurface[pointer.surface] = member;
   }
@@ -180,6 +212,9 @@ class Layout3dPointerGroup {
       captured.remove(member);
     }
     _entrySurfaces.remove(surface);
+    // Handed back the way it came: a pointer the caller owns goes back to
+    // resolving its own drags, since nothing else is going to.
+    member.pointer.resolvesDrags = true;
     if (member.owned) member.pointer.dispose();
     if (identical(_lastPointer, member.pointer)) {
       _lastPointer = null;
@@ -278,6 +313,10 @@ class Layout3dPointerGroup {
   }
 
   /// Continues the press along the captured surfaces.
+  ///
+  /// Events go to the captured surfaces and nowhere else. A drag in flight is
+  /// then resolved against *every* surface, front to back — see the class
+  /// dartdoc for why those are two different questions.
   bool move(Ray worldRay, {int pointer = 0, Duration? timeStamp}) {
     var moved = false;
     for (final member in _captured[pointer] ?? const <_Member>[]) {
@@ -289,11 +328,26 @@ class Layout3dPointerGroup {
           ) ||
           moved;
     }
+    // After the dispatch, so that a drag recognized by this very move is
+    // already in flight and resolves against the path this ray found.
+    // Reusing what the captured surfaces just computed: a hit test for this
+    // ray is exactly what `Layout3dPointer.move` did on each of them.
+    _resolveDrags(worldRay, pointer, reuseHits: true);
     return moved;
   }
 
   /// Ends the press on every surface that captured it.
+  ///
+  /// With a [worldRay], a drag in flight takes one last look across every
+  /// surface before it is released, so a drop that moved onto a dialog in the
+  /// same event lands on the dialog.
   void up({Ray? worldRay, int pointer = 0, Duration? timeStamp}) {
+    // Before the ups, because the up is what drops the session: by the time
+    // `Layout3dPointer.up` returns, the drag is over and its targets are
+    // gone.
+    if (worldRay != null) {
+      _resolveDrags(worldRay, pointer, reuseHits: false);
+    }
     for (final member in _captured.remove(pointer) ?? const <_Member>[]) {
       member.pointer.up(
         worldRay: worldRay,
@@ -301,6 +355,77 @@ class Layout3dPointerGroup {
         timeStamp: timeStamp,
       );
     }
+  }
+
+  /// The drag the pointer with this id is carrying, or null.
+  ///
+  /// A drag lives on the pointer of the surface it was picked up from, which
+  /// is one of the captured ones; it is found here whatever surface it has
+  /// since wandered over.
+  Drag3dSession? dragFor(int pointer) {
+    for (final member in _members) {
+      final session = member.pointer.dragFor(pointer);
+      if (session != null) return session;
+    }
+    return null;
+  }
+
+  /// Every drag in flight anywhere in this group.
+  Iterable<Drag3dSession> get drags => <Drag3dSession>[
+    for (final member in _members) ...member.pointer.drags,
+  ];
+
+  /// Whether any pointer in this group is carrying a payload.
+  bool get isDraggingPayload => drags.isNotEmpty;
+
+  /// Resolves the drags [pointer] is carrying against the whole group.
+  ///
+  /// Returns true when the set of accepting targets changed anywhere, which
+  /// is the same thing [Drag3dSession.update] reports.
+  bool _resolveDrags(Ray worldRay, int pointer, {required bool reuseHits}) {
+    List<Drag3dSession>? sessions;
+    for (final member in _members) {
+      final session = member.pointer.dragFor(pointer);
+      if (session == null) continue;
+      (sessions ??= <Drag3dSession>[]).add(session);
+    }
+    // The common case, and it has to stay cheap: a group with nothing in
+    // flight pays a walk of a handful of members and no hit test at all.
+    if (sessions == null) return false;
+    final hit = _dragHitTest(worldRay, pointer: pointer, reuseHits: reuseHits);
+    var changed = false;
+    for (final session in sessions) {
+      changed = session.update(hit) || changed;
+    }
+    return changed;
+  }
+
+  /// The path a drop would land on: the front-most surface that answers.
+  ///
+  /// The ordinary walk, with the ordinary absorption rule — a dialog that
+  /// answers ends it, so a drop cannot reach the panel behind the dialog
+  /// covering it. *A drop lands where a tap would land*, which is the whole
+  /// argument for the rule.
+  ///
+  /// [reuseHits] takes the answer a surface has already computed for this ray
+  /// rather than asking again, which is legal exactly for the surfaces that
+  /// hold the press: [Layout3dPointer.move] hit-tests afresh before it
+  /// dispatches, so its [Layout3dPointer.lastHit] *is* this ray's answer.
+  HitTestResult3d _dragHitTest(
+    Ray worldRay, {
+    required int pointer,
+    required bool reuseHits,
+  }) {
+    for (final member in _ordered()) {
+      final hit = reuseHits && member.pointer.isDown(pointer)
+          ? member.pointer.lastHit
+          : member.pointer.hitTest(worldRay);
+      if (hit.isEmpty) continue;
+      _lastHit = hit;
+      _lastPointer = member.pointer;
+      return hit;
+    }
+    return HitTestResult3d();
   }
 
   /// Abandons the press on every surface that captured it.
@@ -361,7 +486,9 @@ class Layout3dPointerGroup {
     // its sequences and hovers, which is what a group being torn down owes
     // the boxes wearing a pressed state layer because of it.
     for (final member in _members) {
-      member.pointer.dispose();
+      member.pointer
+        ..dispose()
+        ..resolvesDrags = true;
     }
     _members.clear();
     _bySurface.clear();
