@@ -1,11 +1,17 @@
 import 'dart:ui' show Offset;
 
 import 'package:flutter/gestures.dart'
-    show GestureRecognizer, PointerDownEvent, PointerEvent;
+    show
+        GestureArenaEntry,
+        GestureArenaMember,
+        GestureRecognizer,
+        PointerDownEvent,
+        PointerEvent;
 
 import '../geometry/offset3d.dart';
 import '../hit_test.dart';
 import '../layout3d.dart';
+import 'drag.dart';
 
 /// A box that can be handed the events a hit test found it for.
 ///
@@ -67,6 +73,13 @@ enum HitTestBehavior3d {
 /// for this sequence, and tells the sequence that the pointer is contested,
 /// which is what makes a scrolling view wait for the touch slop instead of
 /// scrolling out from under a tap.
+///
+/// [addArenaMember] is the same thing one step lower down, for a target that
+/// recognizes its own gesture rather than borrowing one of Flutter's. That is
+/// not an exotic case here: two of Flutter's four recognizers do not fire at
+/// all in this build, so the scroll drag and the drag-and-drop gesture are
+/// both hand-rolled arena members, and anything else that has to compete for
+/// a pointer — a knob, a slider, a rotation handle — will be too.
 abstract interface class PointerSequence3d {
   /// The pointer id this sequence uses in Flutter's gesture arena.
   ///
@@ -86,6 +99,39 @@ abstract interface class PointerSequence3d {
     GestureRecognizer recognizer,
     PointerDownEvent event,
   );
+
+  /// Enters [member] in this sequence's arena directly.
+  ///
+  /// The recognizer-free half of [addPointerToRecognizer]: it marks the
+  /// sequence contested — which is what makes a [Scrollable3d] under the
+  /// member wait for the touch slop rather than scrolling out from under it —
+  /// and adds [member] to Flutter's global arena on [arenaPointer]. The
+  /// returned entry is how the member later resolves.
+  ///
+  /// Only meaningful while the down is being dispatched, which is the window
+  /// the arena is open in. Two things about the arena are worth knowing
+  /// before building on this, both confirmed by test:
+  ///
+  ///  * A member may resolve long after the arena was *closed* — a long-press
+  ///    drag claiming the pointer half a second in works. What ends the
+  ///    arena is the *sweep* at the up, and a resolution after that is
+  ///    silently dropped.
+  ///  * A member that is alone in the arena wins by default, in a microtask,
+  ///    as soon as the arena closes. So winning the arena and *recognizing*
+  ///    the gesture are two different events, and a member that has its own
+  ///    threshold must keep them apart.
+  GestureArenaEntry? addArenaMember(GestureArenaMember member);
+
+  /// Starts [session] on this sequence's pointer.
+  ///
+  /// The seam a [Draggable3d] reaches for once it has decided the press is a
+  /// drag. The pointer driving this sequence takes the session into its
+  /// registry and, from the next move on, hands it the fresh hit it already
+  /// computes — so target resolution costs one path walk, not a second hit
+  /// test.
+  ///
+  /// Only one session runs per pointer; starting a second cancels the first.
+  void startDrag(Drag3dSession session);
 }
 
 /// A pointer event delivered to one box, in that box's own frame.
@@ -173,6 +219,19 @@ class PointerEvent3d {
     if (event is! PointerDownEvent) return;
     sequence?.addPointerToRecognizer(recognizer, event);
   }
+
+  /// Enters [member] in the arena for this sequence.
+  ///
+  /// The counterpart of [addPointerToRecognizer] for a target that recognizes
+  /// its own gesture. Returns null when there is no live sequence to compete
+  /// in — a synthesized event nobody is driving.
+  GestureArenaEntry? addArenaMember(GestureArenaMember member) =>
+      sequence?.addArenaMember(member);
+
+  /// Starts [session] on the pointer driving this event.
+  ///
+  /// Does nothing for an event no sequence stands behind.
+  void startDrag(Drag3dSession session) => sequence?.startDrag(session);
 
   @override
   String toString() =>

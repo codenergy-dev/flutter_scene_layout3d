@@ -205,6 +205,22 @@ export 'src/geometry/edge_insets3d.dart' show EdgeInsets3d;
 export 'src/geometry/offset3d.dart' show Axis3d, Offset3d;
 export 'src/geometry/size3d.dart' show Size3d;
 export 'src/hit_test.dart' show HitTestEntry3d, HitTestResult3d, Ray3d;
+export 'src/input/drag.dart'
+    show
+        Drag3dAnchor,
+        Drag3dDetails,
+        Drag3dEvent,
+        Drag3dEventKind,
+        Drag3dSession,
+        Drag3dTarget;
+export 'src/input/draggable.dart'
+    show
+        Drag3dFeedbackBuilder,
+        Drag3dStartMode,
+        Drag3dTargetCallback,
+        Drag3dWillAccept,
+        DragTarget3d,
+        Draggable3d;
 export 'src/input/events.dart'
     show HitTestBehavior3d, HitTestTarget3d, PointerEvent3d, PointerSequence3d;
 export 'src/input/focus.dart' show Focus3d, Focus3dTraversal, FocusScope3d;

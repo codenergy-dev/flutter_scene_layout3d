@@ -1,7 +1,10 @@
 ---
-status: pending
+status: in progress
+reason: phases 1 and 2 have landed; phases 3 to 8 (cross-surface, Dismissible3d,
+  targetPlane anchoring, ReorderableList3d, autoscroll, render probes and docs)
+  have not been started
 created_at: 2026-09-01T15:40:55Z
-updated_at: 2026-09-01T15:40:55Z
+updated_at: 2026-09-01T19:24:00Z
 commit: e78eb5e28533b37a92779379f8f00c0095023521
 ---
 
@@ -309,13 +312,13 @@ move — `Drag3dSession.tick()` re-runs the whole update against the last ray.
 
 Take them in order; each phase is a thing that can be demonstrated.
 
-- [ ] **Phase 1 — the session and its seams.** `Drag3dSession`,
+- [x] **Phase 1 — the session and its seams.** `Drag3dSession`,
       `Drag3dTarget`, `Drag3dDetails`, `Drag3dEvent`, `Drag3dAnchor`, and
       `PointerSequence3d.addArenaMember`. `Layout3dPointer` gains a
       registry of live sessions keyed by pointer, and hands each one the
       fresh hit it already computes. No feedback and no components yet: a
       test drives a session by hand and asserts enter, leave and drop.
-- [ ] **Phase 2 — `Draggable3d<T>` and `DragTarget3d<T>`.** The drag gesture
+- [x] **Phase 2 — `Draggable3d<T>` and `DragTarget3d<T>`.** The drag gesture
       (immediate and long-press modes, axis, slop through the metrics), the
       overlay-hosted feedback on `originPlane`, `nodeOffset` tracking, the
       drop animation, and the single disposal path. The widget forms
@@ -362,7 +365,10 @@ already added:
   cancelled by movement;
 - feedback tracking: **`surface.needsFlush` is false for the whole drag**,
   which is this plan's version of the promise the animation plan made and the
-  pointer plan kept — if a drag ever dirties layout, that test fails first;
+  pointer plan kept — if a drag ever dirties layout, that test fails first.
+  (As landed: false for every *move*, with the insertion of the feedback entry
+  and its removal the two layout passes a drag unavoidably costs. See *What
+  the original reasoning got wrong*.);
 - disposal: the entry is removed exactly once on every ending, including a
   draggable disposed mid-drag and an overlay disposed under a live drag;
 - cross-surface: two surfaces in a `Layout3dPointerGroup`, a drag starting on
@@ -386,6 +392,48 @@ What needs a GPU, and so goes in `examples/render_probe` as new scenes:
 
 Both must be driven by the test's own clock — a drop animation settling on
 its own schedule is the flake the render plan warns about.
+
+## What the original reasoning got wrong
+
+Written as phases 1 and 2 landed, so the next reader does not trust the parts
+that turned out to be untrue.
+
+- **"`surface.needsFlush` is false for the whole drag" is not quite
+  achievable, and the test says so.** Putting the feedback into the overlay is
+  a layout pass and taking it out is another, because an overlay entry is a
+  child of a `Stack3d` and adding a child dirties layout. There is no way
+  around either. What *is* true, and is what the test now asserts, is that the
+  drag costs exactly those two and no more: `test/drag_test.dart` runs twenty
+  moves through a live drag and asserts `needsFlush == false` after every one
+  of them, with the insertion before the loop and the removal after it. The
+  promise the plan meant to make survives; the sentence it made it in did not.
+- **The feedback's initial placement needed arithmetic the plan did not
+  mention.** An overlay entry is placed by the overlay's own alignment, which
+  is nowhere near the box the drag was picked up from, so tracking the pointer
+  by travel alone would make the card jump to the middle of the panel at the
+  moment it is picked up. `Draggable3d._homeOver` computes the correction that
+  covers the source — the source's centre taken into the feedback's own frame
+  through both `worldTransform`s — and every move is that correction plus the
+  travel. It is computed lazily, because the feedback has no size on the frame
+  it is inserted, and cached once it succeeds, because the source may be
+  disposed under a long drag.
+- **`Drag3dSession` needed a terminal state the plan did not name.** A drop
+  animation has to know whether the drag was taken and by what, and the
+  session has already cleared its target list by the time anyone is told it
+  ended. Hence `wasAccepted` and `acceptedBy`, which outlive the session, and
+  `addEndListener`, which is the single path every ending goes through — an
+  accepted drop, a rejected one, a cancel, a disposed draggable and a disposed
+  pointer all arrive there.
+- **A `Layout3d` does not promote through an interface it does not declare.**
+  `if (layout is! Drag3dTarget)` leaves the static type at `Layout3d`, so the
+  dispatch spells out an explicit cast — which is exactly what
+  `Layout3dPointer._deliver` already does for `HitTestTarget3d`, and the
+  reason was not obvious until it bit here too.
+- **`DragTarget3d` is `HitTestBehavior3d.translucent`, not `opaque`.** A drop
+  zone that swallowed every ray aimed at what is inside or behind it would
+  break the buttons in the card it wraps. Flutter's `DragTarget` is
+  translucent for the same reason. Ancestors are on the hit path regardless,
+  so a list and the row inside it still both light up.
 
 ## Out of scope
 
@@ -424,12 +472,20 @@ its own schedule is the flake the render plan warns about.
   without inheriting a generic class, and its highlight is a
   `DecoratedBox3d.stateLayer` write, which is the repaint tier and dirties
   nothing.
-- **`PointerSequence3d.addArenaMember` is general.** Anything that wants to
+- **`PointerSequence3d.addArenaMember` is general**, and it landed with
+  `PointerSequence3d.startDrag` beside it: the seam a target reaches for once
+  it has decided a press is a drag, which forwards to
+  `Layout3dPointer.startDrag`. Both are on `PointerEvent3d` too, next to
+  `addPointerToRecognizer`. Anything that wants to
   compete for a pointer without a Flutter recognizer — a knob, a slider, a
   rotation handle — uses it, and given that two of Flutter's four recognizers
   do not work in this build, that is likely to be most things.
 - **The drag-aware pass in `Layout3dPointerGroup`** is the first thing that
-  needs "test every surface, not the captured ones". Cross-surface focus
+  needs "test every surface, not the captured ones". The seam it wants is
+  already there: `Drag3dSession.update(HitTestResult3d)` takes a path and asks
+  nothing about where it came from, and `Layout3dPointer.drags` enumerates
+  what is in flight on one surface. A group only has to walk its members and
+  hand the winning path to the session it finds. Cross-surface focus
   traversal, which the pointer plan left open, needs the same walk.
 - **The node-tier gap** in the reorderable list is the worked example of
   animating a list's arrangement without relayout. A staggered list-entry
@@ -450,15 +506,31 @@ names the question.
    simply lands. **What would settle it: build phase 3 first and drag between
    two angled surfaces in the gallery.** If it reads as wrong, phase 5 is
    worth the work; if it reads fine, phase 5 becomes an `Out of scope` entry.
-2. **Whether the arena accepts a member added during the down dispatch in
-   every ordering.** `_Sequence.begin` dispatches, then arms the scroll drag,
-   then closes the arena — so a member added from `handleEvent` is added
-   before the close, which is right. But a long-press drag resolves long
-   after `close`, and an arena that has already swept for another reason
-   would drop the resolution silently. The scroll drag never resolves that
-   late, so this path has never been exercised. **A phase-1 test that adds a
-   member and resolves it a second later settles it before anything is built
-   on top.**
+2. ~~**Whether the arena accepts a member added during the down dispatch in
+   every ordering.**~~ **Settled in phase 1**, by three tests under *the arena
+   seam* in `test/drag_test.dart`. Three findings, and the third was not
+   anticipated:
+
+   * **A member may resolve long after `close`.** `close` ends the window for
+     *adding*, not the arena. A member entered during the down dispatch and
+     resolved twenty milliseconds later still rejects everyone else, so
+     long-press-to-drag works exactly as the plan hoped.
+   * **What ends the arena is the `sweep` at the up.** A resolution after that
+     does nothing, silently — no throw, no callback. So the long-press timer
+     has to be *cancelled* by the up rather than left to lose the arena, which
+     is what `_Drag3dGesture.finish` does.
+   * **A member cannot be added after `close` at all.** `GestureArenaManager.add`
+     asserts `isOpen`. Everything that wants to compete has to enter during
+     the down dispatch. This is why `_Drag3dGesture` joins the arena at the
+     press even in long-press mode, half a second before it knows whether it
+     wants the pointer.
+   * **A member alone in the arena wins by default**, in a microtask, as soon
+     as `close` runs. So *winning the arena* and *recognizing the gesture* are
+     two different events and a recognizer with a threshold of its own must
+     keep them apart: `acceptGesture` on `_Drag3dGesture` records a flag and
+     starts nothing. Nothing in the plan said this, and getting it wrong would
+     have made every draggable with no `Scrollable3d` under it start dragging
+     on the press.
 3. **The insert index with items of very unequal extent.** The arithmetic is
    easy; whether it *feels* right when a 40dp row is dragged past a 200dp
    card is not something a headless test can answer, and Flutter's own answer

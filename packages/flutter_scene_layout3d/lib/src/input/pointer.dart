@@ -28,6 +28,7 @@ import '../hit_test.dart';
 import '../layout3d.dart';
 import '../scroll/scrollable.dart';
 import '../surface.dart';
+import 'drag.dart';
 import 'events.dart';
 
 /// A pointer aimed at a layout surface: hit testing, event dispatch, gesture
@@ -106,6 +107,11 @@ class Layout3dPointer {
   final Map<int, _Sequence> _sequences = <int, _Sequence>{};
   final Map<int, _Hover> _hovers = <int, _Hover>{};
 
+  /// The drags in flight, keyed by the device pointer carrying each one.
+  ///
+  /// At most one per pointer: a finger carries one thing.
+  final Map<int, Drag3dSession> _drags = <int, Drag3dSession>{};
+
   final Stopwatch _clock = Stopwatch()..start();
 
   HitTestResult3d _lastHit = HitTestResult3d();
@@ -141,6 +147,43 @@ class Layout3dPointer {
 
   /// Whether the pointer with this id is down on this surface.
   bool isDown(int pointer) => _sequences.containsKey(pointer);
+
+  /// The drag the pointer with this id is carrying, or null.
+  Drag3dSession? dragFor(int pointer) => _drags[pointer];
+
+  /// Every drag in flight on this surface.
+  Iterable<Drag3dSession> get drags => _drags.values;
+
+  /// Whether any pointer is carrying a payload.
+  bool get isDraggingPayload => _drags.isNotEmpty;
+
+  /// Puts [session] in flight on [pointer].
+  ///
+  /// From here until the session ends, every [move] resolves it against the
+  /// *fresh* hit this pointer already computes — the path under the pointer
+  /// now, not the one the press captured — and the [up] that ends the
+  /// sequence drops it. Starting a second session on one pointer cancels the
+  /// first, because a finger carries one thing.
+  ///
+  /// A [Draggable3d] reaches this through [PointerSequence3d.startDrag], from
+  /// inside the down it is handling; calling it directly is how a test, or a
+  /// host with a drag source of its own, drives a session by hand.
+  ///
+  /// The session takes itself out of the registry when it ends, whatever
+  /// ended it, so there is nothing to unregister.
+  void startDrag(Drag3dSession session, {int pointer = 0}) {
+    assert(session.isActive, 'A drag session is single-use.');
+    _drags.remove(pointer)?.cancel();
+    _drags[pointer] = session;
+    session.addEndListener(() {
+      if (identical(_drags[pointer], session)) _drags.remove(pointer);
+    });
+    // The drag was recognized against a path that has already been hit-tested
+    // this frame: resolve it now rather than waiting for a move, so a drop
+    // without a single move in between still lands on what it was started
+    // over.
+    session.update(_lastHit);
+  }
 
   /// What the pointers hovering this surface are over, deepest first.
   ///
@@ -202,7 +245,12 @@ class Layout3dPointer {
     final sequence = _sequences[pointer];
     if (sequence == null) return false;
     _lastHit = surface.hitTestRay(worldRay);
-    return sequence.move(worldRay, timeStamp ?? _clock.elapsed);
+    final moved = sequence.move(worldRay, timeStamp ?? _clock.elapsed);
+    // After the dispatch, not before: the move is what a draggable recognizes
+    // its drag on, and a session started by this very event still gets to
+    // resolve against the path the same event produced.
+    _drags[pointer]?.update(_lastHit);
+    return moved;
   }
 
   /// Ends the press, dispatching a [PointerUpEvent] and sweeping the arena.
@@ -213,6 +261,13 @@ class Layout3dPointer {
   void up({Ray? worldRay, int pointer = 0, Duration? timeStamp}) {
     final sequence = _sequences.remove(pointer);
     sequence?.end(worldRay, timeStamp ?? _clock.elapsed);
+    final session = _drags[pointer];
+    if (session == null) return;
+    // A last look before letting go, so a release that moved the pointer in
+    // the same event drops on what it ended over rather than on what the
+    // previous move found.
+    if (worldRay != null) session.update(hitTest(worldRay));
+    session.drop();
   }
 
   /// Abandons the press, dispatching a [PointerCancelEvent].
@@ -223,6 +278,7 @@ class Layout3dPointer {
   void cancel({int pointer = 0, Duration? timeStamp}) {
     final sequence = _sequences.remove(pointer);
     sequence?.abandon(timeStamp ?? _clock.elapsed);
+    _drags[pointer]?.cancel();
   }
 
   /// Moves an unpressed pointer to [worldRay], emitting enter and exit along
@@ -269,6 +325,10 @@ class Layout3dPointer {
     for (final pointer in _sequences.keys.toList()) {
       cancel(pointer: pointer);
     }
+    for (final session in _drags.values.toList()) {
+      session.cancel();
+    }
+    _drags.clear();
     for (final pointer in _hovers.keys.toList()) {
       exit(pointer: pointer);
     }
@@ -617,6 +677,21 @@ class _Sequence implements PointerSequence3d, GestureArenaMember {
     _contested = true;
     recognizer.addPointer(event);
   }
+
+  @override
+  GestureArenaEntry addArenaMember(GestureArenaMember member) {
+    // Marking the sequence contested is the load-bearing half. `begin`
+    // dispatches the down along the whole path *before* it arms the scroll
+    // drag, so a member added from a target's `handleEvent` is seen by
+    // `_armDrag`, and the view underneath waits for the slop instead of
+    // scrolling out from under the drag that is about to start.
+    _contested = true;
+    return GestureBinding.instance.gestureArena.add(arenaPointer, member);
+  }
+
+  @override
+  void startDrag(Drag3dSession session) =>
+      owner.startDrag(session, pointer: devicePointer);
 
   Offset? _globalFor(Ray worldRay) {
     final ray = Layout3dPointer.localRayFor(owner.surface, worldRay);
