@@ -1,21 +1,20 @@
 ---
 status: in progress
 reason: >
-  Phases 1 to 5 have landed and are covered by 62 headless tests. Two items
-  are open, both of them needing something this repository cannot run today.
-  (1) No lane compiles the shipped `assets/box_decoration3d.fmat`, so the
-  panel shader is checked for its parameter contract and never for what it
-  draws — which leaves the plan's render-level silhouette-versus-shadow check
-  and the worked raised-card example undone. That lane is now planned as
-  `2026_08_28_render_coverage.md`, phase 5, which is the thing to do before
-  picking this item up. (2) Phase 6's
-  subtree opacity is designed and not implemented: it needs a per-node
-  opacity or tint in `flutter_scene` that the materials honour, and the plan
-  itself says not to ship an `Opacity3d` that only works on
-  `BoxDecoration3d`. Phase 6's other half, clip planes, did land.
-created_at: 2026-08-25T20:31:04Z
-updated_at: 2026-08-27T12:52:08Z
-commit: 657eef80eb8dc8085c3b3a84a8069273495506be
+  Phases 1 to 5 have landed and are covered by 62 headless tests, and the
+  shader is now verified: `examples/render_probe` compiles the shipped
+  `assets/box_decoration3d.fmat` through its build hook and asserts that a
+  60dp radius really carves the corners away. What is still open is smaller
+  than it was. (1) Elevation, the border and the state layer have no probe —
+  the shader declares them and the painter writes them, but nothing looks at
+  the result yet; adding those scenes is ordinary work in
+  `2026_08_28_render_coverage.md`'s harness. (2) A shadow pass does not run
+  `Surface()`, so a rounded panel still casts the shadow of its whole slab;
+  that is the plan's silhouette-versus-shadow item and it needs an engine
+  answer, not a layout one. (3) Phase 6's subtree opacity is designed and not
+  implemented: it needs a per-node opacity or tint in `flutter_scene` that the
+  materials honour, and the plan itself says not to ship an `Opacity3d` that
+  only works on `BoxDecoration3d`. Phase 6's other half, clip planes, landed.
 ---
 
 # Geometry that follows the box, not the other way round

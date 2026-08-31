@@ -169,30 +169,40 @@ Also open, each for a stated reason rather than for lack of time:
 
 ## Where to pick up
 
-Everything below is enough context to hand a single plan to an implementer who
-has read only that plan and this section.
+Enough context to hand a single plan to an implementer who has read only that
+plan and this section.
 
-**The three plans still marked `in progress` are each blocked on one named
-thing, and two of them are blocked on the same thing.**
+**Nothing is blocked on infrastructure any more.** Two of the three open plans
+used to wait on there being no way to draw or verify a frame;
+[render coverage](2026_08_28_render_coverage.md) built that lane and is done.
+`examples/render_probe` draws on a real GPU and checks the frame against the
+layout, and it already carries a `.fmat` from source through compilation to a
+probed frame — which is the path a glyph atlas needs too.
 
-1. **[Render coverage](2026_08_28_render_coverage.md) is the unblocker, and
-   should go first.** It builds the lane that draws a real frame and probes it
-   at the pixels layout says to check. Nothing depends on it being done to
-   *start* something else, but two open items cannot be finished without it.
-2. **[Text](2026_08_25_text_in_a_3d_layout.md) phase 4** — the glyph atlas —
-   and **phase 5**, `RichText3d`. Both need a GPU context, so they want the
-   render lane first. The measurement layer below them is done and exact.
-3. **[Size-driven geometry](2026_08_25_size_driven_geometry.md)**, two items:
-   the shipped `.fmat` has never been compiled by anything, which is the render
-   lane's phase 5; and subtree opacity, which is blocked on `flutter_scene`
-   growing a per-node opacity the materials honour, and is therefore not
-   actionable here at all.
-4. **[The boxes still missing](2026_08_25_the_boxes_still_missing.md)** — only
-   `Dismissible3d`, `Draggable3d`, `DragTarget3d` and reorderable lists remain,
-   and they wait on payload-carrying drag recognition that
+In the order I would take them:
+
+1. **[Text](2026_08_25_text_in_a_3d_layout.md) phase 4, the glyph atlas.** The
+   largest remaining gap in the package and the one every catalogue label
+   waits on. The measurement layer below it is done and exact against Skia;
+   `Text3dRenderer` is the seam, and the decoration painter is the worked
+   example of filling one. Phase 5, `RichText3d`, follows it.
+2. **A drag plan, then the drag boxes.**
+   [The boxes still missing](2026_08_25_the_boxes_still_missing.md) has only
+   `Dismissible3d`, `Draggable3d`, `DragTarget3d` and reorderable lists left,
+   and they need payload-carrying drag recognition that
    [pointer dispatch](2026_08_25_pointer_dispatch_and_focus.md) put in its own
-   out-of-scope section. **That plan has not been written.** Writing it is the
-   next step, not implementing against a plan that does not exist.
+   out-of-scope section. **That plan has not been written.** Write it first —
+   do not implement against a plan that does not exist. This is the only open
+   item that needs no GPU, so it parallelises with the atlas.
+3. **[Size-driven geometry](2026_08_25_size_driven_geometry.md)'s remainder.**
+   Elevation, the border and the state layer have no probe; adding those
+   scenes is ordinary work in the render harness. The shadow item and subtree
+   opacity both need `flutter_scene` to grow something, so they are not
+   actionable here.
+4. **`flutter_scene_material3d` itself**, once text draws. It has no plan yet.
+   Everything the readiness work set out to provide is in place, and the
+   render harness means a `Button3d` can be checked as a picture and not only
+   as arithmetic.
 
 **Every plan's `commit:` field resolves in this repository.** The plans that
 predate the move out of the engine's monorepo were written against fork
@@ -200,6 +210,6 @@ commits; each was realigned onto the commit here that carries the same change,
 matched by subject and commit date. `git show` one and you get the layout
 package exactly as that plan's author saw it.
 
-The other seven plans are `completed` and their bodies record what the original
-reasoning got wrong. Read those sections before extending any of them; several
-of the corrections are load-bearing.
+The `completed` plans record what their original reasoning got wrong. Read
+those sections before extending any of them; several of the corrections are
+load-bearing, and the render plan's are the freshest.

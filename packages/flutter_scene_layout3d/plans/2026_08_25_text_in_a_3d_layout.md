@@ -1,9 +1,13 @@
 ---
 status: in progress
-reason: phases 1-3 and 6 are done; phases 4 (the atlas renderer) and 5
-  (RichText3d) are not, because a glyph atlas needs a GPU context that
-  `flutter test` does not have. `2026_08_28_render_coverage.md` builds that
-  lane and is the thing to do first. See "What was left out, and why".
+reason: >
+  Phases 1-3 and 6 are done; phases 4 (the atlas renderer) and 5 (RichText3d)
+  are not. They were blocked on there being no way to run or verify a glyph
+  atlas, and they are not any more: `examples/render_probe` draws on a real
+  GPU, and it has already carried a shader from a `.fmat` file through
+  compilation to a probed frame for the decoration painter, which is the same
+  shape of problem. This is now actionable work rather than a wait. See "What
+  was left out, and why".
 created_at: 2026-08-25T20:31:04Z
 updated_at: 2026-08-26T22:51:13Z
 commit: 657eef80eb8dc8085c3b3a84a8069273495506be
