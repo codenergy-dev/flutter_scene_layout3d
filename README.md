@@ -165,7 +165,9 @@ wireframes.
 
 The [package README](packages/flutter_scene_layout3d/README.md) is the deep
 reference for all of it — it goes box by box, and it is honest about where this
-differs from Flutter and why.
+differs from Flutter and why. [docs/](docs/) maps everything else, and
+[docs/traps.md](docs/traps.md) is the list of sharp edges worth reading before
+you build a component.
 
 ## What this does not do yet
 
@@ -238,4 +240,6 @@ from, and moved out once the scope made it clear this was its own project.
 
 Contributions and conventions are documented in [AGENTS.md](AGENTS.md), which
 is written for coding agents but is the most direct description of how work is
-done here.
+done here. [docs/README.md](docs/README.md) is the map of everything written
+down in this repository, including where past decisions and their reasoning
+are recorded.

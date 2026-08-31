@@ -52,67 +52,25 @@ flutter create . --platforms=macos
 flutter run -d macos --enable-flutter-gpu
 ```
 
-## The engine rules that are expensive to get wrong
+## What you need to know before writing code
 
-`flutter_scene` diverges from three.js, Godot and Unity in specific ways, and
-most first-attempt failures come from reaching for another engine's spelling.
+Both of these are short, and both are lists of things that cost real time.
+They live in `docs/` rather than here because they grow, and this file should
+stay readable end to end.
 
-- **Not `package:vector_math/vector_math_64.dart`.** Use
-  `package:vector_math/vector_math.dart`. The `_64` `Vector3` is a different,
-  incompatible type.
-- **Not `--enable-impeller`, not `--enable-experiment=native-assets`.** The run
-  flag is `--enable-flutter-gpu` alone.
-- **Not the master channel.** Flutter 3.47 stable or newer; master resolves
-  worse, not better.
-- **Not `node.position.set(...)`.** `Node` has `position`, `rotation` (a
-  `Quaternion`) and `scale`, but they are whole-value get/set
-  (`node.position = Vector3(0, 1, 0)`); the getters return copies. For a raw
-  matrix edit use `node.mutateLocalTransform((m) => ...)`.
-- **Not `Node.fromAsset(...)`.** Load a preprocessed model with
-  `loadScene('assets/x.glb')`, or a runtime glTF with `Node.fromGlbAsset`.
-- Rendering is gated on `Scene.initializeStaticResources()`. Until it resolves
-  the engine prints "Flutter Scene is not ready to render. Skipping frame", so
-  build geometry and materials only after it does.
+- **[docs/traps.md](docs/traps.md)** — the sharp edges of *this package*.
+  A box's size is in world units while a Material figure is in logical pixels;
+  writing `metrics` relayouts everything; there are four transform channels and
+  a `Stack3d` silently erases one of them; the package draws almost nothing
+  until you install a painter; a corner radius is not a clip. **Read it before
+  building a component.**
+- **[docs/engine-rules.md](docs/engine-rules.md)** — using `flutter_scene`
+  correctly. `vector_math` not `vector_math_64`, `--enable-flutter-gpu` alone,
+  `node.position` getters return copies, and nothing renders until
+  `Scene.initializeStaticResources()` resolves.
 
-For depth, the engine ships agent skills; install them into a checkout with
-`dart run flutter_scene:skills`.
-
-## The traps in this package
-
-These cost real time and are not obvious from the code.
-
-- **Writing `Layout3dSurface.metrics` relayouts the whole subtree, by design.**
-  It belongs to a window resize, never to a per-frame path.
-- **Animation must stay off the relayout path.** Three tiers, cheapest first:
-  repaint-only (`DecoratedBox3d.decoration` and `.stateLayer` — shader
-  uniforms, no layout), node-only (`nodeOffset` / `nodeTransform` — one matrix
-  a frame), and implicit, only when a size really changed. Never put a new
-  `Text3d.text`, a new `NodeBox3d.content` or a rebuilt mesh on a per-frame
-  path. `test/animation_test.dart` asserts `debugTextParagraphCount` does not
-  move while a container resizes a label; that test fails first if measurement
-  gets back onto the layout path.
-- **There are four transform channels** — `ParentData3d.sceneOffset`,
-  `nodeOffset`, `nodeTransform` and `localTransform` — and they are not
-  interchangeable. `Stack3d.depthStep` rewrites `sceneOffset` on every
-  placement, so an animation stored there is silently erased. Use `nodeOffset`.
-- **The package draws almost nothing by default.**
-  `BoxDecoration3d.painterFactory` is null until something sets it, and
-  `Text3dRenderer` has no in-tree implementation. Both are deliberate seams;
-  neither can be verified in `flutter test`, which has no GPU context.
-  `examples/render_probe` installs the panel painter and does verify it.
-- **A panel's size is in world units; its corner radius is in logical
-  pixels.** `BorderRadius3d`, `bevel`, `border` and `elevation` are all
-  written the way a Material shape token is, and the metrics convert them at
-  paint time. `BorderRadius3d.circular(0.6)` asks for 0.6dp — at the default
-  rate, 0.006 world units, an indistinguishably square corner. You almost
-  certainly meant `circular(60)`.
-- **`TapTarget3d` grows the ray region but not the box.** The Material 48dp
-  minimum is invisible to layout, to intrinsics, to `ensureVisible3d` and to
-  semantics. Deliberate — it keeps neighbours from moving — but sharp.
-- **A `Text3d` answers hit tests on its own account**, so a label inside a
-  button usually wants an `IgnorePointer3d`.
-- **A corner radius is not a clip.** `Clip3dRegion` is an intersection of
-  planes and a plane region is convex; a radius is carved by the panel shader.
+[docs/README.md](docs/README.md) maps everything else — which document answers
+which question, and where the reasoning behind past decisions is recorded.
 
 ## Conventions
 
@@ -169,12 +127,10 @@ flutter drive --driver=test_driver/integration_test.dart \
   --target=integration_test/render_test.dart -d macos --enable-flutter-gpu
 ```
 
-Two things about it that cost time to learn. Probe scenes must use
-`BoxFit3d.contain`, not the default `BoxFit3d.none`, or a box's screen bounds
-enclose empty space and "where the box is" stops meaning "where the geometry
-is". And `screenBounds` bounds all eight corners including the depth
-extrusion, so probing a *face* wants `screenPointOf` with an explicit z
-fraction. `examples/render_probe/README.md` has the rest.
+How to write a scene is in
+[examples/render_probe/README.md](examples/render_probe/README.md); the
+gotchas are in [docs/traps.md](docs/traps.md), under *When probing a rendered
+frame*.
 
 That lane is also the only thing that compiles
 `packages/flutter_scene_layout3d/assets/box_decoration3d.fmat`. A syntax error
@@ -190,6 +146,23 @@ message.
 Subject lines here are short, imperative and say what the change does for the
 reader, not which files moved: "Pin a header to the leading edge and cut the
 content under it", not "Add SliverPersistentHeader3d".
+
+### Documentation is part of the change, not follow-up work
+
+Prose lives next to what it describes, and [docs/](docs/) holds what has no
+such home — cross-cutting traps, engine rules, the map. When you change
+behaviour, the page that describes it changes in the same commit; when you add
+a page, it gets a row in [docs/README.md](docs/README.md).
+
+Two habits that this repository learned the hard way:
+
+- **Closing a plan can invalidate another one.** The render-coverage work made
+  three statements in other plans false — they still said the work was blocked
+  on infrastructure that now existed. Nothing warns you. When you finish a
+  plan, reread the `reason:` of every plan it mentions.
+- **A page that is wrong is worse than a page that is missing**, because the
+  next reader trusts it. If you find one describing behaviour the code no
+  longer has, fix it or say so; do not leave it.
 
 ### README files are written for humans
 
