@@ -521,6 +521,46 @@ void main() {
       }
     });
 
+    test('and on where a run sits, which is what a renderer draws from', () {
+      // A run's `left` is measured from the block, alignment included — the
+      // contract TextRun3d has always stated. It has to hold for *both*
+      // policies or a glyph's place on the panel would depend on which one
+      // measured it, and the segmented policy used to report it relative to
+      // its own line. Every other assertion here is left-aligned, where the
+      // two readings coincide and the bug was invisible.
+      const text = 'ab';
+      for (final align in <TextAlign>[
+        TextAlign.center,
+        TextAlign.right,
+        TextAlign.left,
+      ]) {
+        final a = measurement.layout(
+          measurement.prepare(text, style),
+          minWidth: 100,
+          maxWidth: 100,
+          textAlign: align,
+        );
+        final b = exact.layout(
+          exact.prepare(text, style),
+          minWidth: 100,
+          maxWidth: 100,
+          textAlign: align,
+        );
+        expect(
+          a.lines.single.runs.map((run) => run.left),
+          b.lines.single.runs.map((run) => run.left),
+          reason: 'run offsets disagree under $align',
+        );
+        // And they are absolute, not relative to the line: a centred line
+        // starts at 40 of the 100 it was given, and so does its first run.
+        expect(
+          a.lines.single.runs.first.left,
+          a.lines.single.left,
+          reason: 'the first run should start where its line does under $align',
+        );
+      }
+    });
+
     test('and with Flutter, which is the point of it', () {
       final precise = exact.prepare('hello world foo bar', style);
       final layout = exact.layout(precise, maxWidth: 100);

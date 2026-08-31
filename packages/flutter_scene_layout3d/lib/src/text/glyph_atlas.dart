@@ -499,6 +499,17 @@ TextStyle glyphAtlasStyleOf(TextStyle style) => style.foreground != null
 /// [AtlasText3dRenderer] reaches for [shared] unless it is handed a cache of
 /// its own, which is what a test does when it wants an atlas it can count
 /// the glyphs of.
+///
+/// **Nothing is evicted.** An atlas lives until [clear] drops it, and
+/// [shared] is a static, so it lives for the process. That is bounded rather
+/// than unbounded — [glyphAtlasScaleFor] admits 32 buckets, so a style can
+/// reach at most that many atlases however far the camera travels — but the
+/// ceiling is a real one: a screen with many type styles, walked through many
+/// distances, accumulates textures and never gives them back. No eviction
+/// policy is implemented because none has been needed; a catalogue that
+/// settles at one or two scales per style never approaches the bound. If a
+/// long-running application does, [clear] is the blunt instrument, and a
+/// least-recently-used bound on [_atlases] is the obvious fix.
 class GlyphAtlasCache3d {
   /// Creates a cache whose atlases are built with these settings.
   GlyphAtlasCache3d({

@@ -238,7 +238,7 @@ void main() {
       expect(cache.length, 3);
     });
 
-    test('a scale is bucketed up to the next half step', () {
+    test('a scale is bucketed up to the next quarter step', () {
       expect(glyphAtlasScaleFor(1.0), 1.0);
       expect(glyphAtlasScaleFor(1.01), 1.25);
       expect(glyphAtlasScaleFor(2.4), 2.5);

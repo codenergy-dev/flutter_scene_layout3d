@@ -416,6 +416,50 @@ void main() {
   // of its own panel: each of those measures perfectly and draws nothing, and
   // the package's 770-odd headless tests are blind to every one of them.
   group('text', () {
+    testWidgets('a relayout that changes nothing rebuilds no geometry', (
+      tester,
+    ) async {
+      // The constraint the whole text plan is arranged around: measurement and
+      // geometry must not sit on the per-frame path, because animation dirties
+      // layout every frame. `debugTextParagraphCount` guards the measurement
+      // half headlessly. This is the geometry half, and it has to live here —
+      // AtlasText3dRenderer.render builds a real Mesh, so a headless test
+      // cannot reach it at all.
+      final capture = await _draw(tester, kProbeScenes.byId('text_label'));
+      final label = capture.state.content.probes['label']! as Text3d;
+      final renderer = label.renderer! as AtlasText3dRenderer;
+
+      final mesh = renderer.meshNode;
+      final quads = renderer.quadCount;
+      expect(mesh, isNotNull, reason: 'the label drew no glyphs at all');
+      expect(quads, greaterThan(0));
+
+      // Lay out again with everything unchanged. Text3d hands back the same
+      // cached TextLayout3d, so the renderer's guard should recognise it and
+      // keep the mesh it already built.
+      label.markNeedsLayout();
+      capture.state.content.surfaces.single.flush();
+
+      expect(
+        identical(renderer.meshNode, mesh),
+        isTrue,
+        reason:
+            'a no-op relayout rebuilt the glyph mesh; geometry is back on '
+            'the per-frame path',
+      );
+      // Same glyphs, not an empty mesh kept by accident.
+      expect(
+        renderer.quadCount,
+        quads,
+        reason: 'the guard held the mesh but the quad count moved',
+      );
+
+      // Deliberately no pixel check here. That the label draws where layout
+      // put it is the next test's whole job, and repeating it against a frame
+      // captured before this relayout would only add a second threshold to
+      // keep calibrated.
+    });
+
     testWidgets('the atlas renderer puts glyphs where layout put the label', (
       tester,
     ) async {
