@@ -595,6 +595,13 @@ class SegmentedTextMeasurement3d extends TextMeasurement3d {
         case TextAlign.end:
           break;
       }
+      // A run's left is measured from the block, not from its line, which is
+      // the contract a renderer needs: a glyph's place on the panel cannot
+      // depend on which of the two measurement policies produced it, and the
+      // exact one reports platform line boxes that are already absolute.
+      if (left != 0.0) {
+        runs = <TextRun3d>[for (final run in runs) _shifted(run, left)];
+      }
       placed.add(
         TextLine3d(
           start: line.start,

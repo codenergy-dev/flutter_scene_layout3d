@@ -8,7 +8,9 @@ import 'prepared_text.dart';
 /// line expressible without re-measuring anything.
 ///
 /// [left] and [width] are in logical pixels, measured from the left edge of
-/// the laid-out block.
+/// the laid-out block — alignment included, so a centred line's first run
+/// does not start at zero. A renderer draws a run where its own [left] says,
+/// and never adds [TextLine3d.left] to it.
 class TextRun3d {
   /// Creates a positioned run.
   const TextRun3d({

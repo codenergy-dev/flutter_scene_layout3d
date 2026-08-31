@@ -41,6 +41,7 @@ class ProbeScene {
     this.camera,
     this.viewSize,
     this.preload,
+    this.minCoverage = 0.02,
   });
 
   /// Stable identifier, used in the test name and the capture filename.
@@ -56,6 +57,15 @@ class ProbeScene {
   /// The size the view is given. Fixed so a probe's arithmetic does not depend
   /// on the window the test happens to run in.
   final Size? viewSize;
+
+  /// The share of the frame this scene is expected to cover.
+  ///
+  /// The floor test asks every scene whether a frame came out at all, and
+  /// "at all" is not the same number for a wall of cubes and for five
+  /// letters of type. Zero means the opposite claim: this scene is a
+  /// *control* and must draw nothing, which is what makes its partner's
+  /// coverage mean something.
+  final double minCoverage;
 
   /// Anything asynchronous the scene needs before [build] can run.
   ///

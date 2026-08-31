@@ -1,15 +1,7 @@
 ---
-status: in progress
-reason: >
-  Phases 1-3 and 6 are done; phases 4 (the atlas renderer) and 5 (RichText3d)
-  are not. They were blocked on there being no way to run or verify a glyph
-  atlas, and they are not any more: `examples/render_probe` draws on a real
-  GPU, and it has already carried a shader from a `.fmat` file through
-  compilation to a probed frame for the decoration painter, which is the same
-  shape of problem. This is now actionable work rather than a wait. See "What
-  was left out, and why".
+status: completed
 created_at: 2026-08-25T20:31:04Z
-updated_at: 2026-08-26T22:51:13Z
+updated_at: 2026-08-31T14:50:33Z
 commit: 657eef80eb8dc8085c3b3a84a8069273495506be
 ---
 
@@ -150,6 +142,11 @@ glyph rasters: a glyph has to be painted individually into a `PictureRecorder`
 and read back into the atlas, keyed by (font, glyph, size bucket). This is
 the default renderer for the catalogue.
 
+*Both (a) and (b) landed, and the split between them turned out to be about
+scripts rather than about speed — see the phases and the wrong-reasoning
+section. The distance field did not: the atlas holds coverage rasters and
+`resolution` is the only defence against soft type.*
+
 **(c) Extruded outlines — real 3D letterforms.** `dart:ui` gives no access to
 glyph outlines, so this needs a font parser. Out of scope; noted because
 `swept_geometry.dart` in the engine is the extrusion facility it would use
@@ -195,12 +192,17 @@ if outlines ever arrive.
       `lib/src/text/text3d.dart`, with `SceneText3d` beside it in
       `lib/src/widgets/layouts.dart`. Sizes from the layout, answers
       intrinsics and the baseline, holds no geometry.
-- [ ] **Phase 4 — the atlas renderer.** **Not done.** The seam is:
-      `Text3dRenderer` and `Text3dRenderRequest` in
-      `lib/src/text/text_renderer.dart`, called after every layout of the box
-      and disposed with it. See *What was left out, and why* below.
-- [ ] **Phase 5 — `RichText3d`** over `WidgetComponent`. **Not done**, same
-      reason.
+- [x] **Phase 4 — the atlas renderer.** `AtlasText3dRenderer` in
+      `lib/src/text/atlas_text_renderer.dart`, over `GlyphAtlas3d` and
+      `GlyphAtlasCache3d` (`lib/src/text/glyph_atlas.dart`) and the quad
+      builder in `lib/src/text/text_geometry.dart`. One atlas per style and
+      resolution, shared through the cache; one mesh of textured quads per
+      label; `UnlitMaterial` with the atlas as an alpha mask and the style's
+      colour as the tint. The seam it fills is unchanged.
+- [x] **Phase 5 — `RichText3d`** over `WidgetComponent`, in
+      `lib/src/text/rich_text3d.dart`. Measured exactly and headlessly with a
+      `TextPainter`; drawn by hosting a live `RichText` subtree and sampling
+      the capture onto a quad the box builds.
 - [x] **Phase 6, partly** — `ParagraphTextMeasurement3d` is in, because the
       plan's own design section makes the *swappable policy* part of phase 1
       rather than an optional extra: without a second implementation the
@@ -211,7 +213,9 @@ if outlines ever arrive.
 
 ## Tests
 
-`test/text_test.dart` (53) and `test/text_box_test.dart` (27).
+`test/text_test.dart` (53), `test/text_box_test.dart` (27),
+`test/text_atlas_test.dart` (27) and `test/rich_text_test.dart` (18), plus
+three scenes and three assertions in `examples/render_probe`.
 
 - [x] Measured width and height against `TextPainter` ground truth, for eight
       strings at every whole width from 10 to 210 logical pixels. **The
@@ -240,6 +244,36 @@ if outlines ever arrive.
       `softWrap: false`, relayout at the same width doing nothing, a ray
       finding the label, the renderer seam being called and disposed, and the
       declarative widget picking up `DefaultTextStyle` and `Directionality`.
+- [x] **The atlas, headless.** One slot per distinct grapheme; a glyph's
+      advance, gutter and baseline offset; whitespace reserving nothing; the
+      scale changing the raster and not the layout; slots that never overlap
+      and never leave the atlas; growth doubling and repacking; a glyph too
+      big for the largest atlas drawing nothing and still advancing the pen.
+      The rasterization too — `Picture.toImage` works in `flutter test`, so a
+      test reads the texels back and checks that each glyph landed in its own
+      slot with a clear gutter around it, white and straight-alpha.
+- [x] **The quads, headless.** One per glyph that draws and none for
+      whitespace; the pen position and the baseline offset; a second line a
+      line lower; alignment moving them; the ellipsis drawn like any other
+      run; every quad sampling the slot its glyph was packed into. The
+      shaper: graphemes kept whole, a run shaped once however often it is
+      drawn, an LRU that evicts. And the geometry arithmetic: four vertices
+      and two triangles a glyph, in world units, wound so the normal points
+      at the viewer.
+- [x] **`RichText3d`, headless.** Size, wrapping, `softWrap: false`,
+      `maxLines` with an ellipsis and several styles in one span, each
+      against a `TextPainter`; the unit contract; intrinsics and the
+      baseline; a ray finding it; and that it lays out, sizes and reports
+      with no GPU and no `SceneView` — building no geometry at all until a
+      capture arrives.
+- [x] **The frame.** `examples/render_probe` draws a label out of the atlas
+      and asks the frame three things a headless test cannot: that glyphs
+      appear where layout put the box (a coverage fraction, and the ink's
+      centroid inside the box's own screen bounds), that an identical label
+      with no renderer draws nothing at all, and that the ink is the colour
+      the style asked for rather than the white it was rasterized in. Then a
+      label on a decorated panel, which is the depth-test claim, and a
+      `RichText3d` whose two differently-coloured runs both reach the frame.
 
 ## What the original reasoning got wrong
 
@@ -286,6 +320,58 @@ and every layout after it is arithmetic again. The benchmark test warms that
 up before it starts counting, and there is a separate test asserting the
 one-time cost is one-time.
 
+**A run's `left` did not mean what the layout said it meant.** `TextRun3d`
+documented its `left` as measured from the block, and the segmented policy
+measured it from the *line* while the exact policy measured it from the
+block — so the two disagreed the moment a line was centred or right-aligned,
+and nothing noticed, because no test had ever needed a run's absolute
+position. A renderer needs exactly that. The greedy layout now shifts its
+runs by the alignment offset, both policies agree, and `TextLine3d.left` is
+the offset a caller reads rather than one it adds.
+
+**A glyph cannot be rasterized at the style's own line height.** The obvious
+raster box is the one measurement uses, and it clips: a caller who compresses
+`TextStyle.height` to fit more lines on a panel is asking for tighter layout,
+not for letters with their ascenders cut off. Glyphs are rasterized at a
+fixed 1.5 line heights, the baseline is read back from that paragraph, and
+layout keeps using the real style. Ink that overhangs its own advance — an
+italic `f` — is what the texel gutter is for, and the gutter is a dial.
+
+**Positions come from a shaped run; only the raster is per glyph.** Summing
+isolated glyph widths would have put visible kerning errors inside every
+word, which is a different and much worse trade than the one the measurement
+layer makes at segment boundaries. A run is shaped once as a whole and
+queried per grapheme (`TextRunShaper3d`), so the letters carry the font's
+kerning; the atlas is still keyed by the alphabet rather than the vocabulary.
+What that cannot do is a script whose glyphs change shape according to their
+neighbours, which is now the honest boundary between `Text3d` and
+`RichText3d` rather than the speed/accuracy one the plan imagined.
+
+**The atlas is asynchronous, so it needs a generation.** `dart:ui` hands back
+an image through two futures, and layout cannot wait for either. Packing and
+UVs are therefore synchronous — a mesh bakes its texture coordinates during
+`performLayout` — and only the pixels arrive late, which costs one frame for
+a label containing a glyph nothing has drawn before. When the atlas fills it
+doubles and repacks, which invalidates every UV in it; that bumps a
+generation, listeners are told, and a renderer rebuilds. The one thing that
+does not work is a signed distance field, which the plan named in passing:
+the atlas holds ordinary coverage rasters, so `resolution` is the whole of
+the level-of-detail story for now.
+
+**Winding is the failure with no symptom.** Geometry built in layout axes
+faces the viewer along `-z`, and the engine flips the front face for a
+mirrored transform on its own, so the basis needs no undoing — but reverse
+the two triangles of a quad and every label in the scene is culled, with
+nothing to see and nothing in a log. Both quad builders expose their corner
+order as a plain function so a headless test can take the cross product, and
+the render probe is what proves the convention was read right.
+
+**Text on a panel needs a nudge.** Glyphs at the box's own `z` are coplanar
+with a decoration behind them, and the depth test does not break ties, so a
+label sinks into the panel it labels. `AtlasText3dRenderer.depthOffset` and
+`RichText3d.depthOffset` lift the geometry toward the viewer, and the render
+probe's panel scene is the test that would catch its removal.
+
 **The escape hatch for a missing unit contract was not needed.** The plan
 allowed for an explicit `unitsPerLogicalPixel` on the box "until [camera-bound
 surfaces] lands". It landed first, so `Text3d` reads `Layout3d.metrics` like
@@ -307,26 +393,30 @@ label a different height from a full one.
 
 ## What was left out, and why
 
-**Phases 4 and 5, the two halves of drawing.** Everything above is headless
-and is tested; a renderer is neither. A glyph atlas needs per-glyph rasters,
-which `dart:ui` does not expose: each glyph has to be painted into a
-`PictureRecorder`, read back through `Picture.toImage` and `Image.toByteData`
-(both asynchronous), packed into an atlas and uploaded with
-`Texture2D.fromPixels`, which requires a GPU context that `flutter test` does
-not have. The widget-capture path has the same problem plus a dependency on
-`SceneView` hosting the subtree. Landing several hundred lines of GPU code
-that neither this suite nor a reviewer could execute would have been worse
-than landing the seam, and the plan's own framing — *"build the first alone,
-behind an interface, and the renderer becomes a choice rather than a
-commitment"* — is the argument for stopping here. `Text3dRenderer` takes
-everything a renderer needs, including both directions of the unit conversion
-and the rasterization resolution, and `Text3d` calls it after every layout and
-disposes it with the box.
+**Sharpness at distance.** The atlas holds coverage rasters, not a signed
+distance field, so a label rasterized for a panel at arm's length softens as
+the viewer walks toward it. `resolution` is the dial that trades memory for
+headroom and it is the whole of the answer today. A distance field, or a
+second bucket chosen per frame from the panel's projected size, is the work
+that would fix it, and it belongs to whoever owns the level-of-detail
+question [camera-bound surfaces](2026_08_25_camera_bound_surfaces.md) left
+open.
 
-**Knuth–Plass, per-line variable width, bidi levels.** The prepared handle is
-the right shape for all three (they are strategies over the same segment
-widths), and none of them has a caller. `ParagraphTextMeasurement3d` covers
-the bidi case today by handing it back to the platform.
+**Complex scripts in the atlas.** One raster per grapheme cluster cannot
+assemble Arabic or Devanagari, and loses ligatures across a cluster.
+`RichText3d` covers them by handing the paragraph to Flutter, which is the
+same escape the measurement layer takes with
+`ParagraphTextMeasurement3d` — a per-box choice rather than a global one.
+
+**Pointer input into a `RichText3d`.** `WidgetComponent` can forward taps
+into its hosted subtree, and this box turns that off: the package dispatches
+its own pointers against the layout tree, and two dispatchers would fight
+over the same tap. A live control on a captured surface therefore has to be a
+`Layout3d` in this tree, not a Flutter widget in that one.
+
+**Knuth–Plass, per-line variable width, bidi levels.** Unchanged from the
+first round: the prepared handle is the right shape for all three, and none
+of them has a caller.
 
 ## What the later plans need from this
 
@@ -355,10 +445,17 @@ the bidi case today by handing it back to the platform.
   inside a `Button3d` wants an `IgnorePointer3d` around it so the button
   answers rather than the text — that is
   [pointer dispatch](2026_08_25_pointer_dispatch_and_focus.md)'s business.
-- The renderer seam is open. Whoever implements it owns the level-of-detail
-  question [camera-bound surfaces](2026_08_25_camera_bound_surfaces.md) left
-  open: `logicalPixelsPerUnit` is a promise about screen pixels only for a
-  camera-bound surface.
+- **A label draws when it is given a renderer, and not before.**
+  `Text3d(..., renderer: AtlasText3dRenderer())` is the line a component
+  library writes, once per label; the atlas behind it is shared through
+  `GlyphAtlasCache3d.shared`, so a catalogue of buttons is one texture. The
+  renderer is owned by the box and disposed with it.
+- **`RichText3d` is the other half**, and it costs a texture and a widget
+  subtree per box. Reach for it for the paragraph an atlas cannot assemble,
+  not for a screen of labels.
+- `resolution` is the level-of-detail dial on both, and it is still only a
+  dial: `logicalPixelsPerUnit` is a promise about screen pixels only for a
+  camera-bound surface, and nothing here re-rasterizes as a panel approaches.
 
 ## Out of scope
 

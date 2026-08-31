@@ -255,17 +255,83 @@ ideographs, and `OverflowWrap3d.overflow` for a word that should hang outside
 the box rather than be broken. The defaults are Flutter's, including breaking
 a word too wide for its line — which Flutter does and CSS does not.
 
-### It does not draw
+### Drawing it: the glyph atlas
 
-A `Text3d` with no `renderer` lays out, sizes itself, answers intrinsics and
-states a baseline, and puts nothing in the scene. That is deliberate:
-measurement is pure arithmetic and testable headless, rasterization is neither,
-and there is more than one defensible way to do it (a glyph atlas of textured
-quads, a captured widget on a quad, extruded outlines). `Text3dRenderer` is
-the seam between them, and it is handed everything a renderer needs —
-the box's node, the layout in logical pixels, the style, the basis, and both
-directions of the unit conversion including the rasterization resolution. No
-renderer ships yet.
+Measurement and rasterization are separated on purpose, and the seam between
+them is `Text3dRenderer`. A `Text3d` with no renderer lays out, sizes itself,
+answers intrinsics and states a baseline, and puts nothing in the scene —
+which is a useful object on its own, and is what every one of this package's
+headless tests measures.
+
+The renderer that ships is `AtlasText3dRenderer`, and it is the one a
+component library wants:
+
+```dart
+Text3d('Save', style: labelStyle, renderer: AtlasText3dRenderer())
+```
+
+One texture holds every glyph a style has been asked to draw at one
+resolution, and each label is one mesh of textured quads out of it. A screen
+of buttons sharing a font shares the texture, so the hundredth label costs a
+hundred vertices rather than a hundred captures. `dart:ui` exposes no glyph
+rasters, so a glyph is obtained the only way there is — a single-grapheme
+`ui.Paragraph` painted into a `PictureRecorder` — but the whole atlas is
+redrawn and read back in one go, and only when a glyph nobody has drawn before
+turns up. That readback is asynchronous, which is why a label containing a
+brand-new glyph appears one frame late rather than blocking layout on a
+texture upload.
+
+Two dials matter. `resolution` is texels per logical pixel, on top of what the
+metrics ask for: `logicalPixelsPerUnit` is a promise about screen pixels only
+for a surface bound to the camera, and a panel the viewer can walk toward
+covers more of them with every step. Two is right for a panel at arm's length
+on a dense display; the memory cost is quadratic. `depthOffset` lifts the
+glyphs toward the viewer, because text drawn exactly on the plane of the panel
+behind it is text at the same depth as that panel, and the depth test does not
+break ties.
+
+What the atlas cannot do is assemble a script whose glyphs change shape
+according to their neighbours. It holds one raster per grapheme cluster, so
+Arabic, Devanagari and their relatives come out wrong; ligatures across a
+cluster boundary are lost for the same reason. The *positions* do carry the
+font's kerning — a run is shaped as a whole before it is cut into glyphs — so
+Latin, Greek and Cyrillic are right. A style's `foreground` and `background`
+paints are not honoured either: a glyph is rasterized white so that one atlas
+serves every colour, and the colour is applied by the material.
+
+### RichText3d, the escape hatch
+
+When the atlas is the wrong tool, hand the whole problem back to Flutter:
+
+```dart
+RichText3d(
+  TextSpan(
+    style: const TextStyle(fontSize: 14, color: Color(0xFF202020)),
+    children: [
+      const TextSpan(text: 'Signed in as '),
+      TextSpan(text: user.name, style: bold),
+    ],
+  ),
+)
+```
+
+A live `RichText` subtree is laid out and rasterized by the framework and the
+result is sampled onto a quad this package builds. Everything Flutter can
+draw, it draws: several styles in one paragraph, inline widgets, emoji, Arabic
+and Devanagari with their joining and reordering intact. It costs a texture, a
+widget subtree and — at the default update policy — a rasterization per frame
+per box, so it is the paragraph with a link in it, not every label on a
+screen.
+
+Measurement is exact and headless all the same: the size, the intrinsics and
+the baseline come from a `TextPainter`, the same object a Flutter `Text`
+measures with, so a `RichText3d` participates in the layout protocol whether
+or not there is a GPU to draw it on. What it does need in order to *draw* is a
+`SceneView`: the hosted subtree lives inside the widget that displays the
+scene, which is where its tickers run and where the capture happens. Pointer
+input is not forwarded into that subtree — this package dispatches its own
+pointers against the layout tree, and a hit on a `RichText3d` stops at the box
+exactly as it stops at a `Text3d`.
 
 ## Sizing real 3D content
 
@@ -496,6 +562,7 @@ than none.
 | `Layout3dPointerGroup` | routing a ray across surfaces, which a screen does not need |
 | `NodeBox3d` | the leaf that holds content |
 | `Text3d`, `TextMeasurement3d` | `Text`, and the `TextPainter` behind it |
+| `AtlasText3dRenderer`, `RichText3d` | the two halves of `RenderParagraph.paint`: glyphs from an atlas, or Flutter's own raster |
 | `DecoratedBox3d`, `BoxDecoration3d`, `Border3d`, `BorderRadius3d` | `DecoratedBox`, `BoxDecoration`, `Border`, `BorderRadius` |
 | `Decoration3dPainter`, `Decoration3dPainterCache`, `StateLayer3d` | `BoxPainter`, and Material's state layers |
 | `ClipBox3d`, `Clip3dRegion`, `ClipPlane3d` | `ClipRect`, and the clip stack behind it |
@@ -1833,15 +1900,15 @@ Flutter's `KeepAlive` — and the key remapping that would let a keyed reorder
 move an element instead of rebuilding it in place (a `GlobalKey` already
 moves).
 
-**4. Text.** ~~Measurement done~~: `Text3d` lays a string out as a box,
-sizes itself, answers intrinsics and states a baseline, over a prepare/layout
-split whose fast half consults no font. See *Text* above. What is left is the
-half that draws — `Text3dRenderer` is the seam and nothing implements it yet.
-A glyph atlas of textured quads is the intended default (one atlas per
-font-and-size bucket, run meshes built with `GeometryBuilder`, a signed
-distance field so a label stays sharp as the panel comes toward the camera),
-with a `WidgetComponent` capture as the escape hatch for what an atlas cannot
-do. Selection, editing and rich-text spans are further out still.
+**4. Text.** ~~Done~~: `Text3d` lays a string out as a box, sizes itself,
+answers intrinsics and states a baseline, over a prepare/layout split whose
+fast half consults no font; `AtlasText3dRenderer` draws it out of a shared
+glyph atlas, and `RichText3d` hands the paragraph back to Flutter for what an
+atlas cannot assemble. See *Text* above. What is left is sharpness at
+distance — the atlas holds ordinary coverage rasters, so a label rasterized
+for arm's length softens as the panel comes toward the camera, and a signed
+distance field or a second bucket is what would fix it — and selection and
+editing, which are further out still.
 
 **5. Intrinsic sizing.** ~~Done~~: `Layout3d.getMinIntrinsicExtent` and
 `getMaxIntrinsicExtent` ask the question one axis at a time,
@@ -1857,9 +1924,9 @@ bound it reports now.
 shares one mesh across every panel with the same shape, elevation lifts the
 geometry toward the viewer, and a state layer is a uniform that never dirties
 layout. See *Making a box visible* above. The shader ships as
-`assets/box_decoration3d.fmat` and `BoxDecoration3dPainter` drives it, but no
-lane in this repository compiles it yet, so the GLSL is checked for its
-parameter contract and not for what it draws. Two things are known to be open:
+`assets/box_decoration3d.fmat`, `BoxDecoration3dPainter` drives it, and
+`examples/render_probe` compiles it and checks that a rounded panel really
+does lose its corners. Two things are known to be open:
 the shadow a rounded panel casts is the slab's, because a shadow pass does not
 run the surface shader that discards the corners; and clip planes are
 published to every material through `Clip3dRegion` but only the shipped panel
@@ -1902,11 +1969,12 @@ you cannot see* above. What is left is a visual inspector, which belongs to
 the Flutter Scene Editor rather than here.
 
 **What is next.** Nothing in this list depends on anything else in it any
-more, so the order is a matter of what a caller reaches for first: a
-`Text3dRenderer` that actually draws, drag-and-drop between surfaces and the
-`Draggable3d` family over it, keep-alive for a lazily built item, route
-transitions over `Route3dTransition`, and a per-node opacity in the engine,
-which is what an `Opacity3d` is waiting on.
+more, so the order is a matter of what a caller reaches for first:
+drag-and-drop between surfaces and the `Draggable3d` family over it,
+keep-alive for a lazily built item, route transitions over
+`Route3dTransition`, a distance-field glyph atlas for type that stays sharp as
+a panel approaches, and a per-node opacity in the engine, which is what an
+`Opacity3d` is waiting on.
 
 ## License
 

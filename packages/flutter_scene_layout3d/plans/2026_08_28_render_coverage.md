@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-08-28T23:20:00Z
-updated_at: 2026-08-29T02:40:00Z
+updated_at: 2026-08-31T14:50:33Z
 commit: 3f1bd45cc0b06131a50ab145917648f9164d8f57
 ---
 
@@ -118,7 +118,8 @@ settling time rather than a single pump.
       - **Does a rounded panel come out rounded?** Probe the corner: inside the
         radius is clear, inside the body is not.
       - Elevation, borders and the state layer, once the painter is attached.
-      - A text renderer, when one exists.
+      - ~~A text renderer, when one exists.~~ It exists, and the scenes for it
+        are here: see *Still open* below.
 - [x] **Phase 6 — CI.** A macOS runner with a GPU is the straightforward path.
       Settle whether a software backend is good enough before assuming it is;
       the engine's harness keeps its thresholds deliberately loose because
@@ -237,6 +238,9 @@ two units sitting side by side in one constructor is sharp.
   tried, and the thresholds would likely need loosening if it does.
 - **Elevation, borders and the state layer have no probe yet.** The painter
   draws them and the shader declares them; nothing looks.
-- **No text.** There is still no glyph atlas to point a probe at. When
-  `2026_08_25_text_in_a_3d_layout.md` phase 4 lands, this is the lane that
-  verifies it, and a label's projected baseline is the obvious thing to probe.
+- ~~**No text.**~~ Closed by `2026_08_25_text_in_a_3d_layout.md` phase 4,
+  which added three scenes here: a label drawn out of a glyph atlas against a
+  control that draws nothing, a label on a decorated panel (the depth-test
+  claim), and a captured `RichText3d`. That work also added `minCoverage` to
+  `ProbeScene`, which is how a control scene states that it must draw nothing
+  and how five letters of type state a floor a wall of cubes would not.

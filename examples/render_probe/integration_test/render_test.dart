@@ -126,9 +126,19 @@ void main() {
           isTrue,
           reason: 'the corners are not the clear colour; nothing cleared',
         );
+        if (probe.minCoverage <= 0.0) {
+          // A control scene: the claim is the opposite one, and it is what
+          // its partner's coverage is measured against.
+          expect(
+            frame.coverage,
+            lessThan(0.005),
+            reason: 'a control scene is supposed to draw nothing',
+          );
+          return;
+        }
         expect(
           frame.coverage,
-          greaterThan(0.02),
+          greaterThan(probe.minCoverage),
           reason: 'almost nothing drew',
         );
         expect(
@@ -397,6 +407,174 @@ void main() {
       expect(
         capture.centerOf('item2').dy,
         lessThan(capture.centerOf('item3').dy),
+      );
+    });
+  });
+
+  // The other seam a frame is the only witness to. A glyph atlas that never
+  // uploaded, a quad wound away from the viewer, a label at exactly the depth
+  // of its own panel: each of those measures perfectly and draws nothing, and
+  // the package's 770-odd headless tests are blind to every one of them.
+  group('text', () {
+    testWidgets('the atlas renderer puts glyphs where layout put the label', (
+      tester,
+    ) async {
+      // Paired with its own control, for the reason the decoration test is:
+      // "there are pixels where the label is" means nothing on its own, and
+      // means everything next to the same label with no renderer installed.
+      final drawn = await _draw(tester, kProbeScenes.byId('text_label'));
+      final undrawn = await _draw(
+        tester,
+        kProbeScenes.byId('text_label_undrawn'),
+      );
+
+      // A disc over the label. Not the 0.8 a solid cube gets: type is mostly
+      // background, and a five-letter word covers something like a fifth of
+      // its own box. The claim is that a real, glyph-shaped fraction of it is
+      // covered — and that the same box with no renderer covers none of it.
+      final drawnLabel = drawn.frame.coverageAt(
+        drawn.centerOf('label'),
+        radius: 40,
+      );
+      final undrawnLabel = undrawn.frame.coverageAt(
+        undrawn.centerOf('label'),
+        radius: 40,
+      );
+      expect(
+        drawnLabel,
+        greaterThan(0.1),
+        reason:
+            'nothing drew where the label is. Either the atlas never '
+            'uploaded, or the quads are wound away from the viewer.',
+      );
+      expect(
+        drawnLabel,
+        lessThan(0.95),
+        reason:
+            'the label region is solid; the glyph quads are drawing their '
+            'whole cell rather than the ink in it',
+      );
+      expect(
+        undrawnLabel,
+        lessThan(0.02),
+        reason: 'a Text3d with no renderer drew something anyway',
+      );
+
+      // The glyphs are the colour the style asked for, not the white they
+      // were rasterized in: the atlas is a mask and the material tints it.
+      final ink = drawn.frame.meanColorAt(drawn.centerOf('label'), radius: 40)!;
+      expect(
+        ink.b,
+        lessThan(ink.r),
+        reason: 'the label should be amber, not white; read $ink',
+      );
+
+      // And well clear of the label there is nothing at all.
+      final label = drawn.state.content.probes['label']!;
+      final bounds = label.screenBounds(drawn.state.camera, drawn.viewSize)!;
+      expect(
+        drawn.frame.isClearAt(
+          ui.Offset(bounds.center.dx, bounds.top - bounds.height),
+          radius: 6,
+        ),
+        isTrue,
+        reason: 'something drew above the label',
+      );
+
+      // A wrapped label would move the ink without moving the box, so the
+      // oracle is asked what it did before the frame is asked where the ink
+      // is. This is the layout tree keeping the assertion honest.
+      expect(
+        (label as Text3d).textLayout!.lineCount,
+        1,
+        reason: 'the label wrapped; the centroid below would mean nothing',
+      );
+
+      // The ink is where the *box* is, not merely somewhere on the frame: a
+      // centred label's glyphs balance around the middle of its own bounds.
+      // This is the assertion that would catch a mesh built in the wrong
+      // frame, which a coverage disc over the middle would happily pass.
+      final centroid = drawn.frame.centroidXIn(bounds);
+      expect(centroid, isNotNull, reason: 'nothing covered the label\'s box');
+      expect(
+        centroid!,
+        closeTo(bounds.center.dx, bounds.width * 0.1),
+        reason:
+            'the glyphs are off-centre in the box layout gave them: '
+            'centroid $centroid against a box centred on ${bounds.center.dx}',
+      );
+    });
+
+    testWidgets('a label on a panel wins the depth test against it', (
+      tester,
+    ) async {
+      final capture = await _draw(tester, kProbeScenes.byId('text_on_panel'));
+
+      // The panel drew.
+      expect(
+        capture.frame.coverageAt(capture.centerOf('panel'), radius: 20),
+        greaterThan(0.95),
+        reason: 'the panel behind the label did not draw',
+      );
+
+      // And the label is visible *on* it, which is a colour question rather
+      // than a coverage one: coplanar text loses the depth test and leaves a
+      // panel that is uniformly the panel's colour.
+      final panelColor = capture.frame.meanColorAt(
+        capture.pointOf('panel', const Offset3d(0.08, 0.5, 0)),
+        radius: 6,
+      )!;
+      final labelColor = capture.frame.meanColorAt(
+        capture.centerOf('label'),
+        radius: 30,
+      )!;
+      expect(
+        FrameProbe.colorDistance(panelColor, labelColor),
+        greaterThan(0.05),
+        reason:
+            'the label is the same colour as the panel it sits on, so it '
+            'either did not draw or sank into it: panel $panelColor, '
+            'label $labelColor',
+      );
+    });
+
+    testWidgets('a RichText3d captures its subtree onto its own box', (
+      tester,
+    ) async {
+      final capture = await _draw(tester, kProbeScenes.byId('rich_text'));
+
+      final paragraph = capture.state.content.probes['paragraph']!;
+      final bounds = paragraph.screenBounds(
+        capture.state.camera,
+        capture.viewSize,
+      )!;
+      expect(
+        capture.frame.coverageAt(capture.centerOf('paragraph'), radius: 40),
+        greaterThan(0.1),
+        reason:
+            'the captured paragraph did not draw. Either no capture reached '
+            'the material, or the quad faces away from the viewer.',
+      );
+
+      // Two styles in one span, which is the whole reason this box exists:
+      // the halves are drawn in different colours, so the ink on the left is
+      // not the ink on the right.
+      final left = capture.frame.meanColorAt(
+        ui.Offset(bounds.left + bounds.width * 0.25, bounds.center.dy),
+        radius: 12,
+      );
+      final right = capture.frame.meanColorAt(
+        ui.Offset(bounds.left + bounds.width * 0.75, bounds.center.dy),
+        radius: 12,
+      );
+      expect(left, isNotNull, reason: 'the first run did not draw');
+      expect(right, isNotNull, reason: 'the second run did not draw');
+      expect(
+        FrameProbe.colorDistance(left!, right!),
+        greaterThan(0.05),
+        reason:
+            'both halves of the span came out the same colour, so the '
+            'capture is not the paragraph Flutter laid out: $left, $right',
       );
     });
   });

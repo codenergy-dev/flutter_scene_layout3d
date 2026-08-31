@@ -52,6 +52,15 @@ ProbeScene('row_of_cubes', () {
 }),
 ```
 
+A scene that is a **control** says so with `minCoverage: 0`, and the floor
+test flips its question: it must draw nothing at all. That is what makes its
+partner's coverage mean something — "there are pixels where the label is" is
+not evidence on its own, and "there are pixels here and none in the identical
+scene without a renderer" is. The text and decoration scenes are both built as
+pairs for that reason. A scene that legitimately covers less of the frame than
+the default floor — five letters of type, rather than a wall of cubes — states
+its own `minCoverage` instead.
+
 Two rules that are not obvious:
 
 - **Use `BoxFit3d.contain`, not the default `BoxFit3d.none`.** With `none` the

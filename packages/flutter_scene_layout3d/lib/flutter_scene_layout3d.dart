@@ -280,12 +280,28 @@ export 'src/sliver/sliver_persistent_header.dart'
     show SliverPersistentHeader3d, SliverPersistentHeader3dDelegate;
 export 'src/sliver/sliver_list.dart' show Sliver3dItemBuilder, SliverList3d;
 export 'src/sliver/sliver_padding.dart' show SliverPadding3d;
+export 'src/text/atlas_text_renderer.dart'
+    show AtlasText3dRenderer, linearColor;
 export 'src/text/break_rules.dart'
     show OverflowWrap3d, TextBreakRules3d, TextWhitespace3d, WordBreak3d;
+export 'src/text/glyph_atlas.dart'
+    show
+        GlyphAtlas3d,
+        GlyphAtlasCache3d,
+        GlyphAtlasImage3d,
+        GlyphAtlasUpload3d,
+        GlyphSlot3d,
+        glyphAtlasScaleFor,
+        glyphAtlasStyleOf,
+        uploadGlyphAtlas;
 export 'src/text/line_break.dart' show TextBreak3d;
 export 'src/text/prepared_text.dart'
     show PreparedText3d, SegmentGraphemes3d, TextSegment3d;
+export 'src/text/rich_text3d.dart'
+    show RichText3d, buildTextQuadGeometry, textQuadCorners;
 export 'src/text/text3d.dart' show Text3d;
+export 'src/text/text_geometry.dart'
+    show ShapedRun3d, TextGlyphQuad3d, TextRunShaper3d, buildTextGlyphQuads;
 export 'src/text/text_layout.dart' show TextLayout3d, TextLine3d, TextRun3d;
 export 'src/text/text_measurement.dart'
     show

@@ -78,13 +78,14 @@ A box's node carries
 
 ## Why nothing draws
 
-**The package arranges; it mostly does not draw.**
-`BoxDecoration3d.painterFactory` is null until an application sets it, and
-`Text3dRenderer` has no in-tree implementation at all. Both are deliberate
-seams: neither can be verified in `flutter test`, which has no GPU context.
+**The package arranges; it draws only what you ask it to.** Two seams stand
+between a laid-out tree and a picture, and both default to nothing, because
+neither can be verified in `flutter test`, which has no GPU context.
 
-The decoration seam is wired up and verified in `examples/render_probe` — that
-is the worked example of filling one:
+**A decoration needs a painter.** `BoxDecoration3d.painterFactory` is null
+until an application sets it, and a `DecoratedBox3d` with no painter measures,
+lays out and draws nothing at all. `examples/render_probe` is the worked
+example of filling it:
 
 ```dart
 final material = await loadFmatMaterial('assets/box_decoration3d.fmat');
@@ -95,6 +96,23 @@ BoxDecoration3d.painterFactory =
 Compiling the shipped `.fmat` needs a build hook, which a package cannot run
 from inside a dependency. `examples/render_probe/hook/build.dart` shows the
 shape of it.
+
+**A label needs a renderer.** `Text3d` takes one and has none by default:
+
+```dart
+Text3d('Save', style: labelStyle, renderer: AtlasText3dRenderer())
+```
+
+That one is per box and is owned by it — the box disposes it — while the
+*atlas* behind it is shared through `GlyphAtlasCache3d.shared`, which is what
+makes a screen of labels one texture. A `RichText3d` needs no renderer but
+does need a `SceneView` to host its subtree; in a scene nobody is displaying
+it measures correctly and draws nothing.
+
+Both of those are one-frame-late by nature: an atlas glyph nobody has drawn
+before is read back asynchronously, and a widget capture arrives on the frame
+after the subtree is hosted. A test that draws a label and reads the frame in
+the same pump reads an empty frame.
 
 ### Making geometry fill its box
 

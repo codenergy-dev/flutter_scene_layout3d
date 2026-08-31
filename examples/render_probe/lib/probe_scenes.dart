@@ -8,7 +8,8 @@ import 'package:flutter_scene/scene.dart'
         PhysicallyBasedMaterial,
         SphereGeometry,
         loadFmatMaterial;
-import 'package:flutter/painting.dart' show Color;
+import 'package:flutter/painting.dart'
+    show Color, TextAlign, TextSpan, TextStyle;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
 import 'package:vector_math/vector_math.dart' show Vector3, Vector4;
 
@@ -53,6 +54,14 @@ Geometry? _sphereGeometry;
 /// content the harness cannot see.
 Node _solid(Geometry geometry, Vector4 color) => Node(
   mesh: Mesh(geometry, PhysicallyBasedMaterial()..baseColorFactor = color),
+);
+
+/// Big, bright type: a glyph has to cover enough pixels for a coverage
+/// fraction to mean something, and it has to differ from both the clear
+/// colour and the panel it is drawn on.
+const TextStyle _labelStyle = TextStyle(
+  fontSize: 180,
+  color: Color(0xFFEA9F26),
 );
 
 final Vector4 _amber = Vector4(0.95, 0.65, 0.15, 1);
@@ -340,6 +349,112 @@ final List<ProbeScene> kProbeScenes = <ProbeScene>[
     return ProbeSceneContent(
       surfaces: [surface],
       probes: {for (var i = 0; i < items.length; i++) 'item$i': items[i]},
+    );
+  }),
+
+  // ── Text: the other seam a unit test cannot reach ────────────────────
+  //
+  // Everything about text up to the quads is arithmetic and is covered by the
+  // package's own suite. What is not is whether the quads are *visible*: an
+  // atlas that never uploaded, a mesh wound away from the viewer, a label at
+  // exactly the depth of the panel behind it. All three measure perfectly and
+  // draw nothing at all, which is why they need a frame to catch them.
+  // The surface is wider than the label needs on purpose. `Text3d` breaks a
+  // word too wide for its line — Flutter's rule, not CSS's — so a label that
+  // only just fits is a label that silently becomes two lines, and every
+  // assertion about where its ink is goes with it.
+  ProbeScene('text_label', () {
+    final label = Text3d(
+      'ABC',
+      style: _labelStyle,
+      renderer: AtlasText3dRenderer(),
+      name: 'label',
+    );
+    return ProbeSceneContent(
+      surfaces: [
+        Layout3dSurface(
+          constraints: Constraints3d.loose(const Size3d(6.0, 1.8, 0.2)),
+          child: Center3d(child: label),
+        ),
+      ],
+      probes: {'label': label},
+    );
+  }),
+
+  ProbeScene('text_label_undrawn', () {
+    // The control, and the reason the scene above means anything: the same
+    // label with no renderer measures the same and draws nothing. Without it,
+    // "there are pixels where the label is" could be any other geometry.
+    final label = Text3d('ABC', style: _labelStyle, name: 'label');
+    return ProbeSceneContent(
+      surfaces: [
+        Layout3dSurface(
+          constraints: Constraints3d.loose(const Size3d(6.0, 1.8, 0.2)),
+          child: Center3d(child: label),
+        ),
+      ],
+      probes: {'label': label},
+    );
+  }, minCoverage: 0),
+
+  ProbeScene('text_on_panel', () {
+    // A label on the panel it labels. Both are drawn, and the glyphs have to
+    // win the depth test against the surface they sit on — which they only do
+    // because the renderer lifts them toward the viewer. Coplanar text is
+    // text that vanishes, and nothing but a frame notices.
+    final panel = DecoratedBox3d(
+      decoration: const BoxDecoration3d(
+        color: Color(0xFF26B3A8),
+        borderRadius: BorderRadius3d.circular(40),
+      ),
+      name: 'panel',
+      child: Center3d(
+        child: Text3d(
+          'OK',
+          style: _labelStyle,
+          renderer: AtlasText3dRenderer(),
+          name: 'label',
+        ),
+      ),
+    );
+    final label = (panel.child! as Center3d).child! as Text3d;
+    return ProbeSceneContent(
+      surfaces: [
+        Layout3dSurface(
+          constraints: Constraints3d.tight(const Size3d(3.6, 1.8, 0.2)),
+          child: panel,
+        ),
+      ],
+      probes: {'panel': panel, 'label': label},
+    );
+  }, preload: installPanelPainter),
+
+  ProbeScene('rich_text', () {
+    // The escape hatch: Flutter lays the paragraph out and rasterizes it, and
+    // the capture lands on a quad this package built. Two styles in one span,
+    // because that is the thing `Text3d` cannot do at all.
+    final text = RichText3d(
+      const TextSpan(
+        children: <TextSpan>[
+          TextSpan(text: 'Aa', style: TextStyle(fontSize: 150)),
+          TextSpan(
+            text: 'Bb',
+            style: TextStyle(fontSize: 150, color: Color(0xFF7A59E6)),
+          ),
+        ],
+        style: TextStyle(fontSize: 150, color: Color(0xFFEA9F26)),
+      ),
+      textAlign: TextAlign.center,
+      name: 'paragraph',
+    );
+    return ProbeSceneContent(
+      surfaces: [
+        Layout3dSurface(
+          constraints: Constraints3d.loose(const Size3d(3.6, 1.8, 0.2)),
+          child: Center3d(child: text),
+        ),
+      ],
+      probes: {'paragraph': text},
     );
   }),
 

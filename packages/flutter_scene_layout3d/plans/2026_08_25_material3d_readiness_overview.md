@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-08-25T20:31:04Z
-updated_at: 2026-08-28T21:10:00Z
+updated_at: 2026-08-31T14:50:33Z
 commit: 657eef80eb8dc8085c3b3a84a8069273495506be
 ---
 
@@ -97,7 +97,7 @@ on it.
 | Plan | Status | Landed as |
 | --- | --- | --- |
 | Camera-bound surfaces | completed | `45adb23` |
-| Text in a 3D layout | in progress | `3f15f2a` |
+| Text in a 3D layout | completed | `3f15f2a`, then the atlas renderer |
 | Size-driven geometry | in progress | `3646134` |
 | Pointer dispatch and focus | completed | `b20ce06` |
 | Lazily built children | completed | `4e34e72` |
@@ -107,9 +107,10 @@ on it.
 | The boxes still missing | in progress | `213245b` |
 | Diagnostics and semantics | completed | `e890920` |
 
-The three still open are open for one reason each, recorded in their own front
-matter: text has no glyph atlas, geometry has no compiled shader, and the drag
-boxes have no drag. See *What is still missing* below.
+The two still open are open for one reason each, recorded in their own front
+matter: geometry's remaining items have no probe, and the drag boxes have no
+drag. Text closed later, once `examples/render_probe` existed to draw a glyph
+atlas and check the frame against it. See *What is still missing* below.
 
 ## How the seams resolved
 
@@ -136,17 +137,17 @@ boxes have no drag. See *What is still missing* below.
 
 ## What is still missing
 
-**The package draws almost nothing by default.** This is the single largest
-gap, and it is one gap wearing two hats: `BoxDecoration3d.painterFactory` is
-null until something sets it, and `Text3dRenderer` has no in-tree
-implementation. Both are seams with real geometry behind them
-(`assets/box_decoration3d.fmat` ships; the measurement layer is exact against
-Skia at every whole width tested), and neither can be verified here, because a
-glyph atlas needs a GPU context `flutter test` does not have and no lane in
-this repository compiles a `.fmat`. The debug wireframe is currently the only
-thing in the package that puts geometry into a scene on its own account.
-[Render coverage](2026_08_28_render_coverage.md) plans the lane that closes
-this.
+**The package draws nothing until it is asked to.** This was the single
+largest gap and it is now a deliberate pair of seams rather than a hole:
+`BoxDecoration3d.painterFactory` is null until an application sets it, and
+`Text3d` takes a renderer and has none by default. Both now have an in-tree
+implementation behind them — `BoxDecoration3dPainter` over the shipped
+`assets/box_decoration3d.fmat`, and `AtlasText3dRenderer` over a shared glyph
+atlas, with `RichText3d` beside it for what an atlas cannot assemble — and
+both are verified where they can be: the arithmetic in `flutter test`, the
+pixels in [render coverage](2026_08_28_render_coverage.md)'s
+`examples/render_probe`, which compiles the `.fmat` and probes a drawn
+label.
 
 Also open, each for a stated reason rather than for lack of time:
 
@@ -181,11 +182,12 @@ probed frame — which is the path a glyph atlas needs too.
 
 In the order I would take them:
 
-1. **[Text](2026_08_25_text_in_a_3d_layout.md) phase 4, the glyph atlas.** The
-   largest remaining gap in the package and the one every catalogue label
-   waits on. The measurement layer below it is done and exact against Skia;
-   `Text3dRenderer` is the seam, and the decoration painter is the worked
-   example of filling one. Phase 5, `RichText3d`, follows it.
+1. ~~**[Text](2026_08_25_text_in_a_3d_layout.md) phase 4, the glyph atlas.**~~
+   Done: `AtlasText3dRenderer` draws a label out of a shared atlas and
+   `RichText3d` is the escape hatch, both probed on a real GPU. What is left
+   of text is sharpness at distance — the atlas holds coverage rasters, not a
+   distance field — which is a level-of-detail question rather than a
+   rendering one.
 2. **A drag plan, then the drag boxes.**
    [The boxes still missing](2026_08_25_the_boxes_still_missing.md) has only
    `Dismissible3d`, `Draggable3d`, `DragTarget3d` and reorderable lists left,
@@ -193,13 +195,14 @@ In the order I would take them:
    [pointer dispatch](2026_08_25_pointer_dispatch_and_focus.md) put in its own
    out-of-scope section. **That plan has not been written.** Write it first —
    do not implement against a plan that does not exist. This is the only open
-   item that needs no GPU, so it parallelises with the atlas.
+   item that needs no GPU.
 3. **[Size-driven geometry](2026_08_25_size_driven_geometry.md)'s remainder.**
    Elevation, the border and the state layer have no probe; adding those
    scenes is ordinary work in the render harness. The shadow item and subtree
    opacity both need `flutter_scene` to grow something, so they are not
    actionable here.
-4. **`flutter_scene_material3d` itself**, once text draws. It has no plan yet.
+4. **`flutter_scene_material3d` itself**, which text no longer blocks. It has
+   no plan yet.
    Everything the readiness work set out to provide is in place, and the
    render harness means a `Button3d` can be checked as a picture and not only
    as arithmetic.

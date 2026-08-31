@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-08-25T20:31:04Z
-updated_at: 2026-08-26T22:15:48Z
+updated_at: 2026-08-31T14:50:33Z
 commit: 657eef80eb8dc8085c3b3a84a8069273495506be
 ---
 
@@ -155,6 +155,13 @@ viewer, so its pixels-per-unit varies. Text rasterization scale
 story: an atlas bucket chosen per frame from the current distance, or one
 generous bucket and an SDF. This plan does not solve it; it names it so the
 text renderer is not designed as though density were constant.
+
+*Phase 4 landed and took the generous-bucket half of that: an atlas is keyed
+by a rasterization scale, and `AtlasText3dRenderer.resolution` is the dial
+that chooses one. Nothing re-buckets per frame and there is no distance
+field, so this item is still open — it is now a level-of-detail question
+sitting on a renderer that exists, rather than a constraint on one that does
+not.*
 
 ## The work
 
