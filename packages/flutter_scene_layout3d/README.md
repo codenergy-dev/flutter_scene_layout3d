@@ -435,15 +435,28 @@ Everything downstream follows from that:
 
 Material's elevation is a painted shadow standing in for a height. In a scene
 the height is real: `BoxDecoration3d.elevation` lifts the geometry toward the
-viewer by `metrics.dp(elevation)` and the shadow is whatever the scene's own
-lights cast. Material 3's other half, the surface tint, is a uniform on the
-same shader and follows the published opacity table
-(`BoxDecoration3d.surfaceTintOpacityFor`).
+viewer by `metrics.dp(elevation)`, so a raised card genuinely moves under the
+camera and genuinely occludes what is behind it. Material 3's other half, the
+surface tint, is a uniform on the same shader and follows the published
+opacity table (`BoxDecoration3d.surfaceTintOpacityFor`).
 
 The lift moves the *geometry* and nothing else. The box keeps the size and
 position layout gave it, and a ray still reaches it where the layout put it —
 a raised button whose touch target drifted away from its layout box would be a
-bug. It is the same distinction `ParentData3d.sceneOffset` draws.
+bug. It is the same distinction `ParentData3d.sceneOffset` draws. The one
+place the lift shows outside the picture is the screen projection:
+`screenCenter` reads `worldTransform`, which undoes `hitTestTransform` and
+finds it null here, so a projected elevated panel is where the panel is
+*drawn*.
+
+**A panel casts no shadow, and that is not a bug you can fix here.** The panel
+shader declares `blending: alpha`, because its anti-aliased outline is an
+alpha, and `flutter_scene` drops every non-opaque material before the shadow
+pass. So elevation buys parallax and occlusion and not a contact shadow.
+Grounding a card on a surface is the catalogue's job — the engine's
+`ShadowCatcherMaterial` on a plane beneath it is the shape of it —
+and `examples/render_probe`'s `panel_shadow` scene is the standing check that
+this is still how the engine behaves.
 
 ### It does not draw on its own either
 
@@ -2148,11 +2161,15 @@ geometry toward the viewer, and a state layer is a uniform that never dirties
 layout. See *Making a box visible* above. The shader ships as
 `assets/box_decoration3d.fmat`, `BoxDecoration3dPainter` drives it, and
 `examples/render_probe` compiles it and checks that a rounded panel really
-does lose its corners. Two things are known to be open:
-the shadow a rounded panel casts is the slab's, because a shadow pass does not
-run the surface shader that discards the corners; and clip planes are
-published to every material through `Clip3dRegion` but only the shipped panel
-shader reads them.
+does lose its corners. `examples/render_probe` compiles the shader and checks, on a
+GPU, that a rounded panel loses its corners, that a lifted panel projects
+wider than a flat one, that a border draws in its own colour at the rim and
+not in the middle, and that a state layer lightens the panel it is on. Two
+things stay open, both of them the engine's: a decorated panel casts no shadow
+at all — `blending: alpha` keeps it out of the shadow pass, and an opaque one
+would cast its whole rectangular slab because a shadow pass never runs the
+surface shader — and clip planes are published to every material through
+`Clip3dRegion` but only the shipped panel shader reads them.
 
 **7. Overlays.** ~~Done~~: `Overlay3d` holds entries in front of its base
 content, each one either lifted toward the viewer on the host surface or on a

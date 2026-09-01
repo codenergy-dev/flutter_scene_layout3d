@@ -1,6 +1,7 @@
 import 'package:flutter_scene/scene.dart'
     show
         CuboidGeometry,
+        DirectionalLight,
         Geometry,
         Mesh,
         Node,
@@ -67,6 +68,43 @@ const TextStyle _labelStyle = TextStyle(
 final Vector4 _amber = Vector4(0.95, 0.65, 0.15, 1);
 final Vector4 _teal = Vector4(0.15, 0.75, 0.70, 1);
 final Vector4 _violet = Vector4(0.55, 0.35, 0.90, 1);
+final Vector4 _paleGrey = Vector4(0.82, 0.82, 0.84, 1);
+
+/// The panel scenes' fill and border colours.
+///
+/// Chosen so that *which* of them a pixel holds can be read off a single
+/// channel comparison: the fill is blue-dominant and the border is
+/// red-dominant, and no amount of lighting, exposure or tone mapping swaps
+/// that order. A colour *distance* would not do — it is just as large when
+/// the two are the wrong way round, which is exactly the bug the border probe
+/// found.
+const Color _panelFill = Color(0xFF1B3A6B);
+const Color _panelBorder = Color(0xFFEA9F26);
+
+/// One panel, alone on a surface, at a size a probe can name points inside.
+///
+/// Every decoration scene is this tree with a different decoration on it, so
+/// that a pair of captures differs in exactly the thing under test and the
+/// plain panel can be the control for all three.
+ProbeSceneContent _panelScene(
+  BoxDecoration3d decoration, {
+  StateLayer3d stateLayer = StateLayer3d.none,
+}) {
+  final panel = DecoratedBox3d(
+    decoration: decoration,
+    stateLayer: stateLayer,
+    name: 'panel',
+  );
+  return ProbeSceneContent(
+    surfaces: [
+      Layout3dSurface(
+        constraints: Constraints3d.tight(const Size3d(3.6, 1.8, 0.1)),
+        child: panel,
+      ),
+    ],
+    probes: {'panel': panel},
+  );
+}
 
 /// A camera raised above the ground, looking down at the origin.
 ///
@@ -538,6 +576,140 @@ final List<ProbeScene> kProbeScenes = <ProbeScene>[
       probes: {'panel': panel},
     );
   }, preload: installPanelPainter),
+
+  // ── The rest of the panel: elevation, the border, the state layer ────
+  //
+  // Three uniforms the shader has always declared and the painter has always
+  // written, and which nothing had ever looked at. Each is a pair, and
+  // `plain_panel` is the control for all three, so a claim is always "this
+  // capture differs from the identical one without the feature", never "there
+  // are some pixels here".
+  ProbeScene(
+    'plain_panel',
+    () => _panelScene(const BoxDecoration3d(color: _panelFill)),
+    preload: installPanelPainter,
+  ),
+
+  ProbeScene(
+    'elevated_panel',
+    // 60dp, which at the default rate is 0.6 world units — a tenth of the way
+    // to a camera six units back, so the panel projects about eleven per cent
+    // larger than the identical flat one. Written in dp, like every figure on a
+    // decoration: `elevation: 0.6` would ask for six thousandths of a unit.
+    () => _panelScene(const BoxDecoration3d(color: _panelFill, elevation: 60)),
+    preload: installPanelPainter,
+  ),
+
+  ProbeScene(
+    'bordered_panel',
+    // 40dp of border on a 1.8-unit-high panel: 0.4 units, a band nearly a
+    // quarter of the height, so a probe disc fits inside it with room either
+    // side.
+    () => _panelScene(
+      const BoxDecoration3d(
+        color: _panelFill,
+        border: Border3d(width: 40, color: _panelBorder),
+      ),
+    ),
+    preload: installPanelPainter,
+  ),
+
+  ProbeScene(
+    'state_layer_panel',
+    () => _panelScene(
+      const BoxDecoration3d(color: _panelFill),
+      stateLayer: const StateLayer3d(color: Color(0xFFFFFFFF), opacity: 0.32),
+    ),
+    preload: installPanelPainter,
+  ),
+
+  ProbeScene(
+    'panel_shadow',
+    () {
+      // What a panel casts onto the ground under it, which turns out to be
+      // nothing. See the test: the cube is the control that proves the light,
+      // the shadow pass and the receiving ground all work, and the panel
+      // beside it — the same size, at the same height, under the same light —
+      // leaves the ground unchanged.
+      //
+      // Both surfaces lie on the ground basis and are the same tree, so the
+      // caster over each ground patch is exactly above its centre. The upper
+      // one is lifted by moving its plane node, which is the surface's own
+      // documented degree of freedom.
+      NodeBox3d ground(String name) => NodeBox3d(
+        fit: BoxFit3d.fill,
+        content: _solid(_cube, _paleGrey),
+        name: name,
+      );
+      final patches = <String, NodeBox3d>{
+        for (final name in ['underCube', 'underPanel', 'underNothing'])
+          name: ground(name),
+      };
+      final groundSurface = Layout3dSurface(
+        basis: LayoutBasis3d.xz,
+        constraints: Constraints3d.tight(const Size3d(4.2, 1.4, 0.1)),
+        child: Row3d(
+          children: <Layout3d>[
+            for (final patch in patches.values)
+              SizedBox3d(width: 1.4, height: 1.4, depth: 0.1, child: patch),
+          ],
+        ),
+      );
+
+      final cube = NodeBox3d(
+        fit: BoxFit3d.fill,
+        content: _solid(_cube, _teal),
+        name: 'cube',
+      );
+      final panel = DecoratedBox3d(
+        decoration: const BoxDecoration3d(color: _panelFill),
+        name: 'panel',
+      );
+      Layout3d cell(Layout3d? child) => SizedBox3d(
+        width: 1.4,
+        height: 1.4,
+        depth: 0.1,
+        child: child == null
+            ? null
+            : Center3d(
+                child: SizedBox3d(
+                  width: 0.9,
+                  height: 0.9,
+                  depth: 0.12,
+                  child: child,
+                ),
+              ),
+      );
+      final casterSurface = Layout3dSurface(
+        basis: LayoutBasis3d.xz,
+        constraints: Constraints3d.tight(const Size3d(4.2, 1.4, 0.1)),
+        child: Row3d(children: <Layout3d>[cell(cube), cell(panel), cell(null)]),
+      );
+      casterSurface.plane.position = Vector3(0, 1.3, 0);
+
+      return ProbeSceneContent(
+        surfaces: [groundSurface, casterSurface],
+        probes: {...patches, 'cube': cube, 'panel': panel},
+      );
+    },
+    camera: PerspectiveCamera(
+      position: Vector3(0, 3.9, 5.4),
+      target: Vector3(0, 0.5, 0),
+    ),
+    configureScene: (scene) {
+      // Straight down but for a nudge toward the viewer, so a caster's shadow
+      // lands just in front of it on screen rather than under its own
+      // silhouette. `castsShadow` is off by default, which is the first thing
+      // to check if this scene ever reads as "nothing casts anything".
+      scene.directionalLight = DirectionalLight(
+        direction: Vector3(0.0, -1.0, 0.22),
+        intensity: 5.0,
+        castsShadow: true,
+        shadowSoftness: 0.02,
+      );
+    },
+    preload: installPanelPainter,
+  ),
 
   // ── A drag in flight: the one thing arithmetic cannot check ──────────
   ProbeScene('drag_feedback_depth', () {

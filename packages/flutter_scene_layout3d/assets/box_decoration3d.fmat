@@ -114,10 +114,20 @@ fragment {
       discard;
     }
 
-    // The border is the outer band of the same distance field.
+    // The border is the outer band of the same distance field: the fragments
+    // whose distance to the outline is shallower than the border's width.
+    //
+    // `d` is negative inside, so "within `border` of the edge" is
+    // `d > -border`, which is what this smoothstep says, feathered by one
+    // pixel either side of `-border` exactly as the outline is. There is
+    // deliberately no `1.0 -` here: an earlier version had one, which painted
+    // the border colour over the entire interior and left the fill as a thin
+    // rim around it — the exact inverse of a border. Nothing caught it until
+    // a render probe looked at a bordered panel, because every headless test
+    // of this shader is about its parameters and not its picture.
     float border = material_params.border_width;
     float border_mix = border > 0.0
-        ? 1.0 - smoothstep(-border - aa, -border + aa, d)
+        ? smoothstep(-border - aa, -border + aa, d)
         : 0.0;
 
     vec4 base = mix(material_params.color, material_params.border_color, border_mix);

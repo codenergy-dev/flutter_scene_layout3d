@@ -41,6 +41,7 @@ class ProbeScene {
     this.camera,
     this.viewSize,
     this.preload,
+    this.configureScene,
     this.minCoverage = 0.02,
   });
 
@@ -57,6 +58,14 @@ class ProbeScene {
   /// The size the view is given. Fixed so a probe's arithmetic does not depend
   /// on the window the test happens to run in.
   final Size? viewSize;
+
+  /// Anything the scene itself needs set up before the surfaces are added.
+  ///
+  /// Lighting is the case that matters. Everything else here draws under the
+  /// engine's default environment, which is deliberate — a probe should not
+  /// depend on a lighting rig — but a scene asking whether something *casts a
+  /// shadow* has to install a light that casts one.
+  final void Function(Scene scene)? configureScene;
 
   /// The share of the frame this scene is expected to cover.
   ///
@@ -105,6 +114,7 @@ class ProbeSceneViewState extends State<ProbeSceneView> {
   void initState() {
     super.initState();
     camera = widget.probe.camera ?? ProbeScene.defaultCamera();
+    widget.probe.configureScene?.call(scene);
     content = widget.probe.build();
     for (final surface in content.surfaces) {
       scene.add(surface.plane);

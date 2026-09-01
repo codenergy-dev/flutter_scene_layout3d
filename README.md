@@ -188,9 +188,10 @@ your side of the seam, for now — though `examples/render_probe` now draws real
 geometry on a GPU and checks the frame against the layout, and it is what
 compiles the panel shader, so the seam is a shorter reach than it was.
 
-Also open, each for a stated reason: drag and drop, keep-alive for lazily built
-children, subtree opacity, and a shadow pass that respects a rounded panel's
-silhouette rather than its whole slab.
+Also open, each for a stated reason: keep-alive for lazily built children,
+subtree opacity — `flutter_scene` has no per-node opacity for a fade to
+multiply into — and shadows for decorated panels, which the engine will not
+cast at all while the panel shader blends its own anti-aliased outline.
 
 ## Where this is going
 

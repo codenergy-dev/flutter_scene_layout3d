@@ -691,6 +691,233 @@ void main() {
             '$squareCorner, rounded read $roundedCorner',
       );
     });
+
+    testWidgets('elevation lifts the panel toward the viewer', (tester) async {
+      // Material's elevation is a painted shadow standing in for a height.
+      // Here the height is real, and "real" has a consequence a frame can
+      // check: a panel six tenths of a unit nearer a camera six units back
+      // projects about eleven per cent larger. So the claim is not "the panel
+      // drew" but "the panel drew *outside where the unlifted one ends*".
+      final flat = await _draw(tester, kProbeScenes.byId('plain_panel'));
+      final raised = await _draw(tester, kProbeScenes.byId('elevated_panel'));
+
+      for (final capture in [flat, raised]) {
+        expect(
+          capture.frame.coverageAt(capture.centerOf('panel'), radius: 20),
+          greaterThan(0.95),
+          reason: 'the panel did not draw at all',
+        );
+      }
+
+      // The oracle. `DecoratedBox3d` puts the lift in `localTransform` and
+      // returns null from `hitTestTransform`, so `worldTransform` does *not*
+      // undo it: the projection of an elevated panel follows the geometry,
+      // while a ray still reaches the box where layout put it. That asymmetry
+      // is the whole design of elevation, and it is what makes these two
+      // numbers different.
+      final flatEdge = flat.pointOf('panel', const Offset3d(1, 0.5, 0));
+      final raisedEdge = raised.pointOf('panel', const Offset3d(1, 0.5, 0));
+      expect(
+        raisedEdge.dx - flatEdge.dx,
+        greaterThan(8),
+        reason:
+            'the lifted panel should project wider than the flat one; the '
+            'projection says its right edge moved only '
+            '${raisedEdge.dx - flatEdge.dx} px, so nothing was lifted',
+      );
+
+      // And the frame agrees. Halfway between the two projected edges is
+      // inside the lifted panel and outside the flat one, and neither number
+      // is written down here: both come from layout.
+      final between = ui.Offset((flatEdge.dx + raisedEdge.dx) / 2, flatEdge.dy);
+      expect(
+        raised.frame.coverageAt(between, radius: 3),
+        greaterThan(0.9),
+        reason:
+            'the lifted panel does not cover $between, which is inside its '
+            'own projected outline: the geometry did not move',
+      );
+      expect(
+        flat.frame.coverageAt(between, radius: 3),
+        lessThan(0.05),
+        reason:
+            'the *unlifted* panel covers $between too, so the two captures '
+            'are not actually different and the comparison means nothing',
+      );
+    });
+
+    testWidgets(
+      'a border draws its own colour, at the edge and not in the middle',
+      (tester) async {
+        // The assertion that matters is a *direction*, not a distance. A
+        // colour distance between the rim and the middle is just as large
+        // when the two are the wrong way round, and the wrong way round is
+        // exactly what the shader did: a stray `1.0 -` painted the border
+        // colour over the whole interior and left the fill as a thin rim. So
+        // each point is asked which colour it holds, by the one channel
+        // comparison that survives lighting and tone mapping: the fill is
+        // blue-dominant, the border is red-dominant.
+        const band = Offset3d(0.5, 0.06, 0);
+        const middle = Offset3d(0.5, 0.5, 0);
+
+        final bordered = await _draw(
+          tester,
+          kProbeScenes.byId('bordered_panel'),
+        );
+        // 0.06 of a 1.8-unit height is 0.108 units in from the top edge:
+        // inside the 0.4-unit band with room either side, and clear of the
+        // outline's anti-aliasing.
+        final borderInk = bordered.frame.meanColorAt(
+          bordered.pointOf('panel', band),
+          radius: 4,
+        );
+        final fillInk = bordered.frame.meanColorAt(
+          bordered.pointOf('panel', middle),
+          radius: 8,
+        );
+        expect(borderInk, isNotNull, reason: "nothing drew at the panel's rim");
+        expect(
+          fillInk,
+          isNotNull,
+          reason: "nothing drew in the panel's middle",
+        );
+        expect(
+          borderInk!.r,
+          greaterThan(borderInk.b),
+          reason:
+              'the rim of a bordered panel is not the border colour: read '
+              '$borderInk where the amber border should be',
+        );
+        expect(
+          fillInk!.b,
+          greaterThan(fillInk.r),
+          reason:
+              'the middle of a bordered panel is not the fill colour: read '
+              '$fillInk, so the border is inside out',
+        );
+
+        // The control. Without a border those two points are the same colour,
+        // which is what says the difference above is the border and not a
+        // lighting gradient across the slab.
+        final plain = await _draw(tester, kProbeScenes.byId('plain_panel'));
+        final plainBand = plain.frame.meanColorAt(
+          plain.pointOf('panel', band),
+          radius: 4,
+        )!;
+        final plainMiddle = plain.frame.meanColorAt(
+          plain.pointOf('panel', middle),
+          radius: 8,
+        )!;
+        expect(
+          plainBand.b,
+          greaterThan(plainBand.r),
+          reason: 'a panel given no border drew one anyway: $plainBand',
+        );
+        expect(
+          FrameProbe.colorDistance(plainBand, plainMiddle),
+          lessThan(0.06),
+          reason:
+              'an undecorated panel is not one flat colour across its face, '
+              'so the bordered comparison above could be a gradient: rim '
+              '$plainBand, middle $plainMiddle',
+        );
+      },
+    );
+
+    testWidgets('a state layer lightens the panel it is on', (tester) async {
+      // Hover, focus, press and drag are all this: one colour blended over
+      // the same decoration, one uniform, no second mesh and no relayout. The
+      // frame's job is to say the uniform reaches the picture, and the honest
+      // way to ask is a pair — the same panel with the layer on and off.
+      final plain = await _draw(tester, kProbeScenes.byId('plain_panel'));
+      final washed = await _draw(
+        tester,
+        kProbeScenes.byId('state_layer_panel'),
+      );
+
+      final plainInk = plain.frame.meanColorAt(
+        plain.centerOf('panel'),
+        radius: 20,
+      )!;
+      final washedInk = washed.frame.meanColorAt(
+        washed.centerOf('panel'),
+        radius: 20,
+      )!;
+
+      // A state layer is a colour, not a shape: the panel is still the same
+      // panel underneath it.
+      expect(
+        washed.frame.coverageAt(washed.centerOf('panel'), radius: 20),
+        greaterThan(0.95),
+        reason: 'the panel with a state layer on it did not draw',
+      );
+      expect(
+        washedInk.computeLuminance(),
+        greaterThan(plainInk.computeLuminance() + 0.03),
+        reason:
+            'a 32% white state layer left the panel no lighter, so the '
+            'uniform is not reaching the shader: plain $plainInk, '
+            'with the layer $washedInk',
+      );
+    });
+
+    // What a panel casts onto the ground under it, which is nothing at all.
+    //
+    // This test asserts a **defect**, deliberately, because the alternative
+    // is a plan that says "not done" forever. `box_decoration3d.fmat`
+    // declares `blending: alpha`, and `ShadowEncoder._submit` drops any item
+    // whose `material.isOpaque()` is false before it reaches the shadow map,
+    // so a decorated panel is not a shadow caster in this engine at all. The
+    // silhouette question the plan wanted answered — does the SDF's discard
+    // reach the shadow? — cannot even be posed here: there is no shadow to
+    // look at. The second half of the answer is in the plan's *What the plan
+    // got wrong*: a shadow pass runs `DepthOnlyFragment` and never the
+    // material's own `Surface()`, so an opaque panel would cast the shadow of
+    // its whole rectangular slab.
+    //
+    // If the last expectation below ever fails, that is good news and the
+    // engine has grown something: go and read the plan.
+    testWidgets('a decorated panel casts no shadow, and an opaque cube does', (
+      tester,
+    ) async {
+      final capture = await _draw(tester, kProbeScenes.byId('panel_shadow'));
+
+      double groundLuma(String patch) {
+        final point = capture.centerOf(patch);
+        expect(
+          capture.frame.coverageAt(point, radius: 6),
+          greaterThan(0.9),
+          reason: 'the ground patch "$patch" is not drawn where layout put it',
+        );
+        return capture.frame.meanColorAt(point, radius: 6)!.computeLuminance();
+      }
+
+      final lit = groundLuma('underNothing');
+      final underCube = groundLuma('underCube');
+      final underPanel = groundLuma('underPanel');
+
+      // The control, and it has to pass first: without it, "the ground under
+      // the panel is not darkened" would be satisfied by a scene with no
+      // shadows in it at all.
+      expect(
+        underCube,
+        lessThan(lit * 0.85),
+        reason:
+            'the opaque cube cast no shadow either, so this scene says '
+            'nothing about the panel. Lit ground $lit, under the cube '
+            '$underCube — check that the light still has castsShadow set.',
+      );
+      expect(
+        underPanel,
+        closeTo(lit, lit * 0.08),
+        reason:
+            'the decorated panel cast a shadow, which flutter_scene 0.23.0 '
+            'cannot do for a material declaring `blending: alpha`. Lit '
+            'ground $lit, under the panel $underPanel. If the engine has '
+            'changed, the size-driven-geometry plan needs rereading: the '
+            'silhouette-versus-shadow question is live again.',
+      );
+    });
   });
 
   group('a drag in flight', () {

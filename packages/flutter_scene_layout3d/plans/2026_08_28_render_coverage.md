@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-08-28T23:20:00Z
-updated_at: 2026-08-31T14:50:33Z
+updated_at: 2026-09-02T16:30:00Z
 commit: 3f1bd45cc0b06131a50ab145917648f9164d8f57
 ---
 
@@ -154,8 +154,10 @@ settling time rather than a single pump.
 
 ## What happened
 
-All six phases landed. `examples/render_probe` runs twenty render tests on a
-Metal GPU through `flutter drive`, and they pass.
+All six phases landed. `examples/render_probe` runs forty render tests on a
+Metal GPU through `flutter drive`, and they pass. (Twenty when this section
+was written; the text and decoration plans added the rest, which is the point
+— the harness is what unblocked them.)
 
 The split turned out better than the plan drew it. **The projection went into
 the package, not the harness** — `Layout3dScreenProjection` in
@@ -236,8 +238,12 @@ two units sitting side by side in one constructor is sharp.
 - **Only macOS is covered.** The CI lane pins `macos-14` because Flutter GPU
   wants a real GPU there; whether a software backend suffices has not been
   tried, and the thresholds would likely need loosening if it does.
-- **Elevation, borders and the state layer have no probe yet.** The painter
-  draws them and the shader declares them; nothing looks.
+- ~~**Elevation, borders and the state layer have no probe yet.**~~ Closed by
+  [size-driven geometry](2026_08_25_size_driven_geometry.md), which added four
+  scenes and four tests here and, in doing so, found the panel shader drawing
+  its border inside out. That plan also added a `configureScene` hook to
+  `ProbeScene` — the first scene needing a light of its own is the one asking
+  what a panel casts, and the answer is nothing.
 - ~~**No text.**~~ Closed by `2026_08_25_text_in_a_3d_layout.md` phase 4,
   which added three scenes here: a label drawn out of a glyph atlas against a
   control that draws nothing, a label on a decorated panel (the depth-test

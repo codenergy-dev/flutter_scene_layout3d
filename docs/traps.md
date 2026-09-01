@@ -114,6 +114,29 @@ before is read back asynchronously, and a widget capture arrives on the frame
 after the subtree is hosted. A test that draws a label and reads the frame in
 the same pump reads an empty frame.
 
+### Elevation is a lift, not a shadow
+
+`BoxDecoration3d.elevation` moves the panel's geometry toward the viewer by
+`metrics.dp(elevation)`. That is the whole of it, and it is worth knowing what
+that does and does not buy:
+
+- **It does not cast a shadow, and no amount of lighting will make it.** The
+  panel shader declares `blending: alpha` — its anti-aliased outline *is* an
+  alpha — and `flutter_scene` drops every non-opaque material before the
+  shadow pass reaches a shadow map. A raised card reads as raised through
+  parallax and occlusion. Grounding it on a surface is the caller's job; the
+  engine's `ShadowCatcherMaterial` on a plane beneath it is the shape of that.
+  (And were the material opaque, the shadow would be the whole rectangular
+  slab: a shadow pass runs `DepthOnlyFragment`, never a material's own
+  `Surface()`, so the corner radius is not in it.)
+- **It moves the geometry and not the box.** Layout, intrinsics and what a ray
+  reaches all stay where layout put them.
+- **But a screen projection follows the geometry.** `worldTransform` undoes
+  `hitTestTransform`, and `DecoratedBox3d` returns null from that, so
+  `screenCenter`, `screenPointOf` and `screenBounds` on an elevated panel
+  report where it is *drawn* — which is the right answer for a debug overlay,
+  and a surprise if you expected them to agree with the hit test.
+
 ### Making geometry fill its box
 
 `NodeBox3d` defaults to `BoxFit3d.none`: the content keeps its own size inside
@@ -199,3 +222,11 @@ write a scene there.
 - **A level camera cannot see a ground plane.** `LayoutBasis3d.xz` viewed from
   `y = 0` is exactly edge-on: every point lands on the horizon line and near is
   indistinguishable from far. Raise the camera.
+- **A difference is not a direction, and a shader test wants the direction.**
+  "The rim of this panel is a different colour from its middle" is satisfied
+  just as well when the two are swapped, which is exactly how the panel shader
+  came to ship with its border drawn inside out — the fill as a thin rim
+  around a panel entirely in the border colour, past sixty-two headless tests
+  that all checked the parameters and never the picture. Ask which colour is
+  where, by a comparison lighting and tone mapping cannot reorder: a channel
+  order (`r > b`), a luminance, an occlusion. Not a distance.

@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-08-25T20:31:04Z
-updated_at: 2026-09-02T12:00:00Z
+updated_at: 2026-09-02T16:30:00Z
 commit: 657eef80eb8dc8085c3b3a84a8069273495506be
 ---
 
@@ -101,14 +101,14 @@ field in each plan's front matter still names the fork commit the plan was
 reasoned against, which is what that field is for.) The suite went from 276
 tests to **716**, and `dart analyze` is clean across the package and both
 example apps that depend on it. The two plans written since took it further:
-**862** headless tests today, beside **31** that draw on a GPU and probe the
+**862** headless tests today, beside **40** that draw on a GPU and probe the
 pixels.
 
 | Plan | Status | Landed as |
 | --- | --- | --- |
 | Camera-bound surfaces | completed | `45adb23` |
 | Text in a 3D layout | completed | `3f15f2a`, then the atlas renderer |
-| Size-driven geometry | in progress | `3646134` |
+| Size-driven geometry | completed | `3646134`, then its probes |
 | Pointer dispatch and focus | completed | `b20ce06` |
 | Lazily built children | completed | `4e34e72` |
 | Overlays and layered surfaces | completed | `1ab5d68` |
@@ -117,13 +117,14 @@ pixels.
 | The boxes still missing | completed | `213245b`, then the drag boxes |
 | Diagnostics and semantics | completed | `e890920` |
 
-**One of the ten is still open.** Size-driven geometry's remaining items have
-no probe and, for two of them, no engine feature to probe; the reason is in its
-own front matter. The other two closed later, each once the thing it was
-waiting for existed — text once `examples/render_probe` could draw a glyph
-atlas and check the frame against it, and the boxes once
+**All ten are closed.** The last three closed later than the rest, each once
+the thing it was waiting for existed — text once `examples/render_probe` could
+draw a glyph atlas and check the frame against it; the boxes once
 [drag and drop](2026_09_01_drag_and_drop.md) shipped the payload-carrying drag
-their last item wanted. See *What is still missing* below.
+their last item wanted; and size-driven geometry once that same render lane
+could probe an elevation, a border and a state layer, and could answer the
+shadow question the plan had only guessed at. What each of them deliberately
+left out is in *What is still missing* below, with the reason.
 
 ## How the seams resolved
 
@@ -179,9 +180,19 @@ Also open, each for a stated reason rather than for lack of time:
   half-built here.
 - **Keep-alive** for lazily built children, deferred by that plan's own text.
 - **Subtree opacity**, which needs a per-node opacity in `flutter_scene` that
-  the materials honour.
-- **A shadow pass does not run `Surface()`**, so a rounded panel casts the
-  shadow of its whole slab.
+  the materials honour, and there is none in 0.23.0: `Node` carries `visible`,
+  a selection-outline `highlightColor`, layer and light masks and shadow
+  flags, and no opacity or tint of any kind. Shipping an `Opacity3d` that
+  faded only `BoxDecoration3d` is the thing that plan told its implementer not
+  to do.
+- **A decorated panel casts no shadow.** Not "the shadow of its whole slab",
+  which is what this list said while it was a guess: `box_decoration3d.fmat`
+  declares `blending: alpha` and `ShadowEncoder` drops every non-opaque
+  material before it reaches a shadow map, so a panel is not a caster at all.
+  (An opaque one *would* cast its whole rectangular slab, since a shadow pass
+  runs `DepthOnlyFragment` and never a material's `Surface()`.)
+  `examples/render_probe`'s `panel_shadow` scene demonstrates it, against an
+  opaque cube as the control, and fails if the engine ever changes.
 - **`TapTarget3d` grows the ray region but not the box.** The Material 48dp
   minimum is invisible to layout, to intrinsics, to `ensureVisible3d` and now
   to semantics, which announces the smaller rectangle. Deliberate — it keeps
@@ -219,11 +230,16 @@ In the order I would take them:
    [the boxes still missing](2026_08_25_the_boxes_still_missing.md) has
    nothing left and is `completed`. The premise held: a drag is arithmetic and
    state, and all but two claims about it were pinned down headlessly.
-3. **[Size-driven geometry](2026_08_25_size_driven_geometry.md)'s remainder.**
-   Elevation, the border and the state layer have no probe; adding those
-   scenes is ordinary work in the render harness. The shadow item and subtree
-   opacity both need `flutter_scene` to grow something, so they are not
-   actionable here.
+3. ~~**[Size-driven geometry](2026_08_25_size_driven_geometry.md)'s
+   remainder.**~~ **Done.** Elevation, the border and the state layer have
+   probes now — the lifted panel projects wider than the flat one and the
+   frame agrees, the border draws in its own colour at the rim and not in the
+   middle, a state layer lightens the same panel — and the probe found the
+   shader drawing its border inside out, which sixty-two headless tests had
+   passed over. The shadow item is answered rather than open: the engine will
+   not cast a shadow from that material at all, and the plan records both the
+   gate and what a catalogue does instead. Subtree opacity stays unshipped for
+   the reason above, which is the plan's own rule and not a shortcut.
 4. **`flutter_scene_material3d` itself**, which text no longer blocks. It has
    no plan yet.
    Everything the readiness work set out to provide is in place, and the

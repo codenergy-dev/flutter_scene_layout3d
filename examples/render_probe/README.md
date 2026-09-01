@@ -57,9 +57,17 @@ test flips its question: it must draw nothing at all. That is what makes its
 partner's coverage mean something — "there are pixels where the label is" is
 not evidence on its own, and "there are pixels here and none in the identical
 scene without a renderer" is. The text and decoration scenes are both built as
-pairs for that reason. A scene that legitimately covers less of the frame than
-the default floor — five letters of type, rather than a wall of cubes — states
-its own `minCoverage` instead.
+pairs for that reason, and `plain_panel` is the control for three of them at
+once: elevation, the border and the state layer are each "this capture differs
+from the identical one without the feature". A scene that legitimately covers
+less of the frame than the default floor — five letters of type, rather than a
+wall of cubes — states its own `minCoverage` instead.
+
+One more rule for a pair that compares *colours*: assert a direction, not a
+distance. "The rim is a different colour from the middle" is just as true when
+the two are swapped, which is how the panel shader shipped with its border
+drawn inside out. Ask which colour is where, by something lighting and tone
+mapping cannot reorder — a channel order, a luminance.
 
 Two rules that are not obvious:
 
@@ -70,6 +78,32 @@ Two rules that are not obvious:
   is the premise the harness rests on.
 - **Primitives only, generated in code.** A scene that loads an asset is a
   scene that can fail for a reason that has nothing to do with layout.
+
+### A scene that needs a light
+
+Everything here draws under the engine's default environment on purpose: a
+probe that depends on a lighting rig is a probe that fails when the rig
+changes. The exception is a scene asking what something *casts*, and
+`ProbeScene.configureScene` is the hook for it — it is handed the `Scene`
+before any surface is added:
+
+```dart
+configureScene: (scene) {
+  scene.directionalLight = DirectionalLight(
+    direction: Vector3(0.0, -1.0, 0.22),
+    castsShadow: true,
+  );
+},
+```
+
+`castsShadow` is false by default, which is the first thing to check when a
+shadow scene reads as "nothing casts anything". `panel_shadow` is the one
+scene that uses this, and what it demonstrates is a defect rather than a
+feature: a `BoxDecoration3d` panel casts no shadow at all, because the panel
+shader blends its own anti-aliased outline and `flutter_scene` keeps
+non-opaque materials out of the shadow pass. It draws an opaque cube beside
+the panel as the control — without it, "the ground is not darkened" would be
+satisfied by a scene with no shadows in it.
 
 ### A scene that is mid-interaction
 

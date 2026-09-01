@@ -112,17 +112,30 @@ class BoxDecoration3d extends Decoration3d implements Decoration3dElevation {
 
   /// How far the panel stands off its parent, in logical pixels.
   ///
-  /// Material's elevation, and the one place a 3D component library gets
-  /// something for free. In Flutter an elevation is a painted shadow
-  /// approximating a height; here the height is real, so [DecoratedBox3d]
-  /// lifts the geometry toward the viewer by `metrics.dp(elevation)` and the
-  /// shadow is whatever the scene's own lights cast.
+  /// Material's elevation. In Flutter an elevation is a painted shadow
+  /// standing in for a height; here the height is real, so [DecoratedBox3d]
+  /// lifts the geometry toward the viewer by `metrics.dp(elevation)` and a
+  /// raised panel reads as raised because it moves under the camera and
+  /// occludes what is behind it.
+  ///
+  /// **It casts no shadow, and cannot.** The panel shader declares
+  /// `blending: alpha` — its anti-aliased outline *is* an alpha — and
+  /// `flutter_scene` drops every non-opaque material before it reaches a
+  /// shadow map. A catalogue wanting a card grounded on a surface has to put
+  /// that shadow there itself; the engine's `ShadowCatcherMaterial` on a
+  /// plane beneath the card is the shape of it.
+  /// `examples/render_probe`'s `panel_shadow` scene is the standing check,
+  /// and it fails the day this stops being true.
   ///
   /// The lift moves the *geometry* and nothing else: the box keeps the size
   /// and the position layout gave it, and a ray still reaches it where the
   /// layout put it. That is deliberate — a raised button whose touch target
   /// drifted away from its layout box would be a bug, not a feature — and it
-  /// is the same rule `ParentData3d.sceneOffset` keeps.
+  /// is the same rule `ParentData3d.sceneOffset` keeps. The one place the
+  /// lift *is* visible outside the picture is the screen projection:
+  /// `screenCenter` and friends read `worldTransform`, which undoes
+  /// `hitTestTransform` and finds it null here, so a projected elevated panel
+  /// is where the panel is drawn rather than where its box sits.
   @override
   final double elevation;
 

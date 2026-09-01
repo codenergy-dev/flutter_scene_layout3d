@@ -74,8 +74,10 @@ class StateLayer3d {
 ///
 /// Implemented by [BoxDecoration3d], and named separately so [DecoratedBox3d]
 /// can lift any decoration that has a height without knowing what else is on
-/// it. A decoration of your own that wants the same free shadow implements
-/// this and reports a figure in logical pixels.
+/// it. A decoration of your own that wants the same lift implements this and
+/// reports a figure in logical pixels. The lift is a real displacement toward
+/// the viewer and not a shadow; see [BoxDecoration3d.elevation] for why there
+/// is no shadow to go with it.
 abstract class Decoration3dElevation {
   /// How far the decoration stands off its parent, in logical pixels.
   double get elevation;
