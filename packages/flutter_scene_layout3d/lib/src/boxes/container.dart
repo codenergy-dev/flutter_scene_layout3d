@@ -21,10 +21,25 @@ import '../layout3d.dart';
 ///
 /// This is a layout container and nothing else: unlike Flutter's, it has no
 /// `decoration`. Making a box *visible* is [DecoratedBox3d]'s job — wrap the
-/// container in one, or put engine content in the tree with a `NodeBox3d`.
-/// The separation is deliberate: a decoration is told a size and produces the
-/// right shape at it, which is a different relationship from anything a
-/// container does.
+/// container in one (`SceneDecoratedBox3d` on the declarative side), or put
+/// engine content in the tree with a `NodeBox3d`.
+///
+/// The separation is deliberate, and it is not only about drawing. Flutter's
+/// `Container` can afford a decoration because it is a *composition*: it
+/// builds a small tree and `DecoratedBox` stays the single implementation of
+/// what a decoration is. There is no composition here — a `Container3d` is
+/// one [Layout3d] — so a decoration on it would be a second implementation of
+/// the painter lifecycle, and it would have to be painted inside the [margin]
+/// and around the [padding] rather than at the box's own size, which is a
+/// rectangle [Decoration3dPaintRequest] cannot currently describe. Composing
+/// the two boxes says which rectangle is the panel:
+///
+/// ```dart
+/// // A panel with space inside it.
+/// DecoratedBox3d(decoration: d, child: Container3d(padding: p, child: c));
+/// // A panel with space around it.
+/// Container3d(margin: m, child: DecoratedBox3d(decoration: d, child: c));
+/// ```
 class Container3d extends SingleChildLayout3d
     with Layout3dChildIntrinsicsMixin {
   /// Creates a container.

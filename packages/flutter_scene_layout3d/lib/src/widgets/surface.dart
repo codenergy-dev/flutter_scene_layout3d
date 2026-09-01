@@ -19,7 +19,9 @@ import '../geometry/alignment3d.dart';
 import '../geometry/basis3d.dart';
 import '../geometry/constraints3d.dart';
 import '../geometry/size3d.dart';
+import '../layout3d.dart';
 import '../metrics.dart';
+import '../slot.dart';
 import '../surface.dart';
 import 'framework.dart';
 
@@ -82,6 +84,7 @@ class SceneLayout3d extends StatefulWidget {
     this.scale,
     this.transform,
     this.controller,
+    this.slots = const <Layout3dSlot<Object>, Object>{},
     this.child,
   }) : assert(
          size == null || constraints == null,
@@ -163,6 +166,32 @@ class SceneLayout3d extends StatefulWidget {
   /// Imperative access to the surface this widget owns.
   final Layout3dController? controller;
 
+  /// Tree-wide state every box on this surface can read as [Layout3d.slot].
+  ///
+  /// The declarative form of [Layout3dSurface.setSlot], for an application
+  /// that knows its slots at the root:
+  ///
+  /// ```dart
+  /// SceneLayout3d(
+  ///   size: const Size3d(4, 3, 0.2),
+  ///   slots: {themeSlot: Theme3dData.light()},
+  ///   child: screen,
+  /// )
+  /// ```
+  ///
+  /// The map is reconciled on rebuild: a key whose value changed is written,
+  /// and a key that disappears is cleared, so this is the whole story and not
+  /// a set of initial values. Anything written here relayouts the subtree
+  /// when it changes, because a slot is read during layout, so a map rebuilt
+  /// with fresh values every frame is a relayout every frame — keep the
+  /// values `const` or hold them in a field. [SceneSlotProvider3d] does the
+  /// same write from *inside* the tree, which is where a component library's
+  /// theme widget will want to sit.
+  ///
+  /// A value is stored, not owned: nothing here is disposed when the surface
+  /// goes away.
+  final Map<Layout3dSlot<Object>, Object> slots;
+
   /// The layout to arrange on the plane.
   final Widget? child;
 
@@ -198,8 +227,19 @@ class _SceneLayout3dState extends State<SceneLayout3d> {
   void initState() {
     super.initState();
     widget.controller?._surface = _surface;
+    _syncSlots(const <Layout3dSlot<Object>, Object>{});
     assert(_debugCheckBinding());
     _scheduleBindingUpdate();
+  }
+
+  /// Applies [SceneLayout3d.slots] onto the surface, clearing what [previous]
+  /// held and this build no longer does.
+  void _syncSlots(Map<Layout3dSlot<Object>, Object> previous) {
+    for (final key in previous.keys) {
+      if (widget.slots.containsKey(key)) continue;
+      _surface.setSlot(key, null);
+    }
+    widget.slots.forEach(_surface.setSlot);
   }
 
   @override
@@ -222,6 +262,9 @@ class _SceneLayout3dState extends State<SceneLayout3d> {
         oldWidget.controller?._surface = null;
       }
       widget.controller?._surface = _surface;
+    }
+    if (!identical(widget.slots, oldWidget.slots)) {
+      _syncSlots(oldWidget.slots);
     }
     final binding = widget.binding;
     final oldBinding = oldWidget.binding;

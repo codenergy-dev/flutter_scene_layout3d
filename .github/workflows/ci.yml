@@ -53,9 +53,10 @@ jobs:
         run: flutter pub get
 
       # Draws real geometry through the layout boxes and probes the frame at
-      # the pixels layout says to check. This is also the only lane that
-      # compiles packages/flutter_scene_layout3d/assets/box_decoration3d.fmat,
-      # so a syntax error in the panel shader fails here and nowhere else.
+      # the pixels layout says to check. The panel shader is compiled by the
+      # layout package's own build hook, so a syntax error in it fails any
+      # build; this is the only lane that runs the compiled shader, so a
+      # shader that compiles and draws the wrong thing fails here alone.
       - name: Render probes
         run: |
           flutter drive \

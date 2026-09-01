@@ -148,6 +148,56 @@ pixels a glyph is worth. Changing the metrics relayouts the whole subtree,
 because a box sized in dp is a different box afterwards and nothing else would
 tell it so.
 
+### Anything else the whole tree needs: slots
+
+The metrics ride on the surface rather than in an `InheritedWidget` for one
+reason: the imperative layer has no `BuildContext`, and a box has to be able
+to read this inside `performLayout`. A component library's *theme* has exactly
+that shape — every component reads it, nobody is handed it — and a theme
+cannot be a field here, because Material vocabulary does not belong in a
+layout package.
+
+So the surface carries an open, typed map beside the metrics, and the library
+that has an opinion declares the key:
+
+```dart
+// In the component library.
+const themeSlot = Layout3dSlot<Theme3dData>('material3d.theme');
+
+// In the application.
+SceneLayout3d(
+  size: const Size3d(4, 3, 0.2),
+  slots: {themeSlot: Theme3dData.light()},
+  child: screen,
+)
+
+// In a component, inside performLayout, with no BuildContext anywhere.
+final theme = slot(themeSlot) ?? Theme3dData.light();
+```
+
+`SceneSlotProvider3d` writes the same value from *inside* the tree, which is
+where a library's own theme widget will want to sit — it is usually an
+`InheritedWidget` for the widget layer as well, and the two halves should be
+one widget. `Layout3dSurface.setSlot` is the imperative form, and
+`SlotProvider3d` the imperative box.
+
+Three rules, each of which costs time to discover otherwise:
+
+* **A slot is its type and its name.** `Layout3dSlot<Theme3dData>('theme')`
+  written twice is one slot, wherever it was written and whether or not it was
+  `const`. Identity keying was the first design and it is wrong here, because
+  Dart canonicalizes `const` instances: the same code would key by value when
+  declared `const` and by identity when declared `final`. Name a slot after
+  the library that owns it and declare it once.
+* **Writing one relayouts the subtree**, exactly as writing the metrics does,
+  and for the same reason: a slot is read during layout and never arrives as a
+  constraint, so nothing else would tell a box that the number it sized itself
+  from moved. Pass `relayout: false` for a value nothing measures against, and
+  keep slots off any per-frame path.
+* **The surface stores the value and does not own it.** Disposing the surface
+  clears the map and disposes nothing in it, the same rule it follows for the
+  layouts it collects.
+
 ### Panels that are not screens
 
 A panel hanging on a wall at some angle is not standing in for a screen, and
@@ -269,6 +319,33 @@ component library wants:
 ```dart
 Text3d('Save', style: labelStyle, renderer: AtlasText3dRenderer())
 ```
+
+**A renderer is owned by the box that holds it**, and that is the rule to
+carry away: `Text3d` disposes it when a different one is set and when the box
+itself is disposed. So a screen of labels wants a renderer *each*, never one
+instance passed around — the first label to leave the tree would dispose it
+and every other label would quietly stop drawing. The thing worth sharing is
+the atlas underneath, and that is shared already.
+
+Writing `renderer:` on every label is not what an application should have to
+do, so the widget layer inherits it, the way it inherits a `DefaultTextStyle`:
+
+```dart
+DefaultTextRenderer3d(
+  factory: AtlasText3dRenderer.new,
+  child: SceneView.declarative(children: [SceneLayout3d(child: screen)]),
+)
+```
+
+Every `SceneText3d` below that calls the factory once and owns what comes
+back; one that states its own `renderer` overrides it, exactly as one that
+states its own `style` overrides the ambient style. The inherited value is a
+*factory* and not a renderer for the ownership reason above — an inherited
+instance would be a shared one — so keep the function stable: a tear-off like
+`AtlasText3dRenderer.new`, or a field on a `State`. A closure written inline in
+`build` is a new function every build, and every label in the tree would
+rebuild its renderer. In the imperative layer the same seam is
+`Text3d.rendererFactory`.
 
 One texture holds every glyph a style has been asked to draw at one
 resolution, and each label is one mesh of textured quads out of it. A screen
@@ -467,16 +544,49 @@ and neither does a surface built before `Scene.initializeStaticResources()`
 resolves. `Decoration3dPainter` is the seam.
 
 The package ships the shader as `assets/box_decoration3d.fmat` and
-`BoxDecoration3dPainter` as the painter that drives it. A library cannot
-compile a `.fmat` from inside a dependency — the build hook runs in the app —
-so copy the file into your app's `assets/`, add it to your hook's
-`buildMaterials` list, and install the factory once:
+`BoxDecoration3dPainter` as the painter that drives it, **and it compiles the
+shader itself**: this package's `hook/build.dart` runs `impellerc` over that
+file for whatever application depends on it, so there is nothing to copy and
+nothing to add to your own hook. Install the factory once, at startup, after
+`Scene.initializeStaticResources()` has resolved:
 
 ```dart
 final material = await loadFmatMaterial('assets/box_decoration3d.fmat');
 BoxDecoration3d.painterFactory =
     (_) => BoxDecoration3dPainter(createMaterial: () => material);
 ```
+
+That source path names the file inside *this* package, not one in your app.
+It resolves through the manifest this package's hook writes into its own
+`flutter_scene_generated/` directory, which reaches the bundle keyed
+`packages/flutter_scene_layout3d/…`. Nothing in your app's own hook mentions
+panels.
+
+Keep `buildEngineAssets` separate in your head from all of this. It is what
+makes `Scene.initializeStaticResources()` resolve, without which nothing in a
+scene renders at all — and `flutter_scene`'s own hook already builds those
+shaders into its own package directory, so an app usually needs no hook for it
+either. Call it from your own hook (`dart run flutter_scene:init` writes that
+hook) when you want the engine's shaders in your app's bundle instead: a
+locked-down pub cache is the case that forces it, and the engine says so in
+the error. `examples/render_probe` does exactly that and nothing else:
+
+```dart
+void main(List<String> args) {
+  build(args, (input, output) async {
+    await buildEngineAssets(buildInput: input, buildOutput: output);
+  });
+}
+```
+
+One migration hazard, once. If your app used to compile
+`box_decoration3d.fmat` itself, its old bundle is still sitting in its
+`flutter_scene_generated/` — that directory is persistent by design and
+survives `flutter clean`, and stale outputs are pruned only by the builder
+that wrote them, on a run it no longer makes. Two packages then offer the same
+source path and `loadFmatMaterial` throws *"Multiple generated .fmat
+materials"*. Delete the contents of the app's `flutter_scene_generated/`,
+keeping its `.gitignore`, and it does not come back.
 
 The painter's own trick is worth knowing if you write a decoration of your
 own. A `.fmat` fragment shader is handed a world position, a normal and a UV,
@@ -632,9 +742,53 @@ A handful of widgets have no imperative counterpart because they *are* the
 widget layer: `SceneAnimatedContainer3d` and its siblings are stateful, and
 `SceneAnimatedSlide3d` owns the controller behind a node-only animation. See
 *Animation* below. `SceneText3d` is the one that gains something from being a widget: it has a
-`BuildContext` to ask, so it picks up the ambient `DefaultTextStyle` and
-`Directionality` the way a Flutter `Text` does — from the widget tree the
-scene is hosted in, not from anything inside the scene.
+`BuildContext` to ask, so it picks up the ambient `DefaultTextStyle`,
+`DefaultTextRenderer3d` and `Directionality` the way a Flutter `Text` does —
+from the widget tree the scene is hosted in, not from anything inside the
+scene.
+
+`SceneDecoratedBox3d` is the one that makes a declarative tree *visible*, and
+it is the widget form of `DecoratedBox3d` with the same two properties and
+the same promise about them:
+
+```dart
+SceneDecoratedBox3d(
+  decoration: const BoxDecoration3d(
+    color: Color(0xFF1B6EF3),
+    borderRadius: BorderRadius3d.circular(12),
+    elevation: 3,
+  ),
+  stateLayer: hovered
+      ? const StateLayer3d(color: Color(0xFFFFFFFF), opacity: 0.08)
+      : StateLayer3d.none,
+  child: const ScenePadding3d(
+    padding: EdgeInsets3d.all(0.12),
+    child: SceneText3d('Continue'),
+  ),
+)
+```
+
+Neither property touches layout, and a rebuild that changes only one of them
+lays nothing out — it writes shader parameters and asks for a frame. That is
+the whole reason the properties are setters on the box rather than
+constructor arguments to a new one, and it is what makes hovering a screen of
+controls free rather than a stutter.
+
+There is deliberately no `decoration` on `SceneContainer3d`, though Flutter's
+`Container` has one. Flutter's is a *composition* — it builds a small tree, and
+`DecoratedBox` stays the single implementation of what a decoration is — while
+`Container3d` is one box, so a decoration on it would be a second copy of the
+painter lifecycle, and Flutter's own semantics (the decoration sits inside the
+margin and around the padding) is a rectangle that is not the box's own size.
+Composing the two says which rectangle is the panel:
+
+```dart
+// A panel with space inside it.
+SceneDecoratedBox3d(decoration: d, child: SceneContainer3d(padding: p, child: c));
+// A panel with space around it.
+SceneContainer3d(margin: m, child: SceneDecoratedBox3d(decoration: d, child: c));
+```
+
 Attach a `Layout3dController` to reach the surface imperatively: it hands back
 the `Layout3dSurface` and its plane `Node`, which is what a raycast or a
 hand-written transform needs. Anything below the root — a measured size, a
@@ -2072,9 +2226,12 @@ Sixteen scenes, over cuboids and spheres arranged by `Row3d`, `Column3d`,
 `Stack3d`, `Padding3d`, `ListView3d`, `ClipBox3d` and the `xz` basis, plus two
 that hold a drag in flight while the frame is captured — the only way to check
 that a lifted card really does win the depth test, and that a detached feedback
-entry really does draw outside the panel it came from. It is also the only lane
-that compiles `assets/box_decoration3d.fmat`, so it is what would catch a
-syntax error in the panel shader.
+entry really does draw outside the panel it came from. It is also the only
+lane that *runs* the compiled `assets/box_decoration3d.fmat` — the package's
+own build hook compiles it for every consumer, so a syntax error fails any
+build, and a shader that compiles and draws the wrong thing fails only here.
+That is not hypothetical: sixty-two headless tests passed over a border drawn
+inside out, and a probe caught it.
 
 ```sh
 cd examples/render_probe
@@ -2158,14 +2315,15 @@ bound it reports now.
 `DecoratedBox3d` and `BoxDecoration3d` describe a panel, the painter cache
 shares one mesh across every panel with the same shape, elevation lifts the
 geometry toward the viewer, and a state layer is a uniform that never dirties
-layout. See *Making a box visible* above. The shader ships as
-`assets/box_decoration3d.fmat`, `BoxDecoration3dPainter` drives it, and
-`examples/render_probe` compiles it and checks that a rounded panel really
-does lose its corners. `examples/render_probe` compiles the shader and checks, on a
-GPU, that a rounded panel loses its corners, that a lifted panel projects
-wider than a flat one, that a border draws in its own colour at the rim and
-not in the middle, and that a state layer lightens the panel it is on. Two
-things stay open, both of them the engine's: a decorated panel casts no shadow
+layout, and `SceneDecoratedBox3d` is the widget form of it. See *Making a box
+visible* and *The declarative layer* above. The shader ships as
+`assets/box_decoration3d.fmat` and is compiled by this package's own build
+hook, so an application inherits it; `BoxDecoration3dPainter` drives it, and
+`examples/render_probe` checks, on a GPU, that a rounded panel loses its
+corners, that a lifted panel projects wider than a flat one, that a border
+draws in its own colour at the rim and not in the middle, and that a state
+layer lightens the panel it is on. Two things stay open, both of them the
+engine's: a decorated panel casts no shadow
 at all — `blending: alpha` keeps it out of the shadow pass, and an opaque one
 would cast its whole rectangular slab because a shadow pass never runs the
 surface shader — and clip planes are published to every material through

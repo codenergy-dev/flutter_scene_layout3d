@@ -26,6 +26,7 @@ import 'geometry/offset3d.dart';
 import 'geometry/size3d.dart';
 import 'hit_test.dart';
 import 'metrics.dart';
+import 'slot.dart';
 
 /// Builds the layout for one item of a lazily built view.
 ///
@@ -145,6 +146,45 @@ class Layout3dOwner {
   /// Whether anything on this surface has ever asked for focus.
   bool get hasFocusScope => _focusScope != null;
 
+  final Map<Layout3dSlot<Object>, Object> _slots =
+      <Layout3dSlot<Object>, Object>{};
+
+  /// What [key] holds on this surface, or null when nothing has written it.
+  ///
+  /// The open, typed half of the owner. [basis], [metrics], [painters] and
+  /// [focusScope] are here because they are tree-wide state both layers need
+  /// and the imperative one has no `BuildContext` to read an inherited widget
+  /// with; a component library's theme is exactly that shape, and its
+  /// vocabulary has no business in this package. So the library declares a
+  /// [Layout3dSlot] and puts the value here:
+  ///
+  /// ```dart
+  /// const themeSlot = Layout3dSlot<Theme3dData>('theme');
+  /// owner.setSlot(themeSlot, Theme3dData.light());
+  /// final Theme3dData? theme = owner.slot(themeSlot);
+  /// ```
+  ///
+  /// A box below reads it as [Layout3d.slot], which falls back to null while
+  /// detached, the way [Layout3d.metrics] falls back to the standard value.
+  T? slot<T extends Object>(Layout3dSlot<T> key) => _slots[key] as T?;
+
+  /// Writes [value] under [key], returning whether it changed anything.
+  ///
+  /// Null removes the entry. This is the plain write: it does *not* relayout,
+  /// because the owner does not know which boxes read the slot and cannot
+  /// reach the root to dirty it. Use [Layout3dSurface.setSlot] for a value
+  /// boxes measure against — a theme's paddings and type sizes — which is
+  /// most of them.
+  bool setSlot<T extends Object>(Layout3dSlot<T> key, T? value) {
+    if (value == null) return _slots.remove(key) != null;
+    if (identical(_slots[key], value) || _slots[key] == value) return false;
+    _slots[key] = value;
+    return true;
+  }
+
+  /// Every slot currently holding a value, for a diagnostic dump.
+  Iterable<Layout3dSlot<Object>> get slotKeys => _slots.keys;
+
   Layout3dWireframe? _debugWireframe;
 
   /// Whether a debug wireframe is currently drawing this tree.
@@ -178,6 +218,10 @@ class Layout3dOwner {
     _focusScope = null;
     debugReleaseWireframe();
     _nodesNeedingLayout.clear();
+    // Dropped, not disposed. The owner collects tree-wide state, it does not
+    // own it: a slot value that holds resources is disposed by whoever put it
+    // there, the same rule this class already follows for the layouts.
+    _slots.clear();
   }
 
   final List<Layout3d> _nodesNeedingLayout = <Layout3d>[];
@@ -279,6 +323,23 @@ abstract class Layout3d with DiagnosticableTreeMixin {
   /// anything derived. A box whose size depends on this must be laid out
   /// again when it changes, which is why writing it at the root relayouts.
   Layout3dMetrics get metrics => _owner?.metrics ?? Layout3dMetrics.standard;
+
+  /// What [key] holds on this box's surface, or null.
+  ///
+  /// The way a box reads tree-wide state a component library put there — a
+  /// theme, a density, a palette — without a `BuildContext` and without being
+  /// handed it as a constructor argument. Null while detached, and null when
+  /// nothing has written the slot, so a box that needs a value states its own
+  /// fallback:
+  ///
+  /// ```dart
+  /// final theme = slot(themeSlot) ?? Theme3dData.light();
+  /// ```
+  ///
+  /// Read it inside [performLayout] like [metrics]. A slot written through
+  /// [Layout3dSurface.setSlot] relayouts the subtree, which is what makes
+  /// that safe.
+  T? slot<T extends Object>(Layout3dSlot<T> key) => _owner?.slot(key);
 
   int _depth = 0;
 

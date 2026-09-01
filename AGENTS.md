@@ -32,8 +32,12 @@ once it became clear the scope was its own project. That history is preserved:
 reason the package exists and will live here as a second package when it
 starts. It is
 [planned](packages/flutter_scene_material3d/plans/2026_09_01_flutter_scene_material3d.md)
-and not yet written; that plan's phase 0 is four additions to
-`flutter_scene_layout3d` that a first component cannot do without.
+and not yet written. That plan's phase 0 — four additions to
+`flutter_scene_layout3d` that a first component could not do without — is
+done, as
+[its own plan](packages/flutter_scene_layout3d/plans/2026_09_01_the_four_things_before_a_component.md)
+in the layout package; phase 1 onward is unstarted, and
+`packages/flutter_scene_material3d` holds nothing but that plan.
 
 ## Running things
 
@@ -135,9 +139,12 @@ How to write a scene is in
 gotchas are in [docs/traps.md](docs/traps.md), under *When probing a rendered
 frame*.
 
-That lane is also the only thing that compiles
-`packages/flutter_scene_layout3d/assets/box_decoration3d.fmat`. A syntax error
-in the panel shader fails there and nowhere else.
+That lane is also the only thing that *runs* the compiled
+`packages/flutter_scene_layout3d/assets/box_decoration3d.fmat`. The package's
+own `hook/build.dart` compiles it — for the render probe, the gallery, and any
+application that depends on the package — so a syntax error in the panel
+shader fails every build; a shader that compiles and draws the wrong thing
+fails there and nowhere else.
 
 ### Suggest a commit message each round
 

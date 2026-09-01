@@ -1,7 +1,8 @@
 ---
-status: pending
+status: in progress
+reason: phase 0 landed in flutter_scene_layout3d; the package itself does not exist yet, and phases 1 to 9 are open
 created_at: 2026-09-01T19:15:00Z
-updated_at: 2026-09-01T19:15:00Z
+updated_at: 2026-09-01T21:30:00Z
 commit: 52a2ca7b6a176cf70b5bef6b6b92ff7e7cbf82bd
 ---
 
@@ -66,58 +67,87 @@ Everything a component is made of, with one exception per section below:
 - **Accessibility.** `Semantics3d` takes Flutter's `SemanticsProperties`, so
   `button: true` and a label are already expressible.
 
-### The four things that block the first component
+### The four things that blocked the first component, and what they are now
 
-None of these is deep. All four are in `flutter_scene_layout3d`, not here, and
-**all four should land before this package has a `pubspec.yaml`**, because a
-catalogue written around the absence of any of them would have to be unwritten
-afterwards.
+All four landed in `flutter_scene_layout3d`, under
+[its own plan](../../flutter_scene_layout3d/plans/2026_09_01_the_four_things_before_a_component.md),
+before this package had a `pubspec.yaml` — which was the point: a catalogue
+written around the absence of any of them would have had to be unwritten
+afterwards. What exists now:
 
-1. **The declarative layer cannot draw.** There is no `SceneDecoratedBox3d`,
-   and `SceneContainer3d` has no `decoration` — so a Flutter developer building
-   from `build()` can arrange boxes and cannot make one visible. The imperative
-   `DecoratedBox3d` has been there since phase 1 of size-driven geometry; only
-   the widget form is missing. Two dartdoc examples in
-   `lib/src/widgets/drag.dart` (lines 24 and 217) already show
-   `SceneDecoratedBox3d` as though it existed, which is the repository's rule
-   about documenting what is not there, broken in the one place nobody looked.
-2. **There is no default text renderer.** `Text3d.renderer` is null by default
-   and a `Text3d` with no renderer draws nothing — deliberate, because the
-   package cannot verify a renderer in `flutter test`. But it means every label
-   in a catalogue has to be handed an `AtlasText3dRenderer` explicitly, and the
-   renderer is owned per box. What is wanted is the shape `DefaultTextStyle`
-   already has, and `SceneText3d` already merges: an inherited default the
-   theme installs once. Call it `DefaultTextRenderer3d`, put it beside the
-   style, and let `SceneText3d.renderer` override it.
-3. **There is nowhere tree-wide to put a theme.** `Layout3dOwner` carries
-   `basis`, `metrics`, `painters` and `focusScope` for one stated reason — it
-   is state both layers need and the imperative one has no `BuildContext` to
-   read an inherited widget with. A theme is exactly that shape, and *Material
-   vocabulary must not go into the layout package*. The seam that resolves both
-   is a typed slot on the owner:
+1. **The declarative layer can draw.** `SceneDecoratedBox3d` is the widget
+   form of `DecoratedBox3d`, with `decoration` and `stateLayer`, and a test
+   states the promise the class exists for: a rebuild that changes only the
+   state layer marks nothing dirty for layout. `lib/widgets.dart` now exports
+   the decoration types too — `BoxDecoration3d`, `Border3d`, `BorderRadius3d`,
+   `StateLayer3d`, `BoxDecoration3dPainter` — which it did not, and which is
+   why the gap was invisible from that side. The two `drag.dart` dartdoc
+   examples compile now, and a test compiles them.
+
+   **`SceneContainer3d` did *not* gain a `decoration`, deliberately**, and a
+   `Material3d` should not expect one. Flutter's `Container` can afford one
+   because it is a composition, with `DecoratedBox` still the single
+   implementation; `Container3d` is one `Layout3d`, so a decoration on it
+   would be a second copy of the painter lifecycle, and Flutter's own
+   semantics (inside the margin, around the padding) names a rectangle that is
+   not the box's own size and that `Decoration3dPaintRequest` cannot describe.
+   `Material3d` is a `SceneDecoratedBox3d` with the theme resolved into it,
+   exactly as *The design* below says, and a component that wants padding
+   composes a `SceneContainer3d` inside it.
+
+2. **There is a default text renderer.** `DefaultTextRenderer3d` sits beside
+   `DefaultTextStyle`; every `SceneText3d` below it gets a renderer, and one
+   that states its own overrides it. Install it once:
 
    ```dart
-   // In flutter_scene_layout3d.
-   final T? value = owner.slot(themeSlot);
-   owner.setSlot(themeSlot, Theme3dData.light());
+   DefaultTextRenderer3d(factory: AtlasText3dRenderer.new, child: app)
    ```
 
-   A `Layout3dSlot<T>` key, a map on the owner, no Material in the layout
-   package and no `BuildContext` in the imperative one. The alternative —
-   requiring every component constructor to take a theme — is what Flutter
-   rejected when it made `ThemeData` inherited, and for the same reason.
-4. **Compiling the shader is an application's job, and it should not be.**
-   `assets/box_decoration3d.fmat` is compiled by `impellerc` in
-   `examples/render_probe/hook/build.dart`, through a symlink, in the *app*.
-   Nothing else in either repository compiles it, so a developer who adds this
-   catalogue to their own app gets panels that draw nothing until they discover
-   they must write a build hook naming a file inside somebody else's package.
-   **Answer this before phase 1**: find out whether a package's own
-   `hook/build.dart` runs when that package is a dependency rather than the
-   root. If it does, `flutter_scene_layout3d` grows a hook, the problem
-   disappears for every consumer, and this package inherits the fix. If it does
-   not, this package ships the hook a consumer copies, and says so in the first
-   paragraph of its README rather than in a footnote.
+   **It carries a factory, not a renderer**, and a catalogue has to know why:
+   a `Text3dRenderer` is *owned* by the box that holds it — `Text3d` disposes
+   it — so one inherited instance would be disposed by whichever label left
+   the tree first and every other label would silently stop drawing. Each
+   label calls the factory and owns what comes back; the atlas underneath is
+   what is shared. Keep the function stable (a tear-off, or a field on a
+   `State`): a closure written inline in `build` is a new function every build
+   and rebuilds every renderer in the tree. `Text3d.rendererFactory` is the
+   same seam in the imperative layer.
+
+3. **There is somewhere tree-wide to put a theme.** `Layout3dSlot<T>`,
+   `owner.slot(key)` / `owner.setSlot(key, value)`, `Layout3d.slot(key)` for a
+   box reading it inside `performLayout`, `Layout3dSurface.setSlot` for the
+   write that relayouts, and two widget forms: `SceneLayout3d.slots` for a map
+   on the surface, `SceneSlotProvider3d` for a provider *inside* the tree —
+   which is where `SceneTheme3d` will want to sit, since it is also an
+   `InheritedWidget` for the widget layer.
+
+   Three things settled that a `Theme3dData` design has to honour. **A slot is
+   its type and its name**, not an identity: Dart canonicalizes `const`
+   instances, so identity keying would behave one way for a `const` slot and
+   another for a `final` one. Name it `'material3d.theme'`. **Writing one
+   relayouts the subtree** by default, as writing the metrics does, so a theme
+   change is a relayout and nothing per-frame may touch it — which is right,
+   since the tokens decide paddings and type sizes. **The surface stores the
+   value and does not own it**: nothing is disposed when the surface goes.
+
+4. **Compiling the panel shader is this package's job now, not an
+   application's.** The question was answered by doing it: a package's own
+   `hook/build.dart` *does* run when the package is a dependency.
+   `flutter_scene_layout3d` has one, it runs `impellerc` over
+   `assets/box_decoration3d.fmat`, and `examples/render_probe` passes all
+   forty of its tests with its own `buildMaterials` call and its symlink
+   deleted. A consumer writes nothing about panels in its hook.
+   `buildEngineAssets` is a separate concern and stays one: it is what makes
+   `Scene.initializeStaticResources()` resolve, `flutter_scene`'s own hook
+   already does it, and an app calls it only to keep its own copy of the
+   engine's shaders. **A library must never call it** — two copies in one
+   bundle — which is a rule this package inherits the day it ships a hook.
+
+   This package will need the same arrangement the day it ships an asset of
+   its own — a hook, `flutter_scene_generated/` listed in its pubspec under
+   `flutter: assets:`, and that directory present with the engine's
+   `.gitignore` in it. It does not need one to compile a shader it does not
+   own.
 
 ## What Material means when the depth is real
 
@@ -291,14 +321,18 @@ will have contrast that drifts as the surface turns.
 
 ## The work
 
-- [ ] **Phase 0 — the four blockers, in `flutter_scene_layout3d`.**
-      `SceneDecoratedBox3d` (and `decoration` / `stateLayer` on
-      `SceneContainer3d`, matching Flutter's `Container`);
-      `DefaultTextRenderer3d` beside `DefaultTextStyle`; `Layout3dSlot<T>` and
-      `Layout3dOwner.slot` / `setSlot`; the build-hook question answered and
-      whichever fix it implies. Fix the two dartdoc examples that already
-      reference `SceneDecoratedBox3d`. This phase ships as a commit against the
-      layout package, with its own tests, before this package exists.
+- [x] **Phase 0 — the four blockers, in `flutter_scene_layout3d`.** Done, as
+      [its own plan](../../flutter_scene_layout3d/plans/2026_09_01_the_four_things_before_a_component.md).
+      `SceneDecoratedBox3d` and the decoration exports;
+      `DefaultTextRenderer3d` and `Text3d.rendererFactory`; `Layout3dSlot<T>`,
+      `Layout3dOwner.slot` / `setSlot`, `Layout3dSurface.setSlot`,
+      `SceneLayout3d.slots` and `SceneSlotProvider3d`; and the layout package
+      compiling its own panel shader from its own build hook. The two
+      `drag.dart` dartdoc examples compile, and a test compiles them. 891
+      headless tests, 40 render probes, `dart analyze` clean. Two of that
+      plan's expectations turned out wrong and are worth reading before
+      building on them: `SceneContainer3d` has *no* `decoration`, with reasons,
+      and a slot is keyed by value rather than identity.
 - [ ] **Phase 1 — the package and the tokens.**
       `packages/flutter_scene_material3d`, added to the workspace.
       `ColorScheme3d`, `Typography3d`, `ShapeScale3d`, `Elevation3d`,
@@ -360,10 +394,11 @@ and a scene that cannot honestly assert its claim is removed, not weakened.
 
 ## The seams to keep an eye on
 
-- **Phase 0 is in another package**, and the layout package's plans are all
-  `completed`. Whatever lands there needs its own plan or a documented
-  amendment to an existing one; do not smuggle four new public classes into
-  `flutter_scene_layout3d` under this plan's number.
+- ~~**Phase 0 is in another package**~~, and it got the plan it needed:
+  [the four things before a component](../../flutter_scene_layout3d/plans/2026_09_01_the_four_things_before_a_component.md),
+  in the layout package, `completed`. Anything else this catalogue turns out
+  to need from the protocol goes the same way — its own plan there, not a line
+  item here.
 - **`Decoration3dPainterCache` is what makes this affordable.** A screen of
   Material components is a hundred boxes and a handful of shapes, and the cache
   keys on `Decoration3d.cacheKey`. A component that builds a decoration with a

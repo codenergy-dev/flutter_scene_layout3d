@@ -59,11 +59,44 @@ engine applies exposure, tone mapping and the display transform afterward.
 
 ## Compiling a `.fmat`
 
-A custom material is compiled by a **build hook**, which is why a package
-cannot compile one from inside a dependency — the app that uses it must.
-`examples/render_probe/hook/build.dart` is the worked example: it calls
-`buildEngineAssets` (which is what makes `initializeStaticResources` resolve)
-and then `buildMaterials` over the shader this package ships.
+A custom material is compiled by a **build hook**, and a package's own
+`hook/build.dart` *does* run when that package is a dependency rather than the
+root — which was worth establishing by experiment, because the engine's own
+source still carries a TODO saying a third-party package generating assets for
+its consumers "has no supported path yet". It works, and the runtime half was
+built for it: `GeneratedAssetSource.isPackageOwned` exists to resolve a
+`packages/<name>/flutter_scene_generated/` manifest.
+
+The arrangement has three parts, and all three are needed:
+
+- `hook/build.dart` calls `buildMaterials` with paths relative to **its own**
+  package root.
+- The package's `pubspec.yaml` lists `flutter_scene_generated/` under
+  `flutter: assets:`, or the build fails naming the missing entry.
+- The directory exists in the checkout with the engine's `.gitignore` inside
+  it, so a fresh clone has the entry the pubspec promises.
+
+`packages/flutter_scene_layout3d/hook/build.dart` is the worked example: it
+compiles the panel shader this package ships, for every app that depends on
+it. `flutter_scene` does the same for the engine's own shaders.
+
+**`buildEngineAssets` is a separate question.** It is what makes
+`Scene.initializeStaticResources()` resolve, and it belongs to the application
+— `flutter_scene`'s own hook already builds those shaders into its own package
+directory, so an app calls it only to have its own copy in its own bundle,
+which a locked-down pub cache forces. A second *library* must never call it: a
+package that did would put two copies of the engine's shaders in every app
+that used it. `examples/render_probe/hook/build.dart` calls that and nothing
+else; `packages/flutter_scene_layout3d/hook/build.dart` calls
+`buildMaterials` and nothing else.
+
+**A generated tree is not cleaned by removing the call that filled it.**
+`flutter_scene_generated/` is persistent by design — it survives `flutter
+clean` — and stale outputs are pruned only by the builder that wrote them, on
+a run. Take a `buildMaterials` call out of an app's hook and its old bundle
+stays behind, so the next load finds the same source path in two packages and
+throws *"Multiple generated .fmat materials"*. Delete the contents of the
+app's `flutter_scene_generated/` once, keeping the `.gitignore`.
 
 ## Going deeper
 

@@ -71,6 +71,17 @@ export 'src/boxes/table.dart'
         TableColumnWidth3d;
 export 'src/boxes/wrap.dart' show WrapAlignment3d, WrapCrossAlignment3d;
 export 'src/camera_binding.dart' show Layout3dCameraBinding;
+export 'src/decoration/box_decoration.dart'
+    show Border3d, BoxDecoration3d, BoxDecoration3dUniforms;
+export 'src/decoration/box_decoration_painter.dart' show BoxDecoration3dPainter;
+export 'src/decoration/decoration.dart'
+    show
+        Decoration3d,
+        Decoration3dElevation,
+        Decoration3dPainter,
+        Decoration3dPainterCache,
+        Decoration3dPaintRequest,
+        StateLayer3d;
 export 'src/debug/diagnostics.dart'
     show debugDescribeLayout3dTree, debugDumpLayout3dTree;
 export 'src/debug/overflow.dart'
@@ -82,6 +93,7 @@ export 'src/debug/wireframe.dart'
         debugPaintLayout3dBaselines,
         debugPaintLayout3dSize;
 export 'src/geometry/alignment3d.dart' show Alignment3d;
+export 'src/geometry/border_radius3d.dart' show BorderRadius3d;
 export 'src/geometry/basis3d.dart' show LayoutBasis3d;
 export 'src/geometry/constraints3d.dart' show Constraints3d;
 export 'src/geometry/edge_insets3d.dart' show EdgeInsets3d;
@@ -148,7 +160,10 @@ export 'src/scroll/scrollable.dart'
 export 'src/sliver/sliver.dart' show Sliver3d;
 export 'src/sliver/sliver_constraints.dart'
     show SliverConstraints3d, SliverGeometry3d;
+export 'src/slot.dart' show Layout3dSlot;
 export 'src/surface.dart' show Layout3dSurface;
+export 'src/text/atlas_text_renderer.dart'
+    show AtlasText3dRenderer, linearColor;
 export 'src/text/break_rules.dart'
     show OverflowWrap3d, TextBreakRules3d, TextWhitespace3d, WordBreak3d;
 export 'src/text/text3d.dart' show Text3d;
@@ -158,7 +173,9 @@ export 'src/text/text_measurement.dart'
         ParagraphTextMeasurement3d,
         SegmentedTextMeasurement3d,
         TextMeasurement3d;
-export 'src/text/text_renderer.dart' show Text3dRenderRequest, Text3dRenderer;
+export 'src/text/text_renderer.dart'
+    show Text3dRenderRequest, Text3dRenderer, Text3dRendererFactory;
+export 'src/widgets/default_text_renderer.dart' show DefaultTextRenderer3d;
 export 'src/widgets/drag.dart'
     show SceneDismissible3d, SceneDragTarget3d, SceneDraggable3d;
 export 'src/widgets/framework.dart'
@@ -180,6 +197,7 @@ export 'src/widgets/layouts.dart'
         SceneCustomMultiChildLayout3d,
         SceneCustomScrollView3d,
         SceneContainer3d,
+        SceneDecoratedBox3d,
         SceneDepth3d,
         SceneExpanded3d,
         SceneFittedBox3d,
@@ -209,6 +227,7 @@ export 'src/widgets/layouts.dart'
         SceneRow3d,
         SceneSemantics3d,
         SceneSizedBox3d,
+        SceneSlotProvider3d,
         SceneSliverGrid3d,
         SceneSliverList3d,
         SceneSliverPadding3d,

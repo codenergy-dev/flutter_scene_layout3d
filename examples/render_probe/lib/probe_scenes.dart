@@ -23,9 +23,11 @@ import 'probe_scene.dart';
 /// application does at startup, and the only thing standing between a
 /// decoration and a visible panel.
 ///
-/// `assets/box_decoration3d.fmat` is a symlink to the package's own shader, so
-/// what is compiled and loaded here is the shipped file rather than a copy of
-/// it that could drift.
+/// The shader itself is compiled by `flutter_scene_layout3d`'s own build
+/// hook, not by this app's: the source path names the file in the package
+/// that ships it, and `loadFmatMaterial` resolves it through that package's
+/// generated manifest. This app used to compile it through a symlink, and no
+/// longer has to.
 Future<void> installPanelPainter() async {
   if (BoxDecoration3d.painterFactory != null) return;
   final material = await loadFmatMaterial('assets/box_decoration3d.fmat');

@@ -202,6 +202,17 @@ actual object you can light, tilt and press into the panel rather than a
 picture of one. When it starts, it lives in this repository as a second
 package.
 
+Its
+[plan](packages/flutter_scene_material3d/plans/2026_09_01_flutter_scene_material3d.md)
+opened with four things missing from *this* package that a first component
+could not do without: the declarative layer could not draw, a label had no
+default renderer, there was nowhere tree-wide to put a theme, and compiling
+the panel shader was an application's job. All four
+[have landed](packages/flutter_scene_layout3d/plans/2026_09_01_the_four_things_before_a_component.md)
+— `SceneDecoratedBox3d`, `DefaultTextRenderer3d`, `Layout3dSlot`, and a build
+hook on this package that compiles its own shader for every consumer — so what
+is left is the catalogue itself.
+
 ## Running it
 
 ```sh

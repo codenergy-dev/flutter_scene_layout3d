@@ -333,6 +333,8 @@ export 'src/text/text_measurement.dart'
         TextMeasurementCache3d,
         TextMetrics3d,
         debugTextParagraphCount;
-export 'src/text/text_renderer.dart' show Text3dRenderRequest, Text3dRenderer;
+export 'src/text/text_renderer.dart'
+    show Text3dRenderRequest, Text3dRenderer, Text3dRendererFactory;
 export 'src/scroll/viewport.dart' show Viewport3d;
+export 'src/slot.dart' show Layout3dSlot, SlotProvider3d;
 export 'src/surface.dart' show Layout3dSurface;

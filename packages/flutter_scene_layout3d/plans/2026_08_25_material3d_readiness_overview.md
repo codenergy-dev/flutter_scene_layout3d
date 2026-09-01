@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-08-25T20:31:04Z
-updated_at: 2026-09-01T19:15:00Z
+updated_at: 2026-09-01T21:30:00Z
 commit: 657eef80eb8dc8085c3b3a84a8069273495506be
 ---
 
@@ -154,7 +154,9 @@ left out is in *What is still missing* below, with the reason.
 **The package draws nothing until it is asked to.** This was the single
 largest gap and it is now a deliberate pair of seams rather than a hole:
 `BoxDecoration3d.painterFactory` is null until an application sets it, and
-`Text3d` takes a renderer and has none by default. Both now have an in-tree
+`Text3d` takes a renderer and has none by default — though the widget layer
+now inherits one from a `DefaultTextRenderer3d`, and the shader behind the
+painter is compiled by this package's own build hook rather than by the app. Both now have an in-tree
 implementation behind them — `BoxDecoration3dPainter` over the shipped
 `assets/box_decoration3d.fmat`, and `AtlasText3dRenderer` over a shared glyph
 atlas, with `RichText3d` beside it for what an atlas cannot assemble — and
@@ -243,12 +245,17 @@ In the order I would take them:
 4. **[`flutter_scene_material3d`](../../flutter_scene_material3d/plans/2026_09_01_flutter_scene_material3d.md)**,
    the catalogue this whole map was drawn for. Everything the readiness work
    set out to provide is in place, and the render harness means a `Button3d`
-   can be checked as a picture and not only as arithmetic. Its plan starts
-   with four things that are missing from *this* package rather than from
-   that one — the widget layer cannot draw, a label has no default renderer,
-   there is nowhere tree-wide to put a theme, and compiling the panel shader
-   is still an application's job — so read its phase 0 before assuming the
-   protocol is finished.
+   can be checked as a picture and not only as arithmetic. Its plan started
+   with four things missing from *this* package rather than from that one —
+   the widget layer could not draw, a label had no default renderer, there was
+   nowhere tree-wide to put a theme, and compiling the panel shader was an
+   application's job. All four landed, as
+   [the four things before a component](2026_09_01_the_four_things_before_a_component.md):
+   `SceneDecoratedBox3d`, `DefaultTextRenderer3d`, `Layout3dSlot<T>`, and a
+   build hook on this package that compiles its own shader for every consumer.
+   Read that plan's *what the original reasoning got wrong* before building on
+   any of them; two of the four came out differently than expected. Phase 1
+   onward is open.
 
 **Every plan's `commit:` field resolves in this repository.** The plans that
 predate the move out of the engine's monorepo were written against fork

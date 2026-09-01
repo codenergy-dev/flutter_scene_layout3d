@@ -59,7 +59,10 @@ import 'text_renderer.dart';
 /// are separated on purpose (see [Text3dRenderer]); a `Text3d` on its own
 /// lays out, sizes, answers intrinsics and states a baseline, which is
 /// everything the layout protocol needs and everything this package's tests
-/// exercise.
+/// exercise. A renderer is *owned* by the box that holds it, so a screen of
+/// labels wants one each rather than one shared: hand each box a
+/// [rendererFactory], or, from the widget layer, put a
+/// `DefaultTextRenderer3d` above them and let `SceneText3d` do it.
 class Text3d extends Layout3d {
   /// Creates a text box over [data].
   Text3d(
@@ -74,6 +77,7 @@ class Text3d extends Layout3d {
     TextBreakRules3d rules = TextBreakRules3d.standard,
     TextMeasurement3d? measurement,
     Text3dRenderer? renderer,
+    Text3dRendererFactory? rendererFactory,
     super.name,
   }) : _data = data,
        _style = style,
@@ -85,7 +89,12 @@ class Text3d extends Layout3d {
        _depth = depth,
        _rules = rules,
        _measurement = measurement ?? SegmentedTextMeasurement3d.shared,
-       _renderer = renderer,
+       _rendererFactory = renderer == null ? rendererFactory : null,
+       _renderer = renderer ?? rendererFactory?.call(),
+       assert(
+         renderer == null || rendererFactory == null,
+         'A Text3d takes a renderer or a factory to make one from, not both.',
+       ),
        assert(maxLines == null || maxLines > 0),
        assert(depth >= 0.0);
 
@@ -231,17 +240,48 @@ class Text3d extends Layout3d {
   }
 
   Text3dRenderer? _renderer;
+  Text3dRendererFactory? _rendererFactory;
 
   /// What turns the layout into geometry, or null to draw nothing.
   ///
-  /// Owned by this box: the old one is disposed when a new one is set, and
-  /// the current one when the box is.
+  /// **Owned by this box**, however it arrived: the old one is disposed when
+  /// a new one is set, and the current one when the box is. That is why a
+  /// renderer is never shared between boxes — one instance behind two labels
+  /// is disposed by whichever label goes first, and the other draws nothing
+  /// from then on. Share the *atlas* instead, which
+  /// [AtlasText3dRenderer] does through `GlyphAtlasCache3d.shared`.
+  ///
+  /// Setting this takes the box off any [rendererFactory] it was following.
   Text3dRenderer? get renderer => _renderer;
 
   set renderer(Text3dRenderer? value) {
-    if (identical(_renderer, value)) return;
+    if (_rendererFactory == null && identical(_renderer, value)) return;
     _renderer?.dispose();
+    _rendererFactory = null;
     _renderer = value;
+    markNeedsLayout();
+  }
+
+  /// A factory this box makes a [renderer] of its own from, or null.
+  ///
+  /// The seam an inherited default hangs off: `DefaultTextRenderer3d` carries
+  /// a [Text3dRendererFactory] rather than a renderer, and every
+  /// `SceneText3d` under it writes the same function here. Setting the *same*
+  /// function again is a no-op, which is what keeps a rebuild from building
+  /// and disposing a renderer per frame; setting a different one disposes
+  /// what the old one made and calls the new one once.
+  ///
+  /// Writing null drops whatever renderer the box has, factory-made or not,
+  /// which is what a label losing its inherited default means.
+  Text3dRendererFactory? get rendererFactory => _rendererFactory;
+
+  set rendererFactory(Text3dRendererFactory? value) {
+    if (_rendererFactory == value && (value != null || _renderer == null)) {
+      return;
+    }
+    _renderer?.dispose();
+    _rendererFactory = value;
+    _renderer = value?.call();
     markNeedsLayout();
   }
 
@@ -420,6 +460,7 @@ class Text3d extends Layout3d {
   void dispose() {
     _renderer?.dispose();
     _renderer = null;
+    _rendererFactory = null;
     super.dispose();
   }
 

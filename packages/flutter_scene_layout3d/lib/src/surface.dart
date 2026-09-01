@@ -12,6 +12,7 @@ import 'geometry/size3d.dart';
 import 'hit_test.dart';
 import 'layout3d.dart';
 import 'metrics.dart';
+import 'slot.dart';
 
 /// The root of a 3D layout: the plane its children are arranged on.
 ///
@@ -139,6 +140,38 @@ class Layout3dSurface extends SingleChildLayout3d {
     if (_owner.metrics == value) return;
     _owner.metrics = value;
     markSubtreeNeedsLayout();
+  }
+
+  /// What [key] holds on this surface, or null when nothing has written it.
+  T? slotValue<T extends Object>(Layout3dSlot<T> key) => _owner.slot(key);
+
+  /// Writes tree-wide state every box below can read as [Layout3d.slot].
+  ///
+  /// The seam a component library's theme travels on. This package declares
+  /// no themes — Material vocabulary does not belong here — so the library
+  /// declares a [Layout3dSlot] of its own and writes it here:
+  ///
+  /// ```dart
+  /// surface.setSlot(themeSlot, Theme3dData.light());
+  /// ```
+  ///
+  /// **It relayouts the subtree by default**, for the same reason writing
+  /// [metrics] does: a slot is read inside `performLayout` and never arrives
+  /// as a constraint, so nothing else would tell a box that the number it
+  /// sized itself from has changed. A theme's paddings and type sizes are
+  /// exactly that. Pass `relayout: false` for a value nothing measures
+  /// against — a palette a repaint-only path reads — and nothing on a
+  /// per-frame path should write a slot at all.
+  ///
+  /// Null removes the value. The surface stores it and does not own it:
+  /// [dispose] clears the map without disposing anything in it.
+  void setSlot<T extends Object>(
+    Layout3dSlot<T> key,
+    T? value, {
+    bool relayout = true,
+  }) {
+    if (!_owner.setSlot(key, value)) return;
+    if (relayout) markSubtreeNeedsLayout();
   }
 
   /// Called when something in the tree goes dirty, so a host can schedule a

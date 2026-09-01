@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-08-25T20:31:04Z
-updated_at: 2026-09-01T16:30:00Z
+updated_at: 2026-09-01T21:30:00Z
 commit: 657eef80eb8dc8085c3b3a84a8069273495506be
 ---
 
@@ -248,8 +248,9 @@ one colour; nothing on either path allocates.
 
 The plan stayed open long after the code was written, for one reason: nothing
 in this repository could draw. `2026_08_28_render_coverage.md` fixed that —
-`examples/render_probe`'s build hook is the first thing in either repository
-to run `impellerc` over `assets/box_decoration3d.fmat` — and the remaining
+`examples/render_probe`'s build hook was the first thing in either repository
+to run `impellerc` over `assets/box_decoration3d.fmat` (the package's own hook
+compiles it for every consumer now) — and the remaining
 items were then either ordinary work or an engine question with an answer.
 Both are now done.
 

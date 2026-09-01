@@ -30,10 +30,12 @@ import 'decoration.dart';
 /// faces should line up with the box it is decorating. So the basis in the
 /// paint request is deliberately unused here.
 ///
-/// The material is the caller's, because compiling one needs a build hook
-/// this package cannot run from inside a dependency. Install the shipped
-/// `assets/box_decoration3d.fmat` in your app's hook, load it once, and hand
-/// the loader in:
+/// The material is the caller's, because building one needs a GPU context
+/// that this package cannot assume it has. Compiling the shader is *not* the
+/// caller's job any more: this package's own `hook/build.dart` runs
+/// `impellerc` over `assets/box_decoration3d.fmat` for whatever app depends
+/// on it, so loading it is one line and the app's hook needs nothing in it
+/// about panels:
 ///
 /// ```dart
 /// final material = await loadFmatMaterial('assets/box_decoration3d.fmat');

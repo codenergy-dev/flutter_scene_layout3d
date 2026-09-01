@@ -66,6 +66,19 @@ class Text3dRenderRequest {
   final double logicalPixelsPerUnit;
 }
 
+/// Makes a [Text3dRenderer] for one box.
+///
+/// The shape an inherited default has to take, and the reason it cannot be a
+/// renderer. A renderer handed to a [Text3d] is *owned* by it — the box
+/// disposes it — so one instance shared across a screen of labels is disposed
+/// by whichever label leaves the tree first, and every other label is then
+/// holding a dead renderer. A factory gives each box one of its own; what is
+/// actually shared is the glyph atlas behind them, through
+/// `GlyphAtlasCache3d.shared`, which is where sharing belongs.
+///
+/// `DefaultTextRenderer3d` in the widget layer carries one of these.
+typedef Text3dRendererFactory = Text3dRenderer Function();
+
 /// Turns a laid-out string into something the scene draws.
 ///
 /// The seam the two halves of text are separated by. Measurement and line

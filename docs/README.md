@@ -61,10 +61,13 @@ Two entry points:
   built the lane that draws a frame and checks it, and its findings section is
   a good sample of what surprises people here.
 - [The Material catalogue plan](../packages/flutter_scene_material3d/plans/2026_09_01_flutter_scene_material3d.md)
-  is what happens next, and the only plan in either package still `pending`.
-  Its middle section — what an elevation, a ripple, a disabled state and a
+  is what happens next, and the only plan in either package still open. Its
+  middle section — what an elevation, a ripple, a disabled state and a
   thickness mean once the depth is real — is design reasoning that exists
-  nowhere else.
+  nowhere else. Its phase 0 is done, in
+  [the four things before a component](../packages/flutter_scene_layout3d/plans/2026_09_01_the_four_things_before_a_component.md):
+  the four additions to the layout package a first component could not do
+  without, and the two places that plan's own reasoning turned out wrong.
 
 ## Keeping this true
 

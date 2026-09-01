@@ -29,9 +29,20 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_scene: ^0.23.0
+  # Build-time only: hook/build.dart compiles this package's panel shader.
+  hooks: ^2.0.0
   vector_math: ^2.1.4
 
 dev_dependencies:
   flutter_lints: ^5.0.0
   flutter_test:
     sdk: flutter
+
+flutter:
+  assets:
+    # The panel shader, compiled by this package's own build hook for the
+    # engine that consumes it. A shader bundle is only valid for that engine,
+    # so nothing here is published: the archive carries the directory and its
+    # .gitignore alone, and every app that depends on this package builds its
+    # own copy.
+    - flutter_scene_generated/

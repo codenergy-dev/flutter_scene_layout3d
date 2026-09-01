@@ -43,6 +43,8 @@ import '../boxes/sized.dart';
 import '../boxes/stack.dart';
 import '../boxes/table.dart';
 import '../boxes/wrap.dart';
+import '../decoration/decorated_box.dart';
+import '../decoration/decoration.dart';
 import '../geometry/alignment3d.dart';
 import '../geometry/constraints3d.dart';
 import '../geometry/edge_insets3d.dart';
@@ -61,6 +63,7 @@ import '../scroll/scroll_controller.dart';
 import '../scroll/scroll_physics.dart';
 import '../scroll/viewport.dart';
 import '../semantics.dart';
+import '../slot.dart';
 import '../sliver/custom_scroll_view.dart';
 import '../sliver/sliver.dart';
 import '../sliver/sliver_grid.dart';
@@ -70,6 +73,7 @@ import '../text/break_rules.dart';
 import '../text/text3d.dart';
 import '../text/text_measurement.dart';
 import '../text/text_renderer.dart';
+import 'default_text_renderer.dart';
 import 'framework.dart';
 
 /// Puts engine content into a declarative layout, the widget form of
@@ -710,8 +714,141 @@ class SceneTransform3d extends SingleChildLayout3dWidget {
   }
 }
 
+/// Puts a value where every box on the surface can read it, the widget form
+/// of [SlotProvider3d].
+///
+/// The declarative half of the owner's typed slots. Wrap the part of the tree
+/// the value belongs to — in practice the whole of it — and any box below
+/// reads it inside `performLayout` as `slot(themeSlot)`, with no
+/// `BuildContext` and nothing threaded through constructors:
+///
+/// ```dart
+/// SceneLayout3d(
+///   size: const Size3d(4, 3, 0.2),
+///   child: SceneSlotProvider3d<Theme3dData>(
+///     slot: themeSlot,
+///     value: Theme3dData.light(),
+///     child: screen,
+///   ),
+/// )
+/// ```
+///
+/// A component library pairs this with an `InheritedWidget` of its own, so
+/// the widget layer reads the value through a `BuildContext` and the
+/// imperative layer reads it through the owner — one value, written once.
+///
+/// **The slot is the surface's, not this widget's subtree.** Two providers
+/// for the same slot on one surface overwrite each other in attachment
+/// order; there is no scoping, because tree-wide state is exactly what the
+/// owner is for. Changing [value] relayouts the subtree, because a slot is
+/// read during layout and never arrives as a constraint — so nothing on a
+/// per-frame path may write one.
+///
+/// [SceneLayout3d.slots] is the same write, stated on the surface itself, for
+/// an application that knows its slots at the root.
+class SceneSlotProvider3d<T extends Object> extends SingleChildLayout3dWidget {
+  /// Creates a provider writing [value] under [slot].
+  const SceneSlotProvider3d({
+    super.key,
+    required this.slot,
+    required this.value,
+    super.child,
+  });
+
+  /// The slot to write.
+  final Layout3dSlot<T> slot;
+
+  /// What the slot holds while this widget is in the tree.
+  final T? value;
+
+  @override
+  SlotProvider3d<T> createLayout(BuildContext context) =>
+      SlotProvider3d<T>(slot: slot, value: value);
+
+  @override
+  void updateLayout(BuildContext context, SlotProvider3d<T> layout) {
+    assert(
+      layout.slotKey == slot,
+      'A SceneSlotProvider3d cannot change which slot it writes. Give the '
+      'widget a key, or use two providers.',
+    );
+    layout.value = value;
+  }
+}
+
+/// A box that makes itself visible, the widget form of [DecoratedBox3d].
+///
+/// The declarative layer's one way of drawing something. Everything else here
+/// arranges; this widget hands its box's own size to a
+/// [Decoration3dPainter], which puts a mesh under the box's node and keeps it
+/// the right size.
+///
+/// ```dart
+/// SceneDecoratedBox3d(
+///   decoration: const BoxDecoration3d(
+///     color: Color(0xFF1B6EF3),
+///     borderRadius: BorderRadius3d.circular(12),
+///     elevation: 3,
+///   ),
+///   stateLayer: hovered
+///       ? const StateLayer3d(color: Color(0xFFFFFFFF), opacity: 0.08)
+///       : StateLayer3d.none,
+///   child: const ScenePadding3d(
+///     padding: EdgeInsets3d.all(0.12),
+///     child: SceneText3d('Continue'),
+///   ),
+/// )
+/// ```
+///
+/// **Every figure on the decoration is in logical pixels** — a 12dp corner, a
+/// 3dp elevation — which the metrics turn into world units at paint time.
+/// `circular(0.6)` is six thousandths of a unit and looks square.
+///
+/// **Neither property touches layout, and that is the point of the class.**
+/// A rebuild that changes only [stateLayer] writes one shader uniform and
+/// asks for a frame; a rebuild that changes only [decoration] writes
+/// parameters and, when the elevation moved, one matrix. Nothing is marked
+/// dirty for layout either way, so a pointer crossing a screen of controls
+/// costs no layout at all. That is what makes the hover of a catalogue
+/// affordable, and `test/widgets_decoration_test.dart` states it.
+///
+/// **It draws nothing until an application installs a painter.**
+/// [BoxDecoration3d.painterFactory] is null by default, because building
+/// geometry needs a GPU context that `flutter test` does not have. See the
+/// package README under *Making a box visible*.
+class SceneDecoratedBox3d extends SingleChildLayout3dWidget {
+  /// Creates a decorated box.
+  const SceneDecoratedBox3d({
+    super.key,
+    required this.decoration,
+    this.stateLayer = StateLayer3d.none,
+    super.child,
+  });
+
+  /// What this box looks like.
+  final Decoration3d decoration;
+
+  /// The hover, focus, press or drag overlay in force.
+  final StateLayer3d stateLayer;
+
+  @override
+  DecoratedBox3d createLayout(BuildContext context) =>
+      DecoratedBox3d(decoration: decoration, stateLayer: stateLayer);
+
+  @override
+  void updateLayout(BuildContext context, DecoratedBox3d layout) {
+    layout
+      ..decoration = decoration
+      ..stateLayer = stateLayer;
+  }
+}
+
 /// Margin, constraints, padding, and alignment in one box, the widget form of
 /// [Container3d].
+///
+/// Unlike Flutter's `Container` it has no `decoration`, for the reason
+/// [Container3d]'s own doc gives: wrap it in a [SceneDecoratedBox3d], which
+/// makes the order of margin and panel explicit instead of implied.
 class SceneContainer3d extends SingleChildLayout3dWidget {
   /// Creates a container.
   const SceneContainer3d({
@@ -1516,8 +1653,28 @@ class SceneText3d extends Layout3dWidget {
   /// The measurement policy, or null for the shared segmented one.
   final TextMeasurement3d? measurement;
 
-  /// What turns the layout into geometry, or null to draw nothing.
+  /// What turns the layout into geometry.
+  ///
+  /// Null takes the ambient [DefaultTextRenderer3d]'s factory, and draws
+  /// nothing when there is none. A renderer given here is owned by this
+  /// label's box, so do not hand the same instance to two of them; install a
+  /// [DefaultTextRenderer3d] instead, which gives each label one of its own.
   final Text3dRenderer? renderer;
+
+  /// Writes whichever of the two renderer sources applies onto [layout].
+  ///
+  /// An explicit renderer wins. Otherwise the inherited factory is written,
+  /// including when it is null — which is what makes a label stop drawing
+  /// when its default is taken away. Writing the same factory again is a
+  /// no-op inside [Text3d], so a rebuild does not churn renderers.
+  void _applyRenderer(BuildContext context, Text3d layout) {
+    final renderer = this.renderer;
+    if (renderer != null) {
+      layout.renderer = renderer;
+      return;
+    }
+    layout.rendererFactory = DefaultTextRenderer3d.maybeOf(context);
+  }
 
   TextStyle _resolveStyle(BuildContext context) {
     final inherited = DefaultTextStyle.of(context).style;
@@ -1546,6 +1703,9 @@ class SceneText3d extends Layout3dWidget {
     rules: rules,
     measurement: measurement,
     renderer: renderer,
+    rendererFactory: renderer == null
+        ? DefaultTextRenderer3d.maybeOf(context)
+        : null,
   );
 
   @override
@@ -1560,8 +1720,8 @@ class SceneText3d extends Layout3dWidget {
       ..maxLines = maxLines
       ..depth = depth
       ..rules = rules
-      ..measurement = measurement ?? SegmentedTextMeasurement3d.shared
-      ..renderer = renderer;
+      ..measurement = measurement ?? SegmentedTextMeasurement3d.shared;
+    _applyRenderer(context, layout);
   }
 }
 

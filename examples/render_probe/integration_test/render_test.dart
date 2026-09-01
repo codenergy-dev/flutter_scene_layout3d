@@ -624,13 +624,14 @@ void main() {
     });
   });
 
-  // The seam nothing could reach until now. `box_decoration3d.fmat` ships with
-  // the package and, until this app's build hook compiled it, no lane in
-  // either this repository or the engine's had ever run impellerc over it: a
-  // unit test parses the file and checks that every parameter the Dart side
-  // writes is declared, which catches a silent mismatch but not invalid GLSL.
-  // These two tests are the first thing to ask the compiler, and then the
-  // rasterizer, whether the shader is real.
+  // The seam nothing could reach until this lane existed.
+  // `box_decoration3d.fmat` ships with the package and is compiled by the
+  // package's own build hook, so invalid GLSL now fails any build; what still
+  // fails nowhere else is a shader that compiles and draws the wrong thing.
+  // A unit test parses the file and checks that every parameter the Dart side
+  // writes is declared, which catches a silent mismatch and nothing about the
+  // picture. These tests are the only thing that asks the rasterizer whether
+  // the shader is real.
   group('the decoration shader', () {
     testWidgets('the panel shader compiles, runs, and rounds its corners', (
       tester,

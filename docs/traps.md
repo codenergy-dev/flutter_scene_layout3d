@@ -93,26 +93,60 @@ BoxDecoration3d.painterFactory =
     (_) => BoxDecoration3dPainter(createMaterial: () => material);
 ```
 
-Compiling the shipped `.fmat` needs a build hook, which a package cannot run
-from inside a dependency. `examples/render_probe/hook/build.dart` shows the
-shape of it.
+**Compiling the shader is no longer your job.** The package's own
+`hook/build.dart` runs `impellerc` over `assets/box_decoration3d.fmat` for
+whatever application depends on it, so the source path above names a file
+inside the package and resolves through the package's own generated manifest.
+Your hook needs nothing in it about panels. Do not confuse this with
+`buildEngineAssets`, which is a different thing: that is what makes
+`Scene.initializeStaticResources()` resolve, `flutter_scene`'s own hook
+already does it, and an app calls it only to put the engine's shaders in its
+own bundle. See *Compiling a `.fmat`* in [engine-rules.md](engine-rules.md),
+which
+also covers the one migration hazard: an app that used to compile the shader
+itself has a stale bundle in its `flutter_scene_generated/` and gets
+*"Multiple generated .fmat materials"* until that directory is emptied once.
 
-**A label needs a renderer.** `Text3d` takes one and has none by default:
+**A label needs a renderer, and it must not be a shared one.** `Text3d` takes
+one and has none by default:
 
 ```dart
 Text3d('Save', style: labelStyle, renderer: AtlasText3dRenderer())
 ```
 
-That one is per box and is owned by it — the box disposes it — while the
-*atlas* behind it is shared through `GlyphAtlasCache3d.shared`, which is what
-makes a screen of labels one texture. A `RichText3d` needs no renderer but
-does need a `SceneView` to host its subtree; in a scene nobody is displaying
-it measures correctly and draws nothing.
+**A renderer is owned by the box that holds it.** `Text3d` disposes it when a
+different one is set and when the box itself is disposed, so handing the same
+instance to two labels means whichever label goes first kills the other one's
+renderer — it draws nothing from then on, and nothing says why. That is the
+whole reason `DefaultTextRenderer3d` carries a
+`Text3dRendererFactory` rather than a renderer: every label under it calls the
+factory and owns what comes back. The expensive thing, the *atlas*, is shared
+underneath through `GlyphAtlasCache3d.shared`, which is what makes a screen of
+labels one texture; the renderer in front of it is cheap. From the widget
+layer, install the default once and stop thinking about it:
+
+```dart
+DefaultTextRenderer3d(factory: AtlasText3dRenderer.new, child: app)
+```
+
+A `RichText3d` needs no renderer but does need a `SceneView` to host its
+subtree; in a scene nobody is displaying it measures correctly and draws
+nothing.
 
 Both of those are one-frame-late by nature: an atlas glyph nobody has drawn
 before is read back asynchronously, and a widget capture arrives on the frame
 after the subtree is hosted. A test that draws a label and reads the frame in
 the same pump reads an empty frame.
+
+**A widget leaving the tree does not dispose the layout under it.** Only a
+lazily built child sets `Layout3dRenderBox.disposeLayoutOnUnmount`; every
+other widget-owned layout is disposed by the surface's own teardown, and a
+layout removed before that is never reached. So a `SceneText3d` taken out of a
+live tree keeps its renderer, and with it whatever that renderer built, until
+the surface goes. It is small, it predates the inherited default, and
+`test/default_text_renderer_test.dart` pins it so that fixing it is noticed
+rather than silent — but a screen that churns thousands of labels should know
+about it.
 
 ### Elevation is a lift, not a shadow
 

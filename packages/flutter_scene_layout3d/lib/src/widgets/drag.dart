@@ -17,9 +17,9 @@ import 'framework.dart';
 /// SceneDraggable3d<Photo>(
 ///   data: photo,
 ///   startMode: const Drag3dStartMode.longPress(),
-///   feedbackBuilder: (_) => Container3d(
-///     size: const Size3d(0.6, 0.4, 0.02),
+///   feedbackBuilder: (_) => DecoratedBox3d(
 ///     decoration: cardDecoration,
+///     child: SizedBox3d(width: 0.6, height: 0.4, depth: 0.02),
 ///   ),
 ///   child: SceneDecoratedBox3d(decoration: thumbnail, child: label),
 /// )

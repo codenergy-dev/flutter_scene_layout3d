@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-08-28T23:20:00Z
-updated_at: 2026-09-01T16:30:00Z
+updated_at: 2026-09-01T21:30:00Z
 commit: 3f1bd45cc0b06131a50ab145917648f9164d8f57
 ---
 
@@ -176,6 +176,13 @@ a `BoxDecoration3d` entry and its full parameter sidecar. Then it draws: a
 panel with a 60dp radius reads empty at 1%, 2% and 4% of the way in along its
 corner diagonal and solid from 8%, while the square control is solid from 4%.
 The SDF is real.
+
+(That arrangement has since moved. `flutter_scene_layout3d` compiles its own
+shader from its own `hook/build.dart` now — a package's hook does run when it
+is a dependency — so this app's hook calls `buildEngineAssets` alone and the
+symlink is gone. See
+[the four things before a component](2026_09_01_the_four_things_before_a_component.md).
+Nothing above about what the probes found is affected.)
 
 ## What the plan got wrong, and what the first runs taught
 
