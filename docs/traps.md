@@ -135,6 +135,14 @@ reaches further toward the viewer than a 0.8-deep child stepped 0.35, so the
 back child wins the depth test and the stack looks inverted. Keep stacked
 children thin relative to the step, or raise the step.
 
+**`Dismissible3d`'s backgrounds are coplanar with the child.**
+`backgroundDepthStep` defaults to zero, exactly as `Stack3d.depthStep` does,
+so the background revealed by a swipe and the row sliding off it sit on the
+same plane and z-fight where they overlap. That is the right default for a flat
+Material row — the child covers the background until it moves, so there is
+nothing to fight over — and the wrong one the moment either has depth. A small
+positive step pushes the backgrounds away from the viewer and the fight stops.
+
 ## Pointers
 
 - **`TapTarget3d` grows the ray region but not the box.** The Material 48dp
@@ -143,6 +151,29 @@ children thin relative to the step, or raise the step.
   neighbours from moving when a target is padded — but sharp.
 - **A `Text3d` answers hit tests on its own account**, so a label inside a
   button usually wants an `IgnorePointer3d` around it.
+- **A drop lands where a tap would land, which is not always where it looks
+  like it lands.** A `Drag3dSession` picks the *nearest acceptor along the
+  ray* — hit order within a surface, front-to-back between them — for the same
+  reason a press does: consistency is the only rule a viewer can predict from.
+  So it inherits the depth-ordering trap above. A drop target thicker than the
+  `Stack3d.depthStep` separating it from its neighbours can reach further
+  toward the viewer than the card drawn in front of it, win the ray, and take a
+  drop that visibly belonged to the other one. The drag machinery cannot fix
+  this and does not try: **keep drop targets thin relative to the step.**
+- **A picked-up card is only as far in front as its layer's lift.**
+  `Draggable3d` corrects the feedback's position on the *plane* so it covers
+  the box the drag started on, and deliberately leaves depth to
+  `OverlayLayer3d.lift` — correcting depth too would land the feedback exactly
+  on the source and cancel the lift. The default lift is
+  `Overlay3d.defaultLift`, eight logical pixels, which is a depth-buffer
+  separation rather than a distance: content thicker than that will still
+  fight the feedback carried over it, exactly as the depth-ordering item above
+  describes. Ask for a bigger lift when the rows have real thickness.
+- **Feedback under the pointer must be wrapped in an `IgnorePointer3d`**, and
+  `Draggable3d` does it for you. Hit testing ignores `nodeOffset`, so a piece
+  of feedback moved on the node tier is invisible to the ray moving it — but
+  its *laid-out* position is not, and a `Text3d` inside it would answer there
+  and steal the drop.
 
 ## Clipping
 

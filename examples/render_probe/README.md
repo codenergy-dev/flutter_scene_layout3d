@@ -70,3 +70,32 @@ Two rules that are not obvious:
   is the premise the harness rests on.
 - **Primitives only, generated in code.** A scene that loads an asset is a
   scene that can fail for a reason that has nothing to do with layout.
+
+### A scene that is mid-interaction
+
+Two of them are: `drag_feedback_depth` and `drag_feedback_detached` hold a
+`Draggable3d` in flight while the frame is captured, because what a drag looks
+like is the one part of it no arithmetic can check. A scene does that by
+building its surface, flushing it, and driving a real `Layout3dPointer` — see
+`_dragAcross` — all inside `build()`, so what the harness receives is a static
+scene that happens to have a live drag in it.
+
+The step that is easy to leave out is the flush *in the middle*. An overlay
+entry has no size on the frame it is inserted, so `Draggable3d` cannot yet work
+out where the feedback has to sit to cover the card it came from; the press and
+the first move insert it, a flush gives it a size, and only the second move
+writes the node offset a probe is there to look at.
+
+A probe aimed at feedback can use `centerOf` and get the carried position, and
+the reason is worth knowing before you assume otherwise. `worldTransform`
+undoes a box's **own** `nodeOffset` — that channel exists to move geometry
+without moving the box layout arranged — but an *ancestor's* stays in
+`globalTransform` and therefore in the projection. `Draggable3d` writes the
+offset onto the `IgnorePointer3d` it wraps the feedback subtree in, which is
+above anything a caller can name, so `centerOf('feedback')` follows the drag.
+
+Reconstructing the drawn point by hand from `box.nodeOffset` is the trap: on a
+probed feedback box that is always zero, so the "drawn" point comes out equal
+to the laid-out one and an assertion built on the difference compares a number
+with itself. An earlier version of the detached scene did exactly that and
+failed with a distance of 0.0.

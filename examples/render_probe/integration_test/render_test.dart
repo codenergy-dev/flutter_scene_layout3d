@@ -15,6 +15,7 @@
 // layout put it", not "is this pixel that colour"; goldens across backends and
 // driver versions fail for reasons that have nothing to do with the package.
 
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -688,6 +689,102 @@ void main() {
         reason:
             'the corner radius did not carve the corner away: square read '
             '$squareCorner, rounded read $roundedCorner',
+      );
+    });
+  });
+
+  group('a drag in flight', () {
+    // Two claims the package's own suite cannot make. Everything about a drag
+    // is arithmetic except what it looks like, and what it looks like is
+    // exactly what these two ask.
+
+    testWidgets('the lifted feedback wins the depth test', (tester) async {
+      final capture = await _draw(
+        tester,
+        kProbeScenes.byId('drag_feedback_depth'),
+      );
+
+      // Three identical teal rows; a card picked up from the first and
+      // carried over the third. Row 2 is under the feedback, row 0 is not.
+      final covered = capture.frame.meanColorAt(
+        capture.centerOf('row2'),
+        radius: 6,
+      )!;
+      final bare = capture.frame.meanColorAt(
+        capture.centerOf('row0'),
+        radius: 6,
+      )!;
+
+      expect(
+        capture.frame.coverageAt(capture.centerOf('row2'), radius: 6),
+        greaterThan(0.8),
+        reason: 'nothing drew where the feedback should be',
+      );
+      // A mean over a disc and a margin, never two exact words: the rest of
+      // this file learned that the hard way.
+      expect(
+        FrameProbe.colorDistance(covered, bare),
+        greaterThan(0.1),
+        reason:
+            'the feedback did not occlude the row it was carried over; read '
+            '$covered over row 2 and $bare over row 0, which are the same '
+            'colour underneath',
+      );
+    });
+
+    testWidgets('detached feedback draws outside the panel it came from', (
+      tester,
+    ) async {
+      final capture = await _draw(
+        tester,
+        kProbeScenes.byId('drag_feedback_detached'),
+      );
+
+      // `screenCenter` already follows the drag. The box that carries the
+      // node offset is the `IgnorePointer3d` `Draggable3d` wraps the feedback
+      // in — an *ancestor* of anything a caller can name — and
+      // `worldTransform` undoes only a box's own nudges, so an ancestor's
+      // stays in the projection. Reconstructing the offset by hand would read
+      // this box's own, which is zero.
+      final drawn = capture.centerOf('feedback');
+      final card = capture.centerOf('card');
+      expect(
+        (drawn - card).distance,
+        greaterThan(20.0),
+        reason:
+            'the feedback was never carried anywhere: it is still on the '
+            'card at $card',
+      );
+
+      // Carried clean off the panel, which is the one thing an in-plane entry
+      // could not do. Compared against both edges rather than the right one:
+      // the basis mirrors x on its way to the screen, so which edge a drag
+      // toward larger layout x ends up beyond is not something to assume.
+      final left = capture.pointOf('panel', const Offset3d(0, 0.5, 0)).dx;
+      final right = capture.pointOf('panel', const Offset3d(1, 0.5, 0)).dx;
+      expect(
+        drawn.dx < math.min(left, right) || drawn.dx > math.max(left, right),
+        isTrue,
+        reason:
+            'the feedback did not overhang the panel: it drew at ${drawn.dx} '
+            'and the panel spans $left to $right',
+      );
+      expect(
+        capture.frame.coverageAt(drawn, radius: 6),
+        greaterThan(0.8),
+        reason:
+            'no geometry drew where the detached feedback was carried to; a '
+            'detached entry that is not in the scene graph draws nothing',
+      );
+
+      // And it really is the feedback out there rather than the card, which
+      // stayed on the panel.
+      final outside = capture.frame.meanColorAt(drawn, radius: 5)!;
+      final onPanel = capture.frame.meanColorAt(card, radius: 5)!;
+      expect(
+        FrameProbe.colorDistance(outside, onPanel),
+        greaterThan(0.1),
+        reason: 'read $outside off the panel and $onPanel on it',
       );
     });
   });

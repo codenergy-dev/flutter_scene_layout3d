@@ -250,6 +250,7 @@ class Drag3dSession {
   HitTestResult3d _lastHit = HitTestResult3d();
 
   final List<VoidCallback> _endListeners = <VoidCallback>[];
+  final List<VoidCallback> _resolveListeners = <VoidCallback>[];
 
   /// Whether this drag is still in flight.
   ///
@@ -314,6 +315,28 @@ class Drag3dSession {
   void removeEndListener(VoidCallback listener) =>
       _endListeners.remove(listener);
 
+  /// Registers [listener] to be called every time this drag has been resolved
+  /// against a path.
+  ///
+  /// After the enter, move and leave that resolution produced, so a listener
+  /// sees a settled session. It is how something that has to react to *where
+  /// the drag is* — an autoscroller reading the edge band of the view under
+  /// the pointer — stays in step without being poked by whoever happens to be
+  /// dispatching. That mattered more than it looks: the resolution runs after
+  /// the move has been dispatched along the captured path, so anything that
+  /// reads [lastHit] from inside a `handleEvent` is reading the *previous*
+  /// move's answer, and a finger that arrives at the edge of a list and stops
+  /// would never start it scrolling.
+  ///
+  /// Called for [update], [refresh] and [tick] alike. Not called for the
+  /// ending: use [addEndListener], which fires once and cannot be missed.
+  void addResolveListener(VoidCallback listener) =>
+      _resolveListeners.add(listener);
+
+  /// Removes a listener [addResolveListener] registered.
+  void removeResolveListener(VoidCallback listener) =>
+      _resolveListeners.remove(listener);
+
   /// Resolves the targets under [hit] and dispatches what changed.
   ///
   /// The one pass a live drag adds. Every entry on the path whose layout is a
@@ -360,6 +383,11 @@ class Drag3dSession {
       now.where((e) => !_holds(entered, e.layout)).toList(),
       Drag3dEventKind.move,
     );
+    if (_resolveListeners.isNotEmpty) {
+      for (final listener in List<VoidCallback>.of(_resolveListeners)) {
+        listener();
+      }
+    }
     return entered.isNotEmpty || left.isNotEmpty;
   }
 
@@ -368,7 +396,41 @@ class Drag3dSession {
   /// For a caller that changed the world without moving the pointer: a view
   /// that autoscrolled under a stationary finger is over a different row than
   /// it was a frame ago, and nothing but this will notice.
+  ///
+  /// Deliberately re-*uses* the path rather than re-hit-testing, because
+  /// there is no ray to test with. That is enough on its own for anything
+  /// reasoning in scroll coordinates — a reorderable list adds the current
+  /// scroll offset to a local position that has not moved, so its insert
+  /// index follows the window for free. Where a fresh path is wanted, install
+  /// a [pathResolver] and call [tick].
   bool refresh() => update(_lastHit);
+
+  /// Re-hit-tests this drag without a pointer event, if anyone can.
+  ///
+  /// Installed by whoever is driving the session, and it is *not* always the
+  /// obvious one. [Layout3dPointer] installs its own hit test only when it is
+  /// resolving the drags it carries; on a [Layout3dPointerGroup] the pointer
+  /// stops resolving and the group installs its own front-to-back walk
+  /// instead, because a drag that has wandered onto a dialog is over a
+  /// surface the pointer that started it has never heard of. Getting this
+  /// wrong is not a missing feature but a wrong answer: the tick would
+  /// resolve against a path that stops at the surface the press captured.
+  ///
+  /// Null is legal and means [tick] falls back to [refresh].
+  HitTestResult3d Function()? pathResolver;
+
+  /// Resolves the drag again with no pointer event behind it.
+  ///
+  /// What an autoscroll tick calls. Goes through [pathResolver] when there is
+  /// one, so the answer comes from whoever is actually responsible for
+  /// finding this drag's path, and falls back to [refresh] when there is not.
+  ///
+  /// Returns true when the set of accepting targets changed.
+  bool tick() {
+    if (!_active) return false;
+    final resolver = pathResolver;
+    return resolver == null ? refresh() : update(resolver());
+  }
 
   /// Releases the drag onto the deepest target that wants it.
   ///
@@ -441,6 +503,10 @@ class Drag3dSession {
   void _end() {
     _active = false;
     _lastHit = HitTestResult3d();
+    // The resolver closes over the pointer or the group that installed it;
+    // an ended session holding one would keep a torn-down surface reachable.
+    pathResolver = null;
+    _resolveListeners.clear();
     final listeners = List<VoidCallback>.of(_endListeners);
     _endListeners.clear();
     for (final listener in listeners) {

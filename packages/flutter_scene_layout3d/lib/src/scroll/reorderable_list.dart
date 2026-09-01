@@ -6,6 +6,7 @@ import 'package:flutter/scheduler.dart' show TickerProvider;
 import '../boxes/flex.dart' show CrossAxisAlignment3d;
 import '../built_children.dart';
 import '../geometry/offset3d.dart';
+import '../input/autoscroll.dart';
 import '../input/draggable.dart';
 import '../layout3d.dart';
 import '../sliver/sliver_reorderable_list.dart';
@@ -80,6 +81,7 @@ class ReorderableList3d extends BoxScrollView3d<SliverReorderableList3d> {
     Drag3dStartMode startMode = const Drag3dStartMode.longPress(),
     Duration gapDuration = const Duration(milliseconds: 200),
     Curve gapCurve = Curves.easeInOut,
+    Drag3dAutoscroll? autoscroll = const Drag3dAutoscroll(),
     TickerProvider? vsync,
     Axis3d scrollDirection = Axis3d.vertical,
     Scroll3dController? controller,
@@ -100,6 +102,7 @@ class ReorderableList3d extends BoxScrollView3d<SliverReorderableList3d> {
            startMode: startMode,
            gapDuration: gapDuration,
            gapCurve: gapCurve,
+           autoscroll: autoscroll,
            vsync: vsync,
            spacing: spacing,
            itemExtent: itemExtent,
@@ -141,6 +144,15 @@ class ReorderableList3d extends BoxScrollView3d<SliverReorderableList3d> {
   Curve get gapCurve => sliver.gapCurve;
 
   set gapCurve(Curve value) => sliver.gapCurve = value;
+
+  /// How an item carried to the edge of the window scrolls the list, or null
+  /// to leave it still.
+  Drag3dAutoscroll? get autoscroll => sliver.autoscroll;
+
+  set autoscroll(Drag3dAutoscroll? value) => sliver.autoscroll = value;
+
+  /// Whether a drag is scrolling this list on its own right now.
+  bool get isAutoscrolling => sliver.isAutoscrolling;
 
   /// The index of the item being dragged, or null when nothing is.
   int? get dragIndex => sliver.dragIndex;

@@ -207,6 +207,15 @@ class Layout3dPointer {
     session.addEndListener(() {
       if (identical(_drags[pointer], session)) _drags.remove(pointer);
     });
+    // Gated the same way `move` and `up` are, and for the same reason: on a
+    // group this pointer's answer stops at the surface the press captured,
+    // and the group installs its own walk instead.
+    if (_resolvesDrags) {
+      session.pathResolver = () {
+        final ray = _lastRay;
+        return ray == null ? session.lastHit : hitTest(ray);
+      };
+    }
     // The drag was recognized against a path that has already been hit-tested
     // this frame: resolve it now rather than waiting for a move, so a drop
     // without a single move in between still lands on what it was started
@@ -222,9 +231,19 @@ class Layout3dPointer {
       _hovers[pointer]?.path.map((entry) => entry.layout).toList() ??
       const <Layout3d>[];
 
+  Ray? _lastRay;
+
+  /// The ray the last hit test was aimed along, or null before the first.
+  ///
+  /// Kept so that something with no pointer event in hand — an autoscroll
+  /// tick — can ask the same question again. See [Drag3dSession.pathResolver].
+  Ray? get lastRay => _lastRay;
+
   /// What [worldRay] hits, without touching any sequence state.
-  HitTestResult3d hitTest(Ray worldRay) =>
-      _lastHit = surface.hitTestRay(worldRay);
+  HitTestResult3d hitTest(Ray worldRay) {
+    _lastRay = worldRay;
+    return _lastHit = surface.hitTestRay(worldRay);
+  }
 
   /// Starts a press along [worldRay].
   ///
@@ -273,6 +292,7 @@ class Layout3dPointer {
   bool move(Ray worldRay, {int pointer = 0, Duration? timeStamp}) {
     final sequence = _sequences[pointer];
     if (sequence == null) return false;
+    _lastRay = worldRay;
     _lastHit = surface.hitTestRay(worldRay);
     final moved = sequence.move(worldRay, timeStamp ?? _clock.elapsed);
     // After the dispatch, not before: the move is what a draggable recognizes

@@ -1,15 +1,7 @@
 ---
-status: in progress
-reason: >-
-  Everything in the list has landed except the last item, `Dismissible3d`,
-  `Draggable3d`, `DragTarget3d` and reorderable lists. They wait on drag
-  recognition that carries a payload between boxes and across surfaces, which
-  the pointer plan put in its own "Out of scope" section, so the dependency
-  this plan names does not exist yet. It is a plan of its own, not remaining
-  work here, and that plan has not been written — writing it is the next step
-  for this item. Nothing else in this file is open.
+status: completed
 created_at: 2026-08-25T20:31:04Z
-updated_at: 2026-08-28T14:16:51Z
+updated_at: 2026-09-02T12:00:00Z
 commit: 657eef80eb8dc8085c3b3a84a8069273495506be
 ---
 
@@ -191,20 +183,39 @@ test.
       `flutter_scene_material3d` with the tab bar it is shared with. Nothing
       is missing from this package for it to be written there.
 
-- [ ] **`Dismissible3d`, `Draggable3d`, `DragTarget3d`, reorderable lists** —
+- [x] **`Dismissible3d`, `Draggable3d`, `DragTarget3d`, reorderable lists** —
       all depend on real drag recognition from
       [pointer dispatch](2026_08_25_pointer_dispatch_and_focus.md).
 
-      **Still blocked, and not by this plan.** That plan shipped with
+      **Was blocked, and the block is gone.** That plan shipped with
       "drag-and-drop between surfaces" in its own *Out of scope* section, so
-      the dependency named here does not exist: there is a drag that scrolls a
-      grabbed view, and there is no drag that carries a payload from one box
-      to another across surfaces, no feedback subtree following the pointer,
-      and no hit test *during* a drag to find what is underneath it. All four
-      of these are that machinery plus a thin layer, and the machinery is a
-      plan of its own — which is why this file's status stays `in progress`
-      rather than `completed`, with nothing else in it open. Recorded in the
-      README's roadmap as the next thing the catalogue is waiting on.
+      the dependency named here genuinely did not exist: there was a drag that
+      scrolled a grabbed view, and no drag that carried a payload from one box
+      to another, no feedback subtree following the pointer, and no hit test
+      *during* a drag to find what was underneath it.
+
+      [Drag and drop](2026_09_01_drag_and_drop.md) is the plan that built it,
+      and this item is exactly the "thin layer" that plan predicted it would
+      be. `Drag3dSession` is the machinery — a payload in flight and the
+      targets it is passing over, driven by a fresh hit test rather than by
+      the captured path, because **capture governs where events go and a drag
+      search deliberately ignores capture**. `Layout3dPointerGroup` walks
+      every surface front to back while a session is live, so a card picked up
+      on a panel drops on a dialog in front of it. Over that:
+      `Draggable3d<T>` and `DragTarget3d<T>` with a non-generic `Drag3dTarget`
+      seam underneath, `Dismissible3d`, and `SliverReorderableList3d` with
+      `ReorderableList3d` as the viewport around it. Feedback lives in an
+      overlay and is carried by `nodeOffset`, so a drag costs one matrix write
+      a frame and reaches the relayout path exactly twice.
+
+      Two gaps are left behind deliberately, and both are recorded in that
+      plan rather than here: there is **no `SceneReorderableList3d`**, because
+      the list wraps every item in a `Draggable3d` and the declarative layer's
+      contract is that `removeChild` is handed back the very layout
+      `createChild` returned; and `Drag3dAnchor.targetPlane` is reserved
+      rather than built, because the mechanism this design named for it turned
+      out to be the wrong one. Neither is remaining work in *this* file: the
+      boxes the catalogue asked for by name are here.
 
 ## Conventions to keep
 

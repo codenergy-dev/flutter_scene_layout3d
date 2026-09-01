@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-08-25T20:31:04Z
-updated_at: 2026-08-31T14:50:33Z
+updated_at: 2026-09-02T12:00:00Z
 commit: 657eef80eb8dc8085c3b3a84a8069273495506be
 ---
 
@@ -63,8 +63,8 @@ everything modal).
 
 [Persistent headers](2026_08_25_persistent_sliver_headers.md) and
 [animation](2026_08_25_animation_and_scroll_physics.md) follow.
-[The remaining boxes](2026_08_25_the_boxes_still_missing.md) can be picked off
-as components ask for them, and
+[The remaining boxes](2026_08_25_the_boxes_still_missing.md) are all here now,
+and
 [diagnostics](2026_08_25_layout_diagnostics_and_semantics.md) is worth pulling
 forward the moment the catalogue work starts, because it pays for itself in
 debugging time.
@@ -188,14 +188,14 @@ In the order I would take them:
    of text is sharpness at distance — the atlas holds coverage rasters, not a
    distance field — which is a level-of-detail question rather than a
    rendering one.
-2. **A drag plan, then the drag boxes.**
-   [The boxes still missing](2026_08_25_the_boxes_still_missing.md) has only
-   `Dismissible3d`, `Draggable3d`, `DragTarget3d` and reorderable lists left,
-   and they need payload-carrying drag recognition that
-   [pointer dispatch](2026_08_25_pointer_dispatch_and_focus.md) put in its own
-   out-of-scope section. **That plan has not been written.** Write it first —
-   do not implement against a plan that does not exist. This is the only open
-   item that needs no GPU.
+2. ~~**A drag plan, then the drag boxes.**~~ **Done.**
+   [Drag and drop](2026_09_01_drag_and_drop.md) is the plan that was missing
+   here, and it shipped: `Drag3dSession` and the cross-surface search under
+   it, `Draggable3d`, `DragTarget3d`, `Dismissible3d` and reorderable lists
+   over it, and autoscroll on a ticker. With those,
+   [the boxes still missing](2026_08_25_the_boxes_still_missing.md) has
+   nothing left and is `completed`. The premise held: a drag is arithmetic and
+   state, and all but two claims about it were pinned down headlessly.
 3. **[Size-driven geometry](2026_08_25_size_driven_geometry.md)'s remainder.**
    Elevation, the border and the state layer have no probe; adding those
    scenes is ordinary work in the render harness. The shadow item and subtree

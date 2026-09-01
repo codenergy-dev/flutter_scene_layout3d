@@ -1,10 +1,7 @@
 ---
-status: in progress
-reason: phases 1 to 4 and 6 have landed, and phase 5 has been decided against
-  and written up rather than built; phases 7 and 8 (autoscroll, and the render
-  probes and documentation pass) have not been started
+status: completed
 created_at: 2026-09-01T15:40:55Z
-updated_at: 2026-09-02T00:20:00Z
+updated_at: 2026-09-02T12:00:00Z
 commit: e78eb5e28533b37a92779379f8f00c0095023521
 ---
 
@@ -349,13 +346,21 @@ Take them in order; each phase is a thing that can be demonstrated.
       `test/reorderable_test.dart` holds the seventeen tests, including the
       twenty-move `needsFlush` run and the assertion that the index-to-child
       map does not move between the lift and the drop.
-- [ ] **Phase 7 — autoscroll.** The ticker, the edge band, the velocity
+- [x] **Phase 7 — autoscroll.** The ticker, the edge band, the velocity
       ramp, and `tick()` re-running target resolution. Last because it is the
       only piece that improves an interaction which already works without it.
-- [ ] **Phase 8 — the render probe scenes**, and the documentation pass: a
+      Landed as `lib/src/input/autoscroll.dart` — `Drag3dAutoscroll` for the
+      settings and `Drag3dAutoscroller` for the engine — plus
+      `Drag3dSession.tick`, `pathResolver` and `addResolveListener`. On by
+      default for `SliverReorderableList3d`, off by default for `Draggable3d`,
+      the same split Flutter makes.
+- [x] **Phase 8 — the render probe scenes**, and the documentation pass: a
       *Dragging things around* section in the package README, the counterpart
       rows for the four new components, and the depth-ordering trap above
-      added to `docs/traps.md` under *Pointers*.
+      added to `docs/traps.md` under *Pointers*. `drag_feedback_depth` and
+      `drag_feedback_detached` are in `examples/render_probe`, both driving a
+      real pointer inside the scene's own `build()` so the captured frame has
+      a live drag in it.
 
 ## What is testable headlessly, and what is not
 
@@ -389,7 +394,11 @@ already added:
   long press competing with the list's own scroll, and a surface torn down
   mid-flight.);
 - autoscroll under `tester.pump`, including that the insert index moves while
-  the pointer does not.
+  the pointer does not. (As landed: the ramp, the band at both ends and the
+  stop at the extent's end in `test/drag_test.dart` under *autoscroll*, over a
+  `Draggable3d` in a `ListView3d`; and the insert-index claim in
+  `test/reorderable_test.dart`, where the scroll, a flush and one more tick
+  move the landing slot with the finger stationary throughout. Twelve tests.)
 
 What needs a GPU, and so goes in `examples/render_probe` as new scenes:
 
@@ -403,6 +412,13 @@ What needs a GPU, and so goes in `examples/render_probe` as new scenes:
 
 Both must be driven by the test's own clock — a drop animation settling on
 its own schedule is the flake the render plan warns about.
+
+As landed, neither needed a clock at all, which is better: a scene builds its
+surface, flushes it, and drives a real `Layout3dPointer` inside `build()`, so
+what the harness captures is a static frame that happens to have a live drag
+in it. Nothing settles because nothing is animating. See *What happened* for
+the flush in the middle, and for why the detached scene could not be written
+the way this section describes it.
 
 ## What the original reasoning got wrong
 
@@ -610,6 +626,167 @@ that turned out to be untrue.
   and the `children` getter — four places to get an index wrong, in aid of a
   spelling that cannot express what the callback is for.
 
+## What happened
+
+All eight phases are closed: seven built, and phase 5 decided against and
+written up in place of being built. The package suite went from 849 tests to
+861; `dart analyze` is clean from the repository root.
+
+**The premise held.** A drag really is arithmetic and state, and nearly all of
+it was pinned down headlessly — the session's state machine, the arena
+competition both ways round, the long-press timer, the cross-surface walk, the
+reorder arithmetic, and autoscroll under `tester.pump`. Two claims needed a
+GPU and are the two new render probes.
+
+**The seam under the generics was the right call and paid twice.**
+`Drag3dTarget` is non-generic, so `SliverReorderableList3d` could *be* a drop
+target for its own items without inheriting `DragTarget3d<T>` — which is what
+made a reorderable list a thin layer over phase 2 rather than a second design.
+`flutter_scene_material3d` inherits the same seam.
+
+**Nothing in a drag reaches the relayout path except the two passes it cannot
+avoid**, and one that phase 7 adds on purpose. Inserting the feedback into the
+overlay is a layout and taking it out is another, because an overlay entry is a
+child of a stack; a reorder adds a third at the end, to answer the question of
+what an item's visibility should now be. Autoscroll relayouts by definition,
+because the window really did move. Everything else — the feedback tracking the
+pointer, the gap opening, a dismissible sliding, the items sliding aside — is a
+matrix write, and `test/drag_test.dart` runs twenty moves asserting
+`needsFlush` is false after each one.
+
+**`PointerSequence3d.addArenaMember` turned out to be the most reusable thing
+here.** Two of Flutter's four recognizers do not work in this build, so
+anything that wants to compete for a pointer — a knob, a slider, a rotation
+handle — needs this seam, and it is general: it marks the sequence contested
+and enters the global arena on the private pointer id, and nothing about it is
+drag-specific.
+
+The two gaps left open are named rather than hidden: there is no
+`SceneReorderableList3d` and no explicit-children constructor for the list
+(both want a child-manager seam that does not exist), and
+`Drag3dAnchor.targetPlane` is reserved because the mechanism this plan named
+for it is the wrong one. Both are written up below and in the dartdoc a reader
+would reach for first.
+
+[The boxes still missing](2026_08_25_the_boxes_still_missing.md) is
+`completed` as of this plan: its last item was these four components, and the
+readiness overview's *Where to pick up* item 2 — "that plan has not been
+written" — is no longer true and has been corrected.
+
+### Written as phases 7 and 8 landed
+
+- **Autoscroll needed a listener, not a poke, and the reason is an ordering
+  nobody would guess.** The obvious wiring is for `Draggable3d` to nudge its
+  autoscroller from the same place it tracks the feedback, inside
+  `handleEvent`. That is one move too early: `Layout3dPointer.move` dispatches
+  along the captured path *first* and resolves the session *after*, so
+  anything reading `Drag3dSession.lastHit` from inside a `handleEvent` is
+  reading the previous move's answer. A finger that arrives at the edge of a
+  list and then stops would never start it scrolling — which is precisely the
+  case autoscroll exists for. Hence `Drag3dSession.addResolveListener`, which
+  fires after every resolution and is what the autoscroller listens to.
+- **The tick's re-resolution needed a seam, and `refresh()` alone was not it.**
+  `refresh()` re-reads the path the drag last saw, which is exactly enough for
+  a reorderable list — it reasons in *scroll* coordinates, so an unmoved local
+  position plus a changed scroll offset is a changed insert index, with no hit
+  test at all. It is not enough for a plain `DragTarget3d` in a scrolling
+  view, where the rows under the ray really did change. So
+  `Drag3dSession.tick` goes through a `pathResolver` when one is installed:
+  `Layout3dPointer` installs its own hit test, gated on `resolvesDrags` the
+  same way `move` and `up` are, and `Layout3dPointerGroup` installs its
+  front-to-back walk instead. Getting that gate wrong would not have been a
+  missing feature but a wrong answer.
+- **A ticker that runs for the whole drag is not affordable, for a reason that
+  has nothing to do with cost.** It is cheap — one walk of the hit path a
+  frame. But a drag would then never settle, and `pumpAndSettle` would never
+  return. The autoscroller starts a ticker when the drag enters the band and
+  stops it when it leaves, which is what the plan said, and now there is a
+  second reason for it.
+- **The first tick has to move nothing.** `Ticker` takes the timestamp of the
+  frame it started in as its zero, which this plan already recorded for the
+  dismissible's fly-out. For an animation that is a wrong assertion; for
+  autoscroll it would be a visible jump at the instant the finger crossed into
+  the band. So the first callback records the clock and scrolls nothing.
+- **The clamp is by hand, and `jumpBy` alone would not have done it.** The
+  plan chose `jumpBy` over `applyUserOffset` so a release does not fling, and
+  that was right. What it missed is that `jumpBy` still goes through
+  `Scroll3dPhysics.applyBoundaryConditions`, and a bouncing physics *permits*
+  overscroll — so a drag held at the end of a bouncing list would have drifted
+  off the content for as long as it was held. The autoscroller clamps the
+  target to the scroll range itself before jumping. That settles open question
+  4 in the conservative direction: autoscroll never overscrolls, and a drag
+  held past the end stops dead rather than resisting.
+- **The plan's sentence about `screenPointOf` was right, and the first attempt
+  to "correct" it was wrong.** The plan said the detached scene would show
+  feedback "draws where `screenPointOf` says", and it does. The near-miss:
+  `Layout3d.worldTransform` undoes a box's **own** `nodeOffset`, so it looks
+  as though a projection cannot see a node-tier move — but an *ancestor's*
+  offset stays in `globalTransform` and therefore in the projection, and
+  `Draggable3d` writes the offset onto the `IgnorePointer3d` it wraps the
+  feedback in, which is above anything a caller can name. So
+  `screenCenter('feedback')` follows the drag exactly.
+
+  The first version of the probe reconstructed the drawn point from
+  `box.nodeOffset` instead, through a `drawnCenterOf` helper. On a probed
+  feedback box that offset is always zero, so the helper returned the
+  laid-out point and the assertion compared a number with itself: it failed on
+  the GPU with a distance of exactly 0.0. The helper is gone, and the scene
+  compares the feedback against the card left behind instead. Verified
+  headlessly on the way: the feedback's projected centre is 429 px with the
+  panel's edge at 388, and in the in-plane scene it lands on row 2's centre to
+  the pixel.
+
+- **A probe scene's screen arithmetic can be checked without a GPU.**
+  `Layout3dScreenProjection` is camera maths and runs headlessly, so a scratch
+  test that builds the scene, drives the drag and prints `screenCenter` under a
+  `PerspectiveCamera` settles where everything lands before the suite is run.
+  Both bugs above — and a third, that the basis mirrors x on its way to the
+  screen, so "carried toward larger layout x" is not reliably "further right in
+  pixels" — were found that way rather than by a second GPU run. The detached
+  scene's overhang assertion compares against both panel edges for that reason.
+
+- **The render probe earned its keep: it found a phase 2 bug that every
+  headless test had agreed with.** `Draggable3d._homeOver` corrected the
+  feedback's position in all three axes, so the feedback landed exactly on the
+  source box — cancelling `OverlayLayer3d.lift` and leaving a picked-up card
+  *coplanar* with the rows it was dragged over. `lift` had no effect on drag
+  feedback at all, at any value. Nothing arithmetic could see it: the card was
+  in the right place on the plane, which is what every drag test checked, and
+  the depth test between two surfaces at the same z is a coin toss. It showed
+  up exactly as coplanar geometry always does here — `drag_feedback_depth`
+  passed on one GPU run and failed on the next, the same signature
+  `stack_depth`'s own comment records from when that scene was written.
+
+  The fix is one line and the reasoning behind it is the useful part: **the
+  correction exists to cancel the overlay's own alignment, which is a question
+  about the plane.** Depth already has an answer, and it is the layer's. So
+  `_homeOver` now returns `Offset3d(home.x, home.y, 0)`, the feedback keeps
+  whatever depth the overlay gave the entry, and a card stands a full lift in
+  front of what it is carried over. `test/drag_test.dart` pins it headlessly —
+  "keeps the overlay lift the layer asked for" — now that there is something
+  to pin, and `docs/traps.md` records the consequence a caller has to know:
+  the default lift is eight dp, which is a depth-buffer separation rather than
+  a distance, so rows with real thickness want a bigger one.
+
+  Worth saying plainly, because it is the argument for this kind of test: the
+  probe was written to check a claim everyone believed, and the claim was
+  false.
+
+- **A sparse scene fails the floor even when it is correct.** The first
+  detached scene used a two-unit panel and a camera pulled back to z = 9 so the
+  overhang stayed in frame, and covered 1.8% of the frame against the 2% floor
+  every scene has to clear. The fix is bigger geometry at the ordinary camera
+  distance rather than a lowered floor: a lowered floor is a weaker claim, and
+  the floor is what catches "nothing drew".
+- **A probe scene can hold a live interaction, and the flush in the middle is
+  the step that is easy to miss.** Both drag scenes build their surface, flush
+  it, and drive a real `Layout3dPointer` inside `build()`. The press and the
+  first move insert the feedback; an overlay entry has no size on the frame it
+  is inserted, so `Draggable3d` cannot yet compute the correction that covers
+  the card; a flush gives it one; and only the *second* move writes the node
+  offset the probe is there to look at. This is the same lazy-`_homeOver`
+  fact recorded above, seen from the harness side.
+
 ## Out of scope
 
 - **Dragging between the layout tree and Flutter's widget tree.** A
@@ -644,7 +821,9 @@ that turned out to be untrue.
   places. **All three of those phases have now landed**, so the dependency is
   discharged and only this plan's own tail — autoscroll and the documentation
   pass — stands between that plan and `completed`. Whoever closes phase 8
-  closes it.
+  closes it. **Closed**, and so are all three README statements, along with
+  the readiness overview's *Where to pick up* item 2, which still said this
+  plan had not been written.
 - **`flutter_scene_material3d`** gets the four components and, more usefully,
   `Drag3dTarget` as a bare interface: a Material drop zone can implement it
   without inheriting a generic class, and its highlight is a
@@ -738,6 +917,15 @@ names the question.
    applying the boundary conditions without the user-scroll bookkeeping — and
    `Scroll3dPhysics.applyBoundaryConditions` is public, so it is available if
    the simple version reads badly.
+
+   **Answered conservatively, and the question was slightly wrong.** `jumpBy`
+   does *not* stop dead at the end of a bouncing list on its own: it goes
+   through `applyBoundaryConditions`, and a bouncing physics permits
+   overscroll, so a drag held at the edge would have drifted off the content
+   for as long as it was held. The autoscroller therefore clamps the target to
+   the scroll range itself before jumping, which makes "stops dead" true by
+   construction rather than by accident. Whether *resisting* reads better is
+   still open, and still a question for the gallery.
 5. **The count of surfaces a drag search can afford.** One hit test per
    surface per move is fine for a panel and two dialogs, which is what an
    application has. It is not obviously fine for a scene with fifty

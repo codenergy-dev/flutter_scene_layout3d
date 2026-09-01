@@ -205,6 +205,7 @@ export 'src/geometry/edge_insets3d.dart' show EdgeInsets3d;
 export 'src/geometry/offset3d.dart' show Axis3d, Offset3d;
 export 'src/geometry/size3d.dart' show Size3d;
 export 'src/hit_test.dart' show HitTestEntry3d, HitTestResult3d, Ray3d;
+export 'src/input/autoscroll.dart' show Drag3dAutoscroll, Drag3dAutoscroller;
 export 'src/input/dismissible.dart'
     show Dismiss3dConfirmCallback, Dismiss3dDirection, Dismissible3d;
 export 'src/input/drag.dart'

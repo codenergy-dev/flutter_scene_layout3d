@@ -395,6 +395,14 @@ class Layout3dPointerGroup {
     final hit = _dragHitTest(worldRay, pointer: pointer, reuseHits: reuseHits);
     var changed = false;
     for (final session in sessions) {
+      // Re-installed on every resolution rather than once, because the ray is
+      // what changes: the closure carries the latest one, and a tick that
+      // arrives between two moves asks the group the same question the last
+      // move asked. Without this a tick would fall back to the path this walk
+      // produced — right for a reorder, which reasons in scroll coordinates,
+      // and wrong for a drag over a target on a surface that has scrolled.
+      session.pathResolver = () =>
+          _dragHitTest(worldRay, pointer: pointer, reuseHits: false);
       changed = session.update(hit) || changed;
     }
     return changed;

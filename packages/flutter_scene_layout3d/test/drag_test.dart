@@ -108,6 +108,56 @@ class ArenaProbe extends Listener3d {
 TestBox solid([Size3d size = const Size3d(1, 1, 0)]) =>
     TestBox(size, pointable: true);
 
+/// A draggable card at the top of a list three units tall with six of content.
+///
+/// The geometry the autoscroll tests reason in: the window runs from `y = 0`
+/// to `y = 3`, the default fifty-dp band is half a unit through the standard
+/// metrics, so `y > 2.5` is the trailing band and `y < 0.5` the leading one,
+/// and there are three units of scroll to give.
+class _ScrollFixture {
+  _ScrollFixture({Drag3dAutoscroll? autoscroll = const Drag3dAutoscroll()}) {
+    controller = Scroll3dController();
+    source = Draggable3d<String>(
+      data: 'photo',
+      autoscroll: autoscroll,
+      child: solid(),
+    );
+    final list = ListView3d(
+      controller: controller,
+      children: <Layout3d>[
+        source,
+        TestBox(const Size3d(1, 5, 0), pointable: true),
+      ],
+    );
+    surface = laidOut(
+      list,
+      constraints: Constraints3d.tight(const Size3d(1, 3, 0)),
+    );
+    pointer = Layout3dPointer(surface);
+  }
+
+  late final Scroll3dController controller;
+  late final Draggable3d<String> source;
+  late final Layout3dSurface surface;
+  late final Layout3dPointer pointer;
+
+  /// Picks the card up and carries the pointer to [to].
+  ///
+  /// One move does both: the travel crosses the slop, which is what
+  /// recognizes the drag, and the card claims the pointer before the list
+  /// under it can start scrolling on its own.
+  void lift({required double to}) {
+    pointer
+      ..down(rayAt(surface, const Offset3d(0.5, 0.5, 0)))
+      ..move(rayAt(surface, Offset3d(0.5, to, 0)));
+  }
+
+  void dispose() {
+    surface.dispose();
+    controller.dispose();
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -725,6 +775,53 @@ void main() {
       expect(overlay.entries, isEmpty);
     });
 
+    test('keeps the overlay lift the layer asked for', () {
+      // The correction that covers the source is a question about the plane,
+      // and depth already has an answer: the layer's lift is what puts a
+      // picked-up card in front of what it is carried over. Correcting all
+      // three axes would land the feedback exactly on the source box and
+      // cancel the lift, leaving the card coplanar with the row under it —
+      // which is a z-fight, not an ordering. `drag_feedback_depth` in
+      // `examples/render_probe` is the render-side half of this claim; it
+      // caught the bug by passing once and failing the next run.
+      final row = TestBox(const Size3d(1, 1, 0.05), pointable: true);
+      late final Layout3d feedback;
+      final source = Draggable3d<String>(
+        data: 'photo',
+        dropDuration: Duration.zero,
+        feedbackLayer: const OverlayLayer3d.inPlane(lift: 0.5),
+        feedbackBuilder: (_) =>
+            feedback = TestBox(const Size3d(0.8, 0.4, 0.05)),
+        child: row,
+      );
+      final overlay = Overlay3d();
+      overlay.syncChildren(<Layout3d>[source]);
+      final surface = laidOut(
+        overlay,
+        constraints: Constraints3d.tight(const Size3d(2, 2, 1)),
+      );
+      addTearDown(surface.dispose);
+      final pointer = Layout3dPointer(surface);
+
+      pointer
+        ..down(rayAt(surface, const Offset3d(1.0, 1.0, 0)))
+        ..move(rayAt(surface, const Offset3d(1.4, 1.0, 0)));
+      surface.flush();
+      pointer.move(rayAt(surface, const Offset3d(1.6, 1.0, 0)));
+      surface.flush();
+
+      // Depth is the layer's, so the feedback stands a full lift in front of
+      // the row it came off.
+      expect(
+        scenePositionOf(feedback.node).z - scenePositionOf(row.node).z,
+        closeTo(0.5, 1e-6),
+        reason: 'the correction cancelled the lift',
+      );
+      // And the plane correction still did its job: the feedback tracks the
+      // pointer rather than sitting where the overlay's alignment put it.
+      expect(source.travel.x, closeTo(0.6, 1e-6));
+    });
+
     test('is moved by nodeOffset and never by sceneOffset', () {
       final overlay = Overlay3d();
       late final Layout3d feedback;
@@ -1053,6 +1150,177 @@ void main() {
       expect(accepted, 'drawing');
     });
   });
+  group('autoscroll', () {
+    // The ticker, the band and the ramp. What makes this worth a group of its
+    // own is that it is the only part of a drag driven by a clock rather than
+    // by the pointer: a finger parked at the bottom of a list sends no move
+    // events at all, so nothing on the pointer stream can carry the drag past
+    // the end of the window.
+
+    test('the ramp runs from the inner edge of the band to the window', () {
+      const settings = Drag3dAutoscroll(minVelocity: 100, maxVelocity: 500);
+
+      expect(settings.velocityAt(0.0), 100.0);
+      expect(settings.velocityAt(0.5), 300.0);
+      expect(settings.velocityAt(1.0), 500.0);
+      // A finger dragged clean off the end of the list is not extrapolated.
+      expect(settings.velocityAt(4.0), 500.0);
+
+      expect(settings.isEnabled, isTrue);
+      expect(const Drag3dAutoscroll(edgeExtent: 0.0).isEnabled, isFalse);
+      expect(
+        const Drag3dAutoscroll(maxVelocity: 0.0, minVelocity: 0.0).isEnabled,
+        isFalse,
+      );
+    });
+
+    test('a tick goes through the resolver when one is installed', () {
+      final log = <String>[];
+      final first = Recorder('first', log, child: solid());
+      final second = Recorder('second', log, child: solid());
+      laidOut(
+        Row3d(children: <Layout3d>[first, second]),
+        constraints: Constraints3d.tight(const Size3d(2, 1, 0)),
+      );
+      final session = Drag3dSession(data: 'photo');
+      session.update(pathOf(<Layout3d>[first]));
+      expect(log, ['first enter']);
+
+      // What a group installs: the tick asks whoever is responsible for
+      // finding this drag's path, not the surface the press happened on.
+      session.pathResolver = () => pathOf(<Layout3d>[second]);
+      session.tick();
+
+      expect(log, ['first enter', 'first leave', 'second enter']);
+    });
+
+    test('a tick with no resolver re-reads the path the drag last saw', () {
+      final log = <String>[];
+      final target = Recorder('zone', log, child: solid());
+      laidOut(target, constraints: Constraints3d.tight(const Size3d(1, 1, 0)));
+      final session = Drag3dSession(data: 'photo');
+      session.update(pathOf(<Layout3d>[target]));
+
+      expect(session.tick(), isFalse);
+      expect(log, ['zone enter', 'zone move']);
+    });
+
+    test('a session that has ended lets go of its resolver', () {
+      final session = Drag3dSession(data: 'photo')
+        ..pathResolver = HitTestResult3d.new;
+      session.cancel();
+
+      expect(session.pathResolver, isNull);
+      expect(session.tick(), isFalse);
+    });
+
+    testWidgets('a drag held at the edge carries the window with it', (
+      tester,
+    ) async {
+      final f = _ScrollFixture();
+      addTearDown(f.dispose);
+
+      f.lift(to: 2.8);
+      expect(f.source.isDragging, isTrue);
+      expect(f.source.autoscroller?.isScrolling, isTrue);
+      // The pointer has stopped and nothing has ticked: a drag on its own
+      // moves no view at all.
+      expect(f.controller.offset, 0.0);
+
+      // The first tick is the clock's zero — a ticker started inside a frame
+      // reports that frame's timestamp — so it moves nothing either.
+      await tester.pump();
+      expect(f.controller.offset, 0.0);
+
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(f.controller.offset, greaterThan(0.0));
+
+      // A drag left running would leave its ticker behind, which the binding
+      // reports as an animation outliving the tree. Letting go is what a real
+      // one does, and it is the assertion that the ticker goes with it.
+      f.pointer.up();
+    });
+
+    testWidgets('the band is at both ends, and the ramp is signed', (
+      tester,
+    ) async {
+      final f = _ScrollFixture();
+      addTearDown(f.dispose);
+      f.controller.jumpTo(1.5);
+
+      f.lift(to: 0.2);
+      expect(f.source.autoscroller?.velocity, lessThan(0.0));
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(f.controller.offset, lessThan(1.5));
+      f.pointer.up();
+    });
+
+    testWidgets('a drag in the middle of the window moves nothing', (
+      tester,
+    ) async {
+      final f = _ScrollFixture();
+      addTearDown(f.dispose);
+
+      f.lift(to: 1.5);
+      expect(f.source.autoscroller?.isScrolling, isFalse);
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      expect(f.controller.offset, 0.0);
+    });
+
+    testWidgets('it stops dead at the end of the extent', (tester) async {
+      final f = _ScrollFixture();
+      addTearDown(f.dispose);
+
+      f.lift(to: 2.9);
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+
+      // Clamped by hand rather than left to the physics: a bouncing physics
+      // permits overscroll, and a drag held at the edge would otherwise drift
+      // off the end of the content for as long as it was held.
+      expect(f.controller.offset, f.controller.maxScrollExtent);
+      expect(f.source.autoscroller?.isScrolling, isFalse);
+    });
+
+    testWidgets('the scroll ends when the drag does', (tester) async {
+      final f = _ScrollFixture();
+      addTearDown(f.dispose);
+
+      f.lift(to: 2.8);
+      expect(f.source.autoscroller, isNotNull);
+
+      f.pointer.up();
+
+      expect(f.source.autoscroller, isNull);
+      final settled = f.controller.offset;
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(f.controller.offset, settled);
+    });
+
+    testWidgets('a draggable given no settings scrolls nothing', (
+      tester,
+    ) async {
+      final f = _ScrollFixture(autoscroll: null);
+      addTearDown(f.dispose);
+
+      f.lift(to: 2.8);
+      expect(f.source.isDragging, isTrue);
+      expect(f.source.autoscroller, isNull);
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      expect(f.controller.offset, 0.0);
+    });
+  });
+
   group('across surfaces', () {
     // Two coincident planes, one in front of the other, which is what a
     // dialog standing over a panel is: the same layout coordinates on both,

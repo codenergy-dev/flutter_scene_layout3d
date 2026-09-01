@@ -8,6 +8,7 @@ import 'package:flutter/scheduler.dart' show Ticker, TickerProvider;
 import '../boxes/flex.dart' show CrossAxisAlignment3d;
 import '../built_children.dart';
 import '../geometry/offset3d.dart';
+import '../input/autoscroll.dart';
 import '../input/drag.dart';
 import '../input/draggable.dart';
 import '../layout3d.dart';
@@ -107,6 +108,7 @@ class SliverReorderableList3d extends SliverList3d implements Drag3dTarget {
     Drag3dStartMode startMode = const Drag3dStartMode.longPress(),
     this.gapDuration = const Duration(milliseconds: 200),
     this.gapCurve = Curves.easeInOut,
+    this.autoscroll = const Drag3dAutoscroll(),
     this.vsync,
     double spacing = 0.0,
     double? itemExtent,
@@ -189,7 +191,21 @@ class SliverReorderableList3d extends SliverList3d implements Drag3dTarget {
   /// The curve the items follow as they slide aside.
   Curve gapCurve;
 
-  /// The ticker provider for the gap animation.
+  /// How an item carried to the edge of the window moves the list, or null
+  /// to leave the list still.
+  ///
+  /// On by default, unlike [Draggable3d.autoscroll]: a reorderable list is
+  /// the case where a drag has to be able to reach a slot that is not on
+  /// screen, and Flutter's `ReorderableListView` scrolls itself for the same
+  /// reason. The band is stated in dp and taken through this list's own
+  /// metrics — see [Drag3dAutoscroll].
+  ///
+  /// Read when an item is picked up, so a change takes effect on the next
+  /// drag rather than the live one — the wrapper around each item forwards to
+  /// this field rather than copying it.
+  Drag3dAutoscroll? autoscroll;
+
+  /// The ticker provider for the gap animation and for the autoscroll.
   ///
   /// Null means a bare [Ticker], which schedules through the same
   /// [SchedulerBinding] and works outside a `State`. Give one where there is
@@ -447,6 +463,20 @@ class SliverReorderableList3d extends SliverList3d implements Drag3dTarget {
     child: item,
   );
 
+  /// Whether a drag is currently moving this list on its own.
+  ///
+  /// True while a picked-up item is being held in the edge band and the
+  /// window is following it. Useful in a test, and in a diagnostic; nothing
+  /// in the list reads it.
+  bool get isAutoscrolling {
+    for (final (_, child) in positionedChildren()) {
+      if (child is _Reorder3dHandle) {
+        if (child.autoscroller?.isScrolling ?? false) return true;
+      }
+    }
+    return false;
+  }
+
   /// Answers a ray on its own account while a reorder is live.
   ///
   /// A list is not a target as a rule — a ray through the gap between two
@@ -546,6 +576,21 @@ class _Reorder3dHandle extends Draggable3d<Object> {
   }
 
   final SliverReorderableList3d list;
+
+  // The list's own settings rather than a copy taken when the item was built:
+  // an item built before the caller changed either would otherwise drag under
+  // the old ones for as long as it stayed in the cache.
+  @override
+  Drag3dAutoscroll? get autoscroll => list.autoscroll;
+
+  @override
+  set autoscroll(Drag3dAutoscroll? value) => list.autoscroll = value;
+
+  @override
+  TickerProvider? get vsync => list.vsync;
+
+  @override
+  set vsync(TickerProvider? value) => list.vsync = value;
 
   /// The index this item was built for.
   ///

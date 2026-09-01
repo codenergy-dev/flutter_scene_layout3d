@@ -11,7 +11,7 @@ import 'package:flutter_scene/scene.dart'
 import 'package:flutter/painting.dart'
     show Color, TextAlign, TextSpan, TextStyle;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
-import 'package:vector_math/vector_math.dart' show Vector3, Vector4;
+import 'package:vector_math/vector_math.dart' show Ray, Vector3, Vector4;
 
 import 'probe_scene.dart';
 
@@ -75,6 +75,45 @@ final Vector4 _violet = Vector4(0.55, 0.35, 0.90, 1);
 /// scene is only legible from above it.
 PerspectiveCamera _raisedCamera() =>
     PerspectiveCamera(position: Vector3(0, 3.4, 5.2), target: Vector3(0, 0, 0));
+
+/// A world-space ray aimed straight at [point] on [surface]'s plane.
+///
+/// The same helper the package's own tests use, reproduced here because it is
+/// test scaffolding rather than API: it starts well in front of the plane and
+/// runs along the depth axis, so where it lands is exactly the layout-space
+/// point named, whatever basis the surface has. That is what lets a scene
+/// drive a real drag without a camera in the picture.
+Ray _rayAt(Layout3dSurface surface, Offset3d point) {
+  final toWorld = surface.node.globalTransform;
+  final origin = toWorld.transformed3(
+    Vector3(point.x, point.y, point.z - 10.0),
+  );
+  return Ray.originDirection(origin, toWorld.rotated3(Vector3(0, 0, 1)));
+}
+
+/// Picks a [Draggable3d] up at [from] and carries it to [to], leaving the drag
+/// in flight for the frame to be captured.
+///
+/// Three steps, and the middle one is the one that is easy to leave out. The
+/// press and the first move recognize the drag and put the feedback into the
+/// overlay — but an overlay entry has no size on the frame it is inserted, so
+/// [Draggable3d] cannot yet work out where the feedback has to sit to cover
+/// the card. A flush gives it one, and the second move is what actually writes
+/// the node offset the probe is here to look at.
+void _dragAcross(
+  Layout3dSurface surface, {
+  required Offset3d from,
+  required Offset3d to,
+}) {
+  final pointer = Layout3dPointer(surface);
+  final midway = Offset3d.lerp(from, to, 0.25);
+  pointer
+    ..down(_rayAt(surface, from))
+    ..move(_rayAt(surface, midway));
+  surface.flush();
+  pointer.move(_rayAt(surface, to));
+  surface.flush();
+}
 
 /// Every scene the render test draws.
 ///
@@ -499,4 +538,128 @@ final List<ProbeScene> kProbeScenes = <ProbeScene>[
       probes: {'panel': panel},
     );
   }, preload: installPanelPainter),
+
+  // ── A drag in flight: the one thing arithmetic cannot check ──────────
+  ProbeScene('drag_feedback_depth', () {
+    // The claim no headless test can make: the lift that puts a picked-up
+    // card in front of the list actually wins the depth test.
+    //
+    // Three identical teal rows, a card picked up from the first and carried
+    // over the third. The feedback is violet, so the frame answers the
+    // question by colour: the middle of row 2 must read violet, and the
+    // middle of row 0 — which the drag has left behind — must still read
+    // teal.
+    //
+    // Every slab here is 0.05 deep and the lift is 0.5, which is the trap in
+    // docs/traps.md applied rather than described: a depth step does not
+    // separate children thicker than itself, and the eight-dp default lift is
+    // a depth-buffer separation, not a distance. Thin slabs and a generous
+    // lift make the comparison decisive instead of a coin toss on z-fighting.
+    NodeBox3d row(String name) => NodeBox3d(
+      fit: BoxFit3d.fill,
+      content: _solid(_cube, _teal),
+      name: name,
+    );
+    final rows = <NodeBox3d>[row('row0'), row('row1'), row('row2')];
+    late NodeBox3d feedback;
+    final source = Draggable3d<String>(
+      data: 'card',
+      feedbackLayer: const OverlayLayer3d.inPlane(lift: 0.5),
+      feedbackBuilder: (_) {
+        feedback = NodeBox3d(
+          fit: BoxFit3d.fill,
+          content: _solid(_cube, _violet),
+          name: 'feedback',
+        );
+        return SizedBox3d(
+          width: 2.4,
+          height: 0.8,
+          depth: 0.05,
+          child: feedback,
+        );
+      },
+      child: SizedBox3d(width: 3, height: 1, depth: 0.05, child: rows[0]),
+    );
+    final surface = Layout3dSurface(
+      constraints: Constraints3d.tight(const Size3d(3, 3, 1)),
+      child: Overlay3d(
+        children: <Layout3d>[
+          Column3d(
+            children: <Layout3d>[
+              source,
+              for (final box in rows.skip(1))
+                SizedBox3d(width: 3, height: 1, depth: 0.05, child: box),
+            ],
+          ),
+        ],
+      ),
+    );
+    surface.flush();
+    // From the middle of row 0 to the middle of row 2: two units of travel,
+    // which puts the feedback's centre exactly on row 2's centre.
+    _dragAcross(
+      surface,
+      from: const Offset3d(1.5, 0.5, 0),
+      to: const Offset3d(1.5, 2.5, 0),
+    );
+    return ProbeSceneContent(
+      surfaces: [surface],
+      probes: {'row0': rows[0], 'row2': rows[2], 'feedback': feedback},
+    );
+  }),
+
+  ProbeScene('drag_feedback_detached', () {
+    // The visual difference between the two overlay layers, and the reason to
+    // offer both: a detached entry owns a surface of its own, so it can draw
+    // outside the panel the drag started on. An in-plane entry cannot.
+    //
+    // The card is carried past the right edge of a two-unit panel. What the
+    // frame has to show is violet geometry out there, where no panel is.
+    //
+    // Sized to the default camera rather than pulled away from it. The first
+    // version used a two-unit panel and a camera at z = 9 so the overhang
+    // stayed in frame, and covered 1.8% of it — under the 2% floor every
+    // scene has to clear. Bigger geometry at the ordinary distance clears it
+    // with room to spare and keeps the whole drag inside a 640x480 view: the
+    // panel spans x 162 to 478, and the feedback lands at 513.
+    late NodeBox3d feedback;
+    final card = NodeBox3d(
+      fit: BoxFit3d.fill,
+      content: _solid(_cube, _teal),
+      name: 'card',
+    );
+    final source = Draggable3d<String>(
+      data: 'card',
+      feedbackLayer: const OverlayLayer3d.detached(lift: 0.5),
+      feedbackBuilder: (_) {
+        feedback = NodeBox3d(
+          fit: BoxFit3d.fill,
+          content: _solid(_cube, _violet),
+          name: 'feedback',
+        );
+        return SizedBox3d(
+          width: 1.4,
+          height: 0.9,
+          depth: 0.05,
+          child: feedback,
+        );
+      },
+      child: SizedBox3d(width: 1.8, height: 1.1, depth: 0.05, child: card),
+    );
+    final panel = Overlay3d(children: <Layout3d>[Center3d(child: source)]);
+    final surface = Layout3dSurface(
+      constraints: Constraints3d.tight(const Size3d(3, 3, 1)),
+      child: panel,
+    );
+    surface.flush();
+    _dragAcross(
+      surface,
+      from: const Offset3d(1.5, 1.5, 0),
+      to: const Offset3d(3.5, 1.5, 0),
+    );
+    return ProbeSceneContent(
+      surfaces: [surface],
+      probes: {'panel': panel, 'card': card, 'feedback': feedback},
+    );
+  }),
 ];

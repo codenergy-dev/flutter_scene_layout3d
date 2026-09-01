@@ -32,6 +32,7 @@ class Fixture {
     Duration gapDuration = Duration.zero,
     List<double>? extents,
     bool overlay = false,
+    Drag3dAutoscroll? autoscroll = const Drag3dAutoscroll(),
   }) {
     controller = Scroll3dController();
     list = ReorderableList3d(
@@ -41,6 +42,7 @@ class Fixture {
       startMode: startMode,
       gapDuration: gapDuration,
       controller: controller,
+      autoscroll: autoscroll,
       itemBuilder: (index) {
         builds.add(index);
         return TestBox(
@@ -410,6 +412,55 @@ void main() {
       expect(f.sliver.isReordering, isTrue);
       expect(f.sliver.dragIndex, 0);
       expect(f.controller.offset, 0.0);
+      f.pointer.up();
+    });
+
+    testWidgets('an item held at the edge carries the window with it', (
+      tester,
+    ) async {
+      // The detail that is easy to miss and expensive to find: the window
+      // moves under a stationary pointer, so the slot the item would land in
+      // changes with no pointer event to notice it.
+      final f = Fixture();
+      addTearDown(f.dispose);
+
+      // The trailing band is the last half unit of a three-unit window: fifty
+      // dp through the standard metrics.
+      f.lift(0, to: 2.7);
+      expect(f.sliver.insertIndex, 2);
+      expect(f.list.isAutoscrolling, isTrue);
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      final scrolled = f.controller.offset;
+      expect(scrolled, greaterThan(0.0));
+
+      // Autoscroll is the one part of a reorder that *is* on the relayout
+      // path, and it has to be: the window really did move. The gap and the
+      // feedback are still matrix writes.
+      expect(f.surface.needsFlush, isTrue);
+      f.surface.flush();
+      await tester.pump(const Duration(milliseconds: 16));
+
+      // The finger has not moved once since the lift.
+      expect(f.sliver.insertIndex, greaterThan(2));
+      f.pointer.up();
+      expect(f.reorders.single.$1, 0);
+      expect(f.reorders.single.$2, greaterThan(2));
+    });
+
+    testWidgets('a list told to stay still stays still', (tester) async {
+      final f = Fixture(autoscroll: null);
+      addTearDown(f.dispose);
+
+      f.lift(0, to: 2.7);
+      expect(f.list.isAutoscrolling, isFalse);
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      expect(f.controller.offset, 0.0);
+      expect(f.sliver.insertIndex, 2);
       f.pointer.up();
     });
 

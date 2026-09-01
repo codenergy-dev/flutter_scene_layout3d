@@ -25,7 +25,8 @@ several files, guidance for using the engine underneath.
 
 - **[traps.md](traps.md)** — what costs real time and is not obvious from the
   code. The unit contract, staying off the relayout path, the four transform
-  channels, why nothing draws by default, and the pointer and clipping edges.
+  channels, why nothing draws by default, depth ordering, and the pointer,
+  drag and clipping edges.
   If you are about to write a component, read this first.
 - **[engine-rules.md](engine-rules.md)** — `flutter_scene` diverges from
   three.js, Godot and Unity in specific ways, and most first-attempt failures

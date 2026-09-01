@@ -28,6 +28,7 @@ import '../geometry/offset3d.dart';
 import '../hit_test.dart';
 import '../layout3d.dart';
 import '../overlay/overlay.dart';
+import 'autoscroll.dart';
 import 'drag.dart';
 import 'events.dart';
 import 'listener.dart';
@@ -157,6 +158,7 @@ class Draggable3d<T extends Object> extends ProxyLayout3dWithHitTestBehavior
     this.feedbackLayer = const OverlayLayer3d.inPlane(),
     this.dropDuration = const Duration(milliseconds: 200),
     this.dropCurve = Curves.easeOutCubic,
+    this.autoscroll,
     this.vsync,
     this.onDragStarted,
     this.onDragUpdate,
@@ -219,6 +221,20 @@ class Draggable3d<T extends Object> extends ProxyLayout3dWithHitTestBehavior
   /// The curve the drop animation follows.
   Curve dropCurve;
 
+  /// How a drag carried to the edge of a scrolling view moves it, or null for
+  /// no autoscroll at all.
+  ///
+  /// Null by default, which is Flutter's default for `Draggable` too and is
+  /// the right one for a card dragged between two panels: nothing about
+  /// picking something up says the view underneath should start moving. A
+  /// list that reorders itself is the case where it is always wanted, and
+  /// [SliverReorderableList3d] turns it on for its own items.
+  ///
+  /// The settings are read afresh on every drag, so changing them between
+  /// drags takes effect; changing them *during* one does not, since the
+  /// autoscroller holds the value it was made with.
+  Drag3dAutoscroll? autoscroll;
+
   /// The ticker provider for the drop animation.
   ///
   /// Null means a bare [Ticker], which schedules through the same
@@ -265,6 +281,12 @@ class Draggable3d<T extends Object> extends ProxyLayout3dWithHitTestBehavior
   /// The two are axis-aligned unless a `Transform3d` stands between them, and
   /// this costs the same either way.
   Matrix4? _travelToFeedback;
+
+  Drag3dAutoscroller? _autoscroller;
+
+  /// The autoscroller running under the live drag, or null when there is no
+  /// drag or [autoscroll] is off.
+  Drag3dAutoscroller? get autoscroller => _autoscroller;
 
   Offset3d _travel = Offset3d.zero;
   Offset3d _dropFrom = Offset3d.zero;
@@ -326,6 +348,18 @@ class Draggable3d<T extends Object> extends ProxyLayout3dWithHitTestBehavior
     session.addEndListener(() => _handleDragEnd(session));
     _insertFeedback(session);
     sequence?.startDrag(session);
+    // After the session is in flight, so it already has a path and a
+    // `pathResolver`: the autoscroller reads both on its very first look, and
+    // a drag picked up with the finger already in the edge band starts
+    // scrolling on the next frame rather than on the next move.
+    final settings = autoscroll;
+    if (settings != null && settings.isEnabled) {
+      _autoscroller = Drag3dAutoscroller(
+        session: session,
+        settings: settings,
+        vsync: vsync,
+      )..update();
+    }
     _track();
     onDragStarted?.call();
   }
@@ -378,12 +412,33 @@ class Draggable3d<T extends Object> extends ProxyLayout3dWithHitTestBehavior
       fromLayout.transformed3(_centreOf(layout)),
     );
     final home = centre - _centreOf(feedback);
-    return Offset3d(home.x, home.y, home.z);
+    // The two plane axes only, and the depth axis deliberately left alone.
+    //
+    // This correction exists to cancel the *overlay's alignment*: an entry is
+    // placed by the overlay's own [Stack3d.alignment], which is nowhere near
+    // the box the drag was picked up from, so without it the card would jump
+    // to the middle of the panel at the moment it is lifted. That is a
+    // question about where things sit on the plane.
+    //
+    // Depth is a different question and it already has an answer:
+    // [OverlayLayer3d.lift] is what puts a picked-up card in front of the
+    // content it is carried over. Correcting z as well would land the
+    // feedback exactly on the source box in all three axes — cancelling the
+    // lift, leaving the card coplanar with the rows it is dragged across, and
+    // making the depth test a coin toss between two surfaces at the same z.
+    // It did exactly that until `drag_feedback_depth` in
+    // `examples/render_probe` caught it: the scene passed once on a
+    // z-fight and failed the next run, which is the signature `stack_depth`
+    // already records for coplanar geometry.
+    return Offset3d(home.x, home.y, 0.0);
   }
 
   void _handleDragEnd(Drag3dSession session) {
     if (!identical(_session, session)) return;
     _session = null;
+    // The autoscroller disposes itself through its own end listener; letting
+    // go of it here only keeps a dead one from being poked by a late move.
+    _autoscroller = null;
     for (final gesture in _gestures.values.toList()) {
       gesture.abandon();
     }

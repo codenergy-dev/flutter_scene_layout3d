@@ -557,6 +557,11 @@ than none.
 | `Listener3d`, `HitTestTarget3d`, `HitTestBehavior3d` | `Listener` + `MouseRegion`, `HitTestTarget`, `HitTestBehavior` |
 | `GestureDetector3d`, `HitTestArea3d`, `TapTarget3d` | `GestureDetector`, a bare hit-test region, Material's 48dp target |
 | `Focus3d`, `Focus3dTraversal`, `FocusScope3d` | `Focus`, `FocusTraversalPolicy`, `FocusScope` |
+| `Draggable3d`, `DragTarget3d` | `Draggable`, `DragTarget`, on a session of our own rather than `MultiDragGestureRecognizer` |
+| `Drag3dSession`, `Drag3dTarget`, `Drag3dDetails`, `Drag3dEvent` | the drag machinery Flutter keeps inside `Draggable`, made a seam |
+| `Drag3dStartMode`, `Drag3dAnchor`, `Drag3dAutoscroll` | `Draggable`'s long-press variants, `DragAnchorStrategy`, `EdgeDraggingAutoScroller` |
+| `Dismissible3d`, `Dismiss3dDirection` | `Dismissible`, `DismissDirection` |
+| `ReorderableList3d`, `SliverReorderableList3d`, `Reorder3dCallback` | `ReorderableListView`, `SliverReorderableList`, `ReorderCallback` — with `newIndex` meaning where the item ends up |
 | `Overlay3d`, `Overlay3dEntry`, `OverlayLayer3d` | `Overlay`, `OverlayEntry`, and the 3D question Flutter does not have |
 | `ModalBarrier3d`, `Navigator3d`, `Route3d` | `ModalBarrier`, `Navigator`, `Route` |
 | `Layout3dPointerGroup` | routing a ray across surfaces, which a screen does not need |
@@ -1466,6 +1471,215 @@ an entry does not get is reconciliation, so a component that changes its
 dialog calls `Overlay3dEntry.markNeedsBuild`, which disposes the old subtree
 and builds a new one in place.
 
+## Dragging things around
+
+Every drag so far has been a drag of the thing under the finger: a list moves
+because the pointer grabbed it. A drag-and-drop is the other kind — it is
+*defined* by moving away from what it started on and asking what is underneath
+now — and that breaks the rule the rest of the pointer layer runs on, where a
+press captures a path and every later event goes back along it.
+
+So there is one piece of machinery, `Drag3dSession`, and four components over
+it. The session is deliberately ignorant: it does not hit-test, does not own
+the geometry under the finger, and never holds the box the drag started on.
+What it keeps up to date is the answer to one question — *which drop targets
+is this drag over, and which of them wants it* — and it dispatches the enter,
+move, leave and drop that follow from a change to that answer.
+
+```dart
+Draggable3d<Photo>(
+  data: photo,
+  feedbackBuilder: (_) => Container3d(
+    size: const Size3d(0.6, 0.4, 0.02),
+    decoration: cardDecoration,
+  ),
+  child: thumbnail,
+)
+
+DragTarget3d<Photo>(
+  onWillAccept: (photo, _) => photo.album != album,
+  onEnter: (_, _) => panel.stateLayer = hovered,
+  onLeave: (_, _) => panel.stateLayer = StateLayer3d.none,
+  onAccept: (photo, _) {
+    panel.stateLayer = StateLayer3d.none;
+    album.add(photo);
+  },
+  child: panel,
+)
+```
+
+The payload keeps its generic; the machinery does not see it. A drag is found
+through a hit-test path of bare `Layout3d`s and may have to cross surfaces, so
+the seam underneath is the non-generic `Drag3dTarget` — the same shape
+`HitTestTarget3d` is under `Listener3d`. **The type test happens inside the
+target**, where `DragTarget3d<T>` answers `willAcceptDrag3d` with
+`details.data is T`, which is also where Flutter puts it. The practical value
+is that a component can implement `Drag3dTarget` directly and be a drop zone
+in four lines without inheriting a generic class it does not want. The
+inherited cost is Flutter's too: a `DragTarget3d<Object>` accepts everything.
+
+### It recognizes its own drag
+
+Flutter's `Draggable` is built on `MultiDragGestureRecognizer`, and that is not
+available here in any useful form: in this build `DragGestureRecognizer`
+delivers `onStart` and nothing after it, and `LongPressGestureRecognizer` never
+fires at all — both reproduced with no code from this package involved. So the
+threshold is arithmetic and the delay is a plain `Timer`, and both compete in
+the arena through `PointerSequence3d.addArenaMember`, which is a general seam
+rather than a private one: anything that wants a pointer without a Flutter
+recognizer — a knob, a slider, a rotation handle — reaches for it the same way.
+
+`Drag3dStartMode.immediate()` claims on the first travel past the slop, which
+is what a desktop drag and a dismissible row want;
+`Drag3dStartMode.longPress()` starts a timer at the press, cancelled by travel
+or by lifting. Give a draggable an `axis` and a row inside a list running the
+other way stops fighting it: each claims on its own axis and the finger
+decides.
+
+One thing worth knowing before you build on the arena: **winning it is not
+recognizing the gesture.** A member alone in the arena wins by default, in a
+microtask, as soon as the pointer's arena closes — so a recognizer with a
+threshold of its own has to keep the two apart, and this one does.
+
+### The feedback is moved, never re-laid-out
+
+At the moment a drag is recognized, the session builds
+`Draggable3d.feedbackBuilder`'s subtree, wraps it in an `IgnorePointer3d`, and
+puts it into the nearest `Overlay3d` above — in-plane by default, which is one
+surface and one layout pass and already lifts the card toward the viewer;
+`OverlayLayer3d.detached` is the opt-in for a drag that has to leave the panel
+it started on.
+
+After that, **every move writes one `Offset3d` onto the feedback's
+`nodeOffset`.** Nothing is re-laid out, nothing is rebuilt, no uniform changes;
+a drag at 120Hz costs one matrix write a frame. That is not an optimisation, it
+is the rule [docs/traps.md](../../docs/traps.md) sets for anything on a
+per-frame path, and a drag is the most per-frame path there is. A whole drag
+touches the relayout path exactly twice — putting the feedback into the overlay
+and taking it out — because an overlay entry is a child of a stack and adding a
+child is a layout. There is no way around either, and the test suite asserts
+`needsFlush` is false for every move in between.
+
+Note *which* channel. `ParentData3d.sceneOffset` belongs to the parent, and
+`Overlay3d` is a `Stack3d` whose `depthStep` rewrites it on every placement, so
+an offset stored there is silently erased.
+
+The correction that makes the feedback cover the card it came from is a
+question about the **plane** only. Depth is the layer's business —
+`OverlayLayer3d.lift` is what stands a picked-up card in front of what it is
+carried over — and correcting depth as well would land the feedback exactly on
+the source box and cancel it. The default lift is eight logical pixels, which
+is a depth-buffer separation rather than a distance, so rows with real
+thickness want a bigger one.
+
+The `IgnorePointer3d` is mandatory rather than tidy. Hit testing deliberately
+ignores `nodeOffset`, so feedback moved that way is invisible to the ray moving
+it and cannot steal its own drop — but its *laid-out* position is still
+hit-testable, and a `Text3d` inside it would answer there on its own account.
+
+### Which target a drop lands on
+
+The nearest acceptor along the ray: hit order within a surface, and the pointer
+group's front-to-back walk between surfaces. The argument is consistency and
+not much else, but consistency is enough — **a drop lands where a tap would
+land**, and any other rule means the viewer cannot predict a drop from what
+they already know about pressing.
+
+Enter and leave go to *every* accepting target on the path, diffed against last
+time, so a list and the row inside it both light up; only the drop is
+exclusive. Across surfaces the search deliberately ignores capture: while a
+session is live, `Layout3dPointerGroup` walks every member front to back rather
+than only the ones that took the press, so a card picked up on a panel can be
+dropped on a dialog in front of it. *Where events go* and *what the drag is
+over* are two different questions, and conflating them is what makes a
+drag-and-drop impossible.
+
+Because a drop follows the ray, it inherits the depth-ordering trap: a drop
+target thicker than the `Stack3d.depthStep` separating it from its neighbours
+can win the ray while looking like it is behind. Keep drop targets thin
+relative to the step. Feedback stays on the plane it was picked up from —
+`Drag3dAnchor.targetPlane` is reserved and behaves as `originPlane`, and its
+dartdoc says why the mechanism that was planned for it is the wrong one.
+
+### Dismissible3d
+
+The thinnest consumer, and the one that needs no drop target at all: an axis, a
+fraction threshold, a fling threshold, a background, a secondary background,
+and the resize-away that follows a confirmed dismiss.
+
+The swipe itself is node-tier like every other drag here. The resize is the one
+part that genuinely relayouts, because an extent really does change — but it
+does not resize the child: the row has already been carried off the box and
+hidden by then, so the child is laid out with the *same* constraints on every
+tick (an identical layout call is one the child skips) and only the
+dismissible's own extent shrinks. Nothing under the swiped row re-measures a
+string.
+
+Two shapes worth knowing. The three slots are one ordered child list
+underneath — child, background, secondary background — because an ordered list
+is what the declarative layer can mirror; the constructor asserts that a
+background needs a child and a secondary background needs a background. And the
+backgrounds are **coplanar** with the child: `backgroundDepthStep` defaults to
+zero exactly as `Stack3d.depthStep` does, which is right for a flat Material
+row and wrong the moment either has depth.
+
+### Reorderable lists
+
+`ReorderableList3d` is the viewport around a `SliverReorderableList3d`, exactly
+as `ListView3d` is around a `SliverList3d`, so placement is not written twice.
+Each item is wrapped in a `Draggable3d` of its own, which is how the whole of
+the machinery above is bought rather than rebuilt.
+
+```dart
+ReorderableList3d(
+  itemCount: photos.length,
+  itemExtent: 0.4,
+  itemBuilder: (index) => row(photos[index]),
+  onReorder: (oldIndex, newIndex) {
+    photos.insert(newIndex, photos.removeAt(oldIndex));
+    list.refresh();
+  },
+)
+```
+
+**The child list is not reordered until the drop.** During the drag the dragged
+item stays exactly where it is, hidden with `node.visible = false` — which
+costs no layout — so its extent stays in the flow and *is* the gap, and every
+other visible item is pushed aside by that extent with `nodeOffset`. That
+answers two things at once: the lazy machinery is untouched, because the
+index-to-child map never changes between the lift and the drop, and nothing
+lands on the relayout path, because every visible change is a matrix write.
+
+Two deliberate deviations from Flutter, both of which will bite a reader who
+assumes otherwise:
+
+- **`onReorder`'s `newIndex` is where the item ends up.** Flutter's
+  `ReorderableListView` reports an index measured *before* the item is taken
+  out, so a caller who moved something down the list has to decrement it
+  first. That off-by-one is the most reported confusion about that widget and
+  there was nothing to be gained by inheriting it.
+- **There is no explicit-children constructor**, and **no
+  `SceneReorderableList3d`.** `onReorder` hands back a pair of indices into the
+  caller's data and expects the next build to reflect them, so the list has to
+  be a function of that data to mean anything: `itemCount` and `itemBuilder`,
+  and `refresh` when the data changes. The missing widget form is a harder
+  story — the list wraps every item in a `Draggable3d`, and the declarative
+  layer's contract is that `Layout3dChildManager.removeChild` is handed back
+  the very layout `createChild` returned, which wrapping breaks. Closing it
+  wants either a hook that lets a view adopt what the manager built or a
+  recognizer on the list itself so items need no wrapper; both are more than a
+  widget form deserves on its own, and neither has been built.
+
+An item held at the edge of the window scrolls the list under it.
+`Drag3dAutoscroll` says how deep the band is and how fast, in dp, and a
+`ReorderableList3d` turns it on by default because a reorder is the case where
+a drag has to be able to reach a slot that is not on screen; `Draggable3d`
+leaves it off, as Flutter's `Draggable` does. It runs on a ticker rather than
+on the move stream, because **a finger parked at the edge sends no move
+events** — and the tick does not only scroll, it re-resolves the drag, because
+the window moving under a stationary pointer changes which slot the item would
+land in and nothing else would notice.
+
 ## Animation
 
 Nothing in this package animates on its own, and everything in it is
@@ -1841,10 +2055,13 @@ and clear space in the gaps:
 expect(frame.coverageAt(capture.centerOf('left'), radius: 10), greaterThan(0.8));
 ```
 
-Twenty of them, over cuboids and spheres arranged by `Row3d`, `Column3d`,
-`Stack3d`, `Padding3d`, `ListView3d`, `ClipBox3d` and the `xz` basis. It is
-also the only lane that compiles `assets/box_decoration3d.fmat`, so it is what
-would catch a syntax error in the panel shader.
+Sixteen scenes, over cuboids and spheres arranged by `Row3d`, `Column3d`,
+`Stack3d`, `Padding3d`, `ListView3d`, `ClipBox3d` and the `xz` basis, plus two
+that hold a drag in flight while the frame is captured — the only way to check
+that a lifted card really does win the depth test, and that a detached feedback
+entry really does draw outside the panel it came from. It is also the only lane
+that compiles `assets/box_decoration3d.fmat`, so it is what would catch a
+syntax error in the panel shader.
 
 ```sh
 cd examples/render_probe
@@ -1867,9 +2084,11 @@ enter and exit to whatever the pointer crossed, and a drag to the scrolling
 view it grabbed. `Focus3d` is the focus half, with `Focus3dTraversal` moving
 between boxes on the plane and `FocusScope3d` trapping it inside a modal. See
 *Pointing at it* above. Routing a ray *across* surfaces is done —
-`Layout3dPointerGroup`, see *Overlays* — but moving focus across them is not,
-and neither is a directional policy that is genuinely three-dimensional
-rather than one that projects onto the plane first.
+`Layout3dPointerGroup`, see *Overlays* — and so is drag-and-drop across them,
+which is the one search that deliberately ignores capture; see *Dragging things
+around*. What is left is moving focus across surfaces, and a directional policy
+that is genuinely three-dimensional rather than one that projects onto the
+plane first.
 
 **2. More layouts.** ~~Done~~: `Wrap3d` breaks into runs, `GridView3d` lays
 cells out on a grid a `Grid3dDelegate` decides, and the rest of Flutter's
@@ -1877,10 +2096,13 @@ catalogue is here — `LimitedBox3d`, `UnconstrainedBox3d`, `OverflowBox3d`,
 `FractionallySizedBox3d`, `AspectRatio3d`, `FittedBox3d`, `IndexedStack3d`,
 `Table3d`, `CustomMultiChildLayout3d`, `Flow3d`, `PageView3d` and the
 `LayoutBuilder3d` that lets any of them be chosen from the room available.
-See *Building from the room you got* above. What is left of the catalogue is
-the family that needs drag-and-drop — `Draggable3d`, `DragTarget3d`,
-`Dismissible3d`, reorderable lists — and that waits on drag recognition
-*between* surfaces, which the pointer layer deliberately does not have.
+See *Building from the room you got* above. The family that needed
+drag-and-drop is here too — `Draggable3d`, `DragTarget3d`, `Dismissible3d`,
+`ReorderableList3d` and `SliverReorderableList3d` over a `Drag3dSession` that
+searches across surfaces; see *Dragging things around*. What is left of it is a
+widget form for the reorderable list, which wants a seam the declarative layer
+does not have yet, and `Drag3dAnchor.targetPlane`, which is reserved and says
+in its own dartdoc why the mechanism planned for it was the wrong one.
 
 **3. Slivers.** ~~Mostly done~~: `CustomScrollView3d` drives the protocol,
 with `SliverList3d`, `SliverGrid3d` and `SliverToBoxAdapter3d` on top of it and
@@ -1969,12 +2191,13 @@ you cannot see* above. What is left is a visual inspector, which belongs to
 the Flutter Scene Editor rather than here.
 
 **What is next.** Nothing in this list depends on anything else in it any
-more, so the order is a matter of what a caller reaches for first:
-drag-and-drop between surfaces and the `Draggable3d` family over it,
-keep-alive for a lazily built item, route transitions over
-`Route3dTransition`, a distance-field glyph atlas for type that stays sharp as
-a panel approaches, and a per-node opacity in the engine, which is what an
-`Opacity3d` is waiting on.
+more, so the order is a matter of what a caller reaches for first: keep-alive
+for a lazily built item, which the reorderable list currently works around
+rather than fixes; a widget form for that list, and the child-manager seam it
+needs; route transitions over `Route3dTransition`; focus traversal across
+surfaces; a distance-field glyph atlas for type that stays sharp as a panel
+approaches; and a per-node opacity in the engine, which is what an `Opacity3d`
+is waiting on.
 
 ## License
 
