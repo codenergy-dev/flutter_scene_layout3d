@@ -37,6 +37,14 @@ seam is named in both.
 | [Diagnostics and semantics](2026_08_25_layout_diagnostics_and_semantics.md) | developing the catalogue without flying blind |
 | [Camera-bound surfaces](2026_08_25_camera_bound_surfaces.md) | a panel that *is* the screen, and the dp ↔ world-unit contract |
 
+Two more plans were written after these ten and belong on the same map.
+[Render coverage](2026_08_28_render_coverage.md) built the lane that draws a
+frame on a real GPU and checks it against the layout — the answer to the first
+paragraph of *What is still missing* below.
+[Drag and drop](2026_09_01_drag_and_drop.md) built the payload-carrying drag
+that the pointer plan put outside its own scope, and that the last of the
+boxes were waiting on.
+
 ## The order, and why
 
 **[Camera-bound surfaces](2026_08_25_camera_bound_surfaces.md) first**, even
@@ -90,9 +98,11 @@ All ten plans were implemented, in the order above, one commit each, between
 work was done inside a fork of the engine's monorepo and moved here with its
 history rewritten, so the original hashes no longer resolve; the `commit:`
 field in each plan's front matter still names the fork commit the plan was
-reasoned against, which is what that field is for.) The suite went from 276 tests to **716**, and
-`dart analyze` is clean across the package and both example apps that depend
-on it.
+reasoned against, which is what that field is for.) The suite went from 276
+tests to **716**, and `dart analyze` is clean across the package and both
+example apps that depend on it. The two plans written since took it further:
+**862** headless tests today, beside **31** that draw on a GPU and probe the
+pixels.
 
 | Plan | Status | Landed as |
 | --- | --- | --- |
@@ -104,13 +114,16 @@ on it.
 | Overlays and layered surfaces | completed | `1ab5d68` |
 | Persistent sliver headers | completed | `2bcea83` |
 | Animation and scroll physics | completed | `f98bbc0` |
-| The boxes still missing | in progress | `213245b` |
+| The boxes still missing | completed | `213245b`, then the drag boxes |
 | Diagnostics and semantics | completed | `e890920` |
 
-The two still open are open for one reason each, recorded in their own front
-matter: geometry's remaining items have no probe, and the drag boxes have no
-drag. Text closed later, once `examples/render_probe` existed to draw a glyph
-atlas and check the frame against it. See *What is still missing* below.
+**One of the ten is still open.** Size-driven geometry's remaining items have
+no probe and, for two of them, no engine feature to probe; the reason is in its
+own front matter. The other two closed later, each once the thing it was
+waiting for existed — text once `examples/render_probe` could draw a glyph
+atlas and check the frame against it, and the boxes once
+[drag and drop](2026_09_01_drag_and_drop.md) shipped the payload-carrying drag
+their last item wanted. See *What is still missing* below.
 
 ## How the seams resolved
 
@@ -151,9 +164,19 @@ label.
 
 Also open, each for a stated reason rather than for lack of time:
 
-- **Drag and drop.** `Dismissible3d`, `Draggable3d`, `DragTarget3d` and
-  reorderable lists wait on a payload-carrying drag that the pointer plan put
-  in its own out-of-scope section. It is a plan of its own.
+- **A reorderable list has no declarative form.** There is no
+  `SceneReorderableList3d`, and there cannot be one until
+  `Layout3dBuiltChildrenMixin` grows a seam that lets a view adopt what the
+  child manager built: the list wraps every item in a `Draggable3d` of its
+  own, and the declarative contract is that `removeChild` is handed back the
+  very layout `createChild` returned. The same seam is what an
+  explicit-children constructor for that list would need.
+- **`Drag3dAnchor.targetPlane` is reserved, not built.** Re-parenting a
+  feedback box into the target's overlay costs two layout passes and a rebuild
+  in the middle of the one interaction this whole design keeps off the
+  relayout path. The alternative — projecting the carried box onto the
+  target's plane on the node tier — is written up in the drag plan rather than
+  half-built here.
 - **Keep-alive** for lazily built children, deferred by that plan's own text.
 - **Subtree opacity**, which needs a per-node opacity in `flutter_scene` that
   the materials honour.
@@ -173,8 +196,8 @@ Also open, each for a stated reason rather than for lack of time:
 Enough context to hand a single plan to an implementer who has read only that
 plan and this section.
 
-**Nothing is blocked on infrastructure any more.** Two of the three open plans
-used to wait on there being no way to draw or verify a frame;
+**Nothing is blocked on infrastructure any more.** The plans that used to wait
+on there being no way to draw or verify a frame no longer do:
 [render coverage](2026_08_28_render_coverage.md) built that lane and is done.
 `examples/render_probe` draws on a real GPU and checks the frame against the
 layout, and it already carries a `.fmat` from source through compilation to a
@@ -215,4 +238,10 @@ package exactly as that plan's author saw it.
 
 The `completed` plans record what their original reasoning got wrong. Read
 those sections before extending any of them; several of the corrections are
-load-bearing, and the render plan's are the freshest.
+load-bearing, and the drag plan's are the freshest — one of them is a bug that
+861 headless tests agreed with, and only a drawn frame caught.
+
+For everything outside the plans — the protocol reference box by box, the
+traps, the engine's own rules — the
+[documentation map](../../../docs/README.md) says which page answers which
+question.
