@@ -30,7 +30,10 @@ once it became clear the scope was its own project. That history is preserved:
 `flutter_scene_material3d`, a Material catalogue (`Button3d`, `Card3d`,
 `Scaffold3d`, `AppBar3d`) built as real geometry on this protocol, is the
 reason the package exists and will live here as a second package when it
-starts.
+starts. It is
+[planned](packages/flutter_scene_material3d/plans/2026_09_01_flutter_scene_material3d.md)
+and not yet written; that plan's phase 0 is four additions to
+`flutter_scene_layout3d` that a first component cannot do without.
 
 ## Running things
 

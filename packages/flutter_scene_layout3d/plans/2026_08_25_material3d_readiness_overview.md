@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-08-25T20:31:04Z
-updated_at: 2026-09-02T16:30:00Z
+updated_at: 2026-09-01T19:15:00Z
 commit: 657eef80eb8dc8085c3b3a84a8069273495506be
 ---
 
@@ -240,11 +240,15 @@ In the order I would take them:
    not cast a shadow from that material at all, and the plan records both the
    gate and what a catalogue does instead. Subtree opacity stays unshipped for
    the reason above, which is the plan's own rule and not a shortcut.
-4. **`flutter_scene_material3d` itself**, which text no longer blocks. It has
-   no plan yet.
-   Everything the readiness work set out to provide is in place, and the
-   render harness means a `Button3d` can be checked as a picture and not only
-   as arithmetic.
+4. **[`flutter_scene_material3d`](../../flutter_scene_material3d/plans/2026_09_01_flutter_scene_material3d.md)**,
+   the catalogue this whole map was drawn for. Everything the readiness work
+   set out to provide is in place, and the render harness means a `Button3d`
+   can be checked as a picture and not only as arithmetic. Its plan starts
+   with four things that are missing from *this* package rather than from
+   that one — the widget layer cannot draw, a label has no default renderer,
+   there is nowhere tree-wide to put a theme, and compiling the panel shader
+   is still an application's job — so read its phase 0 before assuming the
+   protocol is finished.
 
 **Every plan's `commit:` field resolves in this repository.** The plans that
 predate the move out of the engine's monorepo were written against fork

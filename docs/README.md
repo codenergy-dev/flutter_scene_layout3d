@@ -20,6 +20,7 @@ several files, guidance for using the engine underneath.
 | See it running, or write a demo | [examples/layout3d_gallery](../examples/layout3d_gallery/README.md) |
 | Verify something actually draws | [examples/render_probe](../examples/render_probe/README.md) |
 | Know what is planned, in progress, or was decided and why | [the plans directory](../packages/flutter_scene_layout3d/plans/) |
+| Know what is being built next | [the Material catalogue plan](../packages/flutter_scene_material3d/plans/2026_09_01_flutter_scene_material3d.md) |
 
 ## The pages here
 
@@ -57,8 +58,13 @@ Two entry points:
   is the map of the ten plans that built most of this package, and its *Where
   to pick up* section says what to do next and why.
 - [The render coverage plan](../packages/flutter_scene_layout3d/plans/2026_08_28_render_coverage.md)
-  is the most recent, and its findings section is the freshest list of things
-  that surprised someone.
+  built the lane that draws a frame and checks it, and its findings section is
+  a good sample of what surprises people here.
+- [The Material catalogue plan](../packages/flutter_scene_material3d/plans/2026_09_01_flutter_scene_material3d.md)
+  is what happens next, and the only plan in either package still `pending`.
+  Its middle section — what an elevation, a ripple, a disabled state and a
+  thickness mean once the depth is real — is design reasoning that exists
+  nowhere else.
 
 ## Keeping this true
 
