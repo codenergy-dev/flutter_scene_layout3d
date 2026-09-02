@@ -89,7 +89,10 @@ debugging time.
   decorations around a shader rather than regenerated meshes.
 - **`Layout3dOwner` is the tree-wide channel.** It already carries the basis
   and the visual-update callback; the metrics contract belongs there too, not
-  in an inherited widget, so the imperative layer has it as well.
+  in an inherited widget, so the imperative layer has it as well. (Shipped,
+  and with one consequence nobody wrote down at the time: because the metrics
+  is *only* on the owner, the widget layer cannot read it at all. See the
+  Material catalogue entry under *Where to pick up*.)
 
 ## What happened
 
@@ -254,8 +257,19 @@ In the order I would take them:
    `SceneDecoratedBox3d`, `DefaultTextRenderer3d`, `Layout3dSlot<T>`, and a
    build hook on this package that compiles its own shader for every consumer.
    Read that plan's *what the original reasoning got wrong* before building on
-   any of them; two of the four came out differently than expected. Phase 1
-   onward is open.
+   any of them; two of the four came out differently than expected. Phase 1 —
+   the package itself and its token families — has since landed as
+   `packages/flutter_scene_material3d`; the catalogue starts at phase 2.
+
+   Building it turned up one thing this map did not have on its list:
+   **`Layout3dMetrics` cannot be read from a `BuildContext`.** Nothing exposes
+   the surface's unit contract to the widget layer, so a widget's `build`
+   cannot convert a Material dp figure into world units — it can only write
+   units directly, or defer the figure to a box that reads `metrics` inside
+   `performLayout`. Decoration figures are unaffected (the painter converts
+   them), but a padding or a size is not. A component library meets this in
+   its first `Material3d`, and closing it is a change to *this* package with a
+   plan of its own, the way phase 0's four were.
 
 **Every plan's `commit:` field resolves in this repository.** The plans that
 predate the move out of the engine's monorepo were written against fork

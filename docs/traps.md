@@ -41,6 +41,18 @@ layer has it too. `metrics.dp(48)` converts a spec figure; `metrics.sp(14)` a
 type size. Bind a surface to the camera and the rate stops being a guess: it is
 derived from the frustum at the distance the surface sits.
 
+**The widget layer cannot read it, and that is a real gap.** Because the
+metrics is *only* on the owner, there is no `Layout3dMetrics.of(context)`: a
+figure written in a `build` method is in world units, full stop. Decorations
+are the exception and hide the problem — `BorderRadius3d`, `bevel`, `border`
+and `elevation` are converted by the painter, so a `SceneDecoratedBox3d` takes
+dp — but a `ScenePadding3d` or a `SceneSizedBox3d` does not, and nothing warns
+you. A component library that wants `padding: EdgeInsets3d.all(16)` has to
+defer the figure to a box that converts inside `performLayout`, or this
+package has to grow a way to read the metrics from a context. It was found
+building `flutter_scene_material3d`'s theme, and it is the first thing that
+package's phase 2 has to settle.
+
 ## Staying off the relayout path
 
 **Writing `Layout3dSurface.metrics` relayouts the whole subtree, by design.**

@@ -6,5 +6,6 @@ environment:
 
 workspace:
   - packages/flutter_scene_layout3d
+  - packages/flutter_scene_material3d
   - examples/layout3d_gallery
   - examples/render_probe

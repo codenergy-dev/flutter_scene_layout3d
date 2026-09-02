@@ -1,0 +1,50 @@
+name: flutter_scene_material3d
+description: >-
+  Material Design 3 built as real geometry on flutter_scene_layout3d. The
+  token families, a theme both the widget and the imperative layer can read,
+  and the depth scales Material does not have.
+repository: https://github.com/codenergy-dev/flutter_scene_layout3d
+homepage: https://github.com/codenergy-dev/flutter_scene_layout3d
+version: 0.1.0
+
+topics:
+  - material
+  - layout
+  - 3d
+  - ui
+  - gamedev
+
+platforms:
+  macos:
+  ios:
+  android:
+  windows:
+  linux:
+  web:
+
+resolution: workspace
+
+environment:
+  sdk: ^3.10.0
+  flutter: ">=3.29.0-1.0.pre.242"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_scene_layout3d:
+    path: ../flutter_scene_layout3d
+
+dev_dependencies:
+  # Tests only. Nothing in lib/ touches the engine: this phase is tokens and
+  # arithmetic, and a Layout3dSurface in a widget test needs a scene Node to
+  # hang its plane under.
+  flutter_scene: ^0.23.0
+  flutter_lints: ^5.0.0
+  flutter_test:
+    sdk: flutter
+
+# No `flutter:` section, and deliberately no build hook. The panel shader
+# every component draws through belongs to flutter_scene_layout3d, which
+# compiles it from its own hook for whatever application depends on it. A
+# second library calling `buildEngineAssets` would put two copies of the
+# engine's shaders in every app that used it; see docs/engine-rules.md.

@@ -24,31 +24,37 @@ once it became clear the scope was its own project. That history is preserved:
 | Package | What it is |
 | --- | --- |
 | `packages/flutter_scene_layout3d` | The layout protocol. Constraints, intrinsics, baselines, flex, stack, wrap, slivers, scrolling, text measurement, decoration, clipping, pointer dispatch, focus, overlays, animation, diagnostics. |
+| `packages/flutter_scene_material3d` | Material Design 3 on that protocol. Today: the token families (`ColorScheme3d`, `Typography3d`, `ShapeScale3d`, `Elevation3d`, `Thickness3d`), `Theme3dData`, `SceneTheme3d` and `Theme3d.of`. The catalogue itself is next. |
 | `examples/layout3d_gallery` | The example app. Three surfaces — an upright panel, a ground plane, a scrolling list — all hit-testable. |
 | `examples/render_probe` | Render tests. Draws the layout on a GPU and probes the frame at the pixels layout says to check. Commits its platform scaffolding, unlike the gallery. |
 
-`flutter_scene_material3d`, a Material catalogue (`Button3d`, `Card3d`,
-`Scaffold3d`, `AppBar3d`) built as real geometry on this protocol, is the
-reason the package exists and will live here as a second package when it
-starts. It is
-[planned](packages/flutter_scene_material3d/plans/2026_09_01_flutter_scene_material3d.md)
-and not yet written. That plan's phase 0 — four additions to
-`flutter_scene_layout3d` that a first component could not do without — is
-done, as
-[its own plan](packages/flutter_scene_layout3d/plans/2026_09_01_the_four_things_before_a_component.md)
-in the layout package; phase 1 onward is unstarted, and
-`packages/flutter_scene_material3d` holds nothing but that plan.
+`flutter_scene_material3d` is the reason the layout package exists: a Material
+catalogue (`Button3d`, `Card3d`, `Scaffold3d`, `AppBar3d`) built as real
+geometry rather than as a picture of it. It is
+[planned in full](packages/flutter_scene_material3d/plans/2026_09_01_flutter_scene_material3d.md)
+and partly written. Phase 0 — four additions to `flutter_scene_layout3d` that
+a first component could not do without — landed in the layout package under
+[its own plan](packages/flutter_scene_layout3d/plans/2026_09_01_the_four_things_before_a_component.md).
+Phase 1, the package and its tokens, is done. **There is no `Material3d`,
+`InkWell3d` or `Icon3d` yet**, and nothing in the catalogue; phase 2 is where
+they start, and the icon question in particular is to be settled with a render
+probe rather than guessed at.
 
 ## Running things
 
 Everything below runs from the repository root unless stated otherwise.
 
 ```sh
-flutter pub get                                   # resolves the workspace
-cd packages/flutter_scene_layout3d && flutter test # the suite
-dart analyze                                      # must be clean, everywhere
-dart format .                                     # before every commit
+flutter pub get                                    # resolves the workspace
+cd packages/flutter_scene_layout3d && flutter test  # the layout suite
+cd packages/flutter_scene_material3d && flutter test # the Material suite
+dart analyze                                       # must be clean, everywhere
+dart format .                                      # before every commit
 ```
+
+Both suites are headless, and both must be green. The Material package's is
+arithmetic and state — tokens, `lerp`, and the theme reaching a box's
+`performLayout` — so nothing in it needs a GPU.
 
 The example app commits no platform scaffolding, so generate the platform you
 want first:
@@ -85,8 +91,11 @@ which question, and where the reasoning behind past decisions is recorded.
 
 Any piece of work worth planning before writing gets a plan file under the
 `plans/` directory **of the package it belongs to**
-(`packages/flutter_scene_layout3d/plans/`). Create the directory if it is not
-there yet.
+(`packages/flutter_scene_layout3d/plans/`,
+`packages/flutter_scene_material3d/plans/`). Create the directory if it is not
+there yet. A change to the layout protocol that the catalogue needs gets its
+own plan in the layout package, not a line item in a Material plan — that is
+what phase 0 did.
 
 Name the file `YYYY_MM_DD_plan_title.md`, dated the day the plan is written,
 with a lowercase snake_case title that says what the work is.

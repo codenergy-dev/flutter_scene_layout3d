@@ -1,8 +1,8 @@
 ---
 status: in progress
-reason: phase 0 landed in flutter_scene_layout3d; the package itself does not exist yet, and phases 1 to 9 are open
+reason: phases 0 and 1 are done — the package exists, with its token families, Theme3dData and SceneTheme3d, on 80 headless tests. Phases 2 to 9, every component in the catalogue, are open
 created_at: 2026-09-01T19:15:00Z
-updated_at: 2026-09-01T21:30:00Z
+updated_at: 2026-09-02T00:00:00Z
 commit: 52a2ca7b6a176cf70b5bef6b6b92ff7e7cbf82bd
 ---
 
@@ -273,6 +273,11 @@ theme; it does not read `metrics` directly** — the theme is what turns a token
 into the dp figure that `metrics` then turns into world units, and keeping that
 one-way makes a component's numbers auditable.
 
+*Shipped as written, with two corrections recorded in* What phase 1 found:
+`Elevation3d` and `Thickness3d` are two classes rather than one family, so
+`Theme3dData` holds five plus the density; and the density was already on
+`Layout3dMetrics`, which this section did not know.
+
 ### `Material3d`, the one primitive everything else is
 
 Flutter has `Material`, and every component in its catalogue is one. Do the
@@ -333,15 +338,29 @@ will have contrast that drifts as the surface turns.
       plan's expectations turned out wrong and are worth reading before
       building on them: `SceneContainer3d` has *no* `decoration`, with reasons,
       and a slot is keyed by value rather than identity.
-- [ ] **Phase 1 — the package and the tokens.**
-      `packages/flutter_scene_material3d`, added to the workspace.
-      `ColorScheme3d`, `Typography3d`, `ShapeScale3d`, `Elevation3d`,
-      `Thickness3d`, `Theme3dData`, `SceneTheme3d`, `Theme3d.of`. All
-      arithmetic, all headless, all `lerp`-able.
+- [x] **Phase 1 — the package and the tokens.** Done.
+      `packages/flutter_scene_material3d` is in the workspace, depends on the
+      layout package by path, and ships no build hook. `ColorScheme3d` (46
+      roles, light and dark), `Typography3d` (15 styles), `ShapeScale3d` (7
+      steps plus `bevelFor`), `Elevation3d` and `Thickness3d` (with
+      `depthStep`, `minimumStepFor` and `separates`), `Theme3dData` holding
+      all five plus a `VisualDensity3d`, a `Tween` for each family,
+      `SceneTheme3d` writing both halves of the channel, `Theme3d.of` /
+      `maybeOf`, and a `theme3d` extension for a `Layout3d` reading the slot
+      inside `performLayout`. **80 headless tests**, `dart analyze` clean
+      across the workspace, and the layout package's 891 still green. See
+      *What phase 1 found* below — four things came out differently than this
+      plan expected, and one of them is a gap phase 2 has to close first.
 - [ ] **Phase 2 — `Material3d`, `InkWell3d`, `Icon3d`, `Text3d` styling.**
       The primitive and the interaction layer over it, plus the icon question
       settled. First render probe: a themed surface at three elevation levels
       is three distinguishable colours (the tint), and a hover lightens one.
+      **Start with the two things phase 1 left on the doorstep**: the widget
+      layer cannot read `Layout3dMetrics`, so a `Material3d` cannot convert a
+      dp padding in `build` (a change to the layout package, with its own plan
+      there); and application setup — the one call that installs
+      `BoxDecoration3d.painterFactory` — was deliberately deferred to sit
+      beside `Material3d` rather than beside the theme.
 - [ ] **Phase 3 — the buttons.** `FilledButton3d`, `FilledTonalButton3d`,
       `OutlinedButton3d`, `TextButton3d`, `ElevatedButton3d`, `IconButton3d`,
       `FloatingActionButton3d`. One `_ButtonStyle3d` resolving token sets by
@@ -368,6 +387,120 @@ will have contrast that drifts as the surface turns.
       no painter and therefore draws no decoration at all. A catalogue is
       pointless unseen; give it a screen of real components on the upright
       panel and on the ground plane.
+
+## What phase 1 found
+
+Nine things, in rough order of how much they changed the shipped design. The
+first two are work phase 2 has to do before it can write a component.
+
+**`VisualDensity3d` was already on `Layout3dMetrics`, and this plan did not
+notice.** *The design* asked `Theme3dData` to carry a density; the layout
+package has carried one since the metrics landed, and applies it in
+`Layout3dMetrics.effectiveConstraints`. Two dials for one number is exactly
+the drift the "a component reads the theme, not `metrics`" rule exists to
+prevent. The resolution is an explicit winner rather than a removal:
+`Theme3dData.density` is what a component obeys, and
+`Theme3dData.effectiveConstraints(constraints, metrics)` applies it through
+the metrics' own arithmetic, so there is one implementation and a stated
+precedence. `SceneTheme3d` deliberately does *not* write the surface's
+metrics to close the gap — the metrics is the surface's unit contract, and a
+widget inside the tree rewriting it is a theme reaching outside its
+vocabulary.
+
+**The widget layer cannot read the metrics at all, and a component needs to.**
+`Layout3dMetrics` lives only on `Layout3dOwner`; nothing exposes it through a
+`BuildContext`. So a widget's `build` cannot turn 16dp into world units — it
+can only write units directly. Decoration figures are fine (the painter
+converts radii, bevel, border and elevation at paint time), which is why the
+README's worked example can write `theme.shape.medium` straight into a
+`BoxDecoration3d` — but a *padding* or a *size* in a `build` method is in
+world units, and there is no honest way around it today.
+`Material3d(padding: EdgeInsets3d.all(theme.spacing))` cannot be written. The
+fix belongs to `flutter_scene_layout3d` and gets its own plan there, the way
+phase 0's four did; the shapes worth weighing are an inherited metrics widget
+beside the surface, or a dp-stated padding box that converts inside
+`performLayout`. **Phase 2 should settle it before `Material3d`, not after.**
+
+**Interpolating a token can crash, and the layer below says which ones.**
+`BorderRadius3d` asserts on a negative radius and `BoxDecoration3d` asserts on
+a negative elevation, while an overshooting curve — `Curves.easeInBack`, a
+spring — evaluates its tween outside `[0, 1]` by construction. So
+`ShapeScale3d.lerp`, `Elevation3d.lerp` and `Thickness3d.lerp` clamp at zero;
+without it, animating a rounded scale to a square one crashes on some curves
+and not others, which is the worst kind of bug to be handed. `Color.lerp`
+clamps its own components, so `ColorScheme3d.lerp` needs nothing.
+`Typography3d.lerp` is the exception and is documented as one: nothing asserts
+on a negative font size, so an overshoot produces one and it surfaces later,
+as a measurement failure.
+
+**`TextStyle.lerp` is a merge as well as an interpolation, so it is not the
+identity at its own ends.** Where one end states a property and the other
+leaves it null, the stated value is carried across rather than dropped — so
+`Typography3d.lerp(a, b, 1.0)` is not `b` when `b`'s styles are bare
+`TextStyle(fontSize: …)` values. That is Flutter's behaviour and usually what
+you want; the test states it, and the dartdoc tells a caller to state complete
+styles when it matters. A first draft of the test asserted the ends outright
+and failed, which is how this was found.
+
+**Material's `full` shape cannot be `double.infinity`.** `BorderRadius3d` has
+no stadium rule, but `resolve` already scales radii down to what a box can
+fit, so an absurdly large radius *is* a stadium on any box. Infinity is not:
+`resolve` scales by `extent / sum`, which is zero against an infinite sum, and
+`infinity * 0` is `NaN` — which trips `BorderRadius3d`'s own `>= 0` assert in
+debug and, in release, reaches a shader uniform as a `NaN` and draws nothing
+with no error anywhere. `ShapeScale3d.fullRadius` is 1000 logical pixels, and
+a test states why.
+
+**A `const` map cannot hold a `Layout3dSlot` key.** Phase 0 gave the slot
+value equality for good reasons, and a `const` map key needs *primitive*
+equality — so `SceneLayout3d(slots: const {Theme3dData.slot: …})` is a compile
+error. Harmless once known, a puzzle for a minute if not; the README says so.
+
+**The depth-step rule is derivable, not a rule of thumb.** *Every component
+needs a thickness* said to keep the scale small relative to the step. The
+actual condition falls out of the geometry: `Stack3d` writes
+`sceneOffset = -index * step` and each slab is centred on its own plane, so
+child *i+1* clears child *i* everywhere they overlap exactly when
+`step > (thickness_i + thickness_{i+1}) / 2` — the **mean**, not the maximum
+and not the sum. `Thickness3d.minimumStepFor` and `separates` are that
+sentence, and the baseline's 12dp step clears the worst pair the scale can
+produce (two 8dp slabs, mean 8) with half again to spare.
+
+**The token tables are checked against Flutter's generated tables, not against
+a second transcription.** *The tokens* worried about transcription errors, and
+the strongest available answer turned out to be that Flutter generates its own
+M3 colour and typography tables from the Material token database: the suite
+compares `ColorScheme3d.light` and `.dark` role by role against
+`ThemeData(brightness: …).colorScheme`, and the type scale's sizes, weights
+and tracking against `Typography.englishLike2021`. That makes the tests a
+drift alarm as well as a check. One deliberate divergence: Material publishes
+a **line height in logical pixels** (57dp type on a 64dp line) while Flutter's
+`TextStyle.height` is a multiple and its generated table rounds (`1.12` for
+`64 / 57`). These styles carry the exact ratio, which is under half a percent
+different and in the direction of the spec; both facts are pinned.
+
+**The two judgment calls, and the reasons.**
+
+- **`SceneTheme3d` offers to install the default text renderer and never
+  assumes it.** `textRendererFactory` is null by default; passing one wraps
+  the child in a `DefaultTextRenderer3d`, so an application says "here is my
+  theme, and here is how labels are drawn" in one call. Defaulting it was
+  tempting and is wrong: a renderer is not a token, it is a *resource* with an
+  ownership contract — owned by the label, disposed with it, which is the
+  whole reason `DefaultTextRenderer3d` carries a factory rather than an
+  instance — and a theme that silently created resources would be reaching
+  past what a theme is. Refusing to carry it at all was the other option, and
+  it only buys a second wrapper in every application for one concept.
+- **Application setup is deferred to phase 2, beside `Material3d`.** The one
+  obvious call a catalogue needs is `await loadFmatMaterial(...)` followed by
+  `BoxDecoration3d.painterFactory = ...`. It needs a GPU context, so no
+  headless test can exercise it, and phase 1 has no consumer for it — shipping
+  it here would mean an untested function whose only verification lane is the
+  one this phase was explicitly not supposed to need. Phase 2's first render
+  probe is exactly the thing that will verify it, so it lands there. The
+  package's `lib/` therefore touches no engine API at all in phase 1, and
+  `flutter_scene` is a dev-dependency (a widget test needs a `Node` for the
+  surface to hang its plane under) rather than a dependency.
 
 ## Tests
 

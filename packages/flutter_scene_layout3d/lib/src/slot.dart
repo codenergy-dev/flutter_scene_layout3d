@@ -37,6 +37,11 @@ import 'layout3d.dart';
 /// collide, so **name a slot after the library that owns it**
 /// (`'material3d.theme'`), declare it once, and import it.
 ///
+/// The other cost is smaller and shows up as a compile error: a `const` map
+/// key must have *primitive* equality, and this one does not, so
+/// `SceneLayout3d(slots: const {mySlot: value})` will not compile. Drop the
+/// `const`.
+///
 /// **The owner stores the value; it does not own it.** Nothing is disposed
 /// when the surface goes away — the map is cleared and that is all — for the
 /// same reason the owner does not dispose the layouts it collects. A value

@@ -35,6 +35,12 @@ jobs:
         run: flutter test
         working-directory: packages/flutter_scene_layout3d
 
+      # Also headless, and for the same reason: the Material package is
+      # tokens, a theme and the arithmetic between them. Nothing here draws.
+      - name: Test the Material package
+        run: flutter test
+        working-directory: packages/flutter_scene_material3d
+
   render:
     name: Render tests
     # macos-14 and later are Apple silicon with a real GPU, which Flutter GPU
