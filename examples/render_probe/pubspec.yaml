@@ -17,6 +17,8 @@ dependencies:
   flutter_scene: ^0.23.0
   flutter_scene_layout3d:
     path: ../../packages/flutter_scene_layout3d
+  flutter_scene_material3d:
+    path: ../../packages/flutter_scene_material3d
   vector_math: ^2.1.4
 
 dev_dependencies:

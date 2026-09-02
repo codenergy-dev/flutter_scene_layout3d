@@ -24,7 +24,7 @@ once it became clear the scope was its own project. That history is preserved:
 | Package | What it is |
 | --- | --- |
 | `packages/flutter_scene_layout3d` | The layout protocol. Constraints, intrinsics, baselines, flex, stack, wrap, slivers, scrolling, text measurement, decoration, clipping, pointer dispatch, focus, overlays, animation, diagnostics. |
-| `packages/flutter_scene_material3d` | Material Design 3 on that protocol. Today: the token families (`ColorScheme3d`, `Typography3d`, `ShapeScale3d`, `Elevation3d`, `Thickness3d`), `Theme3dData`, `SceneTheme3d` and `Theme3d.of`. The catalogue itself is next. |
+| `packages/flutter_scene_material3d` | Material Design 3 on that protocol. Today: the six token families (`ColorScheme3d`, `Typography3d`, `ShapeScale3d`, `Elevation3d`, `Thickness3d`, `StateLayerOpacity3d`), `Theme3dData` and `SceneTheme3d`, `initializeMaterial3d()`, and the primitive layer — `Material3d`, `InkWell3d`, `Icon3d`, `SceneTextStyle3d`. The catalogue's components start at the buttons. |
 | `examples/layout3d_gallery` | The example app. Three surfaces — an upright panel, a ground plane, a scrolling list — all hit-testable. |
 | `examples/render_probe` | Render tests. Draws the layout on a GPU and probes the frame at the pixels layout says to check. Commits its platform scaffolding, unlike the gallery. |
 
@@ -39,9 +39,18 @@ Phase 1, the package and its tokens, is done, and the one gap it left in the
 layout package — a `build` method that could not read the unit contract, so a
 dp padding could not be written — is closed under
 [its own plan](packages/flutter_scene_layout3d/plans/2026_09_02_the_metrics_a_build_method_can_read.md)
-there. **There is no `Material3d`, `InkWell3d` or `Icon3d` yet**, and nothing in the catalogue; phase 2 is where
-they start, and the icon question in particular is to be settled with a render
-probe rather than guessed at.
+there. Phase 2 is done too: `initializeMaterial3d()` is the one call an
+application makes, `Material3d` is the primitive with the theme resolved into
+it, `InkWell3d` drives its state layer without rebuilding anything, and
+`Icon3d` is one code point of an icon font through the label atlas — which a
+render probe settled rather than a guess. **There are no components yet**:
+phase 3, the seven buttons, is where the catalogue proper starts, and each of
+them is a `Material3d` with a set of tokens.
+
+Two things phase 2 found that are expensive to rediscover, both written up in
+`docs/traps.md`: handing every `BoxDecoration3d` the *same* material makes a
+screen of panels come out one colour, and `TapTarget3d`'s 48dp minimum grows
+the ray region without delivering a press in the margin.
 
 ## Running things
 

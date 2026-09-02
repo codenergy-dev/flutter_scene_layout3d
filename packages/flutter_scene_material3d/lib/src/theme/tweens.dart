@@ -3,6 +3,7 @@ import 'package:flutter/animation.dart' show Tween;
 import '../tokens/color_scheme.dart';
 import '../tokens/depth.dart';
 import '../tokens/shape.dart';
+import '../tokens/state_layer.dart';
 import '../tokens/typography.dart';
 import 'theme_data.dart';
 
@@ -52,6 +53,16 @@ class Elevation3dTween extends Tween<Elevation3d> {
 
   @override
   Elevation3d lerp(double t) => Elevation3d.lerp(begin!, end!, t);
+}
+
+/// Interpolates between two sets of state-layer opacities.
+class StateLayerOpacity3dTween extends Tween<StateLayerOpacity3d> {
+  /// Creates a tween between two sets of state-layer opacities.
+  StateLayerOpacity3dTween({super.begin, super.end});
+
+  @override
+  StateLayerOpacity3d lerp(double t) =>
+      StateLayerOpacity3d.lerp(begin!, end!, t);
 }
 
 /// Interpolates between two thickness scales.

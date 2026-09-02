@@ -7,11 +7,12 @@ import 'package:flutter_scene/scene.dart'
         Node,
         PerspectiveCamera,
         PhysicallyBasedMaterial,
-        SphereGeometry,
-        loadFmatMaterial;
+        SphereGeometry;
+import 'package:flutter/material.dart' show Icons;
 import 'package:flutter/painting.dart'
     show Color, TextAlign, TextSpan, TextStyle;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
+import 'package:flutter_scene_material3d/flutter_scene_material3d.dart';
 import 'package:vector_math/vector_math.dart' show Ray, Vector3, Vector4;
 
 import 'probe_scene.dart';
@@ -23,17 +24,21 @@ import 'probe_scene.dart';
 /// application does at startup, and the only thing standing between a
 /// decoration and a visible panel.
 ///
+/// It is `flutter_scene_material3d`'s own call rather than the two lines the
+/// layout package's README shows, and running it here is the point: the
+/// setup a Material application makes has no other verification lane, since
+/// loading a compiled `.fmat` needs a GPU context that `flutter test` does
+/// not have. It also does the thing the README's one-liner cannot — give
+/// every decorated box a material of its own, so a row of panels in three
+/// different colours draws in three different colours instead of collapsing
+/// onto whichever painted last.
+///
 /// The shader itself is compiled by `flutter_scene_layout3d`'s own build
 /// hook, not by this app's: the source path names the file in the package
 /// that ships it, and `loadFmatMaterial` resolves it through that package's
 /// generated manifest. This app used to compile it through a symlink, and no
 /// longer has to.
-Future<void> installPanelPainter() async {
-  if (BoxDecoration3d.painterFactory != null) return;
-  final material = await loadFmatMaterial('assets/box_decoration3d.fmat');
-  BoxDecoration3d.painterFactory = (_) =>
-      BoxDecoration3dPainter(createMaterial: () => material);
-}
+Future<void> installPanelPainter() => initializeMaterial3d();
 
 // Every NodeBox3d here uses BoxFit3d.contain rather than the default
 // BoxFit3d.none. It matters more than it looks: with `none` the content keeps
@@ -81,6 +86,18 @@ final Vector4 _paleGrey = Vector4(0.82, 0.82, 0.84, 1);
 /// the two are the wrong way round, which is exactly the bug the border probe
 /// found.
 const Color _panelFill = Color(0xFF1B3A6B);
+
+/// A single icon glyph, big and bright, in Material's own icon font.
+///
+/// The family name is the one `uses-material-design: true` puts in the
+/// bundle, and there is no `package:` on it: the font ships with the
+/// application rather than with a package, which is the one spelling detail
+/// that turns a drawn icon into a blank.
+const TextStyle _iconStyle = TextStyle(
+  fontFamily: 'MaterialIcons',
+  fontSize: 220,
+  color: Color(0xFFEA9F26),
+);
 const Color _panelBorder = Color(0xFFEA9F26);
 
 /// One panel, alone on a surface, at a size a probe can name points inside.
@@ -836,4 +853,154 @@ final List<ProbeScene> kProbeScenes = <ProbeScene>[
       probes: {'panel': panel, 'card': card, 'feedback': feedback},
     );
   }),
+  // ── The catalogue: does a token become a picture? ─────────────────────
+  //
+  // Everything below is built through flutter_scene_material3d's own
+  // resolution — `Material3d.decorationFor` is the single place a token
+  // becomes a `BoxDecoration3d`, and a probe that reimplemented it would be
+  // checking its own arithmetic. The scenes are imperative because this
+  // harness is: a `ProbeSceneContent` holds `Layout3dSurface`es, and the
+  // widget layer's job (reading the metrics, installing the ink controller)
+  // is what the headless suite covers.
+
+  ProbeScene('material_elevation', () {
+    // The first claim of the catalogue: three elevation levels are three
+    // distinguishable colours. That is Material 3's surface *tint*, and here
+    // it carries the whole elevation signal, because a panel casts no shadow
+    // and a head-on camera gets nothing from the lift.
+    //
+    // The **light** theme, and not for looks. The dark theme's surface is
+    // #141218 and this harness clears to #101820: a dark panel is inside the
+    // probe's own clear tolerance, so every pixel of it reads as background
+    // and the scene "draws nothing". The light surface is near white, its
+    // tint is the theme's purple primary, and the assertion is therefore an
+    // order — higher is *darker* — which lighting and tone mapping can scale
+    // but cannot reorder.
+    //
+    // The levels are 0, 2 and 5 rather than 0, 3 and 5: Material's tint table
+    // is 0%, 8% and 14% there, and the two gaps are the widest three levels
+    // can give.
+    const theme = Theme3dData.light;
+    DecoratedBox3d panel(String name, double elevation) => DecoratedBox3d(
+      decoration: Material3d.decorationFor(
+        theme,
+        shape: theme.shape.medium,
+        thickness: theme.thickness.raised,
+        elevation: elevation,
+      ),
+      name: name,
+    );
+    final flat = panel('flat', theme.elevation.level0);
+    final raised = panel('raised', theme.elevation.level2);
+    final high = panel('high', theme.elevation.level5);
+    // Explicitly sized cells rather than `Expanded3d`. A `Row3d` hands its
+    // children loose cross-axis constraints, and a `DecoratedBox3d` with no
+    // child shrink-wraps — so a flexed panel comes out 1.12 x 0 x 0 and the
+    // scene draws nothing at all, which is exactly how this one first ran.
+    // The depth is the thickness token in world units, which is what a
+    // `Material3d` would have constrained it to.
+    return ProbeSceneContent(
+      surfaces: [
+        Layout3dSurface(
+          constraints: Constraints3d.tight(const Size3d(3.6, 1.2, 0.2)),
+          child: Row3d(
+            mainAxisAlignment: MainAxisAlignment3d.spaceEvenly,
+            children: <Layout3d>[
+              for (final box in <Layout3d>[flat, raised, high])
+                SizedBox3d(width: 1.0, height: 1.0, depth: 0.04, child: box),
+            ],
+          ),
+        ),
+      ],
+      probes: {'flat': flat, 'raised': raised, 'high': high},
+    );
+  }, preload: installPanelPainter),
+
+  ProbeScene('material_hover', () {
+    // The second claim: a hover changes a panel, in the direction of the
+    // surface's own content colour. The wash is not written by hand — it is
+    // what `StateLayerOpacity3d` resolves for the hovered state over the
+    // content role, which is exactly what `InkWell3d` hands the panel through
+    // the ink controller.
+    //
+    // On a dark theme that reads as "a hover lightens the panel", which is
+    // how Material describes it. On the light baseline the content colour is
+    // near black, so it reads as darker — and the light theme is what this
+    // scene uses, for the reason the elevation scene above gives: a dark
+    // panel is inside this harness's clear tolerance and reads as background.
+    const theme = Theme3dData.light;
+    final decoration = Material3d.decorationFor(
+      theme,
+      shape: theme.shape.medium,
+      thickness: theme.thickness.standard,
+    );
+    final idle = DecoratedBox3d(decoration: decoration, name: 'idle');
+    final hovered = DecoratedBox3d(
+      decoration: decoration,
+      stateLayer: theme.stateLayer.resolve(const {
+        Material3dState.hovered,
+      }, theme.colorScheme.onSurface),
+      name: 'hovered',
+    );
+    return ProbeSceneContent(
+      surfaces: [
+        Layout3dSurface(
+          constraints: Constraints3d.tight(const Size3d(3.6, 1.2, 0.2)),
+          child: Row3d(
+            mainAxisAlignment: MainAxisAlignment3d.spaceEvenly,
+            children: <Layout3d>[
+              for (final box in <Layout3d>[idle, hovered])
+                SizedBox3d(width: 1.4, height: 1.0, depth: 0.02, child: box),
+            ],
+          ),
+        ),
+      ],
+      probes: {'idle': idle, 'hovered': hovered},
+    );
+  }, preload: installPanelPainter),
+
+  // ── The icon question ────────────────────────────────────────────────
+  //
+  // The catalogue plan guesses that an icon is a one-glyph `Text3d` in the
+  // MaterialIcons font, drawn through the same atlas as every label — which
+  // would make `Icon3d` thirty lines and batch it with the labels for free.
+  // Nothing but a drawn frame can answer that: `Text3d` measures an unknown
+  // glyph perfectly happily and draws a blank, and the atlas rasterizes
+  // through Flutter's own text engine, which resolves the family or silently
+  // falls back. So the scene draws one, and its control draws the same glyph
+  // with no renderer at all.
+  ProbeScene('icon_glyph', () {
+    final icon = Text3d(
+      String.fromCharCode(Icons.favorite.codePoint),
+      style: _iconStyle,
+      renderer: AtlasText3dRenderer(),
+      name: 'icon',
+    );
+    return ProbeSceneContent(
+      surfaces: [
+        Layout3dSurface(
+          constraints: Constraints3d.loose(const Size3d(6.0, 1.8, 0.2)),
+          child: Center3d(child: icon),
+        ),
+      ],
+      probes: {'icon': icon},
+    );
+  }, minCoverage: 0.01),
+
+  ProbeScene('icon_glyph_undrawn', () {
+    final icon = Text3d(
+      String.fromCharCode(Icons.favorite.codePoint),
+      style: _iconStyle,
+      name: 'icon',
+    );
+    return ProbeSceneContent(
+      surfaces: [
+        Layout3dSurface(
+          constraints: Constraints3d.loose(const Size3d(6.0, 1.8, 0.2)),
+          child: Center3d(child: icon),
+        ),
+      ],
+      probes: {'icon': icon},
+    );
+  }, minCoverage: 0),
 ];

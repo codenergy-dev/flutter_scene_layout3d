@@ -1,8 +1,9 @@
 # render_probe
 
-Render tests for `flutter_scene_layout3d`. The package's own suite is all
-arithmetic — it proves the protocol arranges correctly and proves nothing about
-whether a frame comes out. This is the other half.
+Render tests for `flutter_scene_layout3d` and `flutter_scene_material3d`. Both
+packages' own suites are all arithmetic — they prove the protocol arranges
+correctly and prove nothing about whether a frame comes out. This is the other
+half.
 
 ```sh
 flutter drive --driver=test_driver/integration_test.dart \
@@ -133,3 +134,31 @@ probed feedback box that is always zero, so the "drawn" point comes out equal
 to the laid-out one and an assertion built on the difference compares a number
 with itself. An earlier version of the detached scene did exactly that and
 failed with a distance of 0.0.
+
+## The catalogue scenes
+
+The last four scenes belong to `flutter_scene_material3d` rather than to the
+layout protocol, and they are here because there is nowhere else they could
+be: what they check needs a GPU.
+
+`material_elevation` and `material_hover` build their panels through
+`Material3d.decorationFor`, which is the single place a token becomes a
+`BoxDecoration3d` — a probe that resolved the tokens itself would be checking
+its own arithmetic. Both use the **light** theme, and not for looks: this
+harness decides what is geometry by distance from its clear colour of
+`#101820`, and Material 3's dark surface is `#141218`, inside that tolerance.
+A dark panel reads as background and the scene looks like it never drew. So
+the direction asserted is *higher elevation is darker* — a purple primary
+tinting a near-white surface — and a hover darkens rather than lightens. Same
+claim, opposite sign.
+
+`icon_glyph` and its control settled the question the whole `Icon3d` design
+hung on: does the label atlas rasterize an icon-font glyph? It does, so an
+icon is one quad and a screen of icons and labels is one texture.
+
+`installPanelPainter` here is `initializeMaterial3d()` — the call a Material
+application makes — which is the only verification lane it has, since loading
+a compiled `.fmat` needs a GPU context that `flutter test` does not have. It
+also gives every decorated box a material of its own, which is what lets
+`material_elevation` show three different colours at once instead of three
+copies of whichever panel painted last.

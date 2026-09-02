@@ -627,6 +627,22 @@ It resolves through the manifest this package's hook writes into its own
 `packages/flutter_scene_layout3d/…`. Nothing in your app's own hook mentions
 panels.
 
+**That form shares one material, and it is wrong the moment two panels
+differ.** `BoxDecoration3dPainter` writes each box's parameters into the
+material it is handed, so a single instance means the last box painted wins
+the uniform block: a screen of panels comes out in one colour, at one
+elevation, with one state layer, and nothing warns you — it reads as a caching
+bug in the shader. `createMaterial` is called once per box precisely so each
+box can own one, but it is *synchronous* while `loadFmatMaterial` is not,
+which is the whole difficulty. The way through is that function's own
+`factory` parameter: it hands you the compiled fragment shader, the sidecar
+metadata and the vertex variants, so one asynchronous load can capture them
+and build any number of further instances synchronously.
+`flutter_scene_material3d.loadPanelMaterialFactory` is that function written
+out, and `initializeMaterial3d()` is the one call an application depending on
+the catalogue makes instead of any of this. Keep the shared form only for a
+surface whose panels really are alike.
+
 Keep `buildEngineAssets` separate in your head from all of this. It is what
 makes `Scene.initializeStaticResources()` resolve, without which nothing in a
 scene renders at all — and `flutter_scene`'s own hook already builds those

@@ -14,14 +14,14 @@ several files, guidance for using the engine underneath.
 | --- | --- |
 | Understand what this project is and why | the root [README](../README.md) |
 | Use the layout protocol: boxes, slivers, scrolling, text, decoration, input, overlays, animation | the [layout package README](../packages/flutter_scene_layout3d/README.md) — the deep reference, box by box |
-| Theme a surface, or build a component out of Material tokens | the [Material package README](../packages/flutter_scene_material3d/README.md) — the token families, the two depth scales Material does not publish, and both halves of the theme channel |
+| Theme a surface, or build a Material component | the [Material package README](../packages/flutter_scene_material3d/README.md) — the one setup call, `Material3d` and `InkWell3d`, the token families, and both halves of the theme channel |
 | Work in this repository as a coding agent | [AGENTS.md](../AGENTS.md) — conventions, plans, commits, how to run things |
 | Avoid the sharp edges of this package | [traps.md](traps.md) |
 | Use `flutter_scene` correctly | [engine-rules.md](engine-rules.md) |
 | See it running, or write a demo | [examples/layout3d_gallery](../examples/layout3d_gallery/README.md) |
 | Verify something actually draws | [examples/render_probe](../examples/render_probe/README.md) |
 | Know what is planned, in progress, or was decided and why | the plans directories of [the layout package](../packages/flutter_scene_layout3d/plans/) and [the Material package](../packages/flutter_scene_material3d/plans/) |
-| Know what is being built next | [the Material catalogue plan](../packages/flutter_scene_material3d/plans/2026_09_01_flutter_scene_material3d.md) — phases 0 and 1 done, the catalogue itself from phase 2 |
+| Know what is being built next | [the Material catalogue plan](../packages/flutter_scene_material3d/plans/2026_09_01_flutter_scene_material3d.md) — phases 0 to 2 done, the components themselves from phase 3 |
 
 ## The pages here
 

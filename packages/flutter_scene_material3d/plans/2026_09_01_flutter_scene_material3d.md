@@ -1,8 +1,8 @@
 ---
 status: in progress
-reason: phases 0 and 1 are done — the package exists, with its token families, Theme3dData and SceneTheme3d, on 80 headless tests. Phases 2 to 9, every component in the catalogue, are open; phase 2's metrics blocker is cleared, its application-setup one is not
+reason: phases 0 to 2 are done — the token families, Theme3dData and SceneTheme3d, plus initializeMaterial3d, Material3d, InkWell3d, Icon3d and the text styling, on 106 headless tests and 48 render probes. Phases 3 to 9, every component in the catalogue, are open, and phase 3's seven buttons are Material3d with token sets
 created_at: 2026-09-01T19:15:00Z
-updated_at: 2026-09-02T15:40:00Z
+updated_at: 2026-09-02T21:30:00Z
 commit: 52a2ca7b6a176cf70b5bef6b6b92ff7e7cbf82bd
 ---
 
@@ -275,10 +275,13 @@ theme; it does not read `metrics` directly** — the theme is what turns a token
 into the dp figure that `metrics` then turns into world units, and keeping that
 one-way makes a component's numbers auditable.
 
-*Shipped as written, with two corrections recorded in* What phase 1 found:
-`Elevation3d` and `Thickness3d` are two classes rather than one family, so
-`Theme3dData` holds five plus the density; and the density was already on
-`Layout3dMetrics`, which this section did not know.
+*Shipped as written, with three corrections.* Two are in *What phase 1
+found*: `Elevation3d` and `Thickness3d` are two classes rather than one
+family, and the density was already on `Layout3dMetrics`. The third is in
+*What phase 2 found*: a sixth family, `StateLayerOpacity3d`, fell out of the
+first interactive component, because Material's 8/10/10/16 wash figures are
+tokens like any others and the "strongest state wins, never the sum" rule has
+to live somewhere. `Theme3dData` holds six plus the density.
 
 ### `Material3d`, the one primitive everything else is
 
@@ -308,6 +311,14 @@ tier, plus a `SceneTapTarget3d` at `materialMinimum`. **Nothing in that path
 may touch layout**, and `test/` proves it the way the animation plan does — by
 asserting a hover marks nothing dirty.
 
+*Shipped, with the signature filled out — `bevel`, `surfaceTint`,
+`contentColor`, `textStyle`, `padding` and `alignment` beside the six above —
+and with `Material3d.decorationFor` exposed as a static, because the render
+probe builds surfaces imperatively and a probe that reimplemented the token
+resolution would be checking its own arithmetic. The ink does not travel down
+the tree as a property: see* What phase 2 found *for the controller, and for
+what the 48dp target turns out not to do.*
+
 ### Icons are a font, until proven otherwise
 
 `Icon3d` is very likely a one-glyph `Text3d` with
@@ -325,6 +336,12 @@ surface turns away from a light is unreadable, and Flutter's own text is
 unlit by construction — but it means the colour tokens have to be chosen
 against the *unlit* label and the *lit* panel, and a catalogue that ignores it
 will have contrast that drifts as the surface turns.
+
+*Verified in phase 2, on a GPU: it works.* `examples/render_probe`'s
+`icon_glyph` scene rasterizes a `MaterialIcons` code point through the atlas,
+puts the ink inside the box layout gave it and tints it, beside a control with
+no renderer that draws nothing. So `Icon3d` is a one-character `SceneText3d`,
+and the unlit wrinkle above is real and documented rather than hypothetical.
 
 ## The work
 
@@ -354,20 +371,20 @@ will have contrast that drifts as the surface turns.
       *What phase 1 found* below — four things came out differently than this
       plan expected, and one of them was a gap in the layout package, since
       closed by a plan of its own there.
-- [ ] **Phase 2 — `Material3d`, `InkWell3d`, `Icon3d`, `Text3d` styling.**
-      The primitive and the interaction layer over it, plus the icon question
-      settled. First render probe: a themed surface at three elevation levels
-      is three distinguishable colours (the tint), and a hover lightens one.
-      **One of the two things phase 1 left on the doorstep is cleared.** The
-      widget layer can now read the unit contract:
-      `Layout3dMetricsScope.of(context)` is published by every
-      `SceneLayout3d`, so `Material3d(padding: EdgeInsets3d.all(16))` is
-      writable — convert with `metrics.dpInsets` and `metrics.dp`, and read
-      [the plan that landed it](../../flutter_scene_layout3d/plans/2026_09_02_the_metrics_a_build_method_can_read.md)
-      before relying on when the value updates. The other is still open:
-      application setup — the one call that installs
-      `BoxDecoration3d.painterFactory` — was deliberately deferred to sit
-      beside `Material3d` rather than beside the theme.
+- [x] **Phase 2 — `Material3d`, `InkWell3d`, `Icon3d`, `Text3d` styling.**
+      Done. `initializeMaterial3d()` is the one call a Material application
+      makes; `Material3d` is the primitive, with the theme resolved into it,
+      a dp padding, a thickness and a bevel; `InkWell3d` drives its state
+      layer through an `InkController3d` without rebuilding anything;
+      `Icon3d` is one code point of an icon font through the label atlas,
+      which a render probe settled rather than a guess; `Typography3dToken`,
+      `Theme3dData.textStyle` and `SceneTextStyle3d` are the styling; and
+      `StateLayerOpacity3d` is the sixth token family, which this plan did
+      not know it needed. **106 headless tests** (was 80) and **48 render
+      probes** (was 40), including the three this phase names: three
+      elevation levels are three colours, a hover washes a panel, and an
+      icon-font glyph rasterizes. `dart analyze` clean across the workspace,
+      the layout package's 902 still green. See *What phase 2 found*.
 - [ ] **Phase 3 — the buttons.** `FilledButton3d`, `FilledTonalButton3d`,
       `OutlinedButton3d`, `TextButton3d`, `ElevatedButton3d`, `IconButton3d`,
       `FloatingActionButton3d`. One `_ButtonStyle3d` resolving token sets by
@@ -517,6 +534,123 @@ different and in the direction of the spec; both facts are pinned.
   `flutter_scene` is a dev-dependency (a widget test needs a `Node` for the
   surface to hang its plane under) rather than a dependency.
 
+## What phase 2 found
+
+Seven things. The first two changed shipped behaviour outside this package's
+own code, and the third is a protocol gap a component author will hit.
+
+**One material per panel, and the layout package's README one-liner cannot
+give a catalogue one.** `BoxDecoration3dPainter` writes each box's parameters
+into the material it was handed, so the documented
+`createMaterial: () => material` gives a *screen* of panels one parameter
+block and the last box painted wins it. A catalogue is exactly the case that
+breaks: a screen, a card on it, a filled button on that, three colours, three
+elevations, one picture. The painter's callback shape is right — it is called
+once per box — but it is **synchronous** and `loadFmatMaterial` is not, so
+there was no way to use it. The seam that closes the gap is
+`loadFmatMaterial`'s own `factory` parameter, which hands the caller the
+compiled fragment shader, the sidecar metadata and the vertex variants: one
+asynchronous load captures those in a closure and any number of further
+instances are built synchronously afterwards. `loadPanelMaterialFactory` is
+that, and it is public, because anything writing its own `Decoration3dPainter`
+needs it too.
+
+Two details of it are worth keeping. The load's own instance is handed out
+first, so nothing is wasted. And the radiance-cube variant the registry
+attaches *after* construction — `box_decoration3d.fmat` is `shading_model:
+lit`, so it has one — is threaded onto every later instance through the
+constructor, because the setter that attaches it is `@internal`; without it an
+instance falls back to the ordinary shader, which the engine's own comment
+says can sample whatever texture the unit still held. The `material_elevation`
+probe is what would catch all of this going wrong, and it says so in its
+failure message.
+
+**The application setup call is honest about the half it cannot do.**
+`initializeMaterial3d()` awaits `Scene.initializeStaticResources()` and
+installs the painter. It deliberately does *not* install the default text
+renderer, and the reason is stronger than phase 1's: it is not that a theme
+should not create resources, it is that **there is no global renderer to
+install at all**. A `Text3dRenderer` is owned by one label and disposed with
+it, so it reaches labels through the tree, one instance each. The second half
+of setup is therefore a widget —
+`SceneTheme3d(textRendererFactory: AtlasText3dRenderer.new)` — and both halves
+are documented together, one line apart.
+
+**`TapTarget3d`'s 48dp minimum does not deliver a press today, and
+`InkWell3d` cannot fix it from here.** *The seams to keep an eye on* said the
+target grows the ray region and not the box, which is true and is only half of
+it. Out in the margin the only entry in the hit path is the target itself,
+because `TapTarget3d` passes its children the *unmoved* ray by design; and a
+target dispatches no gestures. A `GestureDetector3d` outside it fares worse,
+since every box gates its children on its own extent and the ray is rejected a
+level above the target. An ink well inside its own `Material3d` is gated by
+the panel as well. So the minimum currently buys a ray that *finds* something
+— which is what the nearest-acceptor rule for drops needs — and not a press
+that lands. `test/ink_well_test.dart` states it in those terms, so that
+closing it in the layout package (under a plan of its own there, as this plan
+requires) is noticed rather than silent.
+
+**The wash had to become a token family.** *The tokens* named four families
+and phase 1 shipped five; a sixth, `StateLayerOpacity3d`, fell straight out of
+the first interactive component. Material's 8/10/10/16 figures are tokens like
+any others, every interactive component resolves them identically, and a
+component in two states at once takes the **strongest** wash rather than their
+sum — which is a rule that has to live somewhere. `Material3dState` is the
+enum beside it, deliberately without `selected` or `disabled`: both are token
+substitutions here, not washes.
+
+**The ink channel is a controller, not a widget property, and the tier is
+why.** `DecoratedBox3d.stateLayer` cannot be a `SceneDecoratedBox3d` property
+on a `Material3d`, because reaching it would then mean rebuilding the
+component on every hover. So `Material3d` publishes a `MutableInkController3d`
+through an inherited widget whose value never changes, `InkWell3d` looks it up
+once in `didChangeDependencies`, and every state change afterwards is a field
+assignment on a box. The rebuild path re-applies whatever the controller holds
+rather than clobbering it with a stale value, which is the one subtlety in the
+implementation. The tests assert it by counting builds and layouts across a
+hover, a focus and a press.
+
+Two behaviours that surprised the tests before they surprised a user. A press
+does not report itself until Flutter's tap recognizer wins the arena or its
+`kPressTimeout` deadline expires — correct, since a press that becomes a
+scroll should never flash a highlight, but it means a test that presses and
+releases in the same instant sees nothing. And a press **focuses** the
+control, so the focus wash outlives it; Flutter hides that behind
+`FocusManager.highlightMode`, nothing here reads that yet, and `InkWell3d`
+gained a `focusOnPointerDown` for the cases where it is wrong.
+
+**The icon guess was right, and it took a frame to know.** *Icons are a font,
+until proven otherwise* was the phase's one genuine unknown, and the answer is
+yes: `AtlasText3dRenderer` rasterizes a `MaterialIcons` code point, puts the
+ink inside the box layout gave it, and tints it, with the same-glyph-no-
+renderer control drawing nothing. So `Icon3d` is a one-character
+`SceneText3d`, an icon costs one quad, and a screen of icons and labels is one
+texture. Two riders: it is drawn **unlit** like every label, so contrast has
+to be chosen against the unlit glyph and the lit panel; and
+`IconData.matchTextDirection` is not honoured, because a mirrored glyph needs
+a negative scale on the quad and the atlas renderer does not express one.
+
+**A dark theme is invisible to the render harness, which is why the probes are
+light.** *The tests* asked for "three elevation levels are three
+distinguishable colours" and the first attempt used `Theme3dData.dark`,
+because a light tint on a dark surface is the textbook picture. It drew
+nothing at all: `FrameProbe` decides what is geometry by distance from the
+clear colour, the probe clears to `#101820`, and M3's dark surface is
+`#141218` — inside the tolerance. The scenes use the light theme, so the
+direction the probe asserts is *higher is darker* (a purple primary tinting a
+near-white surface) and a hover reads as darker too. Same claim, opposite
+sign, and both scenes say so in a comment. The other thing that first attempt
+got wrong is more ordinary and just as invisible: a `Row3d` hands its children
+loose cross-axis constraints, so a flexed `DecoratedBox3d` with no child
+shrink-wraps to 1.12 × 0 × 0 and the frame is empty. Explicitly sized cells.
+
+**A `Material3d` centred its child in depth, once.** `Alignment3d.center` is
+centred on all three axes and `EdgeInsets3d.all` insets six faces, so the
+obvious defaults put a label *inside* the slab it is drawn on, where the panel
+wins the depth test and hides it with nothing to say why. `Material3d` aligns
+to `Alignment3d.frontCenter` and the dartdoc tells a caller to state the two
+in-plane axes of a padding. It is in `docs/traps.md` now.
+
 ## Tests
 
 The split is the one the whole repository uses, and the reason to restate it
@@ -556,7 +690,11 @@ and a scene that cannot honestly assert its claim is removed, not weakened.
 - **`TapTarget3d` grows the ray region and not the box**, so a padded target is
   invisible to layout, to `ensureVisible3d` and to semantics, which announces
   the smaller rectangle. This is the sharpest edge in the protocol and a
-  catalogue meets it in every button.
+  catalogue meets it in every button. **And phase 2 found it is worse than
+  that**: the extra reach does not deliver a press at all today, because the
+  only entry in the hit path out in the margin is the target itself and a
+  target dispatches nothing. See *What phase 2 found*; it needs a plan in
+  `flutter_scene_layout3d`, and phase 3 is the phase that will want it.
 - **Keep-alive does not exist** in the lazily built children lane, so a long
   list of stateful components rebuilds items that scroll back into view. Fine
   for a catalogue, and worth knowing before someone builds a form on it.

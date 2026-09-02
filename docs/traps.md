@@ -128,14 +128,31 @@ neither can be verified in `flutter test`, which has no GPU context.
 
 **A decoration needs a painter.** `BoxDecoration3d.painterFactory` is null
 until an application sets it, and a `DecoratedBox3d` with no painter measures,
-lays out and draws nothing at all. `examples/render_probe` is the worked
-example of filling it:
+lays out and draws nothing at all. The two-line form is:
 
 ```dart
 final material = await loadFmatMaterial('assets/box_decoration3d.fmat');
 BoxDecoration3d.painterFactory =
     (_) => BoxDecoration3dPainter(createMaterial: () => material);
 ```
+
+**And it is wrong the moment two panels differ.** `BoxDecoration3dPainter`
+writes each box's parameters into the material it was handed, so one shared
+material means **the last box painted wins the block** and a screen of panels
+comes out in one colour, at one elevation, with one state layer. Nothing warns
+you; it looks like a caching bug in the shader. `createMaterial` is called once
+per box precisely so each box can have its own — but it is *synchronous* and
+`loadFmatMaterial` is not, which is the whole difficulty.
+
+The way through is `loadFmatMaterial`'s `factory` parameter, which hands you
+the compiled fragment shader, the sidecar metadata and the vertex variants: one
+asynchronous load captures those and a closure builds any number of further
+instances synchronously afterwards. `flutter_scene_material3d`'s
+`loadPanelMaterialFactory` is that, `initializeMaterial3d()` is the one call an
+application makes, and `examples/render_probe` uses it — so an application
+depending on the catalogue never has to write this at all. The
+`material_elevation` probe is what would catch it going wrong: three panels at
+three elevations that come out one colour.
 
 **Compiling the shader is no longer your job.** The package's own
 `hook/build.dart` runs `impellerc` over `assets/box_decoration3d.fmat` for
@@ -215,6 +232,20 @@ that does and does not buy:
   report where it is *drawn* — which is the right answer for a debug overlay,
   and a surprise if you expected them to agree with the hit test.
 
+### A padded box has six faces, and two of them are toward you
+
+`EdgeInsets3d.all(16)` insets the front and the back as well as the four edges
+you were thinking about. On a panel that is the difference between a label on
+a card and a label *inside* it: the front inset pushes the child away from the
+viewer, the slab it is drawn on wins the depth test, and the label vanishes
+with nothing to say why. The same goes for alignment — `Alignment3d.center` is
+centred *in depth*, so a label in a 4dp-thick surface sits 2dp inside it.
+
+State the two in-plane axes and align to the face:
+`EdgeInsets3d.symmetric(horizontal: 24, vertical: 10)`, and
+`Alignment3d.frontCenter`. `Material3d` defaults to the latter for exactly
+this reason.
+
 ### Making geometry fill its box
 
 `NodeBox3d` defaults to `BoxFit3d.none`: the content keeps its own size inside
@@ -250,6 +281,19 @@ positive step pushes the backgrounds away from the viewer and the fight stops.
   minimum is invisible to layout, to intrinsics, to `ensureVisible3d` and to
   semantics, which announces the smaller rectangle. Deliberate — it keeps
   neighbours from moving when a target is padded — but sharp.
+- **And the reach does not deliver a gesture today.** Out in the margin the
+  only thing in the hit path is the target itself, because `TapTarget3d`
+  passes its children the *unmoved* ray — "the reach this box adds is its own"
+  — and a target dispatches nothing. A `GestureDetector3d` inside it is only
+  reachable where it actually is; one *outside* it is worse, because every box
+  gates its children on its own extent, so the ray is rejected a level above
+  the target and never arrives. A component that wraps its ink in a panel —
+  which is every Material component, since an ink well sits inside its
+  surface — is gated by the panel too. So the 48dp minimum currently buys a
+  ray that *finds* something (which is what the nearest-acceptor rule for
+  drops needs) and not a press that lands. `flutter_scene_material3d`'s
+  `test/ink_well_test.dart` states it, and closing it is a change here, under
+  a plan of its own.
 - **A `Text3d` answers hit tests on its own account**, so a label inside a
   button usually wants an `IgnorePointer3d` around it.
 - **A drop lands where a tap would land, which is not always where it looks
@@ -300,6 +344,12 @@ write a scene there.
 - **A level camera cannot see a ground plane.** `LayoutBasis3d.xz` viewed from
   `y = 0` is exactly edge-on: every point lands on the horizon line and near is
   indistinguishable from far. Raise the camera.
+- **A dark theme is invisible to this harness.** The probe clears to
+  `#101820`, and `FrameProbe` decides "is this pixel geometry" by distance
+  from the clear colour. Material 3's dark surface is `#141218`, which is
+  inside that tolerance — so a dark panel reads as background, every coverage
+  comes out zero, and the scene looks like it never drew. The catalogue scenes
+  use the light theme, whose near-white surface is unmistakable, and say so.
 - **A difference is not a direction, and a shader test wants the direction.**
   "The rim of this panel is a different colour from its middle" is satisfied
   just as well when the two are swapped, which is exactly how the panel shader

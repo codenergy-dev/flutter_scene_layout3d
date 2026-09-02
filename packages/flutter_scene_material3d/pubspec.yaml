@@ -31,15 +31,16 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # A real dependency since phase 2: `initializeMaterial3d` awaits
+  # `Scene.initializeStaticResources()` and loads the compiled panel shader,
+  # which is the one call standing between a themed component and a picture.
+  flutter_scene: ^0.23.0
   flutter_scene_layout3d:
     path: ../flutter_scene_layout3d
 
 dev_dependencies:
-  # Tests only. Nothing in lib/ touches the engine: this phase is tokens and
-  # arithmetic, and a Layout3dSurface in a widget test needs a scene Node to
-  # hang its plane under.
-  flutter_scene: ^0.23.0
   flutter_lints: ^5.0.0
+  vector_math: ^2.1.4
   flutter_test:
     sdk: flutter
 

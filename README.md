@@ -218,14 +218,23 @@ hook on this package that compiles its own shader for every consumer.
 
 What exists in
 [`packages/flutter_scene_material3d`](packages/flutter_scene_material3d/) today
-is the token layer: Material 3's colour roles and type scale transcribed, its
-shape and elevation scales, and the one scale Material does not publish at all
-— **how deep a component is**, because on a screen there is none. A
-`Theme3dData` carries them and a `SceneTheme3d` publishes it to both layers at
-once: an inherited widget for `build`, and a layout-owner slot for
-`performLayout`, which has no `BuildContext` to read an inherited widget with.
+is the token layer and the primitive built on it. The tokens are Material 3's
+colour roles, type scale, shape and elevation scales, its state-layer
+opacities, and the one scale Material does not publish at all — **how deep a
+component is**, because on a screen there is none. A `Theme3dData` carries
+them and a `SceneTheme3d` publishes it to both layers at once: an inherited
+widget for `build`, and a layout-owner slot for `performLayout`, which has no
+`BuildContext` to read an inherited widget with.
 
-The components themselves are next. There is no `Material3d` yet.
+On top of that: `initializeMaterial3d()`, the one call an application makes
+before anything draws; `Material3d`, a decorated box with the theme resolved
+into it, which owns the surface, the shape, the elevation, the state layer and
+the thickness; `InkWell3d`, which lights it up for a hover, a focus or a press
+**without rebuilding a thing**; and `Icon3d`, one code point of an icon font
+drawn through the same glyph atlas as every label.
+
+The components themselves are next: a button is a `Material3d` with an
+`InkWell3d` in it and a set of tokens, and there is no `Button3d` yet.
 
 ## Running it
 

@@ -1,3 +1,6 @@
+import 'dart:ui' show Color;
+
+import 'package:flutter/painting.dart' show TextStyle;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart'
     show
         Constraints3d,
@@ -9,11 +12,12 @@ import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart'
 import '../tokens/color_scheme.dart';
 import '../tokens/depth.dart';
 import '../tokens/shape.dart';
+import '../tokens/state_layer.dart';
 import '../tokens/typography.dart';
 
 /// Every token a component reads, in one value.
 ///
-/// Five families and a density. A component asks the theme for a token and
+/// Six families and a density. A component asks the theme for a token and
 /// the metrics for a conversion, in that order and never the other way round:
 ///
 /// ```dart
@@ -68,6 +72,7 @@ class Theme3dData {
     this.shape = ShapeScale3d.baseline,
     this.elevation = Elevation3d.baseline,
     this.thickness = Thickness3d.baseline,
+    this.stateLayer = StateLayerOpacity3d.baseline,
     this.density = VisualDensity3d.standard,
   });
 
@@ -111,6 +116,13 @@ class Theme3dData {
   /// How deep a component is, in logical pixels.
   final Thickness3d thickness;
 
+  /// How strong the wash is for a hover, a focus, a press or a drag.
+  ///
+  /// The family Material publishes and this package needed a name for, since
+  /// every interactive component resolves it the same way: the opacity comes
+  /// from here and the colour comes from whatever the component is drawn on.
+  final StateLayerOpacity3d stateLayer;
+
   /// How tightly components pack themselves.
   ///
   /// See the class doc: this is the authority, not `metrics.density`.
@@ -127,6 +139,24 @@ class Theme3dData {
     Layout3dMetrics metrics,
   ) => metrics.copyWith(density: density).effectiveConstraints(constraints);
 
+  /// The [token] style, in [color].
+  ///
+  /// The one call a component makes to turn a type role into something
+  /// `Text3d` can measure. The scale carries no colour of its own — a colour
+  /// is a `ColorScheme3d` role and depends on what the label is drawn on, not
+  /// on how big it is — so this is where the two families meet.
+  ///
+  /// ```dart
+  /// theme.textStyle(
+  ///   Typography3dToken.labelLarge,
+  ///   color: theme.colorScheme.onPrimary,
+  /// )
+  /// ```
+  TextStyle textStyle(Typography3dToken token, {Color? color}) {
+    final style = typography.resolve(token);
+    return color == null ? style : style.copyWith(color: color);
+  }
+
   /// A copy with the given families replaced.
   Theme3dData copyWith({
     ColorScheme3d? colorScheme,
@@ -134,6 +164,7 @@ class Theme3dData {
     ShapeScale3d? shape,
     Elevation3d? elevation,
     Thickness3d? thickness,
+    StateLayerOpacity3d? stateLayer,
     VisualDensity3d? density,
   }) => Theme3dData(
     colorScheme: colorScheme ?? this.colorScheme,
@@ -141,6 +172,7 @@ class Theme3dData {
     shape: shape ?? this.shape,
     elevation: elevation ?? this.elevation,
     thickness: thickness ?? this.thickness,
+    stateLayer: stateLayer ?? this.stateLayer,
     density: density ?? this.density,
   );
 
@@ -160,6 +192,7 @@ class Theme3dData {
         shape: ShapeScale3d.lerp(a.shape, b.shape, t),
         elevation: Elevation3d.lerp(a.elevation, b.elevation, t),
         thickness: Thickness3d.lerp(a.thickness, b.thickness, t),
+        stateLayer: StateLayerOpacity3d.lerp(a.stateLayer, b.stateLayer, t),
         density: VisualDensity3d.lerp(a.density, b.density, t),
       );
 
@@ -171,6 +204,7 @@ class Theme3dData {
       other.shape == shape &&
       other.elevation == elevation &&
       other.thickness == thickness &&
+      other.stateLayer == stateLayer &&
       other.density == density;
 
   @override
@@ -180,6 +214,7 @@ class Theme3dData {
     shape,
     elevation,
     thickness,
+    stateLayer,
     density,
   );
 

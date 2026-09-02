@@ -1016,6 +1016,161 @@ void main() {
       );
     });
   });
+
+  // ── The catalogue ────────────────────────────────────────────────────
+  //
+  // Three claims that only a frame can settle, and the first two are the
+  // whole of Material's elevation model once the shadow is gone.
+  group('the Material catalogue', () {
+    testWidgets('three elevation levels are three distinguishable colours', (
+      tester,
+    ) async {
+      // Material 3's elevation is a height and a tint. The height is real
+      // here and buys nothing head-on; the tint is what is left, and it is
+      // the reason `Elevation3d` carries the published table at all.
+      //
+      // The scene is the light theme — see its comment for why a dark one is
+      // invisible to this harness — so its near-white surface is tinted with
+      // the theme's purple primary and the order is *higher is darker*. An
+      // order rather than a distance, because a distance is satisfied just as
+      // well by the three coming out in the wrong sequence, which is exactly
+      // how the panel shader once shipped with its border inside out.
+      final capture = await _draw(
+        tester,
+        kProbeScenes.byId('material_elevation'),
+      );
+
+      double lumaOf(String name) {
+        final color = capture.frame.meanColorAt(
+          capture.centerOf(name),
+          radius: 12,
+        );
+        expect(color, isNotNull, reason: 'the $name panel did not draw');
+        return 0.2126 * color!.r + 0.7152 * color.g + 0.0722 * color.b;
+      }
+
+      final flat = lumaOf('flat');
+      final raised = lumaOf('raised');
+      final high = lumaOf('high');
+
+      expect(
+        raised,
+        lessThan(flat),
+        reason:
+            'a level-2 surface is not more tinted than a level-0 one: read '
+            '$flat flat, $raised raised. Either the surface tint is not '
+            'reaching the shader, or every panel is sharing one material '
+            'and the last one painted won the parameter block.',
+      );
+      expect(
+        high,
+        lessThan(raised),
+        reason:
+            'a level-5 surface is not more tinted than a level-2 one: read '
+            '$raised raised, $high high',
+      );
+    });
+
+    testWidgets('a hover washes a panel toward its content colour', (
+      tester,
+    ) async {
+      // The state layer as a component actually resolves it: the opacity out
+      // of `StateLayerOpacity3d`, the colour out of the surface's own content
+      // role. The idle panel beside it is the control, and the two are the
+      // same decoration in the same scene, so the only difference between
+      // them is the wash.
+      //
+      // "A hover lightens a panel" is the dark-theme phrasing. The scene is
+      // the light theme, whose content colour is near black, so the direction
+      // asserted is darker — which is the same claim about the same wash.
+      final capture = await _draw(tester, kProbeScenes.byId('material_hover'));
+
+      final idle = capture.frame.meanColorAt(
+        capture.centerOf('idle'),
+        radius: 12,
+      );
+      final hovered = capture.frame.meanColorAt(
+        capture.centerOf('hovered'),
+        radius: 12,
+      );
+      expect(idle, isNotNull, reason: 'the idle panel did not draw');
+      expect(hovered, isNotNull, reason: 'the hovered panel did not draw');
+
+      double luma(ui.Color c) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+      expect(
+        luma(hovered!),
+        lessThan(luma(idle!)),
+        reason:
+            'the hovered panel is no darker than the idle one, so the state '
+            'layer never reached the shader: read $idle idle, $hovered '
+            'hovered',
+      );
+    });
+
+    testWidgets('an icon-font glyph rasterizes through the label atlas', (
+      tester,
+    ) async {
+      // The question the whole `Icon3d` design hangs on, and it cannot be
+      // reasoned out: `Text3d` measures an unknown glyph happily and draws a
+      // blank, and Flutter's text engine either resolves `MaterialIcons` or
+      // silently falls back to something that has no such code point. Paired
+      // with its own control, like every other text scene here, so that "ink
+      // where the icon is" is evidence rather than a coincidence.
+      final drawn = await _draw(tester, kProbeScenes.byId('icon_glyph'));
+      final undrawn = await _draw(
+        tester,
+        kProbeScenes.byId('icon_glyph_undrawn'),
+      );
+
+      final drawnIcon = drawn.frame.coverageAt(
+        drawn.centerOf('icon'),
+        radius: 30,
+      );
+      final undrawnIcon = undrawn.frame.coverageAt(
+        undrawn.centerOf('icon'),
+        radius: 30,
+      );
+      expect(
+        drawnIcon,
+        greaterThan(0.25),
+        reason:
+            'nothing drew where the icon is. Either MaterialIcons did not '
+            'resolve, or the atlas cannot rasterize an icon-font glyph — '
+            'and Icon3d is a phase of its own rather than thirty lines.',
+      );
+      expect(
+        undrawnIcon,
+        lessThan(0.02),
+        reason: 'a Text3d with no renderer drew an icon anyway',
+      );
+
+      // And it is bounded by the box layout gave it: an atlas that uploaded
+      // an empty mask, or a quad drawing its whole cell, would spill past it.
+      // A solidity check at the centre does not say this — a 220-pixel heart
+      // is solid for thirty pixels around its middle and should be.
+      final bounds = drawn.state.content.probes['icon']!.screenBounds(
+        drawn.state.camera,
+        drawn.viewSize,
+      )!;
+      expect(
+        drawn.frame.isClearAt(
+          ui.Offset(bounds.center.dx, bounds.top - bounds.height),
+          radius: 6,
+        ),
+        isTrue,
+        reason: 'something drew a whole box above the icon',
+      );
+
+      // The tint reaches it, exactly as it reaches a label: the atlas is a
+      // mask and the material colours it.
+      final ink = drawn.frame.meanColorAt(drawn.centerOf('icon'), radius: 30)!;
+      expect(
+        ink.b,
+        lessThan(ink.r),
+        reason: 'the icon should be amber, not white; read $ink',
+      );
+    });
+  });
 }
 
 extension on List<ProbeScene> {

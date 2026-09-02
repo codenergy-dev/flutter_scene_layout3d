@@ -7,37 +7,56 @@
 // the test runner keep them honest. Nothing below is called: compiling is the
 // assertion.
 
+import 'package:flutter/material.dart' show Icons;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_scene/scene.dart';
 import 'package:flutter_scene_layout3d/widgets.dart';
 import 'package:flutter_scene_material3d/flutter_scene_material3d.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+// ------------------------------------------------------ The one call that
+// makes anything draw.
+
+Future<void> setUpApplication() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await initializeMaterial3d();
+}
+
+// ------------------------------------------------------------- Material3d,
+// and everything that is one.
+
+Widget filledButton(Theme3dData theme, VoidCallback submit) => Material3d(
+  color: theme.colorScheme.primary,
+  contentColor: theme.colorScheme.onPrimary,
+  shape: theme.shape.full,
+  elevation: theme.elevation.level1,
+  thickness: theme.thickness.standard,
+  padding: const EdgeInsets3d.symmetric(horizontal: 24, vertical: 10),
+  child: InkWell3d(onTap: submit, child: const SceneText3d('Continue')),
+);
+
+// -------------------------------------------------------------- Icons, and
+// naming a type style instead of building one.
+
+Widget icons(Theme3dData theme) => SceneTextStyle3d(
+  style: Typography3dToken.titleMedium,
+  color: theme.colorScheme.onSurfaceVariant,
+  child: SceneColumn3d(
+    children: <Widget>[
+      const Icon3d(Icons.favorite, size: 24),
+      SceneText3d(
+        'Inbox',
+        style: theme.textStyle(
+          Typography3dToken.labelLarge,
+          color: theme.colorScheme.onPrimary,
+        ),
+      ),
+    ],
+  ),
+);
+
 // ---------------------------------------------------------------- Getting a
 // theme in place.
-
-/// A themed panel, which is roughly what `Material3d` will be.
-class Panel extends StatelessWidget {
-  const Panel({super.key, required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme3d.of(context);
-    final thickness = theme.thickness.raised;
-    return SceneDecoratedBox3d(
-      decoration: BoxDecoration3d(
-        color: theme.colorScheme.surfaceContainer,
-        borderRadius: theme.shape.medium,
-        bevel: theme.shape.bevelFor(thickness),
-        elevation: theme.elevation.level1,
-        surfaceTint: theme.colorScheme.surfaceTint,
-      ),
-      child: child,
-    );
-  }
-}
 
 Widget screen(Node parent) => SceneLayout3d(
   parent: parent,
@@ -45,21 +64,37 @@ Widget screen(Node parent) => SceneLayout3d(
   child: SceneTheme3d(
     data: Theme3dData.dark,
     textRendererFactory: AtlasText3dRenderer.new,
-    child: ScenePadding3d(
-      // World units, not logical pixels: 0.16 units is 16dp at the default
-      // rate. See "Two units, side by side" below — this is the one figure
-      // in the example the theme does not convert for you.
-      padding: const EdgeInsets3d.all(0.16),
-      child: Panel(
-        child: SceneText3d(
-          'Continue',
-          style: Theme3dData.dark.typography.labelLarge.copyWith(
-            color: Theme3dData.dark.colorScheme.onSurface,
-          ),
-        ),
+    child: SceneCenter3d(
+      child: Builder(
+        builder: (context) {
+          final theme = Theme3d.of(context);
+          return Material3d(
+            color: theme.colorScheme.primary,
+            contentColor: theme.colorScheme.onPrimary,
+            shape: theme.shape.full,
+            elevation: theme.elevation.level1,
+            padding: const EdgeInsets3d.symmetric(horizontal: 24, vertical: 10),
+            textStyle: theme.textStyle(
+              Typography3dToken.labelLarge,
+              color: theme.colorScheme.onPrimary,
+            ),
+            child: InkWell3d(
+              onTap: () => debugPrint('tapped'),
+              child: const SceneText3d('Continue'),
+            ),
+          );
+        },
       ),
     ),
   ),
+);
+
+// ------------------------------------------------------ A unit conversion in
+// a build method.
+
+Widget padded(Layout3dMetrics metrics, Widget child) => ScenePadding3d(
+  padding: metrics.dpInsets(const EdgeInsets3d.all(16)),
+  child: child,
 );
 
 // ------------------------------------------------------- The imperative-only
@@ -100,10 +135,13 @@ void thicknessRules() {
 void main() {
   test('the README examples compile', () {
     // They do, or this file would not have been compiled to run.
+    expect(setUpApplication, isNotNull);
+    expect(filledButton, isNotNull);
+    expect(icons, isNotNull);
+    expect(padded, isNotNull);
     expect(screen, isNotNull);
     expect(imperativelyThemed, isNotNull);
     expect(ThemedSlab.new, isNotNull);
     expect(thicknessRules, isNotNull);
-    expect(const Panel(child: SizedBox.shrink()), isNotNull);
   });
 }

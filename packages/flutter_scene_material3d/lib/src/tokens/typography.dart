@@ -221,6 +221,32 @@ class Typography3d {
   /// 11dp on a 16dp line, medium weight. The smallest label Material states.
   final TextStyle labelSmall;
 
+  /// The style [token] names.
+  ///
+  /// The scale's fifteen fields spelled as a value, so a component can be
+  /// *given* a type role rather than hard-coding one — which is what a button
+  /// style, a list tile's title-and-subtitle pair and a themed default text
+  /// style all need. `theme.typography.resolve(Typography3dToken.labelLarge)`
+  /// and `theme.typography.labelLarge` are the same style; the first can be
+  /// stored in a field.
+  TextStyle resolve(Typography3dToken token) => switch (token) {
+    Typography3dToken.displayLarge => displayLarge,
+    Typography3dToken.displayMedium => displayMedium,
+    Typography3dToken.displaySmall => displaySmall,
+    Typography3dToken.headlineLarge => headlineLarge,
+    Typography3dToken.headlineMedium => headlineMedium,
+    Typography3dToken.headlineSmall => headlineSmall,
+    Typography3dToken.titleLarge => titleLarge,
+    Typography3dToken.titleMedium => titleMedium,
+    Typography3dToken.titleSmall => titleSmall,
+    Typography3dToken.bodyLarge => bodyLarge,
+    Typography3dToken.bodyMedium => bodyMedium,
+    Typography3dToken.bodySmall => bodySmall,
+    Typography3dToken.labelLarge => labelLarge,
+    Typography3dToken.labelMedium => labelMedium,
+    Typography3dToken.labelSmall => labelSmall,
+  };
+
   /// Every style with [color] (and optionally a font) applied.
   ///
   /// The one-call form of what a component does at the point of use, for an
@@ -370,4 +396,59 @@ class Typography3d {
 
   @override
   String toString() => 'Typography3d(bodyMedium: $bodyMedium)';
+}
+
+/// One of the fifteen styles in a [Typography3d], named as a value.
+///
+/// A type role a component can be *handed*. Material's own specification is
+/// written this way — "the label of a filled button is `labelLarge`" — and
+/// without a name for it every component that wanted to be restyled would
+/// have to take a whole `TextStyle` and lose the theme with it.
+///
+/// The order is the specification's: five groups of three, largest first.
+enum Typography3dToken {
+  /// The largest type on a screen, for a single short line.
+  displayLarge,
+
+  /// A display line at the middle size.
+  displayMedium,
+
+  /// The smallest display line.
+  displaySmall,
+
+  /// A prominent heading over a section of content.
+  headlineLarge,
+
+  /// A heading at the middle size.
+  headlineMedium,
+
+  /// The smallest heading.
+  headlineSmall,
+
+  /// The title of a dialog, an app bar, or a card.
+  titleLarge,
+
+  /// A title at the middle size: a list tile's first line.
+  titleMedium,
+
+  /// The smallest title.
+  titleSmall,
+
+  /// Running copy, at the largest of the three body sizes.
+  bodyLarge,
+
+  /// The default for running copy.
+  bodyMedium,
+
+  /// Fine print.
+  bodySmall,
+
+  /// The label inside a control: a button, a chip, a tab.
+  labelLarge,
+
+  /// A label at the middle size.
+  labelMedium,
+
+  /// The smallest label: a navigation bar's caption.
+  labelSmall,
 }
