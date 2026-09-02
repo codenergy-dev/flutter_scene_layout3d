@@ -1,5 +1,10 @@
 import 'package:flutter/foundation.dart'
-    show DiagnosticPropertiesBuilder, DiagnosticsProperty, VoidCallback;
+    show
+        DiagnosticPropertiesBuilder,
+        DiagnosticsProperty,
+        ValueListenable,
+        ValueNotifier,
+        VoidCallback;
 import 'package:flutter_scene/scene.dart' show Node;
 import 'package:vector_math/vector_math.dart' show Matrix4, Ray, Vector3;
 
@@ -69,6 +74,10 @@ class Layout3dSurface extends SingleChildLayout3d {
   }
 
   final Layout3dOwner _owner = Layout3dOwner();
+
+  late final ValueNotifier<Layout3dMetrics> _metrics = ValueNotifier(
+    _owner.metrics,
+  );
 
   final Node _plane = Node();
 
@@ -140,7 +149,22 @@ class Layout3dSurface extends SingleChildLayout3d {
     if (_owner.metrics == value) return;
     _owner.metrics = value;
     markSubtreeNeedsLayout();
+    _metrics.value = value;
   }
+
+  /// The unit contract, as something the widget layer can listen to.
+  ///
+  /// A binding writes [metrics] straight onto the surface, so no rebuild is
+  /// involved and nothing above would otherwise hear about it. `SceneLayout3d`
+  /// listens here and republishes the value as a `Layout3dMetricsScope`, which
+  /// is how a `build` method converts a dp figure.
+  ///
+  /// It notifies on a *changed* contract and nothing else — the setter above
+  /// early-outs on an equal value — so a binding reapplied every frame by a
+  /// still camera runs no listener at all. Nothing on a per-frame path should
+  /// be writing this in the first place: a metrics change relayouts the whole
+  /// subtree.
+  ValueListenable<Layout3dMetrics> get metricsListenable => _metrics;
 
   /// What [key] holds on this surface, or null when nothing has written it.
   T? slotValue<T extends Object>(Layout3dSlot<T> key) => _owner.slot(key);
@@ -284,6 +308,7 @@ class Layout3dSurface extends SingleChildLayout3d {
   void dispose() {
     super.dispose();
     _owner.dispose();
+    _metrics.dispose();
     _plane.remove(node);
   }
 

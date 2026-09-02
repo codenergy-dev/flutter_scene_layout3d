@@ -1,5 +1,33 @@
 ## Unreleased
 
+- **A `build` method can read the unit contract.** `SceneLayout3d` publishes
+  the surface's `Layout3dMetrics` as a `Layout3dMetricsScope`, so
+  `Layout3dMetricsScope.of(context)` (or `maybeOf`) hands a widget the same
+  number a box reads inside `performLayout`, and a component library can
+  finally state a figure the way its specification does:
+  `padding: metrics.dpInsets(const EdgeInsets3d.all(16))`. The scope has no
+  public constructor — it reports what the surface measures with, and a second
+  one inserted by hand would say something no box agrees with.
+  - **A dependent rebuilds before the layout that uses what it computed.** A
+    camera binding is applied from the view's per-frame clock (a `Ticker`, so
+    the transient phase) or from a post-frame callback, never during build or
+    layout, and Flutter builds before it lays out. The one exception — a
+    contract written from *inside* a layout pass, which `Overlay3d` does for a
+    detached entry — defers its rebuild to the next frame, and is documented
+    rather than supported.
+  - It does not make a metrics change cheaper: writing the contract still
+    relayouts the whole subtree, because most boxes were never rebuilt and read
+    the number in `performLayout`.
+- **`SceneLayout3d.metrics`**, the authored unit contract as a widget property.
+  The declarative layer could only get one from a binding before, which left
+  `Layout3dCameraBinding.billboard` — whose own documentation says to pair it
+  with an authored contract — with nothing to pair with. A binding that derives
+  the metrics owns it and asserts against the property, exactly as a
+  screen-filling binding does against `size`.
+- **`Layout3dMetrics.dpInsets`**, the `EdgeInsets3d` counterpart of `dpSize`,
+  and **`Layout3dSurface.metricsListenable`**, which is how the widget layer
+  hears about a contract a binding derived.
+
 - `ListView3d` and `GridView3d` are built on the sliver protocol now: each one
   *is* a scrolling window over a single sliver — a `SliverList3d`, a
   `SliverGrid3d` — reachable as `view.sliver`. That is the shape Flutter's

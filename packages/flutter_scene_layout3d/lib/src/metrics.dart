@@ -1,6 +1,7 @@
 import 'dart:ui' show lerpDouble;
 
 import 'geometry/constraints3d.dart';
+import 'geometry/edge_insets3d.dart';
 import 'geometry/offset3d.dart';
 import 'geometry/size3d.dart';
 
@@ -217,6 +218,24 @@ class Layout3dMetrics {
   /// never part of a Material spec and is better stated deliberately.
   Size3d dpSize(double width, double height, [double depth = 0.0]) =>
       Size3d(dp(width), dp(height), dp(depth));
+
+  /// [insets], stated in logical pixels, as world units.
+  ///
+  /// The counterpart of [dpSize], and the other half of what a component
+  /// library writes constantly: a Material padding is 16dp on every face, and
+  /// this is the one call that turns that sentence into the units layout
+  /// deals in.
+  ///
+  /// ```dart
+  /// ScenePadding3d(
+  ///   padding: metrics.dpInsets(const EdgeInsets3d.all(16)),
+  ///   child: label,
+  /// )
+  /// ```
+  ///
+  /// A padding is not type, so this scales by [unitsPerLogicalPixel] alone:
+  /// [textScaleFactor] belongs to [sp] and to nothing else.
+  EdgeInsets3d dpInsets(EdgeInsets3d insets) => insets * unitsPerLogicalPixel;
 
   /// [constraints] with each minimum grown (or shrunk) by [density].
   ///

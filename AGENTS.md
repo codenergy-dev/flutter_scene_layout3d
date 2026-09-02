@@ -35,8 +35,11 @@ geometry rather than as a picture of it. It is
 and partly written. Phase 0 — four additions to `flutter_scene_layout3d` that
 a first component could not do without — landed in the layout package under
 [its own plan](packages/flutter_scene_layout3d/plans/2026_09_01_the_four_things_before_a_component.md).
-Phase 1, the package and its tokens, is done. **There is no `Material3d`,
-`InkWell3d` or `Icon3d` yet**, and nothing in the catalogue; phase 2 is where
+Phase 1, the package and its tokens, is done, and the one gap it left in the
+layout package — a `build` method that could not read the unit contract, so a
+dp padding could not be written — is closed under
+[its own plan](packages/flutter_scene_layout3d/plans/2026_09_02_the_metrics_a_build_method_can_read.md)
+there. **There is no `Material3d`, `InkWell3d` or `Icon3d` yet**, and nothing in the catalogue; phase 2 is where
 they start, and the icon question in particular is to be settled with a render
 probe rather than guessed at.
 

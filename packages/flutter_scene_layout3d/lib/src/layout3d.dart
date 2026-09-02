@@ -102,6 +102,11 @@ class Layout3dOwner {
   /// set the precedent. Everything in the tree reaches it through
   /// [Layout3d.metrics]; the root writes it, through
   /// [Layout3dSurface.metrics] or a [Layout3dCameraBinding].
+  ///
+  /// This is the only copy that decides anything. The widget layer reads a
+  /// *published* one — `SceneLayout3d` mirrors this value into a
+  /// `Layout3dMetricsScope` so a `build` method can convert its own figures
+  /// — and that scope follows this value rather than the other way round.
   Layout3dMetrics metrics = Layout3dMetrics.standard;
 
   /// The painters the decorated boxes in this tree share, keyed by

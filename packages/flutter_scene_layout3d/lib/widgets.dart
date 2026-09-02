@@ -241,4 +241,5 @@ export 'src/widgets/layouts.dart'
         SceneUnconstrainedBox3d,
         SceneViewport3d,
         SceneWrap3d;
-export 'src/widgets/surface.dart' show Layout3dController, SceneLayout3d;
+export 'src/widgets/surface.dart'
+    show Layout3dController, Layout3dMetricsScope, SceneLayout3d;

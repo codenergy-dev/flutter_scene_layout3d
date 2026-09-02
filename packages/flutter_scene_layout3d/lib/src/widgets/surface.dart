@@ -1,9 +1,12 @@
 import 'dart:ui' show Size;
 
-import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/foundation.dart'
+    show DiagnosticPropertiesBuilder, DiagnosticsProperty, ValueListenable;
+import 'package:flutter/scheduler.dart' show SchedulerBinding, SchedulerPhase;
 import 'package:flutter/widgets.dart'
     show
         BuildContext,
+        InheritedWidget,
         MultiChildRenderObjectWidget,
         State,
         StatefulWidget,
@@ -74,6 +77,7 @@ class SceneLayout3d extends StatefulWidget {
     this.size,
     this.constraints,
     this.basis,
+    this.metrics,
     this.origin = Alignment3d.center,
     this.camera,
     this.binding,
@@ -109,6 +113,27 @@ class SceneLayout3d extends StatefulWidget {
   ///
   /// Defaults to [LayoutBasis3d.xy], an upright plane facing the camera.
   final LayoutBasis3d? basis;
+
+  /// The unit contract the whole tree is specified in: how many world units
+  /// a logical pixel is worth, and the dials a component library reads beside
+  /// it.
+  ///
+  /// The authored answer, for a panel that is not standing in for a screen —
+  /// one on a wall, one on a table, one turned to face the viewer by
+  /// [Layout3dCameraBinding.billboard]. Everything below reads it as
+  /// [Layout3d.metrics], and a `build` method reads it as
+  /// [Layout3dMetricsScope.of].
+  ///
+  /// Null means [Layout3dMetrics.standard], not "leave the last one alone":
+  /// dropping the property on a rebuild puts the default contract back, the
+  /// way dropping [basis] puts the plane back upright.
+  ///
+  /// **A binding that derives the contract owns it.**
+  /// [Layout3dCameraBinding.screenFilling] and
+  /// [Layout3dCameraBinding.fixedDensity] both write the surface's metrics
+  /// every frame, so stating one here as well is an error the way giving a
+  /// screen-filling binding a [size] is: the two would fight.
+  final Layout3dMetrics? metrics;
 
   /// The point of the laid-out box that sits at the plane's origin.
   final Alignment3d origin;
@@ -203,6 +228,7 @@ class _SceneLayout3dState extends State<SceneLayout3d> {
   late final Layout3dSurface _surface = Layout3dSurface(
     constraints: _configuration,
     basis: widget.basis,
+    metrics: widget.metrics ?? Layout3dMetrics.standard,
     origin: widget.origin,
   );
 
@@ -227,9 +253,55 @@ class _SceneLayout3dState extends State<SceneLayout3d> {
   void initState() {
     super.initState();
     widget.controller?._surface = _surface;
+    _surface.metricsListenable.addListener(_handleMetricsChanged);
     _syncSlots(const <Layout3dSlot<Object>, Object>{});
     assert(_debugCheckBinding());
     _scheduleBindingUpdate();
+  }
+
+  /// Whether the metrics being written is this state's own doing, and so is
+  /// already on its way into the next build.
+  bool _writingMetrics = false;
+
+  bool _metricsRebuildScheduled = false;
+
+  /// Writes the authored contract, without taking the change as news.
+  void _writeMetrics(Layout3dMetrics value) {
+    _writingMetrics = true;
+    try {
+      _surface.metrics = value;
+    } finally {
+      _writingMetrics = false;
+    }
+  }
+
+  /// Republishes the contract a binding derived behind the widget layer's
+  /// back.
+  ///
+  /// A binding writes the surface directly, from the enclosing view's
+  /// per-frame clock (a `Ticker`, so the transient phase) or from a
+  /// post-frame callback. Both are outside build and layout, so the rebuild
+  /// this asks for lands in a build phase that *precedes* the layout the new
+  /// contract governs, and a padding converted in `build` is never measured
+  /// against a different number than the boxes below use.
+  ///
+  /// The exception is a write from inside the frame itself — `Overlay3d`
+  /// pushes the host's contract onto a detached entry's surface during
+  /// `performLayout` — where marking this element dirty is either illegal or
+  /// too late to matter. That one takes the next frame.
+  void _handleMetricsChanged() {
+    if (_writingMetrics || !mounted) return;
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      if (_metricsRebuildScheduled) return;
+      _metricsRebuildScheduled = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _metricsRebuildScheduled = false;
+        if (mounted) setState(() {});
+      });
+      return;
+    }
+    setState(() {});
   }
 
   /// Applies [SceneLayout3d.slots] onto the surface, clearing what [previous]
@@ -268,12 +340,12 @@ class _SceneLayout3dState extends State<SceneLayout3d> {
     }
     final binding = widget.binding;
     final oldBinding = oldWidget.binding;
-    // A binding that derived a value owned it while it was there, so dropping
+    // A binding that derives a value owns it while it is there, so dropping
     // it (or swapping it for one that derives less) hands the value back to
     // the widget's own props and their defaults, the way a dropped basis
     // does.
-    if (oldBinding != null && oldBinding.derivesMetrics && binding == null) {
-      _surface.metrics = Layout3dMetrics.standard;
+    if (!_bindingOwnsMetrics) {
+      _writeMetrics(widget.metrics ?? Layout3dMetrics.standard);
     }
     if (!_bindingOwnsConfiguration) {
       _surface.configuration = _configuration;
@@ -292,6 +364,7 @@ class _SceneLayout3dState extends State<SceneLayout3d> {
   @override
   void dispose() {
     _frames?.removeListener(_applyBinding);
+    _surface.metricsListenable.removeListener(_handleMetricsChanged);
     if (identical(widget.controller?._surface, _surface)) {
       widget.controller?._surface = null;
     }
@@ -303,6 +376,10 @@ class _SceneLayout3dState extends State<SceneLayout3d> {
   /// root child is laid out against.
   bool get _bindingOwnsConfiguration =>
       widget.binding?.derivesConstraints ?? false;
+
+  /// Whether a binding, rather than [SceneLayout3d.metrics], decides the unit
+  /// contract.
+  bool get _bindingOwnsMetrics => widget.binding?.derivesMetrics ?? false;
 
   bool _debugCheckBinding() {
     final binding = widget.binding;
@@ -319,6 +396,13 @@ class _SceneLayout3dState extends State<SceneLayout3d> {
       'A screen-filling binding derives the surface\'s constraints from the '
       'view frustum, so it cannot also be given a size or constraints of its '
       'own; the two would fight every frame.',
+    );
+    assert(
+      !binding.derivesMetrics || widget.metrics == null,
+      'This Layout3dCameraBinding writes the surface\'s metrics every frame, '
+      'so it cannot also be given a metrics of its own; the two would fight. '
+      'State the contract on the binding (Layout3dCameraBinding.fixedDensity) '
+      'or drop the binding.',
     );
     return true;
   }
@@ -398,8 +482,98 @@ class _SceneLayout3dState extends State<SceneLayout3d> {
     final child = widget.child;
     return _Layout3dRoot(
       surface: _surface,
-      children: <Widget>[if (child != null) child, mount],
+      children: <Widget>[
+        if (child != null)
+          Layout3dMetricsScope._(metrics: _surface.metrics, child: child),
+        mount,
+      ],
     );
+  }
+}
+
+/// The unit contract in force on the enclosing surface, for a `build` method.
+///
+/// Everything this package lays out is measured in world units; everything a
+/// component library is *specified* in is measured in logical pixels. A
+/// `Layout3d` joins the two inside `performLayout`, where the owner's
+/// [Layout3dMetrics] is one getter away. A widget cannot reach that, so
+/// [SceneLayout3d] publishes the same value here and a build method converts
+/// its own figures before they ever reach a box:
+///
+/// ```dart
+/// Widget build(BuildContext context) {
+///   final metrics = Layout3dMetricsScope.of(context);
+///   return ScenePadding3d(
+///     // 16dp, the way a Material spec figure is written.
+///     padding: metrics.dpInsets(const EdgeInsets3d.all(16)),
+///     child: SceneSizedBox3d(height: metrics.dp(56), child: child),
+///   );
+/// }
+/// ```
+///
+/// **A dependent rebuilds before the layout that uses what it computed.** A
+/// camera-bound surface derives its contract during the frame, which sounds
+/// like a value read in `build` could be a frame behind the boxes below, and
+/// it is not: a binding is applied from the enclosing view's per-frame clock
+/// (a `Ticker`, so the transient phase) or from a post-frame callback, never
+/// from build or layout, so the rebuild it triggers lands in a build phase
+/// that precedes the layout phase the new contract governs. What *is* one
+/// frame behind on a window resize is the binding itself, since it reads a
+/// view box that is only resized during layout — and that lag is shared by
+/// the surface's constraints, which the same call derives from the same
+/// numbers, so the panel's size and its unit contract never disagree.
+///
+/// **Reading this does not replace the relayout.** Writing
+/// [Layout3dSurface.metrics] relayouts the whole subtree by design, because a
+/// box that sized itself `metrics.dp(48)` is a different box afterward and
+/// nothing hands it the number as a constraint. This scope adds a rebuild in
+/// front of that relayout for the widgets that read it; it does not make a
+/// metrics change any cheaper.
+///
+/// There is no public constructor, deliberately. The value is a report of
+/// what the surface's owner actually measures with, and a second scope
+/// inserted by hand would change what [of] answers without changing what a
+/// single box measures — a divergence nothing would report. To give a
+/// subtree a different contract, give it a surface.
+class Layout3dMetricsScope extends InheritedWidget {
+  const Layout3dMetricsScope._({required this.metrics, required super.child});
+
+  /// What a logical pixel is worth on the enclosing surface.
+  final Layout3dMetrics metrics;
+
+  /// The contract in force above [context], or null when there is no surface.
+  ///
+  /// The caller becomes a dependent: it rebuilds when the contract changes.
+  static Layout3dMetrics? maybeOf(BuildContext context) => context
+      .dependOnInheritedWidgetOfExactType<Layout3dMetricsScope>()
+      ?.metrics;
+
+  /// The contract in force above [context].
+  ///
+  /// The caller becomes a dependent: it rebuilds when the contract changes.
+  /// Asserts when there is no [SceneLayout3d] above, because the alternative
+  /// — quietly answering [Layout3dMetrics.standard] — is the unit mistake
+  /// this whole contract exists to prevent, and it would be silent.
+  static Layout3dMetrics of(BuildContext context) {
+    final metrics = maybeOf(context);
+    assert(
+      metrics != null,
+      'Layout3dMetricsScope.of() found no surface above this context. The '
+      'unit contract is published by SceneLayout3d, so a widget that converts '
+      'a dp figure has to be built inside one; use maybeOf() if being outside '
+      'is a legitimate state.',
+    );
+    return metrics!;
+  }
+
+  @override
+  bool updateShouldNotify(Layout3dMetricsScope oldWidget) =>
+      oldWidget.metrics != metrics;
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<Layout3dMetrics>('metrics', metrics));
   }
 }
 

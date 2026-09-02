@@ -70,9 +70,12 @@ Two entry points:
   the four additions to the layout package a first component could not do
   without, and the two places that plan's own reasoning turned out wrong. Its
   phase 1 — the package and the tokens — is done too, and its findings section
-  records what that turned up, including the one gap phase 2 has to close: the
-  widget layer cannot read the surface's metrics, so a figure written in a
-  `build` method is in world units and not logical pixels.
+  records what that turned up, including the gap that stood in phase 2's way:
+  the widget layer could not read the surface's metrics, so a figure written in
+  a `build` method was in world units and not logical pixels. That is closed,
+  in [the metrics a build method can read](../packages/flutter_scene_layout3d/plans/2026_09_02_the_metrics_a_build_method_can_read.md)
+  — `Layout3dMetricsScope.of(context)`, and the phase-ordering argument that
+  says a value read in `build` is not stale by the time the layout uses it.
 
 ## Keeping this true
 

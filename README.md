@@ -113,8 +113,8 @@ SceneLayout3d(
 ```
 
 From then on `metrics.dp(48)` and `metrics.sp(14)` are honest, and every box
-reads them the same way — inside `performLayout`, with no `BuildContext` and no
-inherited widget, so the imperative layer has them too:
+reads them the same way — inside `performLayout`, with no `BuildContext`
+needed, so the imperative layer has them too:
 
 ```dart
 @override
@@ -123,6 +123,11 @@ void performLayout() {
   ...
 }
 ```
+
+A `build` method reads the same contract through the surface, which publishes
+it as `Layout3dMetricsScope.of(context)` — so a component states its padding
+and its size the way its specification does, in logical pixels, and converts
+them once.
 
 Writing metrics relayouts the whole subtree, deliberately. It belongs to a
 window resize, never to a per-frame path.

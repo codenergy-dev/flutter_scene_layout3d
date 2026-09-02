@@ -36,22 +36,54 @@ shader that turned out to be working perfectly.
 
 The rate itself is `Layout3dMetrics.unitsPerLogicalPixel`, carried on
 `Layout3dOwner.metrics` beside the basis and read inside `performLayout` as
-`Layout3d.metrics` — no `BuildContext`, no inherited widget, so the imperative
-layer has it too. `metrics.dp(48)` converts a spec figure; `metrics.sp(14)` a
-type size. Bind a surface to the camera and the rate stops being a guess: it is
-derived from the frustum at the distance the surface sits.
+`Layout3d.metrics` — no `BuildContext` in the way, so the imperative layer has
+it too. `metrics.dp(48)` converts a spec figure; `metrics.sp(14)` a type size;
+`metrics.dpSize(200, 48)` and `metrics.dpInsets(EdgeInsets3d.all(16))` are the
+two shapes a component writes constantly. Bind a surface to the camera and the
+rate stops being a guess: it is derived from the frustum at the distance the
+surface sits.
 
-**The widget layer cannot read it, and that is a real gap.** Because the
-metrics is *only* on the owner, there is no `Layout3dMetrics.of(context)`: a
-figure written in a `build` method is in world units, full stop. Decorations
-are the exception and hide the problem — `BorderRadius3d`, `bevel`, `border`
-and `elevation` are converted by the painter, so a `SceneDecoratedBox3d` takes
-dp — but a `ScenePadding3d` or a `SceneSizedBox3d` does not, and nothing warns
-you. A component library that wants `padding: EdgeInsets3d.all(16)` has to
-defer the figure to a box that converts inside `performLayout`, or this
-package has to grow a way to read the metrics from a context. It was found
-building `flutter_scene_material3d`'s theme, and it is the first thing that
-package's phase 2 has to settle.
+**A `build` method reads the same contract through the surface**, which
+publishes it as `Layout3dMetricsScope.of(context)`:
+
+```dart
+final metrics = Layout3dMetricsScope.of(context);
+
+ScenePadding3d(
+  padding: metrics.dpInsets(const EdgeInsets3d.all(16)),   // 16dp
+  child: SceneSizedBox3d(height: metrics.dp(56), child: label),
+)
+```
+
+Without it a figure in a `build` method is in world units, full stop — and
+decorations hide that, because `BorderRadius3d`, `bevel`, `border` and
+`elevation` are converted by the painter at paint time, so a
+`SceneDecoratedBox3d` takes dp whether or not anything read the scope. A
+padding and a size do not: **`ScenePadding3d` and `SceneSizedBox3d` take world
+units and always will.** Convert, and nothing warns you if you forget.
+
+Three things about the scope that are not obvious:
+
+- **A dependent rebuilds *before* the layout that uses what it computed.** A
+  camera-bound surface derives its contract during the frame, which sounds
+  like a value read in `build` could be a frame behind the boxes below. It is
+  not: a binding is applied from the enclosing view's per-frame clock (a
+  `Ticker`, so the transient phase) or from a post-frame callback, never from
+  build or layout, and Flutter's build phase precedes its layout phase. What
+  *is* one frame behind on a window resize is the binding itself, which reads
+  a view box that is only resized during layout — and the surface's
+  constraints are one frame behind with it, derived by the same call from the
+  same numbers, so the panel's size and its unit contract never disagree.
+- **Reading the scope does not replace the relayout.** Writing the metrics
+  relayouts the whole subtree by design (see below), because a box that sized
+  itself `metrics.dp(48)` is a different box afterward and nobody hands it the
+  number as a constraint. The scope adds a rebuild in front of that for the
+  widgets that read it.
+- **A contract written from inside a layout pass reaches the boxes and not the
+  widgets, until the next frame.** `Overlay3d` does exactly that for a
+  detached entry's surface. It is the one path where what `build` converted is
+  stale, and it is another way of saying what the next section says: nothing on
+  a per-frame path may write the metrics.
 
 ## Staying off the relayout path
 

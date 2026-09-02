@@ -144,18 +144,83 @@ class Button3d extends SingleChildLayout3d {
 `metrics.dp(x)` is logical pixels to world units, `metrics.sp(x)` is the same
 scaled by the text scale, and `metrics.toLogicalPixels(u)` goes back the other
 way — which is what a rasterizer wants when it has to decide how many real
-pixels a glyph is worth. Changing the metrics relayouts the whole subtree,
-because a box sized in dp is a different box afterwards and nothing else would
-tell it so.
+pixels a glyph is worth. `metrics.dpSize(200, 48)` and
+`metrics.dpInsets(EdgeInsets3d.all(16))` are the same conversion for the two
+shapes a component library writes constantly. Changing the metrics relayouts
+the whole subtree, because a box sized in dp is a different box afterwards and
+nothing else would tell it so.
+
+A camera-bound surface derives the number; anything else states it. Imperatively
+that is `Layout3dSurface.metrics`, declaratively `SceneLayout3d.metrics`, and
+`Layout3dCameraBinding.fixedDensity` is the same statement worn as a binding
+for an application that drives everything through one:
+
+```dart
+SceneLayout3d(
+  size: const Size3d(4, 3, 0.2),
+  // A panel on a wall is not a screen: two hundred logical pixels to the unit,
+  // stated rather than derived.
+  metrics: const Layout3dMetrics(unitsPerLogicalPixel: 0.005),
+  child: screen,
+)
+```
+
+A binding that derives the contract owns it, so `screenFilling` and
+`fixedDensity` refuse a `metrics` of their own, exactly as `screenFilling`
+refuses a `size`.
+
+### Reading the contract from a `build` method
+
+A `Layout3d` reads the metrics inside `performLayout` and a widget cannot, so
+the surface publishes the same value to the widgets under it:
+
+```dart
+Widget build(BuildContext context) {
+  final metrics = Layout3dMetricsScope.of(context);
+  return ScenePadding3d(
+    padding: metrics.dpInsets(const EdgeInsets3d.all(16)),   // 16dp
+    child: SceneSizedBox3d(height: metrics.dp(56), child: child),
+  );
+}
+```
+
+This is how a component library states a spec figure. `ScenePadding3d` and
+`SceneSizedBox3d` take world units — every box in this package does — and the
+conversion happens once, in the build method that knows the figure is 16dp.
+Decorations are the exception that hides the problem: `BorderRadius3d`,
+`bevel`, `border` and `elevation` are converted by the painter at paint time,
+so a `SceneDecoratedBox3d` takes dp whether or not anything read the scope.
+
+The scope is a report, not a setting. There is no public constructor: it says
+what the enclosing surface's owner actually measures with, and a second one
+inserted by hand would change what `of` answers without changing what a single
+box measures. To give a subtree a different contract, give it a surface.
+
+**A dependent rebuilds before the layout that uses what it computed.** A
+camera-bound surface derives its contract during the frame, which sounds like
+a value read in `build` could be a frame behind the boxes below; it is not.
+A binding is applied from the view's per-frame clock (a `Ticker`, so the
+transient phase) or from a post-frame callback, never from build or layout, and
+Flutter builds before it lays out. What *is* one frame behind on a window
+resize is the binding itself — it reads a view box that is only resized during
+layout — and the surface's constraints are one frame behind with it, derived by
+the same call from the same numbers, so a panel's size and its unit contract
+never disagree with each other.
+
+Reading the scope does not make a metrics change any cheaper. Writing the
+contract still relayouts the whole subtree, because most boxes were never
+rebuilt and read the number inside `performLayout`; the scope adds a rebuild
+in front of that for the widgets that convert their own figures.
 
 ### Anything else the whole tree needs: slots
 
 The metrics ride on the surface rather than in an `InheritedWidget` for one
 reason: the imperative layer has no `BuildContext`, and a box has to be able
-to read this inside `performLayout`. A component library's *theme* has exactly
-that shape — every component reads it, nobody is handed it — and a theme
-cannot be a field here, because Material vocabulary does not belong in a
-layout package.
+to read this inside `performLayout` — the scope above is a copy the surface
+publishes for the widget layer, not the value anything measures against. A
+component library's *theme* has exactly that shape — every component reads it,
+nobody is handed it — and a theme cannot be a field here, because Material
+vocabulary does not belong in a layout package.
 
 So the surface carries an open, typed map beside the metrics, and the library
 that has an opinion declares the key:
@@ -745,7 +810,10 @@ widget layer: `SceneAnimatedContainer3d` and its siblings are stateful, and
 `BuildContext` to ask, so it picks up the ambient `DefaultTextStyle`,
 `DefaultTextRenderer3d` and `Directionality` the way a Flutter `Text` does —
 from the widget tree the scene is hosted in, not from anything inside the
-scene.
+scene. The one thing a `BuildContext` reads from *inside* the scene is the
+surface's unit contract, `Layout3dMetricsScope.of(context)`, which is how a
+figure written in logical pixels becomes the world units every one of these
+widgets takes; see *Reading the contract from a `build` method* above.
 
 `SceneDecoratedBox3d` is the one that makes a declarative tree *visible*, and
 it is the widget form of `DecoratedBox3d` with the same two properties and

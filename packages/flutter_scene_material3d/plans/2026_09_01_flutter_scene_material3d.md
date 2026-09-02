@@ -1,8 +1,8 @@
 ---
 status: in progress
-reason: phases 0 and 1 are done — the package exists, with its token families, Theme3dData and SceneTheme3d, on 80 headless tests. Phases 2 to 9, every component in the catalogue, are open
+reason: phases 0 and 1 are done — the package exists, with its token families, Theme3dData and SceneTheme3d, on 80 headless tests. Phases 2 to 9, every component in the catalogue, are open; phase 2's metrics blocker is cleared, its application-setup one is not
 created_at: 2026-09-01T19:15:00Z
-updated_at: 2026-09-02T00:00:00Z
+updated_at: 2026-09-02T15:40:00Z
 commit: 52a2ca7b6a176cf70b5bef6b6b92ff7e7cbf82bd
 ---
 
@@ -50,8 +50,10 @@ Everything a component is made of, with one exception per section below:
   `AtlasText3dRenderer` out of `GlyphAtlasCache3d.shared` — so a screen of
   labels is one texture — with `RichText3d` as the escape hatch for what an
   atlas cannot assemble.
-- **The unit contract.** `Layout3dMetrics.dp()` and `.sp()`, so a spec figure
-  written in logical pixels is correct at any surface scale, plus
+- **The unit contract.** `Layout3dMetrics.dp()`, `.sp()`, `.dpSize()` and
+  `.dpInsets()`, so a spec figure written in logical pixels is correct at any
+  surface scale — read inside `performLayout` as `Layout3d.metrics` and inside
+  a `build` method as `Layout3dMetricsScope.of(context)` — plus
   `VisualDensity3d` (standard, comfortable, compact) already sitting beside
   them, waiting for exactly this package.
 - **Interaction.** `GestureDetector3d` over Flutter's own arena, `TapTarget3d`
@@ -350,15 +352,20 @@ will have contrast that drifts as the surface turns.
       inside `performLayout`. **80 headless tests**, `dart analyze` clean
       across the workspace, and the layout package's 891 still green. See
       *What phase 1 found* below — four things came out differently than this
-      plan expected, and one of them is a gap phase 2 has to close first.
+      plan expected, and one of them was a gap in the layout package, since
+      closed by a plan of its own there.
 - [ ] **Phase 2 — `Material3d`, `InkWell3d`, `Icon3d`, `Text3d` styling.**
       The primitive and the interaction layer over it, plus the icon question
       settled. First render probe: a themed surface at three elevation levels
       is three distinguishable colours (the tint), and a hover lightens one.
-      **Start with the two things phase 1 left on the doorstep**: the widget
-      layer cannot read `Layout3dMetrics`, so a `Material3d` cannot convert a
-      dp padding in `build` (a change to the layout package, with its own plan
-      there); and application setup — the one call that installs
+      **One of the two things phase 1 left on the doorstep is cleared.** The
+      widget layer can now read the unit contract:
+      `Layout3dMetricsScope.of(context)` is published by every
+      `SceneLayout3d`, so `Material3d(padding: EdgeInsets3d.all(16))` is
+      writable — convert with `metrics.dpInsets` and `metrics.dp`, and read
+      [the plan that landed it](../../flutter_scene_layout3d/plans/2026_09_02_the_metrics_a_build_method_can_read.md)
+      before relying on when the value updates. The other is still open:
+      application setup — the one call that installs
       `BoxDecoration3d.painterFactory` — was deliberately deferred to sit
       beside `Material3d` rather than beside the theme.
 - [ ] **Phase 3 — the buttons.** `FilledButton3d`, `FilledTonalButton3d`,
@@ -407,19 +414,27 @@ metrics to close the gap — the metrics is the surface's unit contract, and a
 widget inside the tree rewriting it is a theme reaching outside its
 vocabulary.
 
-**The widget layer cannot read the metrics at all, and a component needs to.**
-`Layout3dMetrics` lives only on `Layout3dOwner`; nothing exposes it through a
-`BuildContext`. So a widget's `build` cannot turn 16dp into world units — it
-can only write units directly. Decoration figures are fine (the painter
-converts radii, bevel, border and elevation at paint time), which is why the
-README's worked example can write `theme.shape.medium` straight into a
-`BoxDecoration3d` — but a *padding* or a *size* in a `build` method is in
-world units, and there is no honest way around it today.
-`Material3d(padding: EdgeInsets3d.all(theme.spacing))` cannot be written. The
-fix belongs to `flutter_scene_layout3d` and gets its own plan there, the way
-phase 0's four did; the shapes worth weighing are an inherited metrics widget
-beside the surface, or a dp-stated padding box that converts inside
-`performLayout`. **Phase 2 should settle it before `Material3d`, not after.**
+**The widget layer could not read the metrics at all, and a component needs
+to — settled, in the layout package.** `Layout3dMetrics` lived only on
+`Layout3dOwner`, so a widget's `build` could not turn 16dp into world units;
+decoration figures were fine (the painter converts radii, bevel, border and
+elevation at paint time), which is why the README's worked example can write
+`theme.shape.medium` straight into a `BoxDecoration3d`, but a *padding* or a
+*size* in a `build` method was in world units and there was no honest way
+around it. That is now
+[a plan of its own in `flutter_scene_layout3d`](../../flutter_scene_layout3d/plans/2026_09_02_the_metrics_a_build_method_can_read.md),
+shipped: `SceneLayout3d` publishes a `Layout3dMetricsScope`, so
+`Layout3dMetricsScope.of(context)` hands a build method the surface's contract
+and `metrics.dpInsets(const EdgeInsets3d.all(16))` is the padding this
+paragraph said could not be written. Two things a component author should take
+from it. The inherited-widget shape won over dp-stated values because the
+staleness argument against it does not hold here — a binding is applied in the
+transient or post-frame phase, never during build or layout, so a dependent
+rebuilds *before* the layout that consumes what it computed — and because one
+scope makes every existing box dp-capable while dp-stated values would need a
+dp twin of each. And it does not make a metrics change cheaper: writing the
+contract still relayouts the whole subtree, because most boxes were never
+rebuilt and read the number inside `performLayout`.
 
 **Interpolating a token can crash, and the layer below says which ones.**
 `BorderRadius3d` asserts on a negative radius and `BoxDecoration3d` asserts on

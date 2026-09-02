@@ -36,6 +36,32 @@ void main() {
       expect(metrics.dpSize(100, 50, 10), const Size3d(1, 0.5, 0.1));
     });
 
+    test('dpInsets converts all six faces, and does not scale with type', () {
+      const metrics = Layout3dMetrics(
+        unitsPerLogicalPixel: 0.005,
+        textScaleFactor: 2,
+      );
+      final insets = metrics.dpInsets(
+        const EdgeInsets3d.only(
+          left: 16,
+          top: 8,
+          right: 16,
+          bottom: 8,
+          front: 4,
+          back: 4,
+        ),
+      );
+      expect(insets.left, closeTo(0.08, 1e-12));
+      expect(insets.top, closeTo(0.04, 1e-12));
+      expect(insets.right, closeTo(0.08, 1e-12));
+      expect(insets.bottom, closeTo(0.04, 1e-12));
+      expect(insets.front, closeTo(0.02, 1e-12));
+      expect(insets.back, closeTo(0.02, 1e-12));
+      // A padding is not type: the text scale belongs to sp and nothing else.
+      expect(insets.left, closeTo(metrics.dp(16), 1e-12));
+      expect(insets.left, isNot(closeTo(metrics.sp(16), 1e-12)));
+    });
+
     test('equality is by value, so an unchanged assignment is a no-op', () {
       const a = Layout3dMetrics(unitsPerLogicalPixel: 0.02);
       const b = Layout3dMetrics(unitsPerLogicalPixel: 0.02);
