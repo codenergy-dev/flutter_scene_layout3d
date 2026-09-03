@@ -1,8 +1,8 @@
 ---
 status: in progress
-reason: phases 0 to 3 are done — the token families, Theme3dData and SceneTheme3d, initializeMaterial3d, Material3d, InkWell3d, Icon3d, the text styling, and the seven buttons over one public ButtonStyle3d, on 175 headless tests and 52 render probes. Phases 4 to 9, the rest of the catalogue, are open, and phase 4 is Card3d, ListTile3d, Divider3d and Chip3d
+reason: phases 0 to 4 are done — the six token families, the theme channel, initializeMaterial3d, Material3d, InkWell3d, Icon3d, the text styling, the seven buttons over one public ButtonStyle3d, and the surfaces and rows (Card3d, ListTile3d, Divider3d, Chip3d) over three more public token sets, on 271 headless tests and 56 render probes. Phase 4 also found the clip contract's plane tier had never fired and closed that in the layout package. Phases 5 to 9, the rest of the catalogue, are open, and phase 5 is Scaffold3d and the app bars
 created_at: 2026-09-01T19:15:00Z
-updated_at: 2026-09-02T22:40:00Z
+updated_at: 2026-09-03T22:15:00Z
 commit: 52a2ca7b6a176cf70b5bef6b6b92ff7e7cbf82bd
 ---
 
@@ -414,9 +414,23 @@ and the unlit wrinkle above is real and documented rather than hypothetical.
       the surface, and an outlined button draws its outline at the rim with a
       transparent container in the middle. `dart analyze` clean across the
       workspace; the layout package is at 906 (was 902).
-- [ ] **Phase 4 — surfaces and rows.** `Card3d`, `ListTile3d`, `Divider3d`,
-      `Chip3d`. `ListTile3d` is where `Semantics3d` and the 48dp target stop
-      being theoretical.
+- [x] **Phase 4 — surfaces and rows.** Done. `Card3d` over `CardStyle3d` and
+      three variants; `ListTile3d` with its slots, its three heights and the
+      density; `Divider3d`, which had to decide what a 1dp line *is* here; and
+      `Chip3d` over `ChipStyle3d` and four variants with a selected state, a
+      leading slot and a delete affordance. `ListTile3d` is where `Semantics3d`
+      and the 48dp target stopped being theoretical, and the answers are in
+      *What phase 4 found* — a tile takes its title as a string so it can
+      announce it, and a **chip** rather than a tile is where the 48dp reach
+      turns out to be load-bearing. **271 headless tests** (was 175) and **56
+      render probes** (was 52), including the two this phase names: a raised
+      card inside a clipping, scrolling list, and a 1dp rule that actually
+      draws. That first probe **failed**, which is the phase's largest
+      finding: the clip contract's plane tier had never fired at all, and
+      closing it is
+      [a plan of its own in the layout package](../../flutter_scene_layout3d/plans/2026_09_03_a_clip_that_reaches_the_shader.md).
+      `dart analyze` clean across the workspace; the layout package is at 909
+      (was 906).
 - [ ] **Phase 5 — structure.** `Scaffold3d`, `AppBar3d`, `SliverAppBar3d` over
       `SliverPersistentHeader3d`, `NavigationBar3d`, `NavigationRail3d`.
 - [ ] **Phase 6 — the overlays.** `Dialog3d` and `showDialog3d`, `Menu3d` and
@@ -813,6 +827,146 @@ and releases another.** The sequence between `down` and `up` is what holds the
 captured path and the arena entry, so a `Layout3dPointer get pointer =>
 Layout3dPointer(surface)` getter makes every tap count zero, silently and
 without an error. It cost twenty minutes of suspecting the hit-test fix.
+
+## What phase 4 found
+
+Ten things. The first is the largest finding any phase has produced, and it is
+not about this package at all.
+
+**The clip contract's plane tier had never fired, and only a picture could
+have said so.** This plan sent phase 4 to check that `Clip3dRegion.rect`'s
+deliberate decision about depth held — "a raised card inside a scrolling list
+should still stand proud of it" — and to make a picture of it, because nobody
+had. The picture came back with the card the *same colour* above and below the
+window's edge: nothing was being cut at all. Two causes, and both are
+invisible from the code. A `DecoratedBox3d` publishes its clip block from
+inside its own `performLayout`, and a `ClipBox3d` is a proxy that takes its
+size **from its child** — so while the subtree lays out, the box imposing the
+clip has no extent and imposes nothing, and every panel under a clip was born
+with the unbounded block. And a scroll *places* its rows rather than relaying
+them out, so nothing ever replaced it. `Layout3d.clipRegion` kept answering
+correctly to anything that asked after layout, which is why nine hundred
+headless tests never noticed. Closed in the layout package under
+[a clip that reaches the shader](../../flutter_scene_layout3d/plans/2026_09_03_a_clip_that_reaches_the_shader.md),
+and `docs/traps.md` — which claimed the tier was live — is corrected.
+
+**The clip contract itself is right, and the scene now shows it.** With the
+tier working, `card_in_clipped_list` draws an elevated card cut at the
+window's edges in the plane and untouched in depth, standing in front of the
+backing it sits on. The other half of the decision is worth writing down
+because it is not obvious: **`clipDepth: true` would not have sliced the card
+either.** The planes are expressed in the box's own frame, and an elevation
+moves the slab's *node*, outside that frame — so a depth clip cuts a box's
+layout depth and never its lift. Two ways of saying the same thing, and the
+`rect`/`box` distinction is about the *box*, not about the geometry.
+
+**A divider is a slab, not a decal, and the depth buffer is why.** The
+tempting model for a 1dp rule is zero depth. It cannot be: `Material3d` aligns
+its child to its **front face**, so a divider drawn on a card is exactly
+coplanar with the card and z-fights it — the rule appears in patches,
+differently on every frame and every driver. `Divider3d` is a
+`Thickness3d.thin` slab, which is what that token's own documentation always
+said it was for, and it stands its own half-thickness proud of what it is
+drawn on. The cost is the ordinary one, and at 1dp against anything else on
+the scale `Thickness3d.separates` clears it several times over.
+
+**A divider has three figures called some version of "thickness", and they are
+three different things.** The space it occupies in a column (16dp), the height
+of the rule inside that space (1dp), and the depth of the slab (1dp, and a
+different dial that happens to carry the same number). `Divider3d` keeps
+Flutter's spelling for the in-plane figure — a caller migrating a `Divider`
+writes what they already know — and names the depth `depth`. That collides
+with `Material3d.thickness`, which is a depth, and the collision is
+unavoidable: both spellings are right in their own frame.
+
+**The 48dp target is load-bearing on a chip, not on a tile.** Phase 3 built
+the reach for buttons and this plan expected `ListTile3d` to be where it
+mattered. It is not: a tile is 56dp tall and never needs it. A **chip** is
+32dp, sixteen short of Material's minimum, so the reach is eight logical
+pixels of margin on each side that no box in the layout knows about — and
+`test/chip_test.dart` presses 6dp above a chip and lands, then 14dp above and
+does not.
+
+**A tile is the first component that cannot state one label, so it takes
+strings.** Phase 3 established that a `Semantics3d` gathers nothing and a
+component states its own label. That is a formality for a button and a real
+question for a row with a title *and* a subtitle: there is no single answer
+that does not throw one of them away. `ListTile3d.text(title:, subtitle:)`
+builds the labels **and** the announcement — `'Inbox, 12 unread'`, which is
+what Flutter's merge would have produced — and the widget-taking constructor
+is documented as announcing only what it is told. Doing by hand what a merge
+does for free is the only place that work can go.
+
+**And a divider announces nothing, deliberately.** Flutter's own publishes no
+semantics either. A reader that said "divider" between every pair of rows
+would be worse than one that skipped it. The decision is in the dartdoc and in
+a test, because otherwise the next reader takes it for an omission.
+
+**A card is the first component with no state-dependent token at all, and that
+is a property worth having.** Material 3 gives a card no disabled appearance,
+no hovered container and no focused outline — an interactive card is *washed*
+and is otherwise unchanged. So a card's whole interaction is one uniform write
+on the repaint-only tier and it never rebuilds, where a filled button has to
+for its hovered elevation. The same turned out to be true of the baseline chip
+table. Two of the four components in this phase cost nothing at all for a
+hover.
+
+**The surface tint is off on a card too, and Flutter is where the figure comes
+from.** Phase 3 corrected *Elevation is a height*'s "keep the tint" for
+buttons, on the argument that an elevated button's container token already
+encodes the elevation. The same argument applies to an elevated card —
+`surfaceContainerLow` **is** the level-1 tint baked into a colour — and
+Flutter's `_CardDefaultsM3` and both its siblings resolve `surfaceTintColor`
+to transparent, so `test/card_defaults_test.dart` reads that rather than
+asserting ours. The plan's advice now holds only for a surface whose colour is
+literally `surface` and whose elevation is the only signal.
+
+**Flutter's list-tile heights are reachable, and its card defaults are not.**
+The drift-alarm standard phase 3 set has three grades, and phase 4 hit all
+three. `Divider.createBorderSide(context)` is **public**: the rule's colour
+and width are read straight from Flutter. `ListTile`'s heights are private as
+data and public as a *fact about a laid-out widget*, so the test pumps a real
+one and reads `tester.getSize` — 56, 72, 88, and 48, 64, 76 dense, all of them
+Flutter's arithmetic rather than a transcription. `Card`'s defaults have no
+accessor at all, so that test reads the `Material` a real `Card` renders,
+which is the weaker lane the floating action button already used. Two figures
+are honest transcriptions and say so in their tests: a divider's 16dp of space
+and a chip's 32dp height.
+
+**Two smaller things a catalogue author will meet.** There is no
+`SceneClipBox3d` — `ClipBox3d` is imperative-only, and a widget test that
+wants a clipped subtree writes a four-line `SingleChildLayout3dWidget`
+adapter, which `test/card_test.dart` does and phase 5's `Scaffold3d` will
+want properly. And a `SceneListView3d.builder` **cannot be flushed from
+outside a layout pass**: its children are created inside
+`invokeLayoutCallback`, which asserts it is inside Flutter's own layout phase,
+so `surface.flush()` from a test body dies with `_debugDoingLayout is not
+true`. Drive it with `controller.jumpTo` and `await tester.pump()` instead.
+
+## What phase 4 deliberately left out
+
+Small on purpose, as phase 3 was told to be, and these are the things a reader
+will look for and not find:
+
+- **A filter chip's checkmark.** Material draws one in the leading slot of a
+  selected filter chip. It is a second glyph competing with the container
+  substitution for the same signal, and the container is the one that survives
+  at a distance; a chip that wants one passes an `avatar`.
+- **`VerticalDivider3d`.** The horizontal rule is the one a list needs, and a
+  vertical one is the same class with its axes swapped — worth adding beside
+  a navigation rail in phase 5, where there is finally something to separate.
+- **A tile's `titleAlignment`.** Flutter has four; this one centres the
+  leading and trailing slots against the text, which is `ListTileTitleAlignment
+  .center` and right for one- and two-line tiles.
+- **A card's `clipBehavior`.** Flutter's clips its child to its own shape.
+  That needs a clip whose region is a rounded rectangle, and `Clip3dRegion` is
+  an intersection of planes — convex, and a radius is not expressible that way.
+  The panel shader carves its own radius; a *child* overflowing a rounded card
+  is not clipped to it, and will not be until something carries a shape into
+  the clip contract.
+- **A chip's press elevation.** Material lifts an elevated chip to level 1
+  under a press. This package ships flat chips, which is the `flat` variant
+  Flutter itself defaults to.
 
 ## Tests
 

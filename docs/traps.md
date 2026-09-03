@@ -267,6 +267,15 @@ reaches further toward the viewer than a 0.8-deep child stepped 0.35, so the
 back child wins the depth test and the stack looks inverted. Keep stacked
 children thin relative to the step, or raise the step.
 
+**A flat-looking thing still needs a thickness.** A divider is a 1dp rule and
+the tempting model is a decal — a slab with no depth at all. It cannot be one:
+`Material3d` aligns its child to its **front face**, so a rule drawn on a card
+sits exactly on the card's front plane, and two coplanar surfaces z-fight. The
+rule appears in patches, differently on every frame and every driver, with
+nothing to say why. `Thickness3d.thin` exists for this; `Divider3d` uses it,
+and its `depth` is a separate dial from its `thickness`, which is the rule's
+height *in the plane*.
+
 **`Dismissible3d`'s backgrounds are coplanar with the child.**
 `backgroundDepthStep` defaults to zero, exactly as `Stack3d.depthStep` does,
 so the background revealed by a swipe and the row sliding off it sit on the
@@ -302,6 +311,16 @@ positive step pushes the backgrounds away from the viewer and the fight stops.
   `SceneTapTarget3d` > `Material3d` > `InkWell3d`, with the ink well's own
   `minimumSize: Size3d.zero` so there is one target rather than two nested
   ones disagreeing about where the control is.
+- **A second affordance *inside* a component gets neither a reach nor a wash.**
+  A chip's delete icon is the case: a `TapTarget3d` there is gated by the
+  chip's own panel, so its 48dp would be silently inert, and an `InkWell3d`
+  there would find the *enclosing* `Material3d`'s ink controller and light the
+  whole chip up. What works is a plain `SceneGestureDetector3d` with its own
+  `SceneSemantics3d` — the innermost recognizer wins the arena, exactly as in
+  Flutter, so the inner affordance takes the tap and the component does not.
+  What it costs is that the inner target is exactly its own extent. Anything
+  better needs a second surface, and a second surface inside a 1dp slab is
+  coplanar with it.
 - **A `Text3d` answers hit tests on its own account**, so a label inside a
   button usually wants an `IgnorePointer3d` around it. Inside a control it is
   harmless — the gesture detector is on the path either way — and it matters
@@ -340,6 +359,23 @@ node and there is no semantics tree under it to fold up. **A component states
 its own label** — `Button3d.semanticLabel`, `Icon3d.semanticLabel` — and one
 that does not announces itself as a button with no name.
 
+**A component with two labels has to decide which one it is.** A button
+wrapping one word can say "state a `semanticLabel`" and be done. A row with a
+title *and* a subtitle cannot: there is no answer that does not throw one of
+them away, and the merge that would have joined them does not exist. The
+catalogue's answer is to take the strings rather than the widgets where it
+can — `ListTile3d.text(title: 'Inbox', subtitle: '12 unread')` builds both the
+labels and the announcement, `'Inbox, 12 unread'` — and to be explicit that
+the widget-taking constructor announces only what it is told. A component that
+composes an announcement out of what it was handed is doing by hand exactly
+what Flutter's merge does for free, and it is the only place the work can go.
+
+**Announcing nothing is sometimes the right answer.** A divider publishes no
+semantics at all, and Flutter's own does not either: a reader that said
+"divider" between every pair of rows would be worse than one that skipped it.
+State that decision out loud where a reader of the code will find it, or the
+next person will read it as an omission and fix it.
+
 **The rectangle the reader focuses is the box's own extent, not its tap
 target.** `Semantics3d` overrides the component's projected bounds with its
 `Layout3d.size`, which is the right answer — it is what layout produced — and
@@ -356,7 +392,30 @@ outside), clip planes packed into a material (`toPlaneBlock`, for a child that
 is *half* in — only the shipped panel shader reads them so far), and nothing.
 The seam is `Layout3d.clipRegion` → `Decoration3dPaintRequest.clip` →
 `toPlaneBlock()`, and it is live: a row half under a pinned
-`SliverPersistentHeader3d` is genuinely cut at the bar's edge.
+`SliverPersistentHeader3d`, or half out of a scrolling window, is genuinely
+cut at the edge.
+
+**It was not live until phase 4 of the Material catalogue looked at a frame**,
+and the shape of that failure is the thing to remember, because any tier like
+it can fail the same way. A box publishes its clip block from `repaint()`, at
+the end of its own `performLayout` — and a `ClipBox3d` is a proxy that takes
+its size *from its child*, so while the subtree lays out the box imposing the
+clip has no extent and imposes nothing. Every panel under a clip got the
+unbounded block on the layout that created it, and a scroll (which places rows
+rather than relaying them out) never replaced it. `Layout3d.clipRegion` kept
+reporting the right planes to anything that asked afterwards, so every
+headless test passed and the tier was dead. `Layout3d.refreshClipRegion` is
+the hook that closes it — `ClipBox3d` calls it over its subtree once it has a
+size, and `Layout3d.place` calls it down whatever it just moved — and
+`test/clip_test.dart` pins both paths with a painter that records the clip it
+was handed, which is the only way to see a shader uniform without a shader.
+
+**A depth clip cuts the box's *layout* depth, not the drawn geometry.** The
+planes are expressed in the box's own frame, and `BoxDecoration3d.elevation`
+moves the slab's *node*, outside that frame. So `ClipBox3d(clipDepth: true)`
+does not slice a raised card off flush with the list holding it, and
+`Clip3dRegion.rect` leaving depth alone is the same decision stated twice:
+a raised card inside a scrolling list stands proud of it.
 
 ## When probing a rendered frame
 
@@ -369,6 +428,15 @@ write a scene there.
 - **A level camera cannot see a ground plane.** `LayoutBasis3d.xz` viewed from
   `y = 0` is exactly edge-on: every point lands on the horizon line and near is
   indistinguishable from far. Raise the camera.
+- **A lazily built list cannot be flushed from outside a layout pass.** A
+  `SceneListView3d.builder`'s children are created inside
+  `RenderObject.invokeLayoutCallback`, which asserts it is inside Flutter's
+  own layout phase — so `surface.flush()` from a test body or a probe scene
+  blows up with `_debugDoingLayout is not true`. Drive it through the pipeline
+  instead: `controller.jumpTo(...)` and then `await tester.pump()`. A list
+  given an explicit `children:` list has no such problem, and no laziness
+  either: forty widgets in the tree are forty layouts whatever the window
+  shows.
 - **A dark theme is invisible to this harness.** The probe clears to
   `#101820`, and `FrameProbe` decides "is this pixel geometry" by distance
   from the clear colour. Material 3's dark surface is `#141218`, which is

@@ -24,7 +24,7 @@ once it became clear the scope was its own project. That history is preserved:
 | Package | What it is |
 | --- | --- |
 | `packages/flutter_scene_layout3d` | The layout protocol. Constraints, intrinsics, baselines, flex, stack, wrap, slivers, scrolling, text measurement, decoration, clipping, pointer dispatch, focus, overlays, animation, diagnostics. |
-| `packages/flutter_scene_material3d` | Material Design 3 on that protocol. Today: the six token families (`ColorScheme3d`, `Typography3d`, `ShapeScale3d`, `Elevation3d`, `Thickness3d`, `StateLayerOpacity3d`), `Theme3dData` and `SceneTheme3d`, `initializeMaterial3d()`, the primitive layer — `Material3d`, `InkWell3d`, `Icon3d`, `SceneTextStyle3d` — and the seven buttons over one `ButtonStyle3d`. The catalogue continues with cards and rows. |
+| `packages/flutter_scene_material3d` | Material Design 3 on that protocol. Today: the six token families (`ColorScheme3d`, `Typography3d`, `ShapeScale3d`, `Elevation3d`, `Thickness3d`, `StateLayerOpacity3d`), `Theme3dData` and `SceneTheme3d`, `initializeMaterial3d()`, the primitive layer — `Material3d`, `InkWell3d`, `Icon3d`, `SceneTextStyle3d` — the seven buttons over one `ButtonStyle3d`, and the surfaces and rows: `Card3d`, `ListTile3d`, `Divider3d` and `Chip3d`. The catalogue continues with `Scaffold3d` and the bars. |
 | `examples/layout3d_gallery` | The example app. Three surfaces — an upright panel, a ground plane, a scrolling list — all hit-testable. |
 | `examples/render_probe` | Render tests. Draws the layout on a GPU and probes the frame at the pixels layout says to check. Commits its platform scaffolding, unlike the gallery. |
 
@@ -50,15 +50,25 @@ seven buttons — `FilledButton3d`, `FilledTonalButton3d`, `OutlinedButton3d`,
 sets, and the gap phase 2 recorded in the layout package is closed with them
 under
 [a tap target that delivers a press](packages/flutter_scene_layout3d/plans/2026_09_02_a_tap_target_that_delivers_a_press.md).
-The catalogue's surfaces and rows start at phase 4.
+**Phase 4 is done too**: `Card3d` in Material's three kinds, `ListTile3d` with
+its slots and its three heights, `Divider3d` — which had to decide what a 1dp
+line *is* when depth is real — and `Chip3d` in four, each over a public token
+set of its own. It also found something larger than itself: the clip
+contract's *plane* tier, the one that cuts a box half inside a window, had
+never fired at all, and closing it is
+[a clip that reaches the shader](packages/flutter_scene_layout3d/plans/2026_09_03_a_clip_that_reaches_the_shader.md).
+The catalogue's structure — `Scaffold3d`, the app bars, the navigation
+bars — starts at phase 5.
 
-Three things worth knowing before building on any of it, all written up in
+Four things worth knowing before building on any of it, all written up in
 `docs/traps.md`: handing every `BoxDecoration3d` the *same* material makes a
 screen of panels come out one colour; a `TapTarget3d` reaches past its own
 extent but **its parent does not**, so a target has to sit outside every box
-whose size it is trying to grow — the panel and the semantics box included;
-and a `Semantics3d` publishes what it is given and gathers no label from the
-labels below it, so a component states its own.
+whose size it is trying to grow — the panel and the semantics box included; a
+`Semantics3d` publishes what it is given and gathers no label from the labels
+below it, so a component states its own; and nothing here is as flat as it
+looks — a 1dp divider is a *slab*, because a zero-depth one is coplanar with
+the surface it is drawn on and z-fights it.
 
 ## Running things
 

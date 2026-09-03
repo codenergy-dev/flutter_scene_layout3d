@@ -156,6 +156,20 @@ class DecoratedBox3d extends SingleChildLayout3d
     repaint();
   }
 
+  /// Republishes the clip in force, which is what actually cuts this panel.
+  ///
+  /// The plane tier of the clip contract lives in a shader block, and the
+  /// block is written by [repaint]. A box paints from inside its own
+  /// `performLayout`, where an enclosing `ClipBox3d` may not have an extent
+  /// yet — so without this the first block a panel ever gets is the
+  /// unbounded one, and a row half inside a window draws straight through
+  /// its edge. `ClipBox3d` calls this over its subtree once it has a size.
+  @override
+  void refreshClipRegion() {
+    if (!hasSize) return;
+    repaint();
+  }
+
   /// Repaints and asks the host for a frame.
   ///
   /// The counterpart of [markNeedsLayout] for everything a decoration owns.

@@ -156,6 +156,26 @@ claim, opposite sign.
 hung on: does the label atlas rasterize an icon-font glyph? It does, so an
 icon is one quad and a screen of icons and labels is one texture.
 
+`card_in_clipped_list` and `divider_rule` belong to the catalogue's surfaces
+and rows, and the first of them is the reason this lane exists. It draws a
+raised card scrolled half out of a clipping window, and asks the frame three
+things at once: the card drew, the half outside the window is gone, and what
+is there instead is the backing rather than nothing. **It failed on its first
+run**, with the card reading the same colour above and below the window's
+edge — which is how it was discovered that the clip contract's *plane* tier
+had never fired anywhere, in any scene, since it was written. Nothing but a
+frame could have said so: `Layout3d.clipRegion` reports the right planes to
+anything that asks after layout, and the block the shader actually gets was
+the unbounded one every box is born with.
+
+`divider_rule` is the smallest thing this catalogue draws. A 1dp rule is 0.01
+world units at the default rate, so the scene turns the *surface's*
+`unitsPerLogicalPixel` up to 0.06 rather than fattening a published token —
+the same answer `button_outlined` gives, applied to a component that is
+nothing but a line. The direction asserted is a luminance: `outlineVariant` is
+a mid grey and the card under it is near white, so the rule is darker than
+what it divides, and a scene where the two were swapped fails.
+
 `installPanelPainter` here is `initializeMaterial3d()` — the call a Material
 application makes — which is the only verification lane it has, since loading
 a compiled `.fmat` needs a GPU context that `flutter test` does not have. It

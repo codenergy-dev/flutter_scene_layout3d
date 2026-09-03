@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-08-25T20:31:04Z
-updated_at: 2026-08-28T13:16:55Z
+updated_at: 2026-09-03T22:20:00Z
 commit: 657eef80eb8dc8085c3b3a84a8069273495506be
 ---
 
@@ -133,6 +133,18 @@ build them when a component asks.
   uniforms, so publishing the plane from the viewport was the whole of tier
   two for the shipped decoration. A leaf holding an application's own
   material still ignores it, which is what the lift is for.
+
+  *Corrected on 2026-09-03.* The wiring was there and it did not deliver.
+  A box publishes its clip block from inside its own `performLayout`, so
+  anything that learns its extent afterwards — a `ClipBox3d`, which takes its
+  size from its child — imposed nothing on the layout that created the boxes
+  under it, and a scroll places rows rather than relaying them out, so nothing
+  replaced it. `Layout3d.refreshClipRegion` is what makes the tier actually
+  fire; see
+  [a clip that reaches the shader](2026_09_03_a_clip_that_reaches_the_shader.md).
+  The sentence above is still true of *this* plan's own path — the viewport
+  publishes the plane and the decoration packs it — and was never true of the
+  package as a whole.
 
 - **The delegate cannot be Flutter's `build` verbatim.** Flutter rebuilds a
   *widget* per layout and lets the element tree diff it; there is no element

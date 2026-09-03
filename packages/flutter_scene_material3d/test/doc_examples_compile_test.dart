@@ -233,6 +233,52 @@ void thicknessRules() {
   );
 }
 
+// ------------------------------------------------- Surfaces and rows: the
+// card, the tiles and the rule between them.
+
+Widget inboxCard({
+  required VoidCallback open,
+  required VoidCallback openInbox,
+}) => ElevatedCard3d(
+  onTap: open,
+  semanticLabel: 'Yesterday',
+  child: SceneColumn3d(
+    mainAxisSize: MainAxisSize3d.min,
+    children: <Widget>[
+      ListTile3d.text(
+        title: 'Inbox',
+        subtitle: '12 unread',
+        leading: const Icon3d(Icons.inbox),
+        onTap: openInbox,
+      ),
+      const Divider3d(),
+      ListTile3d.text(title: 'Archive', leading: const Icon3d(Icons.archive)),
+    ],
+  ),
+);
+
+// ------------------------------------------------------------- A chip that
+// toggles a filter.
+
+class ChipDemo extends StatefulWidget {
+  const ChipDemo({super.key});
+
+  @override
+  State<ChipDemo> createState() => _ChipDemoState();
+}
+
+class _ChipDemoState extends State<ChipDemo> {
+  var _unreadOnly = false;
+
+  @override
+  Widget build(BuildContext context) => FilterChip3d(
+    label: const SceneText3d('Unread'),
+    selected: _unreadOnly,
+    onSelected: (value) => setState(() => _unreadOnly = value),
+    semanticLabel: 'Unread only',
+  );
+}
+
 void main() {
   test('the README examples compile', () {
     // They do, or this file would not have been compiled to run.
@@ -244,5 +290,7 @@ void main() {
     expect(imperativelyThemed, isNotNull);
     expect(ThemedSlab.new, isNotNull);
     expect(thicknessRules, isNotNull);
+    expect(inboxCard, isNotNull);
+    expect(ChipDemo.new, isNotNull);
   });
 }

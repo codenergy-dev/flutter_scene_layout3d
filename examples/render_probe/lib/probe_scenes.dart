@@ -1122,6 +1122,165 @@ final List<ProbeScene> kProbeScenes = <ProbeScene>[
     preload: installPanelPainter,
   ),
 
+  // ── Surfaces and rows ────────────────────────────────────────────────
+  //
+  // Two claims from phase 4, and both are claims only a picture settles.
+  ProbeScene('card_in_clipped_list', () {
+    // **The clip contract's deliberate decision about depth, as a scene.**
+    //
+    // `Clip3dRegion.rect` is four planes and leaves the thickness alone, and
+    // `flutter_scene_layout3d/lib/src/clip.dart` says why in as many words:
+    // "a raised card inside a scrolling list should still stand proud of it".
+    // Phase 4 is the first work that actually builds that, and until now
+    // nobody had looked at what it draws.
+    //
+    // A window over a scrolled list of elevated cards, on a `primary` backing
+    // the whole thing sits in front of. The first card is scrolled half out
+    // of the top, so the frame has to show three things at once: the card
+    // draws, it is cut at the window's edge in the plane, and the part that
+    // is cut shows the backing rather than the card. If the clip had depth
+    // planes in it, or if the shader ignored them, exactly one of those three
+    // would be wrong.
+    //
+    // The **light** theme, for the reason every catalogue scene here uses it:
+    // M3's dark surface is inside this harness's clear tolerance. The
+    // direction asserted is a luminance — a near-white card against a mid
+    // purple backing — which lighting and tone mapping can scale and cannot
+    // reorder.
+    const theme = Theme3dData.light;
+    final style = CardStyle3d.of(theme, CardVariant3d.elevated);
+
+    DecoratedBox3d card(String name) => DecoratedBox3d(
+      decoration: Material3d.decorationFor(
+        theme,
+        color: style.container,
+        shape: style.shape,
+        elevation: style.elevation,
+        thickness: style.thickness,
+        surfaceTint: const Color(0x00000000),
+      ),
+      name: name,
+    );
+
+    final cards = <DecoratedBox3d>[for (var i = 0; i < 5; i++) card('card$i')];
+    final backing = DecoratedBox3d(
+      decoration: Material3d.decorationFor(
+        theme,
+        color: theme.colorScheme.primary,
+        thickness: theme.thickness.structural,
+      ),
+      name: 'backing',
+    );
+
+    // 0.5 of row and 0.1 of gap: a 0.6 pitch, so a 1.2-unit window holds two
+    // rows and a scroll of 0.25 leaves the first one half out of the top.
+    final controller = Scroll3dController();
+    final list = ListView3d(
+      controller: controller,
+      spacing: 0.1,
+      children: <Layout3d>[
+        for (final box in cards)
+          SizedBox3d(width: 2.2, height: 0.5, depth: 0.04, child: box),
+      ],
+    );
+
+    final surface = Layout3dSurface(
+      constraints: Constraints3d.tight(const Size3d(3.0, 2.4, 0.4)),
+      child: Stack3d(
+        alignment: Alignment3d.center,
+        // 12dp, the theme's own step. The deepest pair here is an 8dp backing
+        // against a 4dp card, mean 6dp, so it clears with half again to
+        // spare — which is `Thickness3d.separates` as a picture.
+        depthStep: 0.12,
+        children: <Layout3d>[
+          SizedBox3d(width: 3.0, height: 2.4, depth: 0.08, child: backing),
+          SizedBox3d(
+            width: 2.2,
+            height: 1.2,
+            depth: 0.04,
+            child: ClipBox3d(child: list),
+          ),
+        ],
+      ),
+    );
+    // Lay out once so the viewport knows its extent, then scroll; the harness
+    // flushes again when it adds the surface.
+    surface.flush();
+    controller.jumpTo(0.25);
+    return ProbeSceneContent(
+      surfaces: [surface],
+      probes: {
+        'backing': backing,
+        for (var i = 0; i < cards.length; i++) 'card$i': cards[i],
+      },
+    );
+  }, preload: installPanelPainter),
+
+  ProbeScene(
+    'divider_rule',
+    () {
+      // **A 1dp line, actually drawn.**
+      //
+      // Phase 3 met this wall with a button's 1dp outline and answered it the
+      // right way round: at the default hundred logical pixels to the unit a
+      // Material rule is 0.01 units and a couple of pixels on screen, and no
+      // probe disc fits inside it. Fattening the token would mean testing a
+      // number Material never published, so the *surface's*
+      // `unitsPerLogicalPixel` is the dial instead — which is the dial a
+      // camera-bound surface turns anyway.
+      //
+      // The rule sits on a card, which is what makes the assertion a
+      // direction rather than a distance: `outlineVariant` is a mid grey and
+      // `surfaceContainerLow` is near white, so the rule is *darker* than the
+      // surface it divides, and a scene where the two were swapped fails.
+      const theme = Theme3dData.light;
+      final rule = DecoratedBox3d(
+        decoration: Material3d.decorationFor(
+          theme,
+          color: theme.colorScheme.outlineVariant,
+          thickness: theme.thickness.thin,
+          bevel: 0.0,
+        ),
+        name: 'rule',
+      );
+      final card = DecoratedBox3d(
+        decoration: Material3d.decorationFor(
+          theme,
+          color: CardStyle3d.of(theme, CardVariant3d.elevated).container,
+          shape: theme.shape.medium,
+          thickness: theme.thickness.raised,
+          surfaceTint: const Color(0x00000000),
+        ),
+        name: 'card',
+      );
+      return ProbeSceneContent(
+        surfaces: [
+          Layout3dSurface(
+            // Six hundredths of a unit to the logical pixel: a 1dp rule is
+            // 0.06 units, a band a probe disc fits inside, and the token
+            // stays at its published 1dp.
+            metrics: const Layout3dMetrics(unitsPerLogicalPixel: 0.06),
+            constraints: Constraints3d.tight(const Size3d(8.4, 4.0, 0.6)),
+            child: Stack3d(
+              alignment: Alignment3d.center,
+              // 12dp at this rate. A 4dp card against a 1dp rule is a mean of
+              // 2.5dp, so the rule stands clear of the card it is drawn on —
+              // which is the whole reason a divider has a depth at all.
+              depthStep: 0.72,
+              children: <Layout3d>[
+                SizedBox3d(width: 7.2, height: 3.2, depth: 0.24, child: card),
+                SizedBox3d(width: 6.0, height: 0.06, depth: 0.06, child: rule),
+              ],
+            ),
+          ),
+        ],
+        probes: {'card': card, 'rule': rule},
+      );
+    },
+    camera: _wideCamera(),
+    preload: installPanelPainter,
+  ),
+
   // ── The icon question ────────────────────────────────────────────────
   //
   // The catalogue plan guesses that an icon is a one-glyph `Text3d` in the

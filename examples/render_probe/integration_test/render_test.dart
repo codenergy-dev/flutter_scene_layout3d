@@ -1227,6 +1227,136 @@ void main() {
       );
     });
 
+    testWidgets('a raised card inside a clipping list is cut, not sliced', (
+      tester,
+    ) async {
+      // The clip contract's deliberate decision about depth, and the first
+      // scene that actually builds it: `Clip3dRegion.rect` is four planes,
+      // leaves the thickness alone, and says why in `clip.dart` — "a raised
+      // card inside a scrolling list should still stand proud of it".
+      //
+      // Three claims in one frame, and they only hold together. The card
+      // draws where layout put it; the half of it scrolled out of the window
+      // is gone; and what is there instead is the backing, not nothing —
+      // which is what makes "the card was cut" different from "the card
+      // never drew".
+      final capture = await _draw(
+        tester,
+        kProbeScenes.byId('card_in_clipped_list'),
+      );
+
+      double luma(ui.Color c) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+
+      // `card0` is scrolled half out of the top: the point a fifth of the way
+      // down it is above the window, the point four fifths down is inside.
+      const cut = Offset3d(0.5, 0.2, 0);
+      const kept = Offset3d(0.5, 0.85, 0);
+
+      final visible = capture.frame.meanColorAt(
+        capture.pointOf('card0', kept),
+        radius: 6,
+      );
+      final clipped = capture.frame.meanColorAt(
+        capture.pointOf('card0', cut),
+        radius: 6,
+      );
+      expect(visible, isNotNull, reason: 'the card did not draw at all');
+      expect(
+        clipped,
+        isNotNull,
+        reason:
+            'nothing at all drew above the window, so the backing is '
+            'missing and this scene proves nothing about the clip',
+      );
+
+      expect(
+        luma(visible!),
+        greaterThan(luma(clipped!)),
+        reason:
+            'the near-white card is no lighter above the window than inside '
+            'it, so either the clip did not cut it or it never drew: read '
+            '$visible inside, $clipped outside',
+      );
+
+      // The control, and it is what makes the comparison above mean "the
+      // clip" rather than "something about the top of a card": `card1` is
+      // entirely inside the window, and it is light at the same two
+      // fractions of its own height.
+      final top = capture.frame.meanColorAt(
+        capture.pointOf('card1', cut),
+        radius: 6,
+      );
+      final middle = capture.frame.meanColorAt(
+        capture.pointOf('card1', kept),
+        radius: 6,
+      );
+      expect(
+        luma(top!),
+        greaterThan(luma(clipped)),
+        reason:
+            'a fully visible card is dark at its own top, which means the '
+            'window is cutting the wrong thing',
+      );
+      expect(FrameProbe.colorDistance(top, middle!), lessThan(0.08));
+
+      // And the card really is in front of the backing rather than lost in
+      // it: the backing away from the list is the mid purple it was given.
+      final backing = capture.frame.meanColorAt(
+        capture.pointOf('backing', const Offset3d(0.5, 0.06, 0)),
+        radius: 8,
+      );
+      expect(backing, isNotNull, reason: 'the backing did not draw');
+      expect(
+        luma(middle),
+        greaterThan(luma(backing!)),
+        reason:
+            'the card is no lighter than the backing it stands on, so it '
+            'is not in front of it: read $middle card, $backing backing',
+      );
+    });
+
+    testWidgets('a 1dp divider draws, and draws darker than what it divides', (
+      tester,
+    ) async {
+      // A rule is the smallest thing this catalogue draws, and "it drew" is
+      // the whole claim: a 1dp band is a couple of pixels at the default unit
+      // rate, so the scene turns the surface's `unitsPerLogicalPixel` up
+      // rather than fattening a published token — the fix phase 3 found for a
+      // button's outline, applied to a component that is nothing but a line.
+      final capture = await _draw(tester, kProbeScenes.byId('divider_rule'));
+
+      double luma(ui.Color c) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+
+      expect(
+        capture.frame.coverageAt(capture.centerOf('rule'), radius: 3),
+        greaterThan(0.8),
+        reason:
+            'nothing drew where layout put the rule, so a 1dp line is '
+            'still invisible at this unit rate',
+      );
+
+      final ink = capture.frame.meanColorAt(
+        capture.centerOf('rule'),
+        radius: 2,
+      );
+      // Well clear of the rule, on the card it divides. A quarter of the way
+      // down the card is nowhere near the centred rule.
+      final surface = capture.frame.meanColorAt(
+        capture.pointOf('card', const Offset3d(0.5, 0.25, 0)),
+        radius: 8,
+      );
+      expect(ink, isNotNull, reason: 'the rule did not draw');
+      expect(surface, isNotNull, reason: 'the card under it did not draw');
+      expect(
+        luma(ink!),
+        lessThan(luma(surface!)),
+        reason:
+            'the rule is no darker than the surface it divides, so either it '
+            'drew in the wrong colour or the probe is reading the card: read '
+            '$ink rule, $surface card',
+      );
+    });
+
     testWidgets('an icon-font glyph rasterizes through the label atlas', (
       tester,
     ) async {

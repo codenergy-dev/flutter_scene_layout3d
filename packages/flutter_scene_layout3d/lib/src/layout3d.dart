@@ -826,8 +826,19 @@ abstract class Layout3d with DiagnosticableTreeMixin {
   /// [LayoutBasis3d] once at the root, this is a plain translation.
   void place(Offset3d offset) {
     final data = parentData ??= ParentData3d();
+    final moved = data.offset != offset;
     data.offset = offset;
     applyNodeTransform();
+    // A box that moved is under a different part of whatever clips it — a
+    // scrolled row slides under a window's edge without anything relaying
+    // out, so nothing else would ever republish its clip — and the whole
+    // subtree moved with it.
+    //
+    // The gate is what keeps this off the ordinary path: the walk happens
+    // only when something above actually clips, which is one walk up the
+    // parent chain and an immediate return everywhere else. A tree with no
+    // `ClipBox3d` in it pays that and nothing more.
+    if (moved && !clipRegion.isUnbounded) _refreshClipSubtree();
   }
 
   /// The offset the parent applies to this layout's scene node on top of
@@ -928,6 +939,26 @@ abstract class Layout3d with DiagnosticableTreeMixin {
   /// clip is an extent, and an extent is what layout produces.
   Clip3dRegion get clipRegion =>
       _parent?.clipRegionForChild(this) ?? Clip3dRegion.none;
+
+  void _refreshClipSubtree() {
+    refreshClipRegion();
+    visitChildren((child) => child._refreshClipSubtree());
+  }
+
+  /// Re-reads [clipRegion] and republishes whatever this box did with it.
+  ///
+  /// Nothing by default, because most boxes do nothing with a clip. A
+  /// [DecoratedBox3d] overrides it to repaint, because its painter packs the
+  /// region into a shader block and that block is what actually cuts a
+  /// half-in box.
+  ///
+  /// **It exists because a clip is not available when a box first paints.**
+  /// A box publishes its clip from inside its own `performLayout`, and a
+  /// [ClipBox3d] takes its size *from its child* — so on the layout that
+  /// creates them, every descendant asks for the clip before the box
+  /// imposing it has an extent, and gets [Clip3dRegion.none]. `ClipBox3d`
+  /// calls this on its whole subtree afterwards, when the extent exists.
+  void refreshClipRegion() {}
 
   /// The clip this box imposes on [child], in the child's own frame.
   ///

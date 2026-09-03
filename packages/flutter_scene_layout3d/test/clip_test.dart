@@ -1,6 +1,9 @@
 // ClipPlane3d, Clip3dRegion and ClipBox3d: the clip contract the rest of the
 // package consumes.
 
+import 'dart:ui' show Color;
+
+import 'package:flutter_scene/scene.dart' show Node;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vector_math/vector_math.dart' show Matrix4;
@@ -287,4 +290,122 @@ void main() {
       expect(child.clipRegion.contains(const Offset3d(1, 1, -5)), isFalse);
     });
   });
+
+  group('the clip actually reaches a painter', () {
+    // The plane tier of the contract is a shader block, and the block is
+    // written when a decorated box paints. A box paints from inside its own
+    // `performLayout` — where an enclosing `ClipBox3d` has not been given a
+    // size yet, because a proxy takes its size *from its child*. So the
+    // first block every panel under a clip ever got was the unbounded one,
+    // and nothing afterwards replaced it: a row half inside a window drew
+    // straight through the edge, and the whole tier was dead in a way no
+    // arithmetic test could see. `Layout3d.refreshClipRegion` is what closes
+    // that, and these are the two paths it has to cover.
+
+    setUp(ClipRecorder.reset);
+    tearDown(() {
+      ClipRecorder.reset();
+      BoxDecoration3d.painterFactory = null;
+    });
+
+    test(
+      'a panel under a clip is told the clip on the layout that made it',
+      () {
+        BoxDecoration3d.painterFactory = (_) => ClipRecorder();
+        final panel = DecoratedBox3d(
+          decoration: const BoxDecoration3d(color: Color(0xFFFFFFFF)),
+        );
+        laidOut(
+          ClipBox3d(child: SizedBox3d(width: 4, height: 1, child: panel)),
+          constraints: Constraints3d.tight(const Size3d(2, 1, 0)),
+        );
+
+        expect(
+          ClipRecorder.seen.last.planes,
+          hasLength(4),
+          reason:
+              'the last block the painter was given is the real clip, not '
+              'the unbounded one the box was born with',
+        );
+      },
+    );
+
+    test('and again whenever it is moved without being laid out again', () {
+      // Scrolling. The rows are not relaid out — their constraints do not
+      // change — they are *placed* somewhere else, so nothing but the
+      // placement can notice that they are under a different part of the
+      // window now.
+      BoxDecoration3d.painterFactory = (_) => ClipRecorder();
+      final panel = DecoratedBox3d(
+        decoration: const BoxDecoration3d(color: Color(0xFFFFFFFF)),
+      );
+      final controller = Scroll3dController();
+      final surface = laidOut(
+        ClipBox3d(
+          child: ListView3d(
+            controller: controller,
+            children: <Layout3d>[
+              for (var i = 0; i < 6; i++)
+                SizedBox3d(
+                  width: 2,
+                  height: 0.5,
+                  child: i == 0 ? panel : TestBox(const Size3d(2, 0.5, 0)),
+                ),
+            ],
+          ),
+        ),
+        constraints: Constraints3d.tight(const Size3d(2, 1, 0)),
+      );
+      final before = ClipRecorder.seen.last;
+      expect(before.planes, hasLength(4));
+
+      controller.jumpTo(0.25);
+      surface.flush();
+
+      final after = ClipRecorder.seen.last;
+      expect(after.planes, hasLength(4));
+      expect(
+        after.planes.map((p) => p.distance).toList(),
+        isNot(before.planes.map((p) => p.distance).toList()),
+        reason:
+            'the row slid a quarter of a unit under the window\'s edge '
+            'and the block it draws with says so',
+      );
+    });
+
+    test('and a tree with no clip in it pays nothing for the check', () {
+      // The gate: `place` walks the subtree only when something above
+      // actually clips, which is one walk up the parent chain that returns
+      // immediately when nothing does.
+      BoxDecoration3d.painterFactory = (_) => ClipRecorder();
+      final panel = DecoratedBox3d(
+        decoration: const BoxDecoration3d(color: Color(0xFFFFFFFF)),
+      );
+      laidOut(
+        SizedBox3d(width: 2, height: 1, child: panel),
+        constraints: Constraints3d.tight(const Size3d(2, 1, 0)),
+      );
+      expect(ClipRecorder.seen, hasLength(1));
+      expect(ClipRecorder.seen.single.isUnbounded, isTrue);
+    });
+  });
+}
+
+/// A painter that records the clip every paint request carried.
+///
+/// The only way to see the plane tier from a headless test: the block itself
+/// is a shader uniform, and there is no shader here.
+class ClipRecorder extends Decoration3dPainter {
+  static final List<Clip3dRegion> seen = <Clip3dRegion>[];
+
+  static void reset() => seen.clear();
+
+  @override
+  void paint(Decoration3dPaintRequest request) => seen.add(request.clip);
+
+  @override
+  void release(Node node) {}
+
+  @override
+  void dispose() {}
 }

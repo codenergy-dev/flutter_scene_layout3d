@@ -378,23 +378,32 @@ class ClipBox3d extends ProxyLayout3d {
   void performLayout() {
     super.performLayout();
     _restoreCulled();
-    if (!_cullNodes) return;
     final child = this.child;
+    // The sweep runs whether or not anything is culled, because it does two
+    // jobs and only one of them is culling. The other is the reason it has
+    // to run *here*, after `super.performLayout()` has given this box a
+    // size: a descendant publishes its clip from inside its own
+    // `performLayout`, which ran while this box still had no extent and
+    // therefore imposed nothing. Without a second pass the whole subtree
+    // draws with the clip it was born with — an unbounded one — and the
+    // plane tier is silently dead. See `refreshClipRegion`.
     if (child != null) _sweep(child, ownRegion);
   }
 
-  /// Hides every box under [box] that falls entirely outside [region], with
-  /// [region] expressed in [box]'s parent's frame.
+  /// Hides every box under [box] that falls entirely outside [region] and
+  /// tells the rest to re-read the clip, with [region] expressed in [box]'s
+  /// parent's frame.
   void _sweep(Layout3d box, Clip3dRegion region) {
     if (!box.hasSize) return;
     final here = region.shifted(-box.offset);
-    if (here.excludes(Offset3d.zero, box.size)) {
+    if (_cullNodes && here.excludes(Offset3d.zero, box.size)) {
       if (box.node.visible) {
         box.node.visible = false;
         _culled.add(box);
       }
       return;
     }
+    box.refreshClipRegion();
     // No early exit for a box that is wholly inside: a child may overflow its
     // parent's extent (a Column3d taller than the room it was given is the
     // ordinary case here), so a parent being inside says nothing about where

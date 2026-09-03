@@ -369,6 +369,144 @@ Flutter's `Semantics(container: true)` merge does — there is no semantics tree
 under a scene node to fold up — so a button without one announces itself as a
 button with no name.
 
+## Surfaces and rows: cards, tiles, dividers and chips
+
+Everything above is a control. This is what a screen is made of.
+
+```dart
+ElevatedCard3d(
+  onTap: _open,
+  semanticLabel: 'Yesterday',
+  child: SceneColumn3d(
+    mainAxisSize: MainAxisSize3d.min,
+    children: <Widget>[
+      ListTile3d.text(
+        title: 'Inbox',
+        subtitle: '12 unread',
+        leading: const Icon3d(Icons.inbox),
+        onTap: _openInbox,
+      ),
+      const Divider3d(),
+      ListTile3d.text(title: 'Archive', leading: const Icon3d(Icons.archive)),
+    ],
+  ),
+)
+```
+
+`Card3d` comes in Material's three kinds — `ElevatedCard3d`, `FilledCard3d`,
+`OutlinedCard3d` — and they are one widget with three `CardStyle3d` token
+sets, exactly as the buttons are. A card is `thickness.raised`, 4dp, with its
+rim bevelled in proportion; an elevated one rests 1dp toward the viewer on top
+of that. Nothing casts a shadow and nothing can, so a raised card reads as
+raised through parallax and occlusion.
+
+**A card's whole interaction is free.** Material 3 gives a card no disabled
+appearance, no hovered container and no focused outline, so every state goes
+through the ink controller — one shader uniform, no rebuild, no layout. A
+filled button cannot say that, because its elevation moves with a hover.
+
+### A card inside a scrolling list keeps its depth
+
+This is the one place the clip contract's design shows. `Clip3dRegion.rect` is
+**four** planes — two in `x`, two in `y`, none in `z` — so a scrolling window
+cuts its rows at its own edges and says nothing about how far forward they
+reach. A raised card inside one is cut where it slides out of the window and
+stands proud of the list everywhere else, which is what a card in a scroll
+view should do and is not what a naive box clip would give you.
+`examples/render_probe`'s `card_in_clipped_list` is the picture of it.
+
+`ClipBox3d(clipDepth: true)` bounds the thickness as well — and it still will
+not slice a raised card off flush with the list, because the planes are in the
+box's own frame and an elevation moves the slab's *node*, outside that frame.
+A depth clip cuts a box's layout depth, never its lift.
+
+### The tile, the heights, and the density
+
+`ListTile3d` is a leading slot, one or two lines of text, and a trailing slot,
+at Material's published heights: **56dp** for a title alone, **72dp** with a
+subtitle, **88dp** for `isThreeLine`, and 48/64/76 when `dense`. They are
+minimums — a tile whose text wraps is taller — and they go through
+`Theme3dData.effectiveConstraints`, so `VisualDensity3d` moves them by 4dp a
+step. The theme's density is the authority, not the metrics'; see *What a
+theme deliberately does not do* below.
+
+The figures are checked against Flutter rather than transcribed: the tests
+pump a real `ListTile` and read the height it lays out at.
+
+**It takes its title as a string, and that is the interesting part.** A
+`Semantics3d` publishes what it is given and gathers nothing, so a component
+states its own label — which is a formality for a button and a real question
+for a row with a title *and* a subtitle. `ListTile3d.text(title:, subtitle:)`
+builds the labels **and** the announcement, `'Inbox, 12 unread'`, which is
+what Flutter's semantics merge would have produced. The general constructor
+takes widgets and a `semanticLabel`, and a tile written that way with no label
+announces a row with no name.
+
+### A 1dp line, and why it has a thickness
+
+A `Divider3d` has three figures that all sound like "thickness" and are three
+different things:
+
+- **`space`** — how much room it takes in the column: 16dp, Material's figure.
+- **`thickness`** — how tall the rule is *in the plane*: 1dp. Flutter's
+  spelling, so a caller migrating a `Divider` writes what they already know.
+- **`depth`** — how deep the slab is: `Thickness3d.thin`, also 1dp, and a
+  different dial that happens to carry the same number.
+
+The depth is the one worth explaining. A rule looks flat, so zero depth is the
+tempting answer — and it z-fights. `Material3d` aligns its child to its
+**front face**, so a divider drawn on a card sits exactly on the card's front
+plane; two coplanar surfaces appear in patches, differently on every frame and
+every driver, with nothing to say why. A real slab stands its own
+half-thickness proud instead.
+
+The other thing a 1dp line teaches is about *seeing* it. At the default
+hundred logical pixels to the unit a rule is 0.01 world units and a couple of
+pixels on screen — too thin for a render probe to aim at. The fix is not to
+fatten the token, it is to turn the surface's `unitsPerLogicalPixel` up, which
+is the dial a camera-bound surface turns anyway.
+
+**A divider announces nothing**, deliberately, exactly as Flutter's does: a
+reader that said "divider" between every pair of rows would be worse than one
+that skipped it. Pass a `semanticLabel` for a rule that really is a named
+section break.
+
+### Chips, and where the 48dp target earns its keep
+
+`AssistChip3d`, `FilterChip3d`, `InputChip3d` and `SuggestionChip3d` are one
+`Chip3d` over four `ChipStyle3d` token sets:
+
+```dart
+FilterChip3d(
+  label: const SceneText3d('Unread'),
+  selected: _unreadOnly,
+  onSelected: (value) => setState(() => _unreadOnly = value),
+  semanticLabel: 'Unread only',
+)
+```
+
+A chip is **32dp tall** — the smallest control in the catalogue and sixteen
+short of Material's minimum touch target — which is where the `TapTarget3d`
+reach stops being a formality and starts doing real work. A chip answers a
+finger 8dp above and below itself while a row of chips stays 32dp tall and
+nothing moves apart to make room.
+
+Selection is a **token substitution**, not a wash: a selected chip is a filled
+`secondaryContainer` with no outline, an unselected one transparent inside an
+`outlineVariant`. That is why `Material3dState` has no `selected`, and it means
+toggling a chip rebuilds it while hovering one does not. An assist chip is not
+selectable at all, and the *token table* says so rather than the widget, so the
+two cannot disagree.
+
+`onDeleted` puts a delete affordance in the trailing slot. It is a plain
+gesture with its own semantics rather than a nested `InkWell3d`, and the
+reason is a rule worth knowing before you try to improve it: a second
+`TapTarget3d` inside the chip's panel would be gated by the panel — a target
+reaches past its own extent, its ancestors do not — so its reach would be
+silently inert; and an ink well there would find the *enclosing* surface's ink
+controller and light the whole chip up. What works is the innermost recognizer
+winning the arena, which it does, exactly as in Flutter.
+
 ## Icons are a font, and it was checked rather than assumed
 
 `Icon3d` is one code point of an icon font drawn as a one-character
@@ -619,10 +757,21 @@ filled it.
 
 ## What is not here yet
 
-Honestly, and in the order it is planned: cards and list tiles; `Scaffold3d`
-and the bars; the overlays; the selection controls; and a press ripple, which
-the panel shader can express in two more uniforms and a `smoothstep` and which
-the uniform state layer stands in for until then.
+Honestly, and in the order it is planned: `Scaffold3d` and the bars; the
+overlays; the selection controls; and a press ripple, which the panel shader
+can express in two more uniforms and a `smoothstep` and which the uniform
+state layer stands in for until then.
+
+Four things the surfaces and rows left, each for a reason. A filter chip draws
+no **checkmark**: it is a second glyph competing with the container
+substitution for the same signal, and the container is the one that survives at
+a distance — pass an `avatar` if you want one. There is no
+**`VerticalDivider3d`** yet; it is the same class with its axes swapped, and it
+belongs beside a navigation rail. A tile has one **title alignment**, the
+centred one, where Flutter has four. And a card has no **`clipBehavior`**: that
+needs a clip whose region is a rounded rectangle, and `Clip3dRegion` is an
+intersection of planes, which is convex — the panel shader carves its own
+radius, but a *child* overflowing a rounded card is not clipped to it.
 
 Two smaller gaps the buttons left. There is no `FilledButton3d.icon` pairing
 an icon with a label, because Material's icon-and-label padding is a third set
