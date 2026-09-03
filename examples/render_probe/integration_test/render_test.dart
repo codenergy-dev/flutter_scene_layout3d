@@ -1107,6 +1107,126 @@ void main() {
       );
     });
 
+    testWidgets('a disabled button is a substitution, and the frame shows it', (
+      tester,
+    ) async {
+      // The design rule the whole catalogue rests on: there is no subtree
+      // opacity in this stack and there cannot be, so a disabled control is
+      // drawn by *swapping colours* — `onSurface` at 12% for the container,
+      // at 38% for the label. Every headless test in the package checks that
+      // the right numbers reach a decoration. This checks that they reach a
+      // pixel.
+      //
+      // Two assertions, and the second is the one that means something. The
+      // first is a direction with its sign explained: on the light theme an
+      // enabled filled button is a mid purple and a disabled one is a pale
+      // grey, so "dimmer" reads as lighter. The second is the claim itself —
+      // the disabled container has **lost its contrast against the surface
+      // behind it**, which is what disabled looks like — and it is two
+      // distances measured the same way and compared, not a bare difference.
+      final capture = await _draw(tester, kProbeScenes.byId('button_disabled'));
+
+      ui.Color inkAt(String name) {
+        final color = capture.frame.meanColorAt(
+          capture.centerOf(name),
+          radius: 10,
+        );
+        expect(color, isNotNull, reason: 'the $name button did not draw');
+        return color!;
+      }
+
+      // Away from both buttons, which sit in the middle band: the backing's
+      // own colour, and what the two are losing or keeping contrast against.
+      final surface = capture.frame.meanColorAt(
+        capture.pointOf('backing', const Offset3d(0.5, 0.08, 0)),
+        radius: 8,
+      );
+      expect(
+        surface,
+        isNotNull,
+        reason: 'the surface behind them did not draw',
+      );
+
+      final enabled = inkAt('enabled');
+      final disabled = inkAt('disabled');
+      double luma(ui.Color c) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+
+      expect(
+        luma(disabled),
+        greaterThan(luma(enabled)),
+        reason:
+            'the disabled button is not paler than the enabled one, so the '
+            'substitution never reached the shader: read $enabled enabled, '
+            '$disabled disabled',
+      );
+      expect(
+        FrameProbe.colorDistance(disabled, surface!),
+        lessThan(FrameProbe.colorDistance(enabled, surface)),
+        reason:
+            'the disabled button stands out from the surface as much as the '
+            'enabled one does, which is the one thing a disabled control must '
+            'not do: surface $surface, enabled $enabled, disabled $disabled',
+      );
+    });
+
+    testWidgets('an outlined button draws its outline at the rim', (
+      tester,
+    ) async {
+      // The same shape of check that caught the panel shader drawing its
+      // border inside out, on the one variant that is nothing but a border.
+      // "The rim is a different colour from the middle" would be satisfied
+      // just as well by the two being swapped, so each point is asked what it
+      // holds: the rim holds ink, the middle holds the background, and the
+      // filled control beside it holds ink in both.
+      final capture = await _draw(tester, kProbeScenes.byId('button_outlined'));
+
+      // 4% of a 2.4-unit height is 0.096 units in from the top edge, and the
+      // outline is 1dp at six hundredths of a unit to the pixel — 0.06 — so
+      // the point sits inside the band with the anti-aliasing either side.
+      const rim = Offset3d(0.5, 0.04, 0);
+      const middle = Offset3d(0.5, 0.5, 0);
+
+      expect(
+        capture.frame.coverageAt(capture.pointOf('outlined', rim), radius: 3),
+        greaterThan(0.5),
+        reason:
+            'nothing drew at the rim of an outlined button, so its outline is '
+            'either missing or drawn somewhere else',
+      );
+      expect(
+        capture.frame.isClearAt(capture.pointOf('outlined', middle), radius: 8),
+        isTrue,
+        reason:
+            'an outlined button filled its middle, so the border is inside '
+            'out: the transparent container is at the rim and the outline in '
+            'the centre',
+      );
+
+      // The control. A filled button of the same size at the same place is
+      // ink in both spots, which is what says "the middle is clear" above is
+      // a transparent container and not a scene that failed to draw.
+      expect(
+        capture.frame.coverageAt(capture.pointOf('filled', middle), radius: 8),
+        greaterThan(0.9),
+        reason: 'the filled control did not draw, so this scene proves nothing',
+      );
+      final filledRim = capture.frame.meanColorAt(
+        capture.pointOf('filled', rim),
+        radius: 3,
+      );
+      final filledMiddle = capture.frame.meanColorAt(
+        capture.pointOf('filled', middle),
+        radius: 8,
+      );
+      expect(
+        FrameProbe.colorDistance(filledRim!, filledMiddle!),
+        lessThan(0.08),
+        reason:
+            'a button given no border drew one anyway: rim $filledRim, middle '
+            '$filledMiddle',
+      );
+    });
+
     testWidgets('an icon-font glyph rasterizes through the label atlas', (
       tester,
     ) async {

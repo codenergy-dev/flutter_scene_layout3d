@@ -125,6 +125,14 @@ ProbeSceneContent _panelScene(
   );
 }
 
+/// A camera far enough back for the metrics-scaled button scene.
+///
+/// That scene states its own `unitsPerLogicalPixel`, so its geometry is six
+/// times the size the rest of these scenes work at and the default camera
+/// clips straight through it.
+PerspectiveCamera _wideCamera() =>
+    PerspectiveCamera(position: Vector3(0, 0, 12), target: Vector3(0, 0, 0));
+
 /// A camera raised above the ground, looking down at the origin.
 ///
 /// A level camera sees the `xz` plane exactly edge-on: every point on it lands
@@ -958,6 +966,161 @@ final List<ProbeScene> kProbeScenes = <ProbeScene>[
       probes: {'idle': idle, 'hovered': hovered},
     );
   }, preload: installPanelPainter),
+
+  // ── The buttons ──────────────────────────────────────────────────────
+  //
+  // Two claims from phase 3, and both are claims only a picture settles. Each
+  // builds its panels the way the catalogue does — `ButtonStyle3d.of` for the
+  // variant's tokens, `resolve` for the state, `Material3d.decorationFor` for
+  // the decoration — because a probe that resolved the tokens itself would be
+  // checking its own arithmetic rather than this package's.
+  ProbeScene('button_disabled', () {
+    // Disabled is a **substitution**, not an opacity: there is no subtree
+    // opacity anywhere in this stack, so a disabled button is drawn in
+    // different colours. The frame is where that either happens or does not.
+    //
+    // The two buttons sit on a near-white slab, and they have to: M3's
+    // disabled container is `onSurface` at *12% alpha*, a figure designed to
+    // composite over the surface behind it. Floating in front of this
+    // harness's `#101820` clear colour it would come out inside the clear
+    // tolerance and read as nothing at all.
+    //
+    // The direction. On the **light** theme — which this harness requires,
+    // since M3's dark surface is inside its clear tolerance — an enabled
+    // filled button is a mid purple and a disabled one is a pale grey, so
+    // "dimmer" reads as *lighter*. Same claim, opposite sign, exactly as the
+    // elevation and hover scenes above. The assertion that carries the
+    // meaning is the other one: the disabled container is **closer to the
+    // surface behind it** than the enabled one is, which is what losing
+    // contrast is, and which comparing two distances measured the same way
+    // states as a direction rather than as a bare difference.
+    const theme = Theme3dData.light;
+    final style = ButtonStyle3d.of(theme, ButtonVariant3d.filled);
+    DecoratedBox3d button(String name, {required bool enabled}) {
+      final resolved = style.resolve(const {}, enabled: enabled);
+      return DecoratedBox3d(
+        decoration: Material3d.decorationFor(
+          theme,
+          color: resolved.container,
+          shape: style.shape,
+          elevation: resolved.elevation,
+          thickness: style.thickness,
+          border: resolved.border,
+          surfaceTint: const Color(0x00000000),
+        ),
+        name: name,
+      );
+    }
+
+    final backing = DecoratedBox3d(
+      decoration: Material3d.decorationFor(
+        theme,
+        color: theme.colorScheme.surfaceContainerLowest,
+        thickness: theme.thickness.raised,
+      ),
+      name: 'backing',
+    );
+    final enabled = button('enabled', enabled: true);
+    final disabled = button('disabled', enabled: false);
+    return ProbeSceneContent(
+      surfaces: [
+        Layout3dSurface(
+          constraints: Constraints3d.tight(const Size3d(3.6, 1.6, 0.4)),
+          child: Stack3d(
+            alignment: Alignment3d.center,
+            // 12dp, the theme's own step. The deepest pair here is the 4dp
+            // backing against a 2dp button, mean 3dp, so it clears with room.
+            depthStep: 0.12,
+            children: <Layout3d>[
+              SizedBox3d(width: 3.6, height: 1.6, depth: 0.04, child: backing),
+              SizedBox3d(
+                width: 3.2,
+                height: 0.4,
+                depth: 0.02,
+                child: Row3d(
+                  mainAxisAlignment: MainAxisAlignment3d.spaceEvenly,
+                  children: <Layout3d>[
+                    for (final box in <Layout3d>[enabled, disabled])
+                      SizedBox3d(
+                        width: 1.4,
+                        height: 0.4,
+                        depth: 0.02,
+                        child: box,
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+      probes: {'backing': backing, 'enabled': enabled, 'disabled': disabled},
+    );
+  }, preload: installPanelPainter),
+
+  ProbeScene(
+    'button_outlined',
+    () {
+      // An outlined button draws its outline at the **rim** and its container
+      // in the **middle** — the same shape of check that caught the panel
+      // shader drawing its border inside out, applied to the one variant whose
+      // whole appearance is a border.
+      //
+      // The metrics are turned up on purpose. A Material outline is 1dp, which
+      // at the default hundred logical pixels to the unit is 0.01 units and a
+      // couple of pixels on screen: a probe disc cannot fit inside it, and
+      // fattening the token would mean testing a number Material never
+      // published. `unitsPerLogicalPixel: 0.06` keeps the *token* at its real
+      // 1dp and makes the surface's unit contract the dial instead — which is
+      // exactly the dial a camera-bound surface turns.
+      //
+      // The filled button beside it is the control, and it is what makes "the
+      // middle is clear" evidence: an outlined button's container is
+      // transparent, so its middle *should* show the background, and a scene
+      // that only said so could equally be a scene where nothing drew.
+      const theme = Theme3dData.light;
+      DecoratedBox3d button(String name, ButtonVariant3d variant) {
+        final style = ButtonStyle3d.of(theme, variant);
+        final resolved = style.resolve(const {}, enabled: true);
+        return DecoratedBox3d(
+          decoration: Material3d.decorationFor(
+            theme,
+            color: resolved.container,
+            shape: style.shape,
+            elevation: resolved.elevation,
+            thickness: style.thickness,
+            border: resolved.border,
+            surfaceTint: const Color(0x00000000),
+          ),
+          name: name,
+        );
+      }
+
+      final outlined = button('outlined', ButtonVariant3d.outlined);
+      final filled = button('filled', ButtonVariant3d.filled);
+      return ProbeSceneContent(
+        surfaces: [
+          Layout3dSurface(
+            // Six hundredths of a unit to the logical pixel, so Material's 40dp
+            // button height is 2.4 units and its 1dp outline is 0.06 — a band a
+            // probe disc fits inside.
+            metrics: const Layout3dMetrics(unitsPerLogicalPixel: 0.06),
+            constraints: Constraints3d.tight(const Size3d(8.4, 2.6, 0.2)),
+            child: Row3d(
+              mainAxisAlignment: MainAxisAlignment3d.spaceEvenly,
+              children: <Layout3d>[
+                for (final box in <Layout3d>[outlined, filled])
+                  SizedBox3d(width: 3.84, height: 2.4, depth: 0.12, child: box),
+              ],
+            ),
+          ),
+        ],
+        probes: {'outlined': outlined, 'filled': filled},
+      );
+    },
+    camera: _wideCamera(),
+    preload: installPanelPainter,
+  ),
 
   // ── The icon question ────────────────────────────────────────────────
   //

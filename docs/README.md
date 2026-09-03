@@ -21,7 +21,7 @@ several files, guidance for using the engine underneath.
 | See it running, or write a demo | [examples/layout3d_gallery](../examples/layout3d_gallery/README.md) |
 | Verify something actually draws | [examples/render_probe](../examples/render_probe/README.md) |
 | Know what is planned, in progress, or was decided and why | the plans directories of [the layout package](../packages/flutter_scene_layout3d/plans/) and [the Material package](../packages/flutter_scene_material3d/plans/) |
-| Know what is being built next | [the Material catalogue plan](../packages/flutter_scene_material3d/plans/2026_09_01_flutter_scene_material3d.md) — phases 0 to 2 done, the components themselves from phase 3 |
+| Know what is being built next | [the Material catalogue plan](../packages/flutter_scene_material3d/plans/2026_09_01_flutter_scene_material3d.md) — phases 0 to 3 done, the buttons included, and the rest of the catalogue from phase 4 |
 
 ## The pages here
 
@@ -76,6 +76,12 @@ Two entry points:
   in [the metrics a build method can read](../packages/flutter_scene_layout3d/plans/2026_09_02_the_metrics_a_build_method_can_read.md)
   — `Layout3dMetricsScope.of(context)`, and the phase-ordering argument that
   says a value read in `build` is not stale by the time the layout uses it.
+  Phase 2 left one gap of its own and phase 3 closed it the same way:
+  `TapTarget3d`'s 48dp minimum grew the ray region and delivered no press out
+  in the margin, which is settled in
+  [a tap target that delivers a press](../packages/flutter_scene_layout3d/plans/2026_09_02_a_tap_target_that_delivers_a_press.md)
+  — the nine-line fix, and the placement rule underneath it that is the half
+  worth reading. Phase 3, the seven buttons, is done.
 
 ## Keeping this true
 

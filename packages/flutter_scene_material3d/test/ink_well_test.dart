@@ -283,23 +283,27 @@ void main() {
   });
 
   group('the target', () {
-    testWidgets('grows no box, and reaches nothing either', (tester) async {
-      // Two claims, and the second one is a gap rather than a feature.
+    testWidgets('grows no box, and does not reach past its own parent', (
+      tester,
+    ) async {
+      // Two claims, and the second one is the rule a component author has to
+      // know rather than a defect.
       //
       // The first is the protocol's design: `TapTarget3d` grows the ray
       // region and not the extent, so the control keeps the size layout
       // measured and its neighbours do not move apart to make room for it.
       //
-      // The second is what that buys today, which is nothing. A box gates its
-      // children on its own extent, and `TapTarget3d` deliberately does not
-      // move the ray for its children — "the reach this box adds is its own"
-      // — so out in the margin the only thing in the hit path is the target,
-      // and a target dispatches no gestures. Worse, an `InkWell3d` sits
-      // *inside* its `Material3d`, whose panel is the smaller size, so the
-      // ray is gated out one level above the target and never reaches it at
-      // all. Closing this needs a change in `flutter_scene_layout3d` under a
-      // plan of its own there; when it lands, this test fails, which is
-      // exactly what it is for.
+      // The second is where a target has to sit. `TapTarget3d` now delivers a
+      // press in its margin — it re-tests its children at the centre of the
+      // control, the way Flutter's `_InputPadding` does — but it cannot reach
+      // past its own *parent*, because every box gates its children on its
+      // own extent. An `InkWell3d` puts its target inside the `Material3d`
+      // that draws the panel, and the panel is the smaller box, so the ray is
+      // rejected a level above and the reach buys nothing here. That is why
+      // `Button3d` wraps its whole surface in a `SceneTapTarget3d` and asks
+      // the ink well inside for `minimumSize: Size3d.zero`; the last
+      // expectation below is the same press landing when the target is in the
+      // right place.
       final controller = Layout3dController();
       late TestBox child;
       var taps = 0;
@@ -336,11 +340,60 @@ void main() {
       final pointer = Layout3dPointer(surface);
       pointer.down(rayAt(surface, const Offset3d(0.8, 1.0, 0)));
       pointer.up();
-      expect(taps, 0, reason: 'the behaviour today, not the wanted one');
+      expect(
+        taps,
+        0,
+        reason: 'the panel gated the ray out a level above the target',
+      );
 
       pointer.down(rayAt(surface, const Offset3d(1.0, 1.0, 0)));
       pointer.up();
       expect(taps, 1, reason: 'inside the box it taps');
+    });
+
+    testWidgets('a target outside the surface does deliver the press', (
+      tester,
+    ) async {
+      // The same control, with the target where a component should put it.
+      // This is the composition `Button3d` uses, reduced to its bones.
+      final controller = Layout3dController();
+      var taps = 0;
+      await tester.pumpWidget(
+        SceneLayout3d(
+          parent: Node(),
+          size: const Size3d(2, 2, 0.5),
+          controller: controller,
+          child: SceneTheme3d(
+            data: Theme3dData.light,
+            child: SceneCenter3d(
+              child: SceneTapTarget3d(
+                child: Material3d(
+                  alignment: null,
+                  child: InkWell3d(
+                    minimumSize: Size3d.zero,
+                    onTap: () => taps++,
+                    child: const SceneSizedBox3d(
+                      width: 0.2,
+                      height: 0.2,
+                      depth: 0,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final surface = controller.surface!;
+      final pointer = Layout3dPointer(surface);
+      pointer.down(rayAt(surface, const Offset3d(0.8, 1.0, 0)));
+      pointer.up();
+      expect(taps, 1, reason: '14dp out in the margin, and the press landed');
+
+      pointer.down(rayAt(surface, const Offset3d(0.7, 1.0, 0)));
+      pointer.up();
+      expect(taps, 1, reason: 'and the reach still stops at 48dp');
     });
   });
 }

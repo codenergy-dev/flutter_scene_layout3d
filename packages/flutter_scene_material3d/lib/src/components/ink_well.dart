@@ -70,6 +70,7 @@ class InkWell3d extends StatefulWidget {
     this.onDoubleTap,
     this.onLongPress,
     this.onHover,
+    this.onHighlightChanged,
     this.onFocusChange,
     this.focusNode,
     this.autofocus = false,
@@ -90,6 +91,17 @@ class InkWell3d extends StatefulWidget {
 
   /// Called when the pointer arrives over the control or leaves it.
   final ValueChanged<bool>? onHover;
+
+  /// Called when a press starts or ends, with Flutter's own spelling.
+  ///
+  /// A component needs this when one of its *tokens* moves with the press
+  /// rather than only its wash — a Material button drops back to its resting
+  /// elevation while it is held, so it has to know. Note that a press does
+  /// not report itself until Flutter's tap recognizer wins the arena or its
+  /// `kPressTimeout` deadline expires, which is correct (a press that becomes
+  /// a scroll should never flash a highlight) and means a press and a release
+  /// in the same instant report nothing at all.
+  final ValueChanged<bool>? onHighlightChanged;
 
   /// Called when the control gains or loses the focus.
   final ValueChanged<bool>? onFocusChange;
@@ -168,6 +180,11 @@ class _InkWell3dState extends State<InkWell3d> {
   void _set(Material3dState state, bool active) =>
       _ink?.setInkState(state, active: active && widget.enabled);
 
+  void _handleHighlight(bool pressed) {
+    _set(Material3dState.pressed, pressed);
+    widget.onHighlightChanged?.call(pressed && widget.enabled);
+  }
+
   void _handleFocusChange(bool focused) {
     _set(Material3dState.focused, focused);
     widget.onFocusChange?.call(focused);
@@ -196,15 +213,9 @@ class _InkWell3dState extends State<InkWell3d> {
           // is hovered exactly where it is pressable.
           behavior: HitTestBehavior3d.deferToChild,
           child: SceneGestureDetector3d(
-            onTapDown: enabled
-                ? (_) => _set(Material3dState.pressed, true)
-                : null,
-            onTapUp: enabled
-                ? (_) => _set(Material3dState.pressed, false)
-                : null,
-            onTapCancel: enabled
-                ? () => _set(Material3dState.pressed, false)
-                : null,
+            onTapDown: enabled ? (_) => _handleHighlight(true) : null,
+            onTapUp: enabled ? (_) => _handleHighlight(false) : null,
+            onTapCancel: enabled ? () => _handleHighlight(false) : null,
             onTap: enabled ? widget.onTap : null,
             onDoubleTap: enabled ? widget.onDoubleTap : null,
             onLongPress: enabled ? widget.onLongPress : null,

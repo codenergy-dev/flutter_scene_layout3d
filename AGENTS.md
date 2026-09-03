@@ -24,7 +24,7 @@ once it became clear the scope was its own project. That history is preserved:
 | Package | What it is |
 | --- | --- |
 | `packages/flutter_scene_layout3d` | The layout protocol. Constraints, intrinsics, baselines, flex, stack, wrap, slivers, scrolling, text measurement, decoration, clipping, pointer dispatch, focus, overlays, animation, diagnostics. |
-| `packages/flutter_scene_material3d` | Material Design 3 on that protocol. Today: the six token families (`ColorScheme3d`, `Typography3d`, `ShapeScale3d`, `Elevation3d`, `Thickness3d`, `StateLayerOpacity3d`), `Theme3dData` and `SceneTheme3d`, `initializeMaterial3d()`, and the primitive layer — `Material3d`, `InkWell3d`, `Icon3d`, `SceneTextStyle3d`. The catalogue's components start at the buttons. |
+| `packages/flutter_scene_material3d` | Material Design 3 on that protocol. Today: the six token families (`ColorScheme3d`, `Typography3d`, `ShapeScale3d`, `Elevation3d`, `Thickness3d`, `StateLayerOpacity3d`), `Theme3dData` and `SceneTheme3d`, `initializeMaterial3d()`, the primitive layer — `Material3d`, `InkWell3d`, `Icon3d`, `SceneTextStyle3d` — and the seven buttons over one `ButtonStyle3d`. The catalogue continues with cards and rows. |
 | `examples/layout3d_gallery` | The example app. Three surfaces — an upright panel, a ground plane, a scrolling list — all hit-testable. |
 | `examples/render_probe` | Render tests. Draws the layout on a GPU and probes the frame at the pixels layout says to check. Commits its platform scaffolding, unlike the gallery. |
 
@@ -43,14 +43,22 @@ there. Phase 2 is done too: `initializeMaterial3d()` is the one call an
 application makes, `Material3d` is the primitive with the theme resolved into
 it, `InkWell3d` drives its state layer without rebuilding anything, and
 `Icon3d` is one code point of an icon font through the label atlas — which a
-render probe settled rather than a guess. **There are no components yet**:
-phase 3, the seven buttons, is where the catalogue proper starts, and each of
-them is a `Material3d` with a set of tokens.
+render probe settled rather than a guess. **Phase 3 is done as well**: the
+seven buttons — `FilledButton3d`, `FilledTonalButton3d`, `OutlinedButton3d`,
+`TextButton3d`, `ElevatedButton3d`, `IconButton3d`,
+`FloatingActionButton3d` — are one `Button3d` with seven `ButtonStyle3d` token
+sets, and the gap phase 2 recorded in the layout package is closed with them
+under
+[a tap target that delivers a press](packages/flutter_scene_layout3d/plans/2026_09_02_a_tap_target_that_delivers_a_press.md).
+The catalogue's surfaces and rows start at phase 4.
 
-Two things phase 2 found that are expensive to rediscover, both written up in
+Three things worth knowing before building on any of it, all written up in
 `docs/traps.md`: handing every `BoxDecoration3d` the *same* material makes a
-screen of panels come out one colour, and `TapTarget3d`'s 48dp minimum grows
-the ray region without delivering a press in the margin.
+screen of panels come out one colour; a `TapTarget3d` reaches past its own
+extent but **its parent does not**, so a target has to sit outside every box
+whose size it is trying to grow — the panel and the semantics box included;
+and a `Semantics3d` publishes what it is given and gathers no label from the
+labels below it, so a component states its own.
 
 ## Running things
 

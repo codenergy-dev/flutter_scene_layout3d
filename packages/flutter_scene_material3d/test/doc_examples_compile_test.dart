@@ -35,6 +35,107 @@ Widget filledButton(Theme3dData theme, VoidCallback submit) => Material3d(
   child: InkWell3d(onTap: submit, child: const SceneText3d('Continue')),
 );
 
+// ----------------------------------------------------- The seven buttons,
+// and the worked example under them.
+
+Widget everyButton({
+  required VoidCallback save,
+  required VoidCallback share,
+  required VoidCallback cancel,
+  required VoidCallback more,
+  required VoidCallback open,
+  required VoidCallback dismiss,
+  required VoidCallback compose,
+}) => SceneColumn3d(
+  children: <Widget>[
+    FilledButton3d(
+      onPressed: save,
+      semanticLabel: 'Save',
+      child: const SceneText3d('Save'),
+    ),
+    FilledTonalButton3d(
+      onPressed: share,
+      semanticLabel: 'Share',
+      child: const SceneText3d('Share'),
+    ),
+    OutlinedButton3d(
+      onPressed: cancel,
+      semanticLabel: 'Cancel',
+      child: const SceneText3d('Cancel'),
+    ),
+    TextButton3d(
+      onPressed: more,
+      semanticLabel: 'More',
+      child: const SceneText3d('More'),
+    ),
+    ElevatedButton3d(
+      onPressed: open,
+      semanticLabel: 'Open',
+      child: const SceneText3d('Open'),
+    ),
+    IconButton3d(icon: Icons.close, onPressed: dismiss, semanticLabel: 'Close'),
+    FloatingActionButton3d(
+      onPressed: compose,
+      semanticLabel: 'Compose',
+      child: const Icon3d(Icons.edit),
+    ),
+  ],
+);
+
+class ButtonDemo extends StatefulWidget {
+  const ButtonDemo({super.key, required this.parent});
+
+  /// The scene node the surface hangs its plane under.
+  final Node parent;
+
+  @override
+  State<ButtonDemo> createState() => _ButtonDemoState();
+}
+
+class _ButtonDemoState extends State<ButtonDemo> {
+  var _saved = false;
+
+  @override
+  Widget build(BuildContext context) => SceneLayout3d(
+    parent: widget.parent,
+    size: const Size3d(4, 3, 0.5),
+    child: SceneTheme3d(
+      data: Theme3dData.light,
+      textRendererFactory: AtlasText3dRenderer.new,
+      child: SceneCenter3d(
+        child: SceneRow3d(
+          mainAxisSize: MainAxisSize3d.min,
+          spacing: 0.16,
+          children: <Widget>[
+            FilledButton3d(
+              onPressed: () => setState(() => _saved = true),
+              semanticLabel: 'Save',
+              child: const SceneText3d('Save'),
+            ),
+            // Disabled once it has been saved. There is no opacity anywhere
+            // in this stack, so it is drawn in different colours instead:
+            // `onSurface` at 38%, and a container that stays transparent.
+            TextButton3d(
+              onPressed: _saved ? null : () {},
+              semanticLabel: 'Discard',
+              child: const SceneText3d('Discard'),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+Widget restyledButton(BuildContext context) => FilledButton3d(
+  style: ButtonStyle3d.of(
+    Theme3d.of(context),
+    ButtonVariant3d.filled,
+  ).copyWith(shape: Theme3d.of(context).shape.small),
+  onPressed: () {},
+  child: const SceneText3d('Save'),
+);
+
 // -------------------------------------------------------------- Icons, and
 // naming a type style instead of building one.
 

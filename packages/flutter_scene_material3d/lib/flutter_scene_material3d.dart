@@ -61,6 +61,18 @@ export 'src/app/setup.dart'
         installPanelPainter3d,
         kPanelMaterialSource,
         loadPanelMaterialFactory;
+export 'src/components/button_style.dart'
+    show ButtonStyle3d, ButtonVariant3d, ResolvedButtonStyle3d;
+export 'src/components/buttons.dart'
+    show
+        Button3d,
+        ElevatedButton3d,
+        FilledButton3d,
+        FilledTonalButton3d,
+        FloatingActionButton3d,
+        IconButton3d,
+        OutlinedButton3d,
+        TextButton3d;
 export 'src/components/icon.dart' show Icon3d;
 export 'src/components/ink.dart'
     show InkController3d, InkController3dScope, MutableInkController3d;

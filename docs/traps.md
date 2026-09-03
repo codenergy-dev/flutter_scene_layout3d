@@ -281,21 +281,31 @@ positive step pushes the backgrounds away from the viewer and the fight stops.
   minimum is invisible to layout, to intrinsics, to `ensureVisible3d` and to
   semantics, which announces the smaller rectangle. Deliberate — it keeps
   neighbours from moving when a target is padded — but sharp.
-- **And the reach does not deliver a gesture today.** Out in the margin the
-  only thing in the hit path is the target itself, because `TapTarget3d`
-  passes its children the *unmoved* ray — "the reach this box adds is its own"
-  — and a target dispatches nothing. A `GestureDetector3d` inside it is only
-  reachable where it actually is; one *outside* it is worse, because every box
-  gates its children on its own extent, so the ray is rejected a level above
-  the target and never arrives. A component that wraps its ink in a panel —
-  which is every Material component, since an ink well sits inside its
-  surface — is gated by the panel too. So the 48dp minimum currently buys a
-  ray that *finds* something (which is what the nearest-acceptor rule for
-  drops needs) and not a press that lands. `flutter_scene_material3d`'s
-  `test/ink_well_test.dart` states it, and closing it is a change here, under
-  a plan of its own.
+- **A press in the margin arrives at the control's centre.** When the ray
+  misses the child's own extent but is inside the grown region, the target
+  tests its children a second time with the ray aimed at the middle of the
+  box, and whatever answers is reported there — Flutter's `_InputPadding`
+  does the same thing with `MatrixUtils.forceToPoint`, and for the same
+  reason: the centre is the one point every box below agrees is inside
+  itself. Only the hit test that *captures* a path is affected, so a drag
+  begun in the margin reports real positions from its second event onward
+  and its first one jumps.
+- **A target has to sit outside every box whose extent it is growing.** This
+  is the rule that makes the reach usable, and it is the one that cost the
+  time. A `TapTarget3d` reaches beyond its own extent and **its parent does
+  not**: every box gates its children on its own size, so a target nested
+  inside something no bigger — a Material panel around an ink well — is
+  rejected a level above and never sees the ray. Nothing inside the target
+  can reach past its own parent. Flutter puts the input padding outside the
+  `Material` for exactly this reason, and so does
+  `flutter_scene_material3d`'s button: `SceneSemantics3d` >
+  `SceneTapTarget3d` > `Material3d` > `InkWell3d`, with the ink well's own
+  `minimumSize: Size3d.zero` so there is one target rather than two nested
+  ones disagreeing about where the control is.
 - **A `Text3d` answers hit tests on its own account**, so a label inside a
-  button usually wants an `IgnorePointer3d` around it.
+  button usually wants an `IgnorePointer3d` around it. Inside a control it is
+  harmless — the gesture detector is on the path either way — and it matters
+  for a label that has to let a ray through to something behind it.
 - **A drop lands where a tap would land, which is not always where it looks
   like it lands.** A `Drag3dSession` picks the *nearest acceptor along the
   ray* — hit order within a surface, front-to-back between them — for the same
@@ -319,6 +329,21 @@ positive step pushes the backgrounds away from the viewer and the fight stops.
   of feedback moved on the node tier is invisible to the ray moving it — but
   its *laid-out* position is not, and a `Text3d` inside it would answer there
   and steal the drop.
+
+## Semantics
+
+**A `Semantics3d` publishes what it is given and gathers nothing.** Flutter's
+`Semantics(container: true)` merges the labels of the widgets below it, so a
+button wrapped around a `Text('Save')` announces "Save" without anyone saying
+so. There is no such merge here: a `SemanticsComponent` hangs off one scene
+node and there is no semantics tree under it to fold up. **A component states
+its own label** — `Button3d.semanticLabel`, `Icon3d.semanticLabel` — and one
+that does not announces itself as a button with no name.
+
+**The rectangle the reader focuses is the box's own extent, not its tap
+target.** `Semantics3d` overrides the component's projected bounds with its
+`Layout3d.size`, which is the right answer — it is what layout produced — and
+it means a 40dp button announces 40dp while answering a finger over 48dp.
 
 ## Clipping
 

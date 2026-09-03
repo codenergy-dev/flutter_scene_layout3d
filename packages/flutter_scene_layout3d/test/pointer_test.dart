@@ -488,9 +488,11 @@ void main() {
       final panel = toolbar();
 
       // The icon spans 0.38 to 0.62; the target reaches 0.26 to 0.74.
+      final margin = panel.surface.hitTestAt(const Offset3d(0.3, 0.5, 0));
       expect(
-        panel.surface.hitTestAt(const Offset3d(0.3, 0.5, 0)).target,
-        same(panel.target),
+        margin.path.map((entry) => entry.layout),
+        containsAll(<Layout3d>[panel.icon, panel.target]),
+        reason: 'the reach delivers the press to the content, not to itself',
       );
       expect(
         panel.surface.hitTestAt(const Offset3d(0.5, 0.5, 0)).target,
@@ -501,6 +503,82 @@ void main() {
         panel.surface.hitTestAt(const Offset3d(0.2, 0.5, 0)).isEmpty,
         isTrue,
         reason: 'and the reach stops at 48dp',
+      );
+    });
+
+    test('a press in the margin is reported at the content centre', () {
+      // The half of the fix a clamp to the nearest edge would also satisfy
+      // the identity check for, and fail here.
+      final panel = toolbar();
+      final margin = panel.surface.hitTestAt(const Offset3d(0.3, 0.5, 0));
+
+      final onIcon = margin.path.firstWhere(
+        (entry) => identical(entry.layout, panel.icon),
+      );
+      expect(onIcon.localPosition.x, closeTo(0.12, 1e-9));
+      expect(onIcon.localPosition.y, closeTo(0.12, 1e-9));
+
+      final onTarget = margin.path.firstWhere(
+        (entry) => identical(entry.layout, panel.target),
+      );
+      expect(
+        onTarget.localPosition.x,
+        closeTo(-0.08, 1e-9),
+        reason: 'the target itself still records where the finger really was',
+      );
+    });
+
+    test('a press inside the content is left exactly as it was', () {
+      final panel = toolbar();
+      final inside = panel.surface.hitTestAt(const Offset3d(0.45, 0.5, 0));
+
+      final onIcon = inside.path.firstWhere(
+        (entry) => identical(entry.layout, panel.icon),
+      );
+      expect(
+        onIcon.localPosition.x,
+        closeTo(0.07, 1e-9),
+        reason: 'the fallback runs only when the ordinary test missed',
+      );
+    });
+
+    test('a target whose content answers nothing still answers itself', () {
+      final icon = TestBox(const Size3d(0.24, 0.24, 0));
+      final target = TapTarget3d(child: icon);
+      final surface = laidOut(
+        Center3d(child: target),
+        constraints: Constraints3d.tight(const Size3d(1, 1, 0)),
+      );
+
+      expect(
+        surface.hitTestAt(const Offset3d(0.3, 0.5, 0)).target,
+        same(target),
+      );
+    });
+
+    test('a target inside a box its own size is never reached', () {
+      // The rule that makes the reach usable, stated as its failure: every
+      // box gates its children on its own extent, so a target wrapped in
+      // something no bigger — a Material panel around an ink well — is
+      // rejected a level above and never sees the ray. Put the target
+      // outside, the way Flutter's `_InputPadding` sits outside `Material`.
+      final icon = TestBox(const Size3d(0.24, 0.24, 0), pointable: true);
+      final target = TapTarget3d(child: icon);
+      final surface = laidOut(
+        Center3d(
+          child: SizedBox3d.fromSize(
+            const Size3d(0.24, 0.24, 0),
+            child: target,
+          ),
+        ),
+        constraints: Constraints3d.tight(const Size3d(1, 1, 0)),
+      );
+
+      expect(surface.hitTestAt(const Offset3d(0.5, 0.5, 0)).target, same(icon));
+      expect(
+        surface.hitTestAt(const Offset3d(0.3, 0.5, 0)).isEmpty,
+        isTrue,
+        reason: 'the enclosing box gated the ray out before the target',
       );
     });
 
@@ -535,7 +613,17 @@ void main() {
 
       // Twice the scale, so 48dp is 0.96 units and the reach is wider.
       expect(target.effectiveMinimumSize.width, closeTo(0.96, 1e-9));
-      expect(surface.hitTestAt(const Offset3d(0.6, 1, 0)).target, same(target));
+      expect(
+        surface.hitTestAt(const Offset3d(0.6, 1, 0)).path.last.layout,
+        isA<Layout3dSurface>(),
+      );
+      expect(
+        surface
+            .hitTestAt(const Offset3d(0.6, 1, 0))
+            .path
+            .map((entry) => entry.layout),
+        contains(target),
+      );
     });
   });
 

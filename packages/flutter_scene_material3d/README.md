@@ -11,13 +11,14 @@ opacity in this stack at all; a component has no thickness on a screen and
 must have one when it is an object. Half the work of this package is answering
 those honestly. The other half is a long, ordinary list of components.
 
-**What is here today is the token layer, the theme that carries it, and the
-primitive every component is made of.** `Material3d` is the surface;
-`InkWell3d` makes it interactive; `Icon3d` draws a glyph; `SceneTextStyle3d`
-styles a group of labels. There is no `Button3d` and no `Card3d` yet — those
-come next, and this README will grow with them — but a button is a
-`Material3d` with an `InkWell3d` in it and a set of tokens, so you can write
-one today.
+**What is here today is the token layer, the theme that carries it, the
+primitive every component is made of, and the first seven components.**
+`Material3d` is the surface; `InkWell3d` makes it interactive; `Icon3d` draws
+a glyph; `SceneTextStyle3d` styles a group of labels. Over those sit
+Material's seven buttons — filled, tonal, outlined, text, elevated, icon and
+the floating action button — which are one widget with seven sets of tokens.
+There is no `Card3d` or `ListTile3d` yet; those come next, and this README
+will grow with them.
 
 ## The six families, and why two of them are invented
 
@@ -207,10 +208,166 @@ Two edges to know. A press **focuses** the control by default, and since
 nothing here reads Flutter's `highlightMode` to tell a pointer focus from a
 keyboard one, the focus wash outlives the press; pass
 `focusOnPointerDown: false` where that is wrong. And Material's 48dp minimum
-target, which `InkWell3d` asks for, currently grows the ray region without
-delivering a press in the margin — see *Pointers* in
-[docs/traps.md](../../docs/traps.md); it is a gap in the protocol below, not
-in this package, and a test here pins it so that closing it is noticed.
+target, which `InkWell3d` asks for, only delivers a press in the margin when
+the target sits **outside** every box the size of the control — the panel
+included. An ink well's own target is inside its `Material3d`, so it buys
+nothing there; `Button3d` puts the target outside the panel and asks the ink
+well for `minimumSize: Size3d.zero`. See *Pointers* in
+[docs/traps.md](../../docs/traps.md), and the next section.
+
+## The seven buttons
+
+Every Material button is here, and they are all the same widget:
+
+```dart
+FilledButton3d(onPressed: _save, semanticLabel: 'Save',
+    child: const SceneText3d('Save')),
+FilledTonalButton3d(onPressed: _share, semanticLabel: 'Share',
+    child: const SceneText3d('Share')),
+OutlinedButton3d(onPressed: _cancel, semanticLabel: 'Cancel',
+    child: const SceneText3d('Cancel')),
+TextButton3d(onPressed: _more, semanticLabel: 'More',
+    child: const SceneText3d('More')),
+ElevatedButton3d(onPressed: _open, semanticLabel: 'Open',
+    child: const SceneText3d('Open')),
+IconButton3d(icon: Icons.close, onPressed: _dismiss, semanticLabel: 'Close'),
+FloatingActionButton3d(onPressed: _compose, semanticLabel: 'Compose',
+    child: const Icon3d(Icons.edit)),
+```
+
+**`onPressed: null` is disabled**, Flutter's spelling, and the only one — there
+is no second `enabled` flag to disagree with it.
+
+A worked example, in the order a caller writes it. It compiles —
+`test/doc_examples_compile_test.dart` holds it verbatim — and it is the same
+shape of tree the package's own tests pump.
+
+```dart
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await initializeMaterial3d();          // nothing draws without this
+  runApp(const ButtonDemo());
+}
+
+class ButtonDemo extends StatefulWidget {
+  const ButtonDemo({super.key, required this.parent});
+
+  /// The scene node the surface hangs its plane under.
+  final Node parent;
+
+  @override
+  State<ButtonDemo> createState() => _ButtonDemoState();
+}
+
+class _ButtonDemoState extends State<ButtonDemo> {
+  var _saved = false;
+
+  @override
+  Widget build(BuildContext context) => SceneLayout3d(
+    parent: widget.parent,
+    size: const Size3d(4, 3, 0.5),
+    child: SceneTheme3d(
+      data: Theme3dData.light,
+      textRendererFactory: AtlasText3dRenderer.new,
+      child: SceneCenter3d(
+        child: SceneRow3d(
+          mainAxisSize: MainAxisSize3d.min,
+          spacing: 0.16,
+          children: <Widget>[
+            FilledButton3d(
+              onPressed: () => setState(() => _saved = true),
+              semanticLabel: 'Save',
+              child: const SceneText3d('Save'),
+            ),
+            // Disabled once it has been saved. There is no opacity anywhere
+            // in this stack, so it is drawn in different colours instead:
+            // `onSurface` at 38%, and a container that stays transparent.
+            TextButton3d(
+              onPressed: _saved ? null : () {},
+              semanticLabel: 'Discard',
+              child: const SceneText3d('Discard'),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+```
+
+The `spacing` is in **world units**, not logical pixels, and that is the unit
+contract rather than an oversight: `SceneRow3d` belongs to the layout package,
+where every extent is a world unit. Convert a specification figure with
+`Layout3dMetricsScope.of(context).dp(16)` — the buttons' own figures are dp
+because a `ButtonStyle3d` is a token set and `Button3d` converts them.
+
+### One widget, seven token sets
+
+`ButtonStyle3d` is the whole of the difference between the variants: the
+container and content colours, the elevation at rest and under a pointer, the
+outline, the shape, the thickness, the padding, the minimum size, the type
+token and the icon size. `ButtonStyle3d.of(theme, variant)` is the table, and
+`Button3d` is the widget every named button delegates to. It is public for the
+reason Flutter's `ButtonStyle` is — a catalogue whose buttons cannot be
+restyled is a demonstration — so restyling is a `copyWith`:
+
+```dart
+FilledButton3d(
+  style: ButtonStyle3d.of(Theme3d.of(context), ButtonVariant3d.filled)
+      .copyWith(shape: theme.shape.small),
+  onPressed: _save,
+  child: const SceneText3d('Save'),
+)
+```
+
+There is no `WidgetStateProperty` here and there does not need to be. Only
+four things vary with a state — the container colour, the content colour, the
+elevation and the outline — and each varies in exactly one way, so they are
+named out loud (`disabledContainer`, `disabledContent`, `hoveredElevation`,
+`focusedOutline`) and `resolve(states, enabled:)` is the whole table in one
+readable method.
+
+The figures are checked against Flutter rather than against a second
+transcription: `test/button_defaults_test.dart` pumps real Flutter buttons and
+compares against `ButtonStyleButton.defaultStyleOf(context)`, so the suite is
+a drift alarm. The floating action button is the exception and says so — its
+defaults are a private class with no public accessor, so that test reads the
+`Material` a real FAB renders instead.
+
+### The 48dp target, and where it has to sit
+
+A Material button is 40dp tall and answers a finger over 48dp. Those are not
+in conflict: the extra reach is in the **hit test** rather than in the extent,
+so a row of buttons stays 40dp tall and nothing moves apart to make room.
+
+The rule that makes it work is the one to remember. A `TapTarget3d` reaches
+past its own extent and **every ancestor gates a ray on its own extent**, so
+anything wrapped around the target at the button's own size rejects a press in
+the margin before the target ever sees it. `Button3d` therefore puts the
+target outermost — outside the panel *and* outside the semantics box — and
+asks the ink well inside for `minimumSize: Size3d.zero`, so there is one
+target rather than two nested ones disagreeing about where the control is.
+
+### What a state costs
+
+A hover, a focus and a press write the wash through the ink controller and
+rebuild nothing. Two of them also move a **token**: a hover raises a filled or
+elevated button, and the focus moves an outlined button's border to `primary`.
+Those cannot go through the wash channel, so the button rebuilds — but only
+when the resolved style actually changed, which it checks by comparing the
+resolved value rather than the state set. A text button's hover rebuilds
+nothing at all, and a filled button's rebuilds and still lays nothing out,
+because an elevation is a shader uniform on a box that is already the right
+size.
+
+### Announcing itself
+
+Every button publishes `button: true`, its enabled state and its `onTap`
+through `Semantics3d`. **State the `semanticLabel`.** `Semantics3d` publishes
+what it is given and does not gather a label from the labels below it the way
+Flutter's `Semantics(container: true)` merge does — there is no semantics tree
+under a scene node to fold up — so a button without one announces itself as a
+button with no name.
 
 ## Icons are a font, and it was checked rather than assumed
 
@@ -299,8 +456,9 @@ Widget screen(Node parent) => SceneLayout3d(
 );
 ```
 
-That is a filled button, and phase 3 of the plan is mostly giving it a name.
-Every figure in it is in logical pixels: `Material3d` converts the padding and
+That is a filled button written out by hand, which is what `FilledButton3d`
+now is with a token set in front of it — the section above shows the named
+form. Every figure in it is in logical pixels: `Material3d` converts the padding and
 the thickness through the surface's unit contract, and the painter converts
 the radius and the elevation at paint time.
 
@@ -419,6 +577,14 @@ this is the more faithful spelling as well as the only available one. What it
 cannot do is fade an arbitrary child subtree; a component does not need that,
 and an application that does has to build it out of colours too.
 
+`ButtonStyle3d.resolve` is where the rule is implemented for the buttons —
+disabled wins every other state, the elevation goes to zero, and the outline
+dims to the container figure rather than the label one — and
+`examples/render_probe`'s `button_disabled` scene is where it is checked as a
+picture rather than as arithmetic: two filled buttons on one near-white slab,
+the disabled one measurably closer to the surface behind it than the enabled
+one is.
+
 ## An elevation is a height, and it casts no shadow
 
 `BoxDecoration3d.elevation` moves the panel's geometry toward the viewer by
@@ -453,10 +619,19 @@ filled it.
 
 ## What is not here yet
 
-Honestly, and in the order it is planned: the seven buttons; cards and list
-tiles; `Scaffold3d` and the bars; the overlays; the selection controls; and a
-press ripple, which the panel shader can express in two more uniforms and a
-`smoothstep` and which the uniform state layer stands in for until then.
+Honestly, and in the order it is planned: cards and list tiles; `Scaffold3d`
+and the bars; the overlays; the selection controls; and a press ripple, which
+the panel shader can express in two more uniforms and a `smoothstep` and which
+the uniform state layer stands in for until then.
+
+Two smaller gaps the buttons left. There is no `FilledButton3d.icon` pairing
+an icon with a label, because Material's icon-and-label padding is a third set
+of figures and a `SceneRow3d` inside a button wants its cross-axis constraints
+stated; put a row in the `child` in the meantime. And there is no `IconTheme`
+to carry an icon size down a subtree — `Material3d` carries the content
+*colour* through a `DefaultTextStyle`, so an icon is the right colour without
+being told, and `IconButton3d` and `FloatingActionButton3d` state their own
+24dp size.
 
 Text input is not planned at all: there is no `EditableText3d`, no selection,
 no cursor and no keyboard plumbing anywhere in the stack, so a `TextField3d`

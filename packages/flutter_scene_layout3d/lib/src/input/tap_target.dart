@@ -34,6 +34,51 @@ import '../layout3d.dart';
 /// a ray from the camera crosses a panel's face whatever its thickness, and
 /// growing the depth would put the target in front of whatever is meant to be
 /// stacked on it.
+///
+/// ## A press in the margin is a press at the centre
+///
+/// The reach would be decorative if it only found *this* box: a target
+/// dispatches no gestures of its own, so a path with nothing on it but a
+/// target is a press that lands nowhere. So when the ray misses the child's
+/// extent but is inside the grown region, the children are tested a second
+/// time with the ray **aimed at the centre of this box**, and whatever they
+/// report is reported at that centre.
+///
+/// Flutter's `_RenderInputPadding` — the box `ButtonStyleButton` wraps every
+/// button in — does exactly this, with `MatrixUtils.forceToPoint`. Forcing the
+/// centre rather than clamping to the nearest edge is what makes it reliable:
+/// the centre is the one position every box down the chain agrees is inside
+/// itself, however they are padded and aligned. The entry's *depth* is kept as
+/// it was, because the reach is in-plane and the depth a ray entered at is the
+/// plane every later position for that box is measured on.
+///
+/// Only the hit test that *captures* the path is affected. A pointer that goes
+/// down in the margin and then drags reports real positions from the second
+/// event onward, so the first one jumps; that is invisible for a tap, and a
+/// control that cares should size its own target instead.
+///
+/// ## Put it outside every box whose extent you are growing
+///
+/// This is the rule that makes the reach work, and the one that is easy to get
+/// wrong. **A `TapTarget3d` reaches beyond its own extent and its parent does
+/// not.** Every box gates its children on its own size, so a target nested
+/// inside something no bigger — a Material panel, say — is rejected a level
+/// above and never sees the ray at all. Nothing inside this class can reach
+/// past its own parent.
+///
+/// Flutter puts the input padding outside the material for this reason, and so
+/// should a component here:
+///
+/// ```dart
+/// SceneSemantics3d(
+///   properties: const SemanticsProperties(button: true, label: 'Save'),
+///   child: SceneTapTarget3d(          // outside the panel, not inside it
+///     child: Material3d(
+///       child: InkWell3d(minimumSize: Size3d.zero, onTap: save),
+///     ),
+///   ),
+/// )
+/// ```
 class TapTarget3d extends ProxyLayout3d {
   /// Creates a target at least [minimumSize] across.
   ///
@@ -101,13 +146,19 @@ class TapTarget3d extends ProxyLayout3d {
     if (range == null) return false;
     final entry = ray.at(range.near);
     if (!entry.isFinite) return false;
-    // The recorded position is the true one in this box's frame, so a press
-    // in the margin reports a point outside the extent rather than a clamped
+    // This box's own entry records the true position, so a press in the
+    // margin reports a point outside the extent rather than a clamped
     // fiction. A ripple centred there is centred where the finger was.
-    // Children are still only reachable where they are: the reach this box
-    // adds is its own, so a press in the margin is a press on the target
-    // rather than on whatever the child would have said.
-    hitTestChildren(result, ray: ray.clampedTo(range.near, range.far));
+    final inside = ray.clampedTo(range.near, range.far);
+    if (!hitTestChildren(result, ray: inside)) {
+      // The ordinary test missed, which out here means the ray is in the
+      // margin. Aim it at the middle of the control instead — the one point
+      // every box below agrees is inside itself — so that the gesture
+      // detector under this target actually receives the press. In-plane
+      // only: the depth stays where the ray entered.
+      final centre = Offset3d(size.width / 2.0, size.height / 2.0, entry.z);
+      hitTestChildren(result, ray: inside.shifted(entry - centre));
+    }
     result.add(HitTestEntry3d(this, entry));
     return true;
   }

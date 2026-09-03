@@ -1,8 +1,8 @@
 ---
 status: in progress
-reason: phases 0 to 2 are done — the token families, Theme3dData and SceneTheme3d, plus initializeMaterial3d, Material3d, InkWell3d, Icon3d and the text styling, on 106 headless tests and 48 render probes. Phases 3 to 9, every component in the catalogue, are open, and phase 3's seven buttons are Material3d with token sets
+reason: phases 0 to 3 are done — the token families, Theme3dData and SceneTheme3d, initializeMaterial3d, Material3d, InkWell3d, Icon3d, the text styling, and the seven buttons over one public ButtonStyle3d, on 175 headless tests and 52 render probes. Phases 4 to 9, the rest of the catalogue, are open, and phase 4 is Card3d, ListTile3d, Divider3d and Chip3d
 created_at: 2026-09-01T19:15:00Z
-updated_at: 2026-09-02T21:30:00Z
+updated_at: 2026-09-02T22:40:00Z
 commit: 52a2ca7b6a176cf70b5bef6b6b92ff7e7cbf82bd
 ---
 
@@ -191,6 +191,16 @@ grows a per-node opacity the materials honour — `Node` in 0.23.0 has `visible`
 a selection-outline `highlightColor`, layer and light masks and shadow flags,
 and no opacity or tint of any kind. The size-driven geometry plan's own rule is
 not to ship an `Opacity3d` that only works on `BoxDecoration3d`.
+
+*Shipped as written, and phase 3 built the buttons on it.*
+`ColorScheme3d.disabledContent` and `.disabledContainer` are the two figures,
+`ButtonStyle3d.resolve` is the rule (disabled wins every other state, the
+elevation goes to zero, and the outline dims to the *container* figure rather
+than the label one), and `examples/render_probe`'s `button_disabled` scene is
+where it stops being arithmetic. One correction from that scene, in *What
+phase 3 found*: on the light theme this harness requires, a disabled button is
+**paler** rather than dimmer, and the claim worth asserting is that it has
+lost its contrast against the surface behind it.
 
 **Express disabled as token substitution, not as a filter.** A disabled state
 resolves to different colours — `onSurface` at 38% alpha, `onSurface` at 12%
@@ -385,11 +395,25 @@ and the unlit wrinkle above is real and documented rather than hypothetical.
       elevation levels are three colours, a hover washes a panel, and an
       icon-font glyph rasterizes. `dart analyze` clean across the workspace,
       the layout package's 902 still green. See *What phase 2 found*.
-- [ ] **Phase 3 — the buttons.** `FilledButton3d`, `FilledTonalButton3d`,
-      `OutlinedButton3d`, `TextButton3d`, `ElevatedButton3d`, `IconButton3d`,
-      `FloatingActionButton3d`. One `_ButtonStyle3d` resolving token sets by
-      state, the way Flutter's `ButtonStyle` does; disabled by substitution.
-      This is the phase that proves the design, and it should be small.
+- [x] **Phase 3 — the buttons.** Done, and small: one `Button3d` and seven
+      `ButtonStyle3d` token sets. `FilledButton3d`, `FilledTonalButton3d`,
+      `OutlinedButton3d`, `TextButton3d`, `ElevatedButton3d`, `IconButton3d`
+      and `FloatingActionButton3d` are each three lines of delegation over a
+      variant, and the resolver is **public** rather than the `_ButtonStyle3d`
+      this plan named — see *What phase 3 found* for why that was wrong.
+      Disabled is a substitution, tested as a table against Flutter's own
+      `ButtonStyleButton.defaultStyleOf`, so the suite is a drift alarm rather
+      than a second transcription. The 48dp target that phase 2 recorded as
+      broken is **closed**, under
+      [its own plan in the layout package](../../flutter_scene_layout3d/plans/2026_09_02_a_tap_target_that_delivers_a_press.md):
+      a press in the margin now lands, and the rule that makes it work — a
+      target sits outside every box the size of the control — is what
+      `Button3d`'s tree is arranged around. **175 headless tests** (was 106)
+      and **52 render probes** (was 48), including the two this phase names:
+      a disabled button is measurably paler and has lost its contrast against
+      the surface, and an outlined button draws its outline at the rim with a
+      transparent container in the middle. `dart analyze` clean across the
+      workspace; the layout package is at 906 (was 902).
 - [ ] **Phase 4 — surfaces and rows.** `Card3d`, `ListTile3d`, `Divider3d`,
       `Chip3d`. `ListTile3d` is where `Semantics3d` and the 48dp target stop
       being theoretical.
@@ -651,6 +675,145 @@ wins the depth test and hides it with nothing to say why. `Material3d` aligns
 to `Alignment3d.frontCenter` and the dartdoc tells a caller to state the two
 in-plane axes of a padding. It is in `docs/traps.md` now.
 
+## What phase 3 found
+
+Twelve things. The first three changed the shipped design; the rest are the
+kind that cost an hour each and are invisible from the code.
+
+**`_ButtonStyle3d` should not have been private, and the plan's own reasoning
+elsewhere says so.** *The work* named a private resolver; three arguments
+against it, and none of them is a matter of taste. Flutter's `ButtonStyle` is
+public because a catalogue whose buttons cannot be restyled is a
+demonstration. `examples/render_probe` builds its scenes **imperatively** and
+its two new button probes resolve real tokens — a probe that reimplemented the
+table would be checking its own arithmetic, which is the exact argument that
+made `Material3d.decorationFor` a static one phase earlier. And an eighth
+variant is then someone else's `ButtonStyle3d` rather than a fork of this
+package. So `ButtonStyle3d`, `ButtonVariant3d` and `ResolvedButtonStyle3d` are
+public, and `Button3d` — the widget all seven delegate to — is public with
+them.
+
+**And it needs no `WidgetStateProperty`.** Flutter has one because in
+principle any property may vary with any state. In Material 3's actual button
+tables only four do — the container colour, the content colour, the elevation
+and the outline — and each varies in exactly one way. Naming those four
+(`disabledContainer`, `disabledContent`, `hoveredElevation`, `focusedOutline`)
+makes `resolve(states, enabled:)` the whole table in one readable method, with
+no allocation and no closure, and makes the *table* testable as a table.
+
+**Buttons turn the surface tint off, and *Elevation is a height* was wrong to
+say "keep the tint" without qualification.** Flutter's M3 buttons all resolve
+`surfaceTintColor` to transparent, and the reason is arithmetic rather than
+laziness: an elevated button's container token is `surfaceContainerLow`, which
+**is** the level-1 tint already baked into a colour. Applying the tint again
+double-counts it. The plan's advice holds for a *surface* whose colour is
+`surface` and whose elevation is the only signal; it does not hold for a
+component whose container token already encodes the elevation. `Button3d`
+passes a transparent `surfaceTint`, and `test/button_defaults_test.dart` reads
+Flutter's own figure rather than asserting ours.
+
+**The 48dp target was two problems and the small one was the box.** The fix
+inside `TapTarget3d` is nine lines: when the ordinary hit test misses and the
+ray is in the margin, re-test the children with the ray aimed at the centre of
+the control, which is exactly what Flutter's `_RenderInputPadding` does with
+`MatrixUtils.forceToPoint`. The half that actually cost the time is
+**placement**. A target reaches past its own extent and every *ancestor* gates
+a ray on its own extent, so a target inside anything the size of the control
+never sees the ray at all — and that is not only the panel. It is the
+semantics box too: the first working `Button3d` had `SceneSemantics3d`
+outermost, Flutter's own order, and a press 2dp above the button was rejected
+by the semantics box. Flutter can afford that order because `_InputPadding`
+grows the *layout* box; `TapTarget3d` deliberately does not. So the target is
+outermost here, and `docs/traps.md` states the rule rather than the instance.
+
+**`Semantics3d` gathers no label, and a component has to state its own.**
+Flutter's `Semantics(container: true)` merges the labels of the widgets below
+it, which is why a Flutter button wrapped around a `Text('Save')` announces
+"Save" with nobody saying so. There is no such merge here — a
+`SemanticsComponent` hangs off one scene node and there is no semantics tree
+under it to fold up — so every button takes a `semanticLabel` and a button
+without one announces itself as a button with no name. Written up in
+`docs/traps.md` under a new *Semantics* section, because every component from
+phase 4 on will meet it.
+
+**Flutter's button defaults are reachable from a test, and that makes the
+suite a drift alarm rather than a second copy.** `_FilledButtonDefaultsM3` and
+its siblings are private, but `ButtonStyleButton.defaultStyleOf(context)` is
+not: pump a real Flutter button and read the container colour, the padding,
+the minimum size, the shape, the type and the per-state elevation off the
+framework. Material 3's icon button is a `ButtonStyleButton` too, so it goes
+the same way. Two riders. `defaultStyleOf` is `@protected`, so calling it from
+outside a subclass needs one `// ignore:` — a small price, and it lives in
+`test/` rather than in `lib/`. And `FloatingActionButton` is genuinely not a
+`ButtonStyleButton`: its defaults have no public accessor at all, so that test
+reads the `Material` widget a real FAB *renders* — its colour, elevation and
+shape — plus the size it lays out at, and says in its own comment that it is
+the weaker check.
+
+**Comparing a `Color` across the framework boundary compares a float with a
+byte.** Flutter's disabled figures come from the deprecated
+`Color.withOpacity`, which rounds to an alpha byte:
+`onSurface.withOpacity(0.38)` has alpha `97 / 255 = 0.380392…`.
+`ColorScheme3d` uses `withValues`, which keeps `0.38` exactly. The two are not
+`==` and are the same colour in every place it matters — the shader uniform,
+the frame buffer, the probe. The first run of the drift test failed on
+precisely this, and the comparison that means something is `toARGB32()`.
+
+**A state costs a rebuild only when a token moved, and the way to know is to
+compare the resolved style.** `InkWell3d`'s dartdoc already said a component
+whose tokens change with a state "rebuilds, deliberately, and pays for it" —
+but a button that called `setState` on *every* state change would pay for a
+text button's hover too, where nothing moves. `_Button3dState` resolves the
+style and compares it, so a text button's hover rebuilds nothing at all and a
+filled button's rebuilds and still lays nothing out. Making that possible
+needed one addition to `InkWell3d`: `onHighlightChanged`, Flutter's own
+spelling, because Material's elevation rule is "hovered **and not pressed**"
+and nothing was reporting the press upward.
+
+**A gesture can arrive after the button has left the tree.** A pointer
+sequence holds the path it captured at the press, so a tap cancelled by the
+widget being replaced is delivered to boxes whose widgets are already defunct
+— and the first run of the button tests died on `setState() called after
+dispose()`. `InkWell3d` never met this because its teardown only touches a
+controller. `_Button3dState._note` checks `mounted` first.
+
+**An aligning container fills every bounded axis, so the first button was four
+units wide.** `Container3d` with an alignment behaves like Flutter's
+`Container`: it fills what it is given and shrink-wraps only an unbounded
+axis. A `SceneCenter3d` hands down loose but *bounded* constraints, so a
+button inside one came out the width of the surface. Flutter's own button
+solves it with `Align(widthFactor: 1.0, heightFactor: 1.0)` inside the
+padding, and so does this one — `Material3d(alignment: null)` with a
+`SceneAlign3d` under the ink well — with the minimum size on a
+`SceneConstrainedBox3d` outside the panel, which is where Flutter's
+`ConstrainedBox` sits too.
+
+**A 1dp outline cannot be probed at the default unit rate, and fattening the
+token would have been the wrong fix.** At a hundred logical pixels to the unit
+a Material outline is 0.01 units and a couple of pixels on screen; no probe
+disc fits inside it. The scene turns the *surface's* `unitsPerLogicalPixel` up
+to 0.06 instead, so the token stays at its published 1dp and the unit contract
+is the dial — which is the dial a camera-bound surface turns anyway. It needs
+a camera further back to match.
+
+**"A disabled button is dimmer" is false on the light theme, and the claim
+that carries the meaning is different.** On the theme this harness requires,
+an enabled filled button is a mid purple and a disabled one is a pale grey, so
+the direction is *paler* — the same sign inversion the elevation and hover
+probes already document. The assertion worth making is the other one: the
+disabled container is **closer to the surface behind it** than the enabled one
+is, which is what losing contrast means, and which is two distances measured
+the same way rather than a bare difference. The scene also needs that surface
+to exist: M3's disabled container is `onSurface` at 12% alpha, a figure meant
+to composite over something, and floating in front of the harness's `#101820`
+clear colour it lands inside the clear tolerance and reads as nothing.
+
+**A test that builds a fresh `Layout3dPointer` per access presses one pointer
+and releases another.** The sequence between `down` and `up` is what holds the
+captured path and the arena entry, so a `Layout3dPointer get pointer =>
+Layout3dPointer(surface)` getter makes every tap count zero, silently and
+without an error. It cost twenty minutes of suspecting the hit-test fix.
+
 ## Tests
 
 The split is the one the whole repository uses, and the reason to restate it
@@ -687,14 +850,16 @@ and a scene that cannot honestly assert its claim is removed, not weakened.
   freshly computed colour every frame defeats it silently — the frame rate
   falls and nothing says why. Tokens are `const` for this reason; keep them
   that way.
-- **`TapTarget3d` grows the ray region and not the box**, so a padded target is
-  invisible to layout, to `ensureVisible3d` and to semantics, which announces
-  the smaller rectangle. This is the sharpest edge in the protocol and a
-  catalogue meets it in every button. **And phase 2 found it is worse than
-  that**: the extra reach does not deliver a press at all today, because the
-  only entry in the hit path out in the margin is the target itself and a
-  target dispatches nothing. See *What phase 2 found*; it needs a plan in
-  `flutter_scene_layout3d`, and phase 3 is the phase that will want it.
+- ~~**`TapTarget3d` grows the ray region and not the box**~~, which is still
+  true and no longer the trap it was. Phase 2 found the reach delivered no
+  press at all; phase 3 closed that in the layout package, under
+  [a tap target that delivers a press](../../flutter_scene_layout3d/plans/2026_09_02_a_tap_target_that_delivers_a_press.md).
+  What remains is the rule underneath it, and it is the one every component
+  from phase 4 on has to obey: **a target reaches past its own extent and its
+  parent does not**, so it sits outside every box the size of the control —
+  the panel and the semantics box included. Layout, intrinsics,
+  `ensureVisible3d` and semantics all still see the smaller rectangle, which
+  is the design and is why a dense toolbar's targets can overlap.
 - **Keep-alive does not exist** in the lazily built children lane, so a long
   list of stateful components rebuilds items that scroll back into view. Fine
   for a catalogue, and worth knowing before someone builds a form on it.

@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-08-25T20:31:04Z
-updated_at: 2026-09-01T21:30:00Z
+updated_at: 2026-09-02T19:20:00Z
 commit: 657eef80eb8dc8085c3b3a84a8069273495506be
 ---
 
@@ -202,7 +202,11 @@ Also open, each for a stated reason rather than for lack of time:
   minimum is invisible to layout, to intrinsics, to `ensureVisible3d` and now
   to semantics, which announces the smaller rectangle. Deliberate — it keeps
   neighbours from moving — but it is the sharpest edge a catalogue author will
-  meet.
+  meet. *Two later corrections, both under
+  [a tap target that delivers a press](2026_09_02_a_tap_target_that_delivers_a_press.md):*
+  the reach delivered no press at all until that plan, and the edge it turned
+  out to be is **placement** — a target reaches past its own extent and its
+  parent does not, so it has to sit outside every box the size of the control.
 - **`Layout3d.clipRegion` walks up per call**, and `DecoratedBox3d` calls it
   every layout: O(depth²) per frame on a deep screen. Fine today, and worth
   measuring at catalogue scale.
