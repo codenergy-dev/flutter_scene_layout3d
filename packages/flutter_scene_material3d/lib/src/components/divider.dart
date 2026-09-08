@@ -195,3 +195,115 @@ class Divider3d extends StatelessWidget {
     );
   }
 }
+
+/// A one-pixel rule between two columns of content.
+///
+/// ```dart
+/// SceneRow3d(
+///   children: <Widget>[
+///     NavigationRail3d(destinations: destinations, selectedIndex: 0),
+///     const VerticalDivider3d(),
+///     SceneExpanded3d(child: body),
+///   ],
+/// )
+/// ```
+///
+/// [Divider3d] with its two in-plane axes swapped, and nothing else: the same
+/// three figures mean the same three things, the depth is still a real slab
+/// for the reason the horizontal rule's is, and it announces nothing unless
+/// told to. Phase 4 deliberately left it out because a list needs the
+/// horizontal one and nothing at the time needed this; a navigation rail is
+/// what finally has two things to separate.
+///
+/// The only asymmetry worth stating is that [indent] and [endIndent] run
+/// along the *vertical* axis here — from the top face and from the bottom —
+/// which is Flutter's `VerticalDivider` spelling too.
+class VerticalDivider3d extends StatelessWidget {
+  /// Creates a vertical rule.
+  const VerticalDivider3d({
+    super.key,
+    this.space,
+    this.thickness,
+    this.depth,
+    this.indent = 0.0,
+    this.endIndent = 0.0,
+    this.color,
+    this.semanticLabel,
+    this.textDirection,
+  }) : assert(space == null || space >= 0.0),
+       assert(thickness == null || thickness >= 0.0),
+       assert(depth == null || depth >= 0.0),
+       assert(indent >= 0.0),
+       assert(endIndent >= 0.0);
+
+  /// How much room the divider takes across the row, in logical pixels, or
+  /// null for [Divider3d.defaultSpace].
+  final double? space;
+
+  /// How wide the rule is, in the plane, in logical pixels, or null for
+  /// [Divider3d.defaultThickness].
+  final double? thickness;
+
+  /// How deep the slab is, in logical pixels, or null for
+  /// `theme.thickness.thin`.
+  final double? depth;
+
+  /// How far the rule is inset from the top face, in logical pixels.
+  final double indent;
+
+  /// How far the rule is inset from the bottom face, in logical pixels.
+  final double endIndent;
+
+  /// The rule's colour, or null for `colorScheme.outlineVariant`.
+  final Color? color;
+
+  /// What a screen reader announces, or null to announce nothing at all.
+  final String? semanticLabel;
+
+  /// The direction [semanticLabel] reads in.
+  final TextDirection? textDirection;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme3d.of(context);
+    final metrics = Layout3dMetricsScope.of(context);
+    final rule = thickness ?? Divider3d.defaultThickness;
+    final slab = depth ?? theme.thickness.thin;
+
+    Widget line = SceneSizedBox3d(
+      width: metrics.dp(rule),
+      child: Material3d(
+        color: color ?? theme.colorScheme.outlineVariant,
+        shape: theme.shape.none,
+        elevation: theme.elevation.level0,
+        thickness: slab,
+        bevel: 0.0,
+        surfaceTint: const Color(0x00000000),
+      ),
+    );
+
+    if (indent != 0.0 || endIndent != 0.0) {
+      line = ScenePadding3d(
+        padding: metrics.dpInsets(
+          EdgeInsets3d.only(top: indent, bottom: endIndent),
+        ),
+        child: line,
+      );
+    }
+
+    final Widget divider = SceneSizedBox3d(
+      width: metrics.dp(space ?? Divider3d.defaultSpace),
+      child: SceneAlign3d(alignment: Alignment3d.frontCenter, child: line),
+    );
+
+    final label = semanticLabel;
+    if (label == null) return divider;
+    return SceneSemantics3d(
+      properties: SemanticsProperties(
+        label: label,
+        textDirection: textDirection,
+      ),
+      child: divider,
+    );
+  }
+}

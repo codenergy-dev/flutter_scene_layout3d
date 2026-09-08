@@ -1421,6 +1421,142 @@ void main() {
       );
     });
   });
+
+  group('structure: a bar, and what passes under it', () {
+    double luma(ui.Color c) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+
+    testWidgets('a row under a pinned bar is cut at the bar\'s edge', (
+      tester,
+    ) async {
+      // The claim two plans had made and nothing had checked. It came back
+      // false the first time it was asked: a viewport works out what a
+      // pinned header is sitting on *after* its rows have been laid out and
+      // placed, so every row published the unbounded clip block while
+      // `Layout3d.clipRegion` went on answering correctly to anything that
+      // asked afterwards — the same failure shape phase 4 found in
+      // `ClipBox3d`, in a second place.
+      //
+      // The bar is half the viewport's width, and that is what makes the
+      // frame able to say anything at all: a full-width opaque bar covers
+      // exactly what the clip would cut. Beside it, above its trailing edge,
+      // a row that is cut shows the backing and a row that is not shows
+      // itself.
+      final capture = await _draw(
+        tester,
+        kProbeScenes.byId('sliver_app_bar_clip'),
+      );
+
+      // The bar drew, or nothing below means anything.
+      expect(
+        capture.frame.coverageAt(capture.centerOf('bar'), radius: 10),
+        greaterThan(0.8),
+        reason: 'the pinned bar did not draw',
+      );
+
+      // `row1` straddles the bar's trailing edge. Both points are near its
+      // leading edge in the cross axis, well outside the bar's own width.
+      const above = Offset3d(0.15, 0.2, 0);
+      const below = Offset3d(0.15, 0.8, 0);
+      final cut = capture.frame.meanColorAt(
+        capture.pointOf('row1', above),
+        radius: 5,
+      );
+      final kept = capture.frame.meanColorAt(
+        capture.pointOf('row1', below),
+        radius: 5,
+      );
+      expect(kept, isNotNull, reason: 'the row did not draw at all');
+      expect(
+        cut,
+        isNotNull,
+        reason:
+            'nothing drew above the bar\'s edge, so the backing is missing '
+            'and this scene proves nothing about the clip',
+      );
+      expect(
+        luma(kept!),
+        greaterThan(luma(cut!)),
+        reason:
+            'the near-white row is no lighter below the bar\'s edge than '
+            'above it, so the band was never cut: read $kept below, $cut '
+            'above',
+      );
+
+      // The control, which is what makes that comparison mean "the clip"
+      // rather than "something about the top of a row": `row3` is well clear
+      // of the bar, and it is light at both fractions of its own height.
+      final top = capture.frame.meanColorAt(
+        capture.pointOf('row3', above),
+        radius: 5,
+      );
+      final middle = capture.frame.meanColorAt(
+        capture.pointOf('row3', below),
+        radius: 5,
+      );
+      expect(top, isNotNull);
+      expect(middle, isNotNull);
+      expect(
+        (luma(top!) - luma(middle!)).abs(),
+        lessThan(0.2),
+        reason:
+            'a row nothing covers is the same colour top and bottom; read '
+            '$top and $middle',
+      );
+    });
+
+    testWidgets('and the bar wins the depth test against it', (tester) async {
+      // `Scaffold3d`'s guarantee, as a picture: each slot one
+      // `thickness.depthStep` in front of the one behind it. Under that step
+      // an 8dp bar and a 4dp card are not separated — the mean is 6dp — and
+      // the card pokes through the bar wherever they overlap.
+      final capture = await _draw(
+        tester,
+        kProbeScenes.byId('scaffold_bar_depth'),
+      );
+
+      // Where the bar covers the card, and where it does not.
+      final overlap = capture.frame.meanColorAt(
+        capture.pointOf('card', const Offset3d(0.5, 0.15, 0)),
+        radius: 8,
+      );
+      final clear = capture.frame.meanColorAt(
+        capture.pointOf('card', const Offset3d(0.5, 0.8, 0)),
+        radius: 8,
+      );
+      // And the bar alone, past the card's own edge.
+      final barOnly = capture.frame.meanColorAt(
+        capture.pointOf('bar', const Offset3d(0.05, 0.5, 0)),
+        radius: 6,
+      );
+      expect(overlap, isNotNull);
+      expect(clear, isNotNull);
+      expect(barOnly, isNotNull);
+
+      expect(
+        luma(clear!),
+        greaterThan(luma(overlap!)),
+        reason:
+            'the near-white card is no lighter where nothing covers it than '
+            'where the bar does, so the bar lost the depth test: read $clear '
+            'clear, $overlap under the bar',
+      );
+      // And the stronger form of the same claim, as a comparison rather than
+      // a distance: what is drawn over the card is nearer the bar's own
+      // reading than the card's. A distance would need a threshold, and a
+      // threshold here would be a guess about tone mapping — which brings a
+      // `primary` purple up to two thirds of the card's luminance rather
+      // than the sixth its sRGB value suggests.
+      expect(
+        (luma(overlap) - luma(barOnly!)).abs(),
+        lessThan((luma(overlap) - luma(clear)).abs()),
+        reason:
+            'what is drawn over the card looks more like the card than like '
+            'the bar beside it, which is what a z-fight resolving the wrong '
+            'way looks like: read $overlap over the card, $barOnly on the '
+            'bar alone, $clear on the card alone',
+      );
+    });
+  });
 }
 
 extension on List<ProbeScene> {

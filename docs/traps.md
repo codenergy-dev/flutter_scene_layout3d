@@ -276,6 +276,18 @@ nothing to say why. `Thickness3d.thin` exists for this; `Divider3d` uses it,
 and its `depth` is a separate dial from its `thickness`, which is the rule's
 height *in the plane*.
 
+**A pinned header's default lift does not separate two Material slabs.**
+`SliverPersistentHeader3d.lift` defaults to one logical pixel, which is a
+depth-buffer separation between two things with no thickness. A
+`Thickness3d.structural` bar (8dp) over a `Thickness3d.raised` card (4dp)
+needs a step above the *mean* of the two — 6dp — before the card stops poking
+through the bar. `flutter_scene_material3d`'s `SliverAppBar3d` therefore sets
+the lift from `Thickness3d.depthStep`, and `Scaffold3d` states the same number
+once for a whole screen: each slot sits one step in front of the one behind
+it, in the order `Scaffold3dSlot` declares. Anything stacking Material
+components in depth should take its step from that scale rather than picking
+a number.
+
 **`Dismissible3d`'s backgrounds are coplanar with the child.**
 `backgroundDepthStep` defaults to zero, exactly as `Stack3d.depthStep` does,
 so the background revealed by a swipe and the row sliding off it sit on the
@@ -321,6 +333,12 @@ positive step pushes the backgrounds away from the viewer and the fight stops.
   What it costs is that the inner target is exactly its own extent. Anything
   better needs a second surface, and a second surface inside a 1dp slab is
   coplanar with it.
+- **A navigation bar is the case where a second surface is worth it.** Five
+  destinations sharing the bar's ink controller would light the whole bar up
+  under one finger, and a bar is 8dp deep, so a `Thickness3d.thin` slab per
+  destination has room to stand proud of it rather than fighting it. That is
+  what `flutter_scene_material3d`'s `NavigationBar3d` does: each destination is
+  a transparent `Material3d` of its own with its own `InkWell3d` inside it.
 - **A `Text3d` answers hit tests on its own account**, so a label inside a
   button usually wants an `IgnorePointer3d` around it. Inside a control it is
   harmless — the gesture detector is on the path either way — and it matters
@@ -395,20 +413,41 @@ The seam is `Layout3d.clipRegion` → `Decoration3dPaintRequest.clip` →
 `SliverPersistentHeader3d`, or half out of a scrolling window, is genuinely
 cut at the edge.
 
-**It was not live until phase 4 of the Material catalogue looked at a frame**,
-and the shape of that failure is the thing to remember, because any tier like
-it can fail the same way. A box publishes its clip block from `repaint()`, at
-the end of its own `performLayout` — and a `ClipBox3d` is a proxy that takes
-its size *from its child*, so while the subtree lays out the box imposing the
-clip has no extent and imposes nothing. Every panel under a clip got the
-unbounded block on the layout that created it, and a scroll (which places rows
-rather than relaying them out) never replaced it. `Layout3d.clipRegion` kept
-reporting the right planes to anything that asked afterwards, so every
-headless test passed and the tier was dead. `Layout3d.refreshClipRegion` is
-the hook that closes it — `ClipBox3d` calls it over its subtree once it has a
-size, and `Layout3d.place` calls it down whatever it just moved — and
-`test/clip_test.dart` pins both paths with a painter that records the clip it
-was handed, which is the only way to see a shader uniform without a shader.
+**It has been dead twice, in two places, and both times only a picture said
+so.** This is the failure shape to remember, because any tier like it can fail
+the same way and no arithmetic test can see it. A box publishes its clip block
+from `repaint()`, at the end of its own `performLayout`, and
+`Layout3d.clipRegion` goes on answering correctly to anything that asks after
+the pass — so the block a shader is actually handed and the region the code
+reports are two different things, and only the first one cuts anything.
+
+- **A `ClipBox3d` has no extent while its subtree lays out** — it is a proxy
+  that takes its size from its child — so every panel under it was born with
+  the unbounded block, and a scroll (which *places* rows rather than relaying
+  them out) never replaced it. Found in phase 4 of the Material catalogue.
+- **A viewport does not know what a pinned header is sitting on until after
+  it has laid the rows out.** `CustomScrollView3d` clears its obstruction map
+  at the top of every pass and fills it in as each sliver is placed, so a row
+  asking for its clip during the pass is told, correctly for that instant and
+  uselessly, that nothing covers it. Found in phase 5, in the scene the
+  contract was designed for.
+
+The general rule underneath both: **a clip that is discovered after the boxes
+under it have painted has to be republished, and nothing warns you.**
+`Layout3d.refreshClipRegion` is the hook and `Layout3d.refreshClipSubtree` the
+bulk form; `ClipBox3d` calls it once it has a size, `Layout3d.place` calls it
+down whatever it just moved, and `CustomScrollView3d` calls it on every sliver
+a header covers once the layout has settled. `test/clip_test.dart` and
+`test/persistent_header_test.dart` pin all three with a painter that records
+the clip it was handed, which is the only way to see a shader uniform without
+a shader.
+
+**And a full-width opaque bar makes the clip invisible**, which is why the
+second failure lasted so long. The bar covers exactly what the clip would cut.
+The clip is one plane across the scroll axis, cross-axis-wide, so it shows
+where the bar does *not* cover — beside a narrow bar, through a translucent
+one — and `examples/render_probe`'s `sliver_app_bar_clip` scene is built
+around a half-width bar for that reason.
 
 **A depth clip cuts the box's *layout* depth, not the drawn geometry.** The
 planes are expressed in the box's own frame, and `BoxDecoration3d.elevation`
@@ -416,6 +455,31 @@ moves the slab's *node*, outside that frame. So `ClipBox3d(clipDepth: true)`
 does not slice a raised card off flush with the list holding it, and
 `Clip3dRegion.rect` leaving depth alone is the same decision stated twice:
 a raised card inside a scrolling list stands proud of it.
+
+## When testing a component headlessly
+
+Three things that cost time in phase 5 and are invisible from the code.
+
+- **A surface's constraints are tight, and `SceneSizedBox3d` enforces its
+  parent's.** A bar pumped straight onto a `SceneLayout3d(size: …)` comes out
+  the height of the whole surface, because `Constraints3d.enforce` clamps a
+  child's wish into what the parent allows and the parent allows exactly one
+  height. Every figure a test then measures is the surface's. Put the
+  component in the shape a real screen has — a `SceneColumn3d` with
+  `CrossAxisAlignment3d.stretch` and an expanded sibling — and the main axis
+  is loose again.
+- **A `const` constructor's asserts run at compile time, and `List.length` is
+  not a constant expression there.** A component that wants to refuse a
+  one-element list cannot do it in a `const` constructor without giving up
+  `const`, which is what makes an unchanged rebuild free. Move the check to
+  `build`, where it is just as loud, and say in the class why it is there;
+  `NavigationBar3d.tooFewDestinations` is the shape. A test then asks
+  `tester.takeException()` rather than `throwsA`.
+- **A component has two `TapTarget3d`s per control, not one.** The outer one
+  carries the 48dp reach and the `InkWell3d`'s own sits inside it at
+  `Size3d.zero` — one target rather than two nested ones disagreeing about
+  where the control is. A test looking for "the target" wants the one with a
+  non-zero minimum.
 
 ## When probing a rendered frame
 

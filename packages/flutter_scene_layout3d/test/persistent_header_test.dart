@@ -1,3 +1,6 @@
+import 'dart:ui' show Color;
+
+import 'package:flutter_scene/scene.dart' show Node;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -584,4 +587,143 @@ void main() {
       );
     });
   });
+
+  group('the clip a pinned header imposes', () {
+    setUp(() {
+      HeaderClipRecorder.reset();
+      BoxDecoration3d.painterFactory = (_) => HeaderClipRecorder();
+    });
+    tearDown(() {
+      BoxDecoration3d.painterFactory = null;
+      HeaderClipRecorder.reset();
+    });
+
+    /// A list of decorated rows under a pinned bar, and the panels in it.
+    ({
+      CustomScrollView3d view,
+      Layout3dSurface surface,
+      List<DecoratedBox3d> rows,
+    })
+    listUnderABar() {
+      final rows = <DecoratedBox3d>[
+        for (var i = 0; i < 6; i++)
+          DecoratedBox3d(
+            decoration: const BoxDecoration3d(color: Color(0xFFFFFFFF)),
+          ),
+      ];
+      final list = SliverList3d(
+        children: <Layout3d>[
+          for (final row in rows) SizedBox3d(width: 4, height: 2, child: row),
+        ],
+      );
+      final header = SliverPersistentHeader3d(
+        delegate: ProbeHeader3dDelegate(minExtent: 2, maxExtent: 2),
+        pinned: true,
+      );
+      final view = CustomScrollView3d(slivers: <Sliver3d>[header, list]);
+      return (view: view, surface: viewportOf(view), rows: rows);
+    }
+
+    test('reaches the block the rows are drawn with, not just clipRegion', () {
+      // The regression this group exists for. `clipRegion` answered correctly
+      // from the day the header landed and nothing was ever cut: a row
+      // publishes its plane block while it is laid out and placed, and both
+      // of those happen inside the viewport's pass, before the viewport
+      // knows what is covering what.
+      final (:view, :surface, :rows) = listUnderABar();
+      // Everything recorded from here on is a block published while the bar
+      // is sitting on the list.
+      HeaderClipRecorder.reset();
+      view.controller.jumpTo(3);
+      surface.flush();
+
+      expect(HeaderClipRecorder.seen, isNotEmpty);
+      expect(
+        HeaderClipRecorder.seen.where((region) => region.isUnbounded),
+        isEmpty,
+        reason: 'every row under a pinned bar draws with the band',
+      );
+      // And the band is the one clipRegion reports, row by row.
+      for (final row in rows) {
+        expect(row.clipRegion.planes, hasLength(1));
+      }
+      expect(
+        HeaderClipRecorder.lastFor(rows.first)!.planes.single.distance,
+        rows.first.clipRegion.planes.single.distance,
+      );
+    });
+
+    test('and the block moves as the list scrolls under the bar', () {
+      final (:view, :surface, :rows) = listUnderABar();
+      view.controller.jumpTo(3);
+      surface.flush();
+      final before = HeaderClipRecorder.lastFor(rows[2])!.planes.single;
+
+      view.controller.jumpTo(4);
+      surface.flush();
+      final after = HeaderClipRecorder.lastFor(rows[2])!.planes.single;
+
+      expect(after.normal, before.normal);
+      expect(after.distance, isNot(before.distance));
+      // A unit of scrolling slides the row a unit further under the bar,
+      // so the band's boundary in the row's own frame comes back a unit.
+      expect(after.distance, before.distance - 1.0);
+    });
+
+    test('and goes back to unbounded when nothing is covered again', () {
+      // A sliver that stops being covered has to republish once, or it keeps
+      // drawing with the band it was cut with for the life of the box.
+      final (:view, :surface, :rows) = listUnderABar();
+      view.controller.jumpTo(3);
+      surface.flush();
+      expect(HeaderClipRecorder.lastFor(rows.first)!.isUnbounded, isFalse);
+
+      view.controller.jumpTo(0);
+      surface.flush();
+      expect(HeaderClipRecorder.lastFor(rows.first)!.isUnbounded, isTrue);
+    });
+
+    test('and a viewport with no pinned header republishes nothing', () {
+      final panel = DecoratedBox3d(
+        decoration: const BoxDecoration3d(color: Color(0xFFFFFFFF)),
+      );
+      final list = SliverList3d(
+        children: <Layout3d>[SizedBox3d(width: 4, height: 2, child: panel)],
+      );
+      final view = CustomScrollView3d(slivers: <Sliver3d>[list]);
+      viewportOf(view);
+      expect(HeaderClipRecorder.seen, hasLength(1));
+      expect(HeaderClipRecorder.seen.single.isUnbounded, isTrue);
+    });
+  });
+}
+
+/// A painter recording the clip block every panel was actually handed.
+///
+/// The only way to see the plane tier from a headless test: the block is a
+/// shader uniform and there is no shader here. Keyed by node, so a test can
+/// ask what one particular row draws with rather than reading the last one.
+class HeaderClipRecorder extends Decoration3dPainter {
+  static final List<Clip3dRegion> seen = <Clip3dRegion>[];
+  static final Map<Node, Clip3dRegion> byNode = <Node, Clip3dRegion>{};
+
+  static void reset() {
+    seen.clear();
+    byNode.clear();
+  }
+
+  /// The last block [box] was handed, or null if it has never painted.
+  static Clip3dRegion? lastFor(Layout3d box) => byNode[box.node];
+
+  @override
+  void paint(Decoration3dPaintRequest request) {
+    seen.add(request.clip);
+    byNode[request.node] = request.clip;
+  }
+
+  @override
+  void release(Node node) {}
+
+  @override
+  void dispose() {}
 }

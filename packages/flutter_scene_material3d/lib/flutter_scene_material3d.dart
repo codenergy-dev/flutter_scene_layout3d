@@ -61,6 +61,8 @@ export 'src/app/setup.dart'
         installPanelPainter3d,
         kPanelMaterialSource,
         loadPanelMaterialFactory;
+export 'src/components/app_bar.dart' show AppBar3d, SliverAppBar3d;
+export 'src/components/app_bar_style.dart' show AppBarStyle3d, AppBarVariant3d;
 export 'src/components/button_style.dart'
     show ButtonStyle3d, ButtonVariant3d, ResolvedButtonStyle3d;
 export 'src/components/card.dart'
@@ -70,7 +72,7 @@ export 'src/components/chip.dart'
     show AssistChip3d, Chip3d, FilterChip3d, InputChip3d, SuggestionChip3d;
 export 'src/components/chip_style.dart'
     show ChipStyle3d, ChipVariant3d, ResolvedChipStyle3d;
-export 'src/components/divider.dart' show Divider3d;
+export 'src/components/divider.dart' show Divider3d, VerticalDivider3d;
 export 'src/components/buttons.dart'
     show
         Button3d,
@@ -87,6 +89,15 @@ export 'src/components/ink.dart'
 export 'src/components/ink_well.dart' show InkWell3d;
 export 'src/components/list_tile.dart' show ListTile3d;
 export 'src/components/material.dart' show Material3d;
+export 'src/components/navigation.dart'
+    show
+        NavigationBar3d,
+        NavigationDestination3d,
+        NavigationDestination3dCallback,
+        NavigationRail3d;
+export 'src/components/navigation_style.dart'
+    show NavigationStyle3d, NavigationVariant3d;
+export 'src/components/scaffold.dart' show Scaffold3d, Scaffold3dSlot;
 export 'src/components/text_style.dart' show SceneTextStyle3d;
 export 'src/theme/theme.dart' show SceneTheme3d, Theme3d;
 export 'src/theme/theme_data.dart' show Layout3dTheme3d, Theme3dData;

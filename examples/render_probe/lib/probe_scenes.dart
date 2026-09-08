@@ -1281,6 +1281,188 @@ final List<ProbeScene> kProbeScenes = <ProbeScene>[
     preload: installPanelPainter,
   ),
 
+  // ── Structure ────────────────────────────────────────────────────────
+  //
+  // Phase 5's two claims, and both of them are about a depth buffer.
+  ProbeScene('sliver_app_bar_clip', () {
+    // **A row passing under a pinned bar is genuinely cut at the bar's
+    // edge.**
+    //
+    // Two plans had said so and nothing had ever looked. The scene that
+    // finally did found the plane tier dead in a second place: a viewport
+    // fills in what a pinned header is sitting on *after* the rows have been
+    // laid out and placed, so every row published the unbounded block and
+    // `Layout3d.clipRegion` went on answering correctly to anything that
+    // asked afterwards. See
+    // `plans/2026_09_08_the_declarative_side_of_a_pinned_bar.md`.
+    //
+    // **The bar is narrower than the list, and that is the whole design of
+    // this scene.** For a full-width opaque bar the clip is invisible — the
+    // bar covers exactly what the clip would cut, which is precisely why the
+    // defect survived. The clip is a single plane across the scroll axis, so
+    // it cuts the *band*, cross-axis-wide, including the margin beside a
+    // narrow bar. That is the contract `CustomScrollView3d.clipRegionForChild`
+    // states, and it is what this scene photographs: beside the bar, above
+    // its trailing edge, the frame shows the backing rather than the row.
+    const theme = Theme3dData.light;
+    final cardStyle = CardStyle3d.of(theme, CardVariant3d.elevated);
+
+    DecoratedBox3d panel(
+      Color color,
+      double thickness,
+      String name, {
+      BorderRadius3d? shape,
+    }) => DecoratedBox3d(
+      decoration: Material3d.decorationFor(
+        theme,
+        color: color,
+        shape: shape,
+        thickness: thickness,
+        surfaceTint: const Color(0x00000000),
+      ),
+      name: name,
+    );
+
+    final rows = <DecoratedBox3d>[
+      for (var i = 0; i < 5; i++)
+        panel(
+          cardStyle.container,
+          theme.thickness.raised,
+          'row$i',
+          shape: theme.shape.medium,
+        ),
+    ];
+    final backing = panel(
+      theme.colorScheme.primary,
+      theme.thickness.structural,
+      'backing',
+    );
+    final bar = panel(
+      theme.colorScheme.secondary,
+      theme.thickness.structural,
+      'bar',
+    );
+
+    final controller = Scroll3dController();
+    final header = SliverPersistentHeader3d(
+      delegate: _BarHeader3dDelegate(
+        // Centred and half the viewport's width, so there is a margin either
+        // side where the row would still be visible if nothing cut it.
+        Align3d(
+          alignment: Alignment3d.frontCenter,
+          child: SizedBox3d(width: 1.0, height: 0.4, depth: 0.08, child: bar),
+        ),
+        extent: 0.4,
+      ),
+      pinned: true,
+      // The theme's own step, not the layout package's one logical pixel: an
+      // 8dp bar over a 4dp card needs more than the 6dp mean of the two.
+      lift: theme.thickness.depthStep * 0.01,
+    );
+    final list = SliverList3d(
+      spacing: 0.1,
+      children: <Layout3d>[
+        for (final row in rows)
+          SizedBox3d(width: 2.0, height: 0.4, depth: 0.04, child: row),
+      ],
+    );
+    final view = CustomScrollView3d(
+      controller: controller,
+      slivers: <Sliver3d>[header, list],
+    );
+
+    final surface = Layout3dSurface(
+      constraints: Constraints3d.tight(const Size3d(3.0, 2.4, 0.5)),
+      child: Stack3d(
+        alignment: Alignment3d.center,
+        depthStep: 0.12,
+        children: <Layout3d>[
+          SizedBox3d(width: 3.0, height: 2.4, depth: 0.08, child: backing),
+          SizedBox3d(width: 2.0, height: 1.6, depth: 0.04, child: view),
+        ],
+      ),
+    );
+    // Lay out once so the viewport knows its extent, then scroll. 0.65 puts
+    // the bar at its full 0.4, row0 entirely under it, and row1 straddling
+    // its trailing edge.
+    surface.flush();
+    controller.jumpTo(0.65);
+    return ProbeSceneContent(
+      surfaces: [surface],
+      probes: {
+        'backing': backing,
+        'bar': bar,
+        for (var i = 0; i < rows.length; i++) 'row$i': rows[i],
+      },
+    );
+  }, preload: installPanelPainter),
+
+  ProbeScene('scaffold_bar_depth', () {
+    // **A bar is drawn in front of the row sliding beneath it.**
+    //
+    // The other half of the same question, and the one `Scaffold3d` encodes:
+    // every slot sits one `thickness.depthStep` in front of the one behind
+    // it, in the order `Scaffold3dSlot` declares. Without that a
+    // `Thickness3d.structural` bar and a `Thickness3d.raised` card are only
+    // separated where the step exceeds the mean of the two — 6dp — and a bar
+    // resting on the same plane as its content loses the depth test to it in
+    // patches, differently on every frame and every driver.
+    //
+    // The direction asserted is a luminance, which lighting and tone mapping
+    // can scale and cannot reorder: the bar is `primary`, a dark purple, and
+    // the card under it is `surfaceContainerLow`, near white. Where the bar
+    // covers the card the frame must read *dark*. A scene with the two depths
+    // swapped reads light there and fails.
+    const theme = Theme3dData.light;
+    final cardStyle = CardStyle3d.of(theme, CardVariant3d.elevated);
+
+    DecoratedBox3d panel(Color color, double thickness, String name) =>
+        DecoratedBox3d(
+          decoration: Material3d.decorationFor(
+            theme,
+            color: color,
+            thickness: thickness,
+            surfaceTint: const Color(0x00000000),
+          ),
+          name: name,
+        );
+
+    final backing = panel(
+      theme.colorScheme.surfaceContainerHighest,
+      theme.thickness.thin,
+      'backing',
+    );
+    final card = panel(cardStyle.container, theme.thickness.raised, 'card');
+    final bar = panel(
+      theme.colorScheme.primary,
+      theme.thickness.structural,
+      'bar',
+    );
+
+    return ProbeSceneContent(
+      surfaces: [
+        Layout3dSurface(
+          constraints: Constraints3d.tight(const Size3d(3.0, 2.4, 0.6)),
+          child: Stack3d(
+            alignment: Alignment3d.topCenter,
+            // `Thickness3d.depthStep`, in world units at the default rate —
+            // the same number `Scaffold3d` puts between two slots.
+            depthStep: 0.12,
+            children: <Layout3d>[
+              SizedBox3d(width: 3.0, height: 2.4, depth: 0.01, child: backing),
+              // The body, one step in front of the backing.
+              SizedBox3d(width: 2.0, height: 1.6, depth: 0.04, child: card),
+              // The bar, a further step in front, and wider than the card so
+              // that a probe can read the bar alone as well as the overlap.
+              SizedBox3d(width: 2.8, height: 0.64, depth: 0.08, child: bar),
+            ],
+          ),
+        ),
+      ],
+      probes: {'backing': backing, 'card': card, 'bar': bar},
+    );
+  }, preload: installPanelPainter),
+
   // ── The icon question ────────────────────────────────────────────────
   //
   // The catalogue plan guesses that an icon is a one-glyph `Text3d` in the
@@ -1326,3 +1508,32 @@ final List<ProbeScene> kProbeScenes = <ProbeScene>[
     );
   }, minCoverage: 0),
 ];
+
+/// A persistent header over one subtree, for the scenes that need a pinned
+/// bar without a widget tree to build one from.
+///
+/// The imperative twin of `HeldSliverPersistentHeader3dDelegate`: it hands
+/// back the same instance every time, which is the shape
+/// `SliverPersistentHeader3dDelegate`'s own doc asks for — a delegate that
+/// built a fresh subtree would be building and disposing geometry at frame
+/// rate.
+class _BarHeader3dDelegate extends SliverPersistentHeader3dDelegate {
+  const _BarHeader3dDelegate(this.content, {required this.extent});
+
+  final Layout3d content;
+  final double extent;
+
+  @override
+  double get minExtent => extent;
+
+  @override
+  double get maxExtent => extent;
+
+  @override
+  Layout3d build(double shrinkOffset, {required bool overlapsContent}) =>
+      content;
+
+  @override
+  bool shouldRebuild(_BarHeader3dDelegate oldDelegate) =>
+      !identical(oldDelegate.content, content);
+}

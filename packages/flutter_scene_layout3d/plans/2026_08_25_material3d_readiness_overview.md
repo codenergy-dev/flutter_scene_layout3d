@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-08-25T20:31:04Z
-updated_at: 2026-09-02T19:20:00Z
+updated_at: 2026-09-08T20:45:00Z
 commit: 657eef80eb8dc8085c3b3a84a8069273495506be
 ---
 
@@ -261,19 +261,34 @@ In the order I would take them:
    `SceneDecoratedBox3d`, `DefaultTextRenderer3d`, `Layout3dSlot<T>`, and a
    build hook on this package that compiles its own shader for every consumer.
    Read that plan's *what the original reasoning got wrong* before building on
-   any of them; two of the four came out differently than expected. Phase 1 —
-   the package itself and its token families — has since landed as
-   `packages/flutter_scene_material3d`; the catalogue starts at phase 2.
+   any of them; two of the four came out differently than expected. Phases 1
+   to 5 have since landed — the tokens, the primitive layer, the buttons, the
+   surfaces and rows, and the structure — so `packages/flutter_scene_material3d`
+   reaches as far as `Scaffold3d` and the bars, and **the catalogue continues
+   at phase 6, the overlays.**
 
-   Building it turned up one thing this map did not have on its list:
-   **`Layout3dMetrics` cannot be read from a `BuildContext`.** Nothing exposes
-   the surface's unit contract to the widget layer, so a widget's `build`
-   cannot convert a Material dp figure into world units — it can only write
-   units directly, or defer the figure to a box that reads `metrics` inside
-   `performLayout`. Decoration figures are unaffected (the painter converts
-   them), but a padding or a size is not. A component library meets this in
-   its first `Material3d`, and closing it is a change to *this* package with a
-   plan of its own, the way phase 0's four were.
+   Building it turned up **four** things this map did not have on its list,
+   each closed in *this* package with a plan of its own, the way phase 0's
+   four were. Read them in order; the last two are the same defect found
+   twice.
+
+   - ~~**`Layout3dMetrics` cannot be read from a `BuildContext`.**~~ Nothing
+     exposed the surface's unit contract to the widget layer, so a `build`
+     method could not convert a Material dp figure into world units. Closed in
+     [the metrics a build method can read](2026_09_02_the_metrics_a_build_method_can_read.md).
+   - ~~**A `TapTarget3d`'s reach delivered no press.**~~ The 48dp minimum grew
+     the ray region and a press out in the margin landed on nothing. Closed in
+     [a tap target that delivers a press](2026_09_02_a_tap_target_that_delivers_a_press.md),
+     with the placement rule underneath it.
+   - ~~**The clip contract's plane tier had never fired.**~~ A `ClipBox3d`
+     takes its size from its child, so every panel under one was born with the
+     unbounded block. Closed in
+     [a clip that reaches the shader](2026_09_03_a_clip_that_reaches_the_shader.md).
+   - ~~**And it was dead in a second place.**~~ A viewport learns what a
+     pinned header is sitting on after its rows have painted, so a
+     `SliverAppBar3d` cut nothing either. Closed, with the two widget forms
+     the declarative layer was missing, in
+     [the declarative side of a pinned bar](2026_09_08_the_declarative_side_of_a_pinned_bar.md).
 
 **Every plan's `commit:` field resolves in this repository.** The plans that
 predate the move out of the engine's monorepo were written against fork

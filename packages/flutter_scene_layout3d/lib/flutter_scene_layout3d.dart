@@ -297,7 +297,10 @@ export 'src/sliver/sliver_constraints.dart'
     show SliverConstraints3d, SliverGeometry3d;
 export 'src/sliver/sliver_grid.dart' show SliverGrid3d;
 export 'src/sliver/sliver_persistent_header.dart'
-    show SliverPersistentHeader3d, SliverPersistentHeader3dDelegate;
+    show
+        HeldSliverPersistentHeader3dDelegate,
+        SliverPersistentHeader3d,
+        SliverPersistentHeader3dDelegate;
 export 'src/sliver/sliver_list.dart' show Sliver3dItemBuilder, SliverList3d;
 export 'src/sliver/sliver_padding.dart' show SliverPadding3d;
 export 'src/sliver/sliver_reorderable_list.dart'

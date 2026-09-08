@@ -71,6 +71,7 @@ export 'src/boxes/table.dart'
         TableColumnWidth3d;
 export 'src/boxes/wrap.dart' show WrapAlignment3d, WrapCrossAlignment3d;
 export 'src/camera_binding.dart' show Layout3dCameraBinding;
+export 'src/clip.dart' show Clip3dRegion, ClipPlane3d;
 export 'src/decoration/box_decoration.dart'
     show Border3d, BoxDecoration3d, BoxDecoration3dUniforms;
 export 'src/decoration/box_decoration_painter.dart' show BoxDecoration3dPainter;
@@ -192,6 +193,7 @@ export 'src/widgets/layouts.dart'
         SceneAspectRatio3d,
         SceneBaseline3d,
         SceneCenter3d,
+        SceneClipBox3d,
         SceneColumn3d,
         SceneConstrainedBox3d,
         SceneCustomMultiChildLayout3d,
@@ -231,6 +233,7 @@ export 'src/widgets/layouts.dart'
         SceneSliverGrid3d,
         SceneSliverList3d,
         SceneSliverPadding3d,
+        SceneSliverPersistentHeader3d,
         SceneSliverToBoxAdapter3d,
         SceneSpacer3d,
         SceneStack3d,

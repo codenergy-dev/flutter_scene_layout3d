@@ -135,6 +135,18 @@ mixin Layout3dOverflowReportingMixin on Layout3d {
   /// for one.
   Size3d get debugOverflow => _debugOverflow;
 
+  /// How large an overflow has to be before it is one.
+  ///
+  /// Flutter's `precisionErrorTolerance`, and it is here for the same reason
+  /// Flutter has it: a flex that hands its leftover space to an
+  /// `Expanded3d` child computes the child's extent by subtraction, and the
+  /// sum comes back a few ulps over the extent it was subtracted from. A
+  /// tolerance of zero turns that into *"a Flex3d overflowed the right by
+  /// 0.000"* — an assertion, in a layout that fits perfectly, with a figure
+  /// that prints as nought. A Material app bar with a spacing and an
+  /// expanded title is exactly that layout.
+  static const double overflowTolerance = 1e-10;
+
   /// Records that this box's content exceeded it by [overflow], and reports
   /// it if that is new.
   ///
@@ -144,9 +156,9 @@ mixin Layout3dOverflowReportingMixin on Layout3d {
   void debugReportOverflow(Size3d overflow, {String? hint}) {
     assert(() {
       final clamped = Size3d(
-        overflow.width > 0.0 ? overflow.width : 0.0,
-        overflow.height > 0.0 ? overflow.height : 0.0,
-        overflow.depth > 0.0 ? overflow.depth : 0.0,
+        overflow.width > overflowTolerance ? overflow.width : 0.0,
+        overflow.height > overflowTolerance ? overflow.height : 0.0,
+        overflow.depth > overflowTolerance ? overflow.depth : 0.0,
       );
       _debugOverflow = clamped;
       if (clamped == Size3d.zero) {

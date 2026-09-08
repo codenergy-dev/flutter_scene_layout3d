@@ -838,7 +838,7 @@ abstract class Layout3d with DiagnosticableTreeMixin {
     // only when something above actually clips, which is one walk up the
     // parent chain and an immediate return everywhere else. A tree with no
     // `ClipBox3d` in it pays that and nothing more.
-    if (moved && !clipRegion.isUnbounded) _refreshClipSubtree();
+    if (moved && !clipRegion.isUnbounded) refreshClipSubtree();
   }
 
   /// The offset the parent applies to this layout's scene node on top of
@@ -940,9 +940,18 @@ abstract class Layout3d with DiagnosticableTreeMixin {
   Clip3dRegion get clipRegion =>
       _parent?.clipRegionForChild(this) ?? Clip3dRegion.none;
 
-  void _refreshClipSubtree() {
+  /// Calls [refreshClipRegion] on this box and everything under it.
+  ///
+  /// The bulk form of the hook, for the two places that know a subtree's
+  /// clip has changed without the subtree being laid out again: [place],
+  /// which moved it, and a viewport that has just worked out how much of a
+  /// sliver a pinned header is sitting on. Both discover the answer *after*
+  /// the boxes below have already published a block, which is why a
+  /// republish rather than a repaint is what closes it.
+  @protected
+  void refreshClipSubtree() {
     refreshClipRegion();
-    visitChildren((child) => child._refreshClipSubtree());
+    visitChildren((child) => child.refreshClipSubtree());
   }
 
   /// Re-reads [clipRegion] and republishes whatever this box did with it.

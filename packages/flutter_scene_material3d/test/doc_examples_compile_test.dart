@@ -279,6 +279,84 @@ class _ChipDemoState extends State<ChipDemo> {
   );
 }
 
+// -------------------------------------------------------------- Structure:
+// a screen, its bars, and the depths between them.
+
+const List<NavigationDestination3d> destinations = <NavigationDestination3d>[
+  NavigationDestination3d(icon: Icon3d(Icons.inbox), label: 'Inbox'),
+  NavigationDestination3d(icon: Icon3d(Icons.send), label: 'Sent'),
+];
+
+class ScreenDemo extends StatefulWidget {
+  const ScreenDemo({super.key, required this.rows});
+
+  final List<Widget> rows;
+
+  @override
+  State<ScreenDemo> createState() => _ScreenDemoState();
+}
+
+class _ScreenDemoState extends State<ScreenDemo> {
+  var _index = 0;
+  final _scroll = Scroll3dController();
+
+  void _compose() {}
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold3d(
+    appBar: AppBar3d.text(title: 'Inbox'),
+    body: SceneListView3d(children: widget.rows),
+    bottomNavigationBar: NavigationBar3d(
+      selectedIndex: _index,
+      destinations: destinations,
+      onDestinationSelected: (index) => setState(() => _index = index),
+    ),
+    floatingActionButton: FloatingActionButton3d(
+      onPressed: _compose,
+      semanticLabel: 'Compose',
+      child: const Icon3d(Icons.edit),
+    ),
+  );
+
+  /// The scrolling half of the same screen: the bar is a sliver, so it goes
+  /// in the body's own scroll view rather than in the `appBar` slot.
+  Widget scrollingBody() => SceneCustomScrollView3d(
+    controller: _scroll,
+    slivers: <Widget>[
+      SliverAppBar3d.text(title: 'Inbox', pinned: true),
+      SceneSliverList3d(children: widget.rows),
+    ],
+  );
+}
+
+/// A full-view screen: the binding is what the scaffold deliberately does not
+/// own.
+Widget boundScreen(Camera camera, Widget bar, Widget body) => SceneLayout3d(
+  camera: camera,
+  binding: const Layout3dCameraBinding.screenFilling(distance: 2),
+  child: SceneTheme3d(
+    data: Theme3dData.light,
+    textRendererFactory: AtlasText3dRenderer.new,
+    child: Scaffold3d(appBar: bar, body: body),
+  ),
+);
+
+/// A rail wants a rule beside it, which is why the vertical divider exists.
+Widget railAndBody(int index, Widget body) => SceneRow3d(
+  crossAxisAlignment: CrossAxisAlignment3d.stretch,
+  children: <Widget>[
+    NavigationRail3d(selectedIndex: index, destinations: destinations),
+    const VerticalDivider3d(),
+    SceneExpanded3d(child: body),
+  ],
+);
+
 void main() {
   test('the README examples compile', () {
     // They do, or this file would not have been compiled to run.
@@ -292,5 +370,8 @@ void main() {
     expect(thicknessRules, isNotNull);
     expect(inboxCard, isNotNull);
     expect(ChipDemo.new, isNotNull);
+    expect(ScreenDemo.new, isNotNull);
+    expect(boundScreen, isNotNull);
+    expect(railAndBody, isNotNull);
   });
 }

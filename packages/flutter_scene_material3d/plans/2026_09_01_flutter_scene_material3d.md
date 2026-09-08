@@ -1,8 +1,8 @@
 ---
 status: in progress
-reason: phases 0 to 4 are done — the six token families, the theme channel, initializeMaterial3d, Material3d, InkWell3d, Icon3d, the text styling, the seven buttons over one public ButtonStyle3d, and the surfaces and rows (Card3d, ListTile3d, Divider3d, Chip3d) over three more public token sets, on 271 headless tests and 56 render probes. Phase 4 also found the clip contract's plane tier had never fired and closed that in the layout package. Phases 5 to 9, the rest of the catalogue, are open, and phase 5 is Scaffold3d and the app bars
+reason: phases 0 to 5 are done — the six token families, the theme channel, initializeMaterial3d, Material3d, InkWell3d, Icon3d, the text styling, the seven buttons, the surfaces and rows, and the structure (Scaffold3d, AppBar3d, SliverAppBar3d, NavigationBar3d, NavigationRail3d, VerticalDivider3d) over two more public token sets, on 333 headless tests and 60 render probes. Phase 5 found the clip contract's plane tier dead in a *second* place — a pinned header's clip had never reached a shader — and closed it, with the two widget forms the declarative layer was missing, in the layout package. Phases 6 to 9 are open, and phase 6 is the overlays: dialogs, menus, snack bars and sheets
 created_at: 2026-09-01T19:15:00Z
-updated_at: 2026-09-03T22:15:00Z
+updated_at: 2026-09-08T20:30:00Z
 commit: 52a2ca7b6a176cf70b5bef6b6b92ff7e7cbf82bd
 ---
 
@@ -431,8 +431,24 @@ and the unlit wrinkle above is real and documented rather than hypothetical.
       [a plan of its own in the layout package](../../flutter_scene_layout3d/plans/2026_09_03_a_clip_that_reaches_the_shader.md).
       `dart analyze` clean across the workspace; the layout package is at 909
       (was 906).
-- [ ] **Phase 5 — structure.** `Scaffold3d`, `AppBar3d`, `SliverAppBar3d` over
-      `SliverPersistentHeader3d`, `NavigationBar3d`, `NavigationRail3d`.
+- [x] **Phase 5 — structure.** Done. `Scaffold3d` is the screen — a
+      `CustomMultiChildLayout3d`, as Flutter's `Scaffold` is one — and it owns
+      the **depths**: each slot one `thickness.depthStep` in front of the one
+      behind it, in the order `Scaffold3dSlot` declares, with an assert that
+      the step really separates a bar from a card. `AppBar3d` and
+      `SliverAppBar3d` are one `AppBarStyle3d` in four variants;
+      `NavigationBar3d` and `NavigationRail3d` are one `NavigationStyle3d` in
+      two, with M3's selection pill turning out to be a `Material3d` with a
+      `full` shape and nothing new at all. `VerticalDivider3d` is the rule
+      phase 4 deferred to the rail. **333 headless tests** (was 271) and **60
+      render probes** (was 56), including the two this phase names: a row
+      passing under a pinned bar is genuinely cut at the bar's edge, and a bar
+      is drawn in front of the row sliding beneath it. The first of those
+      **failed** — as phase 4's had, in a second place — and closing it, with
+      the two widget forms the declarative layer was missing, is
+      [a plan of its own in the layout package](../../flutter_scene_layout3d/plans/2026_09_08_the_declarative_side_of_a_pinned_bar.md).
+      `dart analyze` clean across the workspace; the layout package is at 917
+      (was 909). See *What phase 5 found*.
 - [ ] **Phase 6 — the overlays.** `Dialog3d` and `showDialog3d`, `Menu3d` and
       `PopupMenuButton3d`, `SnackBar3d` with a messenger, `Tooltip3d`,
       `BottomSheet3d` — all over `Overlay3d` and `Navigator3d`, all with the
@@ -943,6 +959,113 @@ outside a layout pass**: its children are created inside
 so `surface.flush()` from a test body dies with `_debugDoingLayout is not
 true`. Drive it with `controller.jumpTo` and `await tester.pump()` instead.
 
+## What phase 5 found
+
+Ten things. The first is the same finding phase 4 made, in a second place,
+found by pointing the same instrument at it — which is the part worth
+remembering.
+
+**A pinned header's clip had never reached a shader either.** This plan sent
+phase 5 to "prove with a render probe that a row passing under the bar is cut
+at the bar's edge", on the strength of two plans saying it was. It was not.
+`CustomScrollView3d` clears its obstruction map at the top of every layout
+pass and fills it in as each sliver is *placed* — which happens after the rows
+inside that sliver have already been laid out, placed, and published their
+clip blocks. Every row under the bar was told, correctly for that instant and
+uselessly, that nothing covered it. `Layout3d.clipRegion` answered correctly
+from the moment the pass ended, so
+`test/persistent_header_test.dart`'s assertions about the band had passed
+since the header landed and no frame had ever been cut. Closed in the layout
+package under
+[the declarative side of a pinned bar](../../flutter_scene_layout3d/plans/2026_09_08_the_declarative_side_of_a_pinned_bar.md),
+along with the two widget forms phase 4 recorded as missing.
+
+**And a full-width opaque bar makes that defect invisible, which is why it
+lasted.** The bar covers exactly what the clip would cut. The clip is one
+plane across the scroll axis, cross-axis-wide, so it only *shows* where the
+bar does not cover — beside a narrow bar, through a translucent one. The
+`sliver_app_bar_clip` probe is built around a half-width bar for that reason,
+and a scene with a full-width bar would have photographed a working picture
+over a dead tier.
+
+**The layout package's default lift is wrong for Material, and the arithmetic
+says by how much.** `SliverPersistentHeader3d.lift` defaults to one logical
+pixel, which the class doc describes as "enough to separate them in the depth
+buffer" — true for two things with no thickness, and false for two slabs. A
+`Thickness3d.structural` bar (8dp) over a `Thickness3d.raised` card (4dp)
+needs a step above the *mean*, 6dp, so the default is six times too small.
+`SliverAppBar3d` therefore passes `thickness.depthStep` rather than
+forwarding a null, and `test/app_bar_test.dart` asserts both directions —
+that 12dp separates and that 1dp does not.
+
+**The depth question has two answers, not one, because a sliver bar is not in
+the scaffold.** This plan asked what a `Scaffold3d` "has to guarantee about
+the depths of its slots". It turned out to be half the question. A
+`SliverAppBar3d` is a sliver in the *body's* scroll view, so the scaffold
+never sees it and its separation comes from the header's lift instead. The two
+answers are the same number from the same scale — `thickness.depthStep` — and
+saying so in both classes is what keeps them from drifting.
+
+**`Scaffold3d` states the depths as positions, not as scene offsets.**
+`Stack3d.depthStep` writes `ParentData3d.sceneOffset`, which layout and hit
+testing never see; a `CustomMultiChildLayout3d` delegate positions children
+with a full `Offset3d`, z included. The second is the honest one here: a bar
+in front of the body really is in front of it, and a ray agrees. That also
+made the guarantee testable as arithmetic — `Scaffold3d.liftFor` — rather than
+as a property of one build method.
+
+**A scaffold should not bind a surface, and the reason is the whole project.**
+`Layout3dCameraBinding.screenFilling` is what makes a surface cover the view,
+and a `Scaffold3d` that applied one could only ever *be* the view. Half the
+reason this stack exists is that a Material screen here can be a panel on a
+wall. So the scaffold is a box like any other and the binding stays where the
+application mounts the surface — which also leaves phase 6 free, since an
+overlay belongs to the *surface* rather than to the screen.
+
+**The body has to be clipped, and that is what `SceneClipBox3d` was for.**
+Phase 4 recorded the missing widget form as a convenience for a test. It is
+not: a list in a scaffold's body is taller than the room it was given, and
+without a window its rows draw over the bars. The window clips the face and
+not the depth, so a raised card in the body still stands proud — which is the
+decision `Clip3dRegion.rect` made and phase 4 photographed.
+
+**Material's selection pill needed no new machinery at all.** A stadium is a
+rounded rectangle whose radius clears half its shorter side, which
+`ShapeScale3d.full` already is, so the indicator is one more `Material3d` —
+64 by 32 in a bar, 56 by 32 in a rail. What it *did* need is a depth step: a
+glyph drawn exactly on the pill's front face is coplanar with it and z-fights,
+the same argument `Divider3d` made about a rule on a card. That step is a
+token (`NavigationStyle3d.indicatorDepthStep`) rather than a constant, because
+the pill's own depth is one.
+
+**Every destination is its own surface, and a navigation bar is where that
+stops being a footnote.** The trap `docs/traps.md` records for a chip's delete
+icon — an `InkWell3d` finds the *enclosing* `Material3d` — would light a whole
+bar up under one finger. A chip could live with a plain gesture detector; a
+bar cannot, because the wash is the feedback. It can afford the second surface
+that a chip could not: a bar is 8dp deep, so a `Thickness3d.thin` slab per
+destination stands proud of it rather than fighting it.
+
+**Flutter has two answers for a toolbar's height and they disagree.** The
+drift-alarm standard has needed three grades so far; this is a fourth case.
+`_AppBarDefaultsM3.toolbarHeight` is 64 and `AppBar.medium` and `.large`
+collapse to 64, but `AppBar`'s own build resolves
+`widget.toolbarHeight ?? appBarTheme.toolbarHeight ?? kToolbarHeight` and
+never reaches its defaults object — so a real M3 `AppBar` lays out at 56. This
+package takes 64, the M3 token, and `test/app_bar_defaults_test.dart` pins
+**both** numbers with the reason, so a reader meets the discrepancy in the
+test rather than against a ruler.
+
+**And two smaller things a catalogue author will meet.** A flex reporting
+*"overflowed the right by 0.000"* is a rounding artefact, not an overflow: an
+`Expanded3d` child's extent is computed by subtraction and the sum comes back
+a few ulps over. A Material app bar with a spacing and an expanded title is
+exactly that layout, and `Layout3dOverflowReportingMixin.overflowTolerance` is
+the fix Flutter has had all along. And a `const` constructor's asserts run at
+compile time, where `List.length` is not a constant expression — so a
+component refusing a one-element list either gives up `const` or moves the
+check to `build`. `NavigationBar3d.tooFewDestinations` is the second.
+
 ## What phase 4 deliberately left out
 
 Small on purpose, as phase 3 was told to be, and these are the things a reader
@@ -952,9 +1075,10 @@ will look for and not find:
   selected filter chip. It is a second glyph competing with the container
   substitution for the same signal, and the container is the one that survives
   at a distance; a chip that wants one passes an `avatar`.
-- **`VerticalDivider3d`.** The horizontal rule is the one a list needs, and a
-  vertical one is the same class with its axes swapped — worth adding beside
-  a navigation rail in phase 5, where there is finally something to separate.
+- ~~**`VerticalDivider3d`.**~~ Landed in phase 5, beside the navigation rail,
+  and it was exactly what this entry said it would be: the same class with its
+  axes swapped, with `indent` and `endIndent` running along the vertical axis
+  instead.
 - **A tile's `titleAlignment`.** Flutter has four; this one centres the
   leading and trailing slots against the text, which is `ListTileTitleAlignment
   .center` and right for one- and two-line tiles.

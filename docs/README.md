@@ -21,7 +21,7 @@ several files, guidance for using the engine underneath.
 | See it running, or write a demo | [examples/layout3d_gallery](../examples/layout3d_gallery/README.md) |
 | Verify something actually draws | [examples/render_probe](../examples/render_probe/README.md) |
 | Know what is planned, in progress, or was decided and why | the plans directories of [the layout package](../packages/flutter_scene_layout3d/plans/) and [the Material package](../packages/flutter_scene_material3d/plans/) |
-| Know what is being built next | [the Material catalogue plan](../packages/flutter_scene_material3d/plans/2026_09_01_flutter_scene_material3d.md) — phases 0 to 3 done, the buttons included, and the rest of the catalogue from phase 4 |
+| Know what is being built next | [the Material catalogue plan](../packages/flutter_scene_material3d/plans/2026_09_01_flutter_scene_material3d.md) — phases 0 to 5 done, up to `Scaffold3d` and the bars, and the rest of the catalogue from phase 6 |
 
 ## The pages here
 
@@ -81,7 +81,14 @@ Two entry points:
   in the margin, which is settled in
   [a tap target that delivers a press](../packages/flutter_scene_layout3d/plans/2026_09_02_a_tap_target_that_delivers_a_press.md)
   — the nine-line fix, and the placement rule underneath it that is the half
-  worth reading. Phase 3, the seven buttons, is done.
+  worth reading. Phase 3, the seven buttons, is done, and so is phase 4, the
+  surfaces and rows — which found something larger than itself: the clip
+  contract's plane tier had never fired at all, closed in
+  [a clip that reaches the shader](../packages/flutter_scene_layout3d/plans/2026_09_03_a_clip_that_reaches_the_shader.md).
+  Phase 5, the structure, is done too, and it found the *same* tier dead in a
+  second place — a pinned header's clip never reached a shader either — which
+  is closed, with the two widget forms the declarative layer was missing, in
+  [the declarative side of a pinned bar](../packages/flutter_scene_layout3d/plans/2026_09_08_the_declarative_side_of_a_pinned_bar.md).
 
 ## Keeping this true
 

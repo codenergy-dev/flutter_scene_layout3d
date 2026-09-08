@@ -43,6 +43,7 @@ import '../boxes/sized.dart';
 import '../boxes/stack.dart';
 import '../boxes/table.dart';
 import '../boxes/wrap.dart';
+import '../clip.dart';
 import '../decoration/decorated_box.dart';
 import '../decoration/decoration.dart';
 import '../geometry/alignment3d.dart';
@@ -68,6 +69,7 @@ import '../sliver/custom_scroll_view.dart';
 import '../sliver/sliver.dart';
 import '../sliver/sliver_grid.dart';
 import '../sliver/sliver_list.dart';
+import '../sliver/sliver_persistent_header.dart';
 import '../sliver/sliver_padding.dart';
 import '../text/break_rules.dart';
 import '../text/text3d.dart';
@@ -840,6 +842,67 @@ class SceneDecoratedBox3d extends SingleChildLayout3dWidget {
     layout
       ..decoration = decoration
       ..stateLayer = stateLayer;
+  }
+}
+
+/// Clips its child to its own extent, the widget form of [ClipBox3d].
+///
+/// ```dart
+/// SceneClipBox3d(
+///   child: SceneSizedBox3d(width: 2, height: 1, child: scrollingContent),
+/// )
+/// ```
+///
+/// Layout is untouched — the box takes its child's size, exactly as a proxy
+/// does. What changes is what the subtree below is allowed to be seen
+/// through, and it changes on two tiers: every descendant's
+/// [Layout3d.clipRegion] reports this box's extent, so a decoration painter
+/// that honours clip planes cuts a box that is *half* inside; and, with
+/// [cullNodes], a descendant entirely outside has its scene node hidden,
+/// which also puts it out of reach of a ray.
+///
+/// **Only a material that reads the plane block honours the first tier.**
+/// [BoxDecoration3d] does; a [SceneNodeBox3d] holding an application's own
+/// mesh does not, and draws straight through the window's edge. That is the
+/// contract rather than a defect — see [Clip3dRegion].
+///
+/// **And a clip is not a rounded rectangle.** A region is an intersection of
+/// half-spaces, so it is convex, and a corner radius cannot be expressed as
+/// one. A child overflowing a rounded card is not clipped to the card's
+/// shape.
+class SceneClipBox3d extends SingleChildLayout3dWidget {
+  /// Creates a box clipping its child to its own extent.
+  const SceneClipBox3d({
+    super.key,
+    this.clipDepth = false,
+    this.cullNodes = true,
+    super.child,
+  });
+
+  /// Whether the clip bounds the box's thickness as well as its face.
+  ///
+  /// False by default, and the default is a decision rather than a
+  /// convenience: a window onto a plane wants content that stands proud of
+  /// it — a raised card, a pinned bar — to stay visible.
+  ///
+  /// It also does less than it sounds like it does. The planes are expressed
+  /// in a box's own frame and `BoxDecoration3d.elevation` moves the slab's
+  /// *node*, outside that frame, so a depth clip cuts a box's layout depth
+  /// and never its lift.
+  final bool clipDepth;
+
+  /// Whether descendants entirely outside the clip have their node hidden.
+  final bool cullNodes;
+
+  @override
+  ClipBox3d createLayout(BuildContext context) =>
+      ClipBox3d(clipDepth: clipDepth, cullNodes: cullNodes);
+
+  @override
+  void updateLayout(BuildContext context, ClipBox3d layout) {
+    layout
+      ..clipDepth = clipDepth
+      ..cullNodes = cullNodes;
   }
 }
 
@@ -2125,6 +2188,111 @@ class SceneFlow3d extends Layout3dWidget {
   @override
   void updateLayout(BuildContext context, Flow3d layout) {
     layout.delegate = delegate;
+  }
+}
+
+/// A sliver whose child stays at the leading edge, the widget form of
+/// [SliverPersistentHeader3d].
+///
+/// ```dart
+/// SceneCustomScrollView3d(
+///   slivers: <Widget>[
+///     SceneSliverPersistentHeader3d(
+///       minExtent: metrics.dp(64),
+///       maxExtent: metrics.dp(160),
+///       pinned: true,
+///       lift: metrics.dp(12),
+///       child: bar,
+///     ),
+///     SceneSliverList3d.builder(itemCount: rows.length, itemBuilder: row),
+///   ],
+/// )
+/// ```
+///
+/// **The child is a subtree, not a delegate.** The imperative
+/// [SliverPersistentHeader3dDelegate] is asked to build on every layout the
+/// header does, which while scrolling is every frame — a shape a widget
+/// cannot have, because inflating a subtree inside a layout pass is the lazy
+/// children machinery and a bar is not a list. So this widget owns one
+/// subtree, hands the header that same instance every time, and expresses
+/// the collapse through the **constraints** the header gives it: the child
+/// is laid out loose against however much of [maxExtent] is left, so a bar
+/// that fills what it is offered shrinks with the window and one that sizes
+/// itself does not.
+///
+/// What that costs is the delegate's two arguments. `shrinkOffset` and
+/// `overlapsContent` reach nothing here, because acting on either would mean
+/// rebuilding a widget from inside layout. A bar that wants to fade a title
+/// as it collapses reads its own height instead — that is what the loose
+/// constraint is — and a bar that wants Material's raised "scrolled under"
+/// appearance has to drive it from a scroll listener, off the layout path.
+/// The imperative header is the escape hatch for anything more.
+///
+/// **[minExtent] and [maxExtent] are in world units**, like every other size
+/// in this layer, while a Material figure is in logical pixels. Convert:
+/// `Layout3dMetricsScope.of(context).dp(64)`.
+///
+/// See [SliverPersistentHeader3d.lift] for what [lift] is for, and know that
+/// its default of one logical pixel is a depth-buffer separation rather than
+/// a distance: a bar covering slabs with real thickness wants a step from the
+/// same scale the slabs came from.
+class SceneSliverPersistentHeader3d extends SingleChildLayout3dWidget {
+  /// Creates a header that holds the leading edge.
+  const SceneSliverPersistentHeader3d({
+    super.key,
+    required this.minExtent,
+    required this.maxExtent,
+    this.pinned = false,
+    this.floating = false,
+    this.lift,
+    super.child,
+  }) : assert(minExtent >= 0.0),
+       assert(maxExtent >= minExtent);
+
+  /// The extent of the header when it has shrunk as far as it will go, in
+  /// world units.
+  final double minExtent;
+
+  /// The extent of the header before anything has scrolled past it, in world
+  /// units.
+  final double maxExtent;
+
+  /// Whether the header stays at the leading edge once it has collapsed.
+  final bool pinned;
+
+  /// Whether the header comes back as soon as the viewer scrolls backwards.
+  final bool floating;
+
+  /// How far toward the viewer the header's geometry is pulled while it is
+  /// covering content, in world units, or null for one logical pixel.
+  final double? lift;
+
+  @override
+  SliverPersistentHeader3d createLayout(BuildContext context) {
+    final delegate = HeldSliverPersistentHeader3dDelegate(
+      minExtent: minExtent,
+      maxExtent: maxExtent,
+    );
+    final header = SliverPersistentHeader3d(
+      delegate: delegate,
+      pinned: pinned,
+      floating: floating,
+      lift: lift,
+    );
+    delegate.header = header;
+    return header;
+  }
+
+  @override
+  void updateLayout(BuildContext context, SliverPersistentHeader3d layout) {
+    (layout.delegate as HeldSliverPersistentHeader3dDelegate)
+      ..minExtent = minExtent
+      ..maxExtent = maxExtent;
+    layout
+      ..pinned = pinned
+      ..floating = floating
+      ..lift = lift
+      ..markNeedsLayout();
   }
 }
 

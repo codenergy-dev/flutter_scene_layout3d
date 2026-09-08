@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-08-25T20:31:04Z
-updated_at: 2026-09-03T22:20:00Z
+updated_at: 2026-09-08T20:35:00Z
 commit: 657eef80eb8dc8085c3b3a84a8069273495506be
 ---
 
@@ -127,6 +127,16 @@ build them when a component asks.
   `Layout3d.metrics`, not a constant, so it is the same distance on any
   scale.
 
+  *Qualified on 2026-09-08.* One logical pixel separates two things with no
+  thickness, and a Material component is a slab. Two slabs are separated only
+  where the step exceeds the **mean** of their thicknesses, so an 8dp bar over
+  a 4dp card needs more than 6dp and the default is six times too small.
+  `flutter_scene_material3d`'s `SliverAppBar3d` passes
+  `Thickness3d.depthStep` instead of forwarding a null. The default is still
+  right for what it says it is — a depth-buffer separation between two
+  decals — and wrong for anything with a thickness, which is most of a
+  catalogue.
+
 - **Nothing had to be added to make a material read the plane block.**
   `DecoratedBox3d` already passes its `clipRegion` into the paint request and
   `BoxDecoration3d` already packs `Clip3dRegion.toPlaneBlock()` into its
@@ -145,6 +155,19 @@ build them when a component asks.
   The sentence above is still true of *this* plan's own path — the viewport
   publishes the plane and the decoration packs it — and was never true of the
   package as a whole.
+
+  *Corrected again on 2026-09-08, and this time it is this plan's own path.*
+  The viewport publishes the plane and the decoration packs it, and the two
+  never met: `CustomScrollView3d` clears its obstruction map at the top of
+  every pass and fills it in as each sliver is **placed**, which is after the
+  rows inside that sliver have been laid out, placed, and published their
+  blocks. So every row under a pinned bar drew with the unbounded block while
+  `Layout3d.clipRegion` went on answering correctly, and the assertions below
+  about the band passed for a tier that had never fired. The viewport now
+  republishes over every sliver a header covers once the layout has settled;
+  see
+  [the declarative side of a pinned bar](2026_09_08_the_declarative_side_of_a_pinned_bar.md),
+  and `examples/render_probe`'s `sliver_app_bar_clip` is the picture.
 
 - **The delegate cannot be Flutter's `build` verbatim.** Flutter rebuilds a
   *widget* per layout and lets the element tree diff it; there is no element

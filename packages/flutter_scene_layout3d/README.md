@@ -701,6 +701,18 @@ SizedBox3d(
   their scene node hidden, which also puts them out of reach of a ray. Exact
   for whole boxes, useless for a box that is half in, and free.
 
+**A clip only cuts anything once it has been published to the boxes under
+it**, and that is not automatic. A box packs its plane block while it paints,
+at the end of its own `performLayout`, and a `ClipBox3d` takes its size *from
+its child* — so on the layout that creates them every descendant asks before
+the clip box has an extent and gets an unbounded block. `Layout3d.clipRegion`
+answers correctly from the moment the pass ends, which is why this was dead
+for months while every arithmetic test passed. `refreshClipRegion` and
+`refreshClipSubtree` are the hooks that close it: `ClipBox3d` sweeps its
+subtree once it has a size, `Layout3d.place` walks whatever it just moved, and
+`CustomScrollView3d` republishes over every sliver a pinned header covers. If
+you write a box that discovers a clip late, republish — nothing warns you.
+
 `clipDepth` is off by default, so a raised card inside a scrolling list still
 stands proud of it instead of being sliced off at the surface. Nesting
 axis-aligned clips folds parallel planes together, so however deep they stack
@@ -830,6 +842,23 @@ scene. The one thing a `BuildContext` reads from *inside* the scene is the
 surface's unit contract, `Layout3dMetricsScope.of(context)`, which is how a
 figure written in logical pixels becomes the world units every one of these
 widgets takes; see *Reading the contract from a `build` method* above.
+
+Two of them are not quite mirrors, and both are worth knowing before you reach
+for them. `SceneClipBox3d` is the ordinary widget form of `ClipBox3d`, with
+`clipDepth` and `cullNodes`. `SceneSliverPersistentHeader3d` is **not** a
+delegate: it takes a `child` and its `minExtent` and `maxExtent` directly. A
+delegate is asked to *build* on every layout the header does, which while
+scrolling is every frame, and a widget cannot answer that — a subtree is
+inflated by the element tree in Flutter's build phase, and the only machinery
+here that inflates one inside a layout pass is the lazily built children lane.
+So the widget owns one subtree, the header is handed that same instance every
+time (`HeldSliverPersistentHeader3dDelegate` is the seam), and the collapse is
+expressed through the **constraints**: the child is laid out loose against
+whatever is left of `maxExtent`, so a bar that fills what it is offered shrinks
+with the window and one that sizes itself does not. What that costs is
+`shrinkOffset` and `overlapsContent`, which reach nothing in the widget layer;
+the imperative header is the escape hatch for a bar that has to change what it
+*is* as it collapses.
 
 `SceneDecoratedBox3d` is the one that makes a declarative tree *visible*, and
 it is the widget form of `DecoratedBox3d` with the same two properties and
@@ -1311,6 +1340,13 @@ answer that, and a pinned header wants both:
   alone — `ParentData3d.sceneOffset`, the same trade `Stack3d.depthStep`
   makes — so the header's box does not move and hit testing is untouched. For
   an opaque bar spanning the cross axis this is already the 2D picture.
+
+  **One logical pixel is a depth-buffer separation, not a distance**, and it
+  is only enough for content with no thickness of its own. Two slabs are
+  separated where the step exceeds the *mean* of their thicknesses, so a bar
+  and a card with real depth want a much larger lift —
+  `flutter_scene_material3d`'s `SliverAppBar3d` passes its theme's
+  `Thickness3d.depthStep`, twelve logical pixels, for exactly that reason.
 * **The viewport publishes a clip plane** at the trailing edge of whatever a
   pinned header is obstructing, which reaches the content through
   `Layout3d.clipRegion`. That is what cuts a row *in half* at the bar's edge:
@@ -1318,6 +1354,13 @@ answer that, and a pinned header wants both:
   at the far edge of the window, which is a different decision. A material
   that reads clip planes honours it — a `BoxDecoration3d` does — and one that
   does not is still behind the bar rather than through it.
+
+  The plane is **one** plane, across the scroll axis, so it cuts the whole
+  cross-axis band. For a full-width opaque bar that is invisible — the bar
+  covers exactly what the clip cuts — which is why this tier was dead for a
+  long time without anyone noticing. It shows beside a bar narrower than the
+  list, and `examples/render_probe`'s `sliver_app_bar_clip` scene is built
+  that way for that reason.
 
 A ray aimed at the bar finds the bar. The viewport hit-tests its slivers in
 scroll order, first one first, because a viewport's leading children are in

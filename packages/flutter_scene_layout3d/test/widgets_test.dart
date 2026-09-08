@@ -501,4 +501,137 @@ void main() {
     expect(controller.surface, isNull);
     expect(parent.children, isEmpty);
   });
+
+  testWidgets('SceneClipBox3d publishes its extent to the subtree', (
+    tester,
+  ) async {
+    // The widget form phase 4 wrote a four-line adapter for. It is the one
+    // widget here that publishes a Clip3dRegion at all.
+    final controller = Layout3dController();
+    await tester.pumpWidget(
+      SceneLayout3d(
+        parent: Node(),
+        size: const Size3d(4, 2, 1),
+        controller: controller,
+        child: const SceneClipBox3d(
+          child: SceneSizedBox3d(
+            width: 4,
+            height: 2,
+            child: SceneSizedBox3d(width: 8, height: 1),
+          ),
+        ),
+      ),
+    );
+
+    final clip = rootOf(controller);
+    expect(clip, isA<ClipBox3d>());
+    final inner = (clip as ClipBox3d).child!;
+    expect(inner.clipRegion.planes, hasLength(4));
+    expect(inner.clipRegion.contains(const Offset3d(2, 1, 0)), isTrue);
+    expect(inner.clipRegion.contains(const Offset3d(6, 1, 0)), isFalse);
+  });
+
+  testWidgets('SceneClipBox3d writes its flags without rebuilding the box', (
+    tester,
+  ) async {
+    final controller = Layout3dController();
+    Widget frame({required bool clipDepth}) => SceneLayout3d(
+      parent: Node(),
+      size: const Size3d(4, 2, 1),
+      controller: controller,
+      child: SceneClipBox3d(
+        clipDepth: clipDepth,
+        child: const SceneSizedBox3d(width: 4, height: 2),
+      ),
+    );
+
+    await tester.pumpWidget(frame(clipDepth: false));
+    final box = rootOf(controller) as ClipBox3d;
+    expect(box.clipDepth, isFalse);
+    expect(box.ownRegion.planes, hasLength(4));
+
+    await tester.pumpWidget(frame(clipDepth: true));
+    expect(rootOf(controller), same(box));
+    expect(box.clipDepth, isTrue);
+    expect(box.ownRegion.planes, hasLength(Clip3dRegion.maxPlanes));
+  });
+
+  testWidgets('a widget-built pinned bar holds the leading edge', (
+    tester,
+  ) async {
+    final controller = Layout3dController();
+    final scroll = Scroll3dController();
+    await tester.pumpWidget(
+      SceneLayout3d(
+        parent: Node(),
+        size: const Size3d(4, 10, 2),
+        controller: controller,
+        child: SceneCustomScrollView3d(
+          controller: scroll,
+          slivers: <Widget>[
+            const SceneSliverPersistentHeader3d(
+              minExtent: 2,
+              maxExtent: 4,
+              pinned: true,
+              child: SceneSizedBox3d(width: 4, height: 4),
+            ),
+            SceneSliverList3d(
+              children: <Widget>[
+                for (var i = 0; i < 6; i++)
+                  const SceneSizedBox3d(width: 4, height: 2),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+
+    final view = rootOf(controller) as CustomScrollView3d;
+    final header = view.slivers.first as SliverPersistentHeader3d;
+    // The delegate hands back the subtree the widget attached rather than
+    // building one, so the header never drops it.
+    final content = header.child;
+    expect(content, isNotNull);
+    expect(header.geometry.paintExtent, 4);
+
+    scroll.jumpTo(6);
+    await tester.pump();
+    expect(header.child, same(content));
+    expect(header.geometry.paintExtent, 2);
+    expect(header.offset, Offset3d.zero);
+    expect(header.obstructedExtent, 2);
+  });
+
+  testWidgets('and its extents and flags are writable in place', (
+    tester,
+  ) async {
+    final controller = Layout3dController();
+    Widget frame({required bool pinned, required double max}) => SceneLayout3d(
+      parent: Node(),
+      size: const Size3d(4, 10, 2),
+      controller: controller,
+      child: SceneCustomScrollView3d(
+        slivers: <Widget>[
+          SceneSliverPersistentHeader3d(
+            minExtent: 2,
+            maxExtent: max,
+            pinned: pinned,
+            child: const SceneSizedBox3d(width: 4, height: 4),
+          ),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(frame(pinned: true, max: 4));
+    final view = rootOf(controller) as CustomScrollView3d;
+    final header = view.slivers.first as SliverPersistentHeader3d;
+    expect(header.pinned, isTrue);
+    expect(header.delegate.maxExtent, 4);
+
+    await tester.pumpWidget(frame(pinned: false, max: 6));
+    expect(view.slivers.first, same(header));
+    expect(header.pinned, isFalse);
+    expect(header.delegate.maxExtent, 6);
+    expect(header.geometry.scrollExtent, 6);
+  });
 }

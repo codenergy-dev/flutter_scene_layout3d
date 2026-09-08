@@ -507,6 +507,164 @@ silently inert; and an ink well there would find the *enclosing* surface's ink
 controller and light the whole chip up. What works is the innermost recognizer
 winning the arena, which it does, exactly as in Flutter.
 
+## Structure: a screen, its bars, and the depths between them
+
+`Scaffold3d` is the screen. It owns three things and merely positions
+everything else: the backing every screen has, the arrangement — a
+`CustomMultiChildLayout3d`, exactly as Flutter's `Scaffold` is one, with the
+body given whatever the bars left over — and the **depths**.
+
+```dart
+Scaffold3d(
+  appBar: AppBar3d.text(title: 'Inbox'),
+  body: SceneListView3d(children: rows),
+  bottomNavigationBar: NavigationBar3d(
+    selectedIndex: _index,
+    destinations: const <NavigationDestination3d>[
+      NavigationDestination3d(icon: Icon3d(Icons.inbox), label: 'Inbox'),
+      NavigationDestination3d(icon: Icon3d(Icons.send), label: 'Sent'),
+    ],
+    onDestinationSelected: (index) => setState(() => _index = index),
+  ),
+  floatingActionButton: FloatingActionButton3d(
+    onPressed: _compose,
+    semanticLabel: 'Compose',
+    child: const Icon3d(Icons.edit),
+  ),
+)
+```
+
+**It does not bind a surface, and that is a decision rather than an
+omission.** A `Layout3dCameraBinding` is what makes a surface cover the view,
+and a scaffold that did that for you could only ever *be* the view — where
+half the reason this stack exists is that a Material screen here can be a
+panel on a wall in a room. So a scaffold is a box like any other, and an
+application that wants a full-view screen says so once, where it mounts the
+surface:
+
+```dart
+SceneLayout3d(
+  camera: camera,
+  binding: const Layout3dCameraBinding.screenFilling(distance: 2),
+  child: SceneTheme3d(
+    data: Theme3dData.light,
+    textRendererFactory: AtlasText3dRenderer.new,
+    child: Scaffold3d(appBar: bar, body: body),
+  ),
+)
+```
+
+### The depths are the part with no Flutter equivalent
+
+An app bar sits over content that scrolls under it and a navigation bar sits
+over the same content at the other end. In two dimensions that is paint order
+and it costs nothing. Here every slot is a **slab** — the bars are
+`Thickness3d.structural`, 8dp — and two slabs are separated only where the
+step between them exceeds the *mean* of their thicknesses. An 8dp bar over a
+4dp card needs more than 6dp, and a bar no nearer the viewer than the rows
+beneath it loses the depth test to them somewhere, in patches, differently on
+every frame and every driver.
+
+So the scaffold does not leave that to the components. Each slot sits one
+`depthStep` in front of the one behind it, in the order `Scaffold3dSlot`
+declares — body, bottom bar, app bar, floating action button — and it asserts
+that the step it was given actually separates a bar from a card. The default
+is the theme's own `thickness.depthStep`, 12dp, which clears the 6dp minimum
+with half again to spare. `Scaffold3d.liftFor` is that arrangement as
+arithmetic, so anything mounted over a screen can state its own lift against
+it rather than guessing.
+
+The body is inside a `SceneClipBox3d`, and it has to be: a list is taller than
+the room it was given, and without a window its rows draw over the bars rather
+than ending at them. The window clips the **face and not the depth**, so a
+raised card in the body still stands proud of the screen.
+
+### The bars
+
+`AppBar3d` is the fixed one. `SliverAppBar3d` is the one content scrolls
+under, and it is a sliver — so it goes in the body's own scroll view, never in
+the `appBar` slot:
+
+```dart
+SceneCustomScrollView3d(
+  controller: _scroll,
+  slivers: <Widget>[
+    SliverAppBar3d.text(title: 'Inbox', pinned: true),
+    SceneSliverList3d(children: rows),
+  ],
+)
+```
+
+Four variants, differing only in how tall they are expanded and what type role
+the title takes there: `small` and `centerAligned` at 64dp, `medium` at 112 and
+`large` at 152, all collapsing to the same 64dp toolbar. Everything else is
+`AppBarStyle3d`.
+
+**Two mechanisms keep a row out of a sliver bar, and neither is enough alone.**
+The bar's geometry is pulled toward the viewer by `lift`, so content passes
+behind it; and `CustomScrollView3d` publishes a clip plane at the bar's
+trailing edge, which is what cuts a row *in half* there. `SliverAppBar3d`
+defaults the lift to the theme's `thickness.depthStep` rather than to
+`SliverPersistentHeader3d`'s one logical pixel, for the arithmetic above: one
+pixel separates two decals, not two slabs.
+
+That clip is the claim this package's plans had made twice and nobody had
+photographed. When phase 5 finally did, it was **not happening** — a viewport
+works out what a pinned header is sitting on after its rows have been laid out,
+so every row published an unbounded clip block while `Layout3d.clipRegion` went
+on answering correctly to anything that asked afterwards. It is fixed in the
+layout package under
+[its own plan](../flutter_scene_layout3d/plans/2026_09_08_the_declarative_side_of_a_pinned_bar.md),
+and `examples/render_probe`'s `sliver_app_bar_clip` scene is the picture.
+
+Two things Flutter's `SliverAppBar` does that this one deliberately does not.
+The title does not grow from `titleLarge` to `headlineSmall` partway through a
+collapse, and the bar does not raise itself to `scrolledUnderElevation` when
+content goes beneath it. Both are rebuilds, a collapse happens inside a layout
+pass, and a bar that rebuilt every frame of a scroll would be putting text
+measurement back on the relayout path. The collapse that *does* happen is
+expressed through the constraints the header hands its child: the surface
+fills what it is offered and the toolbar stays at the bottom.
+
+### Navigation, and the pill
+
+`NavigationBar3d` and `NavigationRail3d` are the same component with its axes
+turned, over one `NavigationStyle3d` in two variants — 80dp either way, a bar
+raised to level 2 on `surfaceContainer` and a rail flat on `surface`.
+
+A destination takes its label as a **`String`**, not a widget, and that is the
+phase-4 rule applied rather than a shortcut: a `Semantics3d` gathers nothing
+from below, so a destination that took a widget would have to be told its own
+name twice. One string builds the visible label and the announcement, and they
+cannot disagree.
+
+Material's selection indicator — the pill behind the selected icon — needed no
+new machinery. A stadium is a rounded rectangle whose radius clears half its
+shorter side, which `ShapeScale3d.full` already is, so the indicator is one
+more `Material3d`: 64 by 32 in a bar, 56 by 32 in a rail,
+`secondaryContainer`, `shape.full`. What it *did* need is a depth step, because
+a glyph drawn exactly on the pill's front face is coplanar with it and
+z-fights.
+
+Every destination is its own `Material3d` too, transparent, one thickness step
+proud of the bar. An `InkWell3d` finds the **enclosing** surface, so a well
+placed straight inside the bar would light the whole bar up under one finger.
+
+A rail wants a rule beside it, and that is why `VerticalDivider3d` exists at
+all — the horizontal one is what a list needs, and until there was a rail
+nothing had two things to separate:
+
+```dart
+SceneRow3d(
+  crossAxisAlignment: CrossAxisAlignment3d.stretch,
+  children: <Widget>[
+    NavigationRail3d(selectedIndex: _index, destinations: destinations),
+    const VerticalDivider3d(),
+    SceneExpanded3d(child: body),
+  ],
+)
+```
+
 ## Icons are a font, and it was checked rather than assumed
 
 `Icon3d` is one code point of an icon font drawn as a one-character
@@ -757,21 +915,30 @@ filled it.
 
 ## What is not here yet
 
-Honestly, and in the order it is planned: `Scaffold3d` and the bars; the
-overlays; the selection controls; and a press ripple, which the panel shader
-can express in two more uniforms and a `smoothstep` and which the uniform
-state layer stands in for until then.
+Honestly, and in the order it is planned: the overlays — dialogs, menus, snack
+bars and sheets — the selection controls; and a press ripple, which the panel
+shader can express in two more uniforms and a `smoothstep` and which the
+uniform state layer stands in for until then.
 
-Four things the surfaces and rows left, each for a reason. A filter chip draws
+Three things the surfaces and rows left, each for a reason. A filter chip draws
 no **checkmark**: it is a second glyph competing with the container
 substitution for the same signal, and the container is the one that survives at
-a distance — pass an `avatar` if you want one. There is no
-**`VerticalDivider3d`** yet; it is the same class with its axes swapped, and it
-belongs beside a navigation rail. A tile has one **title alignment**, the
-centred one, where Flutter has four. And a card has no **`clipBehavior`**: that
-needs a clip whose region is a rounded rectangle, and `Clip3dRegion` is an
-intersection of planes, which is convex — the panel shader carves its own
-radius, but a *child* overflowing a rounded card is not clipped to it.
+a distance — pass an `avatar` if you want one. A tile has one **title
+alignment**, the centred one, where Flutter has four. And a card has no
+**`clipBehavior`**: that needs a clip whose region is a rounded rectangle, and
+`Clip3dRegion` is an intersection of planes, which is convex — the panel shader
+carves its own radius, but a *child* overflowing a rounded card is not clipped
+to it.
+
+Four the structure left. A scaffold has no **drawer** and no `endDrawer`: a
+drawer is a route over an overlay, which is the phase after this one. There is
+no **`FloatingActionButtonLocation`** — the button sits at the trailing bottom
+corner, above the navigation bar, and a screen wanting it elsewhere positions
+its own. A `SliverAppBar3d` has no **`flexibleSpace`** and no `bottom`, so a
+tab bar under a title is not expressible yet. And a navigation bar has one
+**label behaviour**, always-show, where Flutter has three: the other two hide
+labels on unselected destinations, which changes a destination's height as the
+selection moves and so relayouts the bar on every tap.
 
 Two smaller gaps the buttons left. There is no `FilledButton3d.icon` pairing
 an icon with a label, because Material's icon-and-label padding is a third set

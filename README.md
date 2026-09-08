@@ -218,7 +218,7 @@ hook on this package that compiles its own shader for every consumer.
 
 What exists in
 [`packages/flutter_scene_material3d`](packages/flutter_scene_material3d/) today
-is the token layer and the primitive built on it. The tokens are Material 3's
+starts with the token layer and the primitive built on it. The tokens are Material 3's
 colour roles, type scale, shape and elevation scales, its state-layer
 opacities, and the one scale Material does not publish at all — **how deep a
 component is**, because on a screen there is none. A `Theme3dData` carries
@@ -233,8 +233,23 @@ the thickness; `InkWell3d`, which lights it up for a hover, a focus or a press
 **without rebuilding a thing**; and `Icon3d`, one code point of an icon font
 drawn through the same glyph atlas as every label.
 
-The components themselves are next: a button is a `Material3d` with an
-`InkWell3d` in it and a set of tokens, and there is no `Button3d` yet.
+The components are on top of that, and every one of them is the same shape: a
+`Material3d` with a public token set resolved by state. The seven buttons are
+one `Button3d` over seven `ButtonStyle3d`s; the surfaces and rows are `Card3d`,
+`ListTile3d`, `Divider3d` and `Chip3d`; and the structure is `Scaffold3d`,
+`AppBar3d`, `SliverAppBar3d`, `NavigationBar3d` and `NavigationRail3d`. What
+is left is the overlays — dialogs, menus, snack bars and sheets — the
+selection controls, and a press ripple.
+
+The structure is where the depth stops being decoration. A screen's slots have
+to be *ordered* in depth, because an app bar is over content that scrolls under
+it and two slabs no further apart than the mean of their thicknesses fight for
+the same pixels. `Scaffold3d` owns that ordering rather than leaving each
+component to guess, and the render probes photograph both halves of it: a row
+passing under a pinned bar is genuinely cut at the bar's edge, and the bar is
+drawn in front of the row sliding beneath it. Getting there found the same
+defect twice — a clip that never reached the shader — and both times only a
+drawn frame said so.
 
 ## Running it
 

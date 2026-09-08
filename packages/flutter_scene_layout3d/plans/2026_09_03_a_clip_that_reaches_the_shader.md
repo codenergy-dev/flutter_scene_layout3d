@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-09-03T21:40:00Z
-updated_at: 2026-09-03T22:10:00Z
+updated_at: 2026-09-08T20:35:00Z
 commit: ad827c4b62fdf360e47433bdf8444de9f43d5862
 ---
 
@@ -80,6 +80,25 @@ window's edge — the frame's way of saying nothing was cut. After it, the card
 is near-white inside the window and the backing shows through above it. That
 scene failed on its first run with a luminance of 0.7597 outside against
 0.7514 inside, which is how the defect surfaced at all.
+
+## And it was dead in a second place
+
+*Added on 2026-09-08.* Phase 5 of the Material catalogue pointed the same
+instrument — a painter that records the block it was handed — at a **pinned
+header**, and found the tier dead there too. The cause is a different one,
+which is the point: `CustomScrollView3d` clears its obstruction map at the top
+of every layout pass and fills it in as each sliver is placed, and the rows
+inside a sliver are laid out, placed and published *during* that sliver's own
+layout. `Layout3d.place`'s republish gate found the region unbounded and did
+nothing.
+
+Closed the same way, in
+[the declarative side of a pinned bar](2026_09_08_the_declarative_side_of_a_pinned_bar.md):
+`refreshClipSubtree` is the bulk form of this plan's hook, and the viewport
+calls it on every covered sliver once the layout has settled. The general rule
+is now in `docs/traps.md` where a reader will meet it: **a clip that is
+discovered after the boxes under it have painted has to be republished, and
+nothing warns you.**
 
 ## Two things still true and worth knowing
 

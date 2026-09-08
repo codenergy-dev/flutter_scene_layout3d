@@ -147,6 +147,14 @@ class CustomScrollView3d extends MultiChildLayout3d<ParentData3d>
   /// is not in here is not covered by anything.
   final Map<Layout3d, double> _obstructedTo = <Layout3d, double>{};
 
+  /// What [_obstructedTo] held the last time the clips were published.
+  ///
+  /// Only so that a sliver which *stops* being covered — the viewer scrolled
+  /// back to the top and the bar is no longer sitting on anything — is told
+  /// to republish once, rather than keeping the band it was cut with
+  /// forever.
+  final Map<Layout3d, double> _publishedObstruction = <Layout3d, double>{};
+
   /// The clip a sliver inherits, cut at the trailing edge of whatever pinned
   /// sliver is sitting on top of it.
   ///
@@ -243,7 +251,10 @@ class CustomScrollView3d extends MultiChildLayout3d<ParentData3d>
         );
         // Reporting the metrics can pull the offset back into range, and
         // then the pass that just ran was laid out at the wrong place.
-        if (controller.offset == before) return;
+        if (controller.offset == before) {
+          _publishObstructionClips();
+          return;
+        }
       }
       cycles++;
       assert(
@@ -253,8 +264,42 @@ class CustomScrollView3d extends MultiChildLayout3d<ParentData3d>
         'reports a scrollOffsetCorrection must settle once the viewport has '
         'applied it.',
       );
-      if (cycles >= _maxLayoutCycles) return;
+      if (cycles >= _maxLayoutCycles) {
+        _publishObstructionClips();
+        return;
+      }
     }
+  }
+
+  /// Tells every sliver a pinned header is sitting on to republish its clip.
+  ///
+  /// **This is the step that makes the band in [clipRegionForChild] reach a
+  /// shader**, and leaving it out is a defect the arithmetic cannot see. A
+  /// box publishes its clip block while it is laid out or placed, and both
+  /// of those happen *inside* the sequence below, before this viewport knows
+  /// what is covering what: [_obstructedTo] is cleared at the top of every
+  /// pass and filled in as each sliver is placed, so a row asking for its
+  /// clip at that moment is told, correctly for that instant and uselessly,
+  /// that nothing covers it. `Layout3d.clipRegion` answers correctly
+  /// afterwards — which is why every headless test of the band passed while
+  /// no frame was ever cut.
+  ///
+  /// So the republish happens here, once the sequence has settled, and it
+  /// costs one walk over the live boxes of each covered sliver. Slivers that
+  /// nothing covers pay nothing, and a viewport with no pinned header in it
+  /// never reaches the loop at all.
+  void _publishObstructionClips() {
+    if (_obstructedTo.isEmpty && _publishedObstruction.isEmpty) return;
+    for (final child in heldChildren) {
+      final now = _obstructedTo[child] ?? 0.0;
+      final was = _publishedObstruction[child] ?? 0.0;
+      // A sliver that has stopped being covered republishes once too, or it
+      // keeps drawing with the band it was cut with.
+      if (now > 0.0 || was > 0.0) child.refreshClipSubtree();
+    }
+    _publishedObstruction
+      ..clear()
+      ..addAll(_obstructedTo);
   }
 
   /// Lays out every sliver in turn, and reports the total scroll extent, or

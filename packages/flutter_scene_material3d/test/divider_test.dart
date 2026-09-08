@@ -213,4 +213,69 @@ void main() {
       expect(ys[1], lessThan(ys[2]));
     });
   });
+
+  group('VerticalDivider3d', () {
+    testWidgets('is the same rule with its axes swapped', (tester) async {
+      final it = await pumpComponent(
+        tester,
+        () => SceneRow3d(
+          mainAxisSize: MainAxisSize3d.min,
+          children: const <Widget>[
+            SceneSizedBox3d(width: 0.5, height: 0.5),
+            VerticalDivider3d(),
+            SceneSizedBox3d(width: 0.5, height: 0.5),
+          ],
+        ),
+      );
+      final rule = it.panels.single;
+      // 16dp of space across the row, a 1dp rule inside it, and a 1dp slab.
+      expect(rule.size.width, closeTo(Divider3d.defaultThickness * 0.01, 1e-9));
+      expect(
+        rule.size.depth,
+        closeTo(Theme3dData.light.thickness.thin * 0.01, 1e-9),
+      );
+      // The 16dp of space it takes across the row is the row's width less
+      // the two boxes beside it.
+      final row = oneOf<Flex3d>(it.surface);
+      expect(
+        row.size.width,
+        closeTo(1.0 + Divider3d.defaultSpace * 0.01, 1e-9),
+      );
+    });
+
+    testWidgets('and it is a slab for the same reason, not a decal', (
+      tester,
+    ) async {
+      // A zero-depth rule on a surface's front face is coplanar with it and
+      // z-fights. The vertical one inherits the whole of that argument.
+      final it = await pumpComponent(tester, () => const VerticalDivider3d());
+      expect(it.decoration.color, Theme3dData.light.colorScheme.outlineVariant);
+      expect(it.panels.single.size.depth, greaterThan(0.0));
+    });
+
+    testWidgets('announces nothing unless told to', (tester) async {
+      final quiet = await pumpComponent(
+        tester,
+        () => const VerticalDivider3d(),
+      );
+      expect(boxesOf<Semantics3d>(quiet.surface), isEmpty);
+
+      final named = await pumpComponent(
+        tester,
+        () => const VerticalDivider3d(semanticLabel: 'End of section'),
+      );
+      expect(named.semantics.properties.label, 'End of section');
+    });
+
+    testWidgets('indents run along the vertical axis here', (tester) async {
+      final it = await pumpComponent(
+        tester,
+        () => const VerticalDivider3d(indent: 8, endIndent: 16),
+      );
+      final padding = oneOf<Padding3d>(it.surface);
+      expect(padding.padding.top, closeTo(0.08, 1e-9));
+      expect(padding.padding.bottom, closeTo(0.16, 1e-9));
+      expect(padding.padding.left, 0.0);
+    });
+  });
 }

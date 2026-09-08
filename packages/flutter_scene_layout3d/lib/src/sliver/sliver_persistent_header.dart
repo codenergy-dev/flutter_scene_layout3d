@@ -501,3 +501,88 @@ class SliverPersistentHeader3d extends Sliver3d
     properties.add(DoubleProperty('obstructedExtent', obstructedExtent));
   }
 }
+
+/// A delegate over a subtree somebody else owns and keeps.
+///
+/// The seam the declarative layer needs. A [SliverPersistentHeader3dDelegate]
+/// is asked to *build* on every layout, and a widget cannot answer that: a
+/// subtree is inflated by the element tree, in Flutter's build phase, and the
+/// only machinery here that inflates one inside a layout pass is the lazily
+/// built children lane, which a header is not. So the widget layer keeps one
+/// subtree, attaches it as [SliverPersistentHeader3d.child] the ordinary way,
+/// and this delegate hands that same instance back every time — which is the
+/// shape [SliverPersistentHeader3dDelegate] already asks for, stated as a
+/// class rather than as advice.
+///
+/// The header therefore never drops or disposes the content: `build` returns
+/// what is already there, so `identical` holds and nothing is replaced. The
+/// subtree belongs to whoever attached it.
+///
+/// [shrinkOffset] and `overlapsContent` are recorded rather than acted on,
+/// for the same reason: acting on either means building something different,
+/// and there is nothing here that can. What survives is the **constraint** —
+/// the header lays its child out loose against however much of [maxExtent]
+/// is left — so a bar that fills what it is offered still collapses.
+class HeldSliverPersistentHeader3dDelegate
+    extends SliverPersistentHeader3dDelegate {
+  /// Creates a delegate over a subtree the caller attaches.
+  HeldSliverPersistentHeader3dDelegate({
+    required double minExtent,
+    required double maxExtent,
+  }) : _minExtent = minExtent,
+       _maxExtent = maxExtent;
+
+  /// The header this delegate belongs to, set once by whoever built it.
+  ///
+  /// Late rather than a constructor argument because the two refer to each
+  /// other: the header takes the delegate, and the delegate reads the
+  /// header's child.
+  late SliverPersistentHeader3d header;
+
+  double _minExtent;
+
+  @override
+  double get minExtent => _minExtent;
+
+  set minExtent(double value) {
+    if (_minExtent == value) return;
+    _minExtent = value;
+  }
+
+  double _maxExtent;
+
+  @override
+  double get maxExtent => _maxExtent;
+
+  set maxExtent(double value) {
+    if (_maxExtent == value) return;
+    _maxExtent = value;
+  }
+
+  /// The shrink offset of the most recent build, for anything reading the
+  /// header's state from outside the layout pass.
+  double get lastShrinkOffset => _lastShrinkOffset;
+  double _lastShrinkOffset = 0.0;
+
+  /// Whether the header was covering content on the most recent build.
+  bool get lastOverlapsContent => _lastOverlapsContent;
+  bool _lastOverlapsContent = false;
+
+  @override
+  Layout3d build(double shrinkOffset, {required bool overlapsContent}) {
+    _lastShrinkOffset = shrinkOffset;
+    _lastOverlapsContent = overlapsContent;
+    final held = header.child;
+    assert(
+      held != null,
+      'A $runtimeType has no content. The subtree is attached as the '
+      "header's child by whoever owns it — a SceneSliverPersistentHeader3d "
+      'attaches the widget it was given — so a null one means the header was '
+      'laid out before anything was put in it.',
+    );
+    return held!;
+  }
+
+  @override
+  bool shouldRebuild(HeldSliverPersistentHeader3dDelegate oldDelegate) => false;
+}
