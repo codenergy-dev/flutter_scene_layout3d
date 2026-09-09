@@ -11,7 +11,7 @@ import 'package:flutter/widgets.dart'
     show Builder, BuildContext, FocusManager, Widget;
 import 'package:flutter_scene/scene.dart' show Node;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart'
-    show DecoratedBox3d;
+    show DecoratedBox3d, Ripple3d;
 import 'package:flutter_scene_layout3d/widgets.dart';
 import 'package:flutter_scene_material3d/flutter_scene_material3d.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -141,7 +141,9 @@ void main() {
       expect(identical(control.layer, first), isTrue);
     });
 
-    testWidgets('a press lights it harder and lets go', (tester) async {
+    testWidgets('a press ripples from where it landed, and lets go', (
+      tester,
+    ) async {
       var taps = 0;
       final control = await pumpControl(tester, onTap: () => taps++);
       final laidOut = control.child.layoutCount;
@@ -156,11 +158,37 @@ void main() {
       // test that presses and lets go in the same instant sees the wash
       // appear and vanish between two statements.
       await tester.pump(kPressTimeout);
-      expect(control.layer.opacity, theme.stateLayer.press);
+
+      // Since phase 8 the press wash arrives as a circle rather than
+      // everywhere at once, so the *uniform* half of the layer carries the
+      // other states only and the press rides in the ripple.
+      await tester.pump(const Duration(milliseconds: 60));
+      final growing = control.layer.ripple!;
+      expect(growing.origin.x, closeTo(1, 1e-6));
+      expect(growing.origin.y, closeTo(1, 1e-6));
+      expect(growing.radius, greaterThan(0.0));
+      expect(control.layer.opacity, 0.0, reason: 'nothing else is in force');
+
+      // Held past the expand, the circle covers the control at exactly the
+      // press figure — which is, pixel for pixel, the uniform wash this test
+      // used to assert.
+      await tester.pump(const Duration(milliseconds: 400));
+      final full = control.layer.ripple!;
+      expect(
+        full.radius,
+        closeTo(
+          Ripple3d.radiusCovering(control.panel.size, growing.origin),
+          1e-9,
+        ),
+      );
+      expect(full.opacity, closeTo(theme.stateLayer.press, 1e-9));
 
       pointer.up();
       expect(taps, 1);
-      expect(control.layer, StateLayer3d.none);
+      // A ticker's first tick is its own zero, so the fade needs a frame to
+      // start before it needs frames to run. Settling covers both.
+      await tester.pumpAndSettle();
+      expect(control.layer, StateLayer3d.none, reason: 'the ripple faded out');
       expect(control.child.layoutCount, laidOut);
       expect(control.builds[0], built);
       expect(control.surface.needsFlush, isFalse);
@@ -215,15 +243,23 @@ void main() {
       pointer.hover(rayAt(control.surface, const Offset3d(1, 1, 0)));
       pointer.down(rayAt(control.surface, const Offset3d(1, 1, 0)));
       await tester.pump(kPressTimeout);
+      await tester.pump(const Duration(milliseconds: 400));
 
-      expect(control.layer.opacity, theme.stateLayer.press);
-      expect(
-        control.layer.opacity,
-        lessThan(theme.stateLayer.hover + theme.stateLayer.press),
-      );
+      // The rule survives the ripple splitting the figure in two. Outside the
+      // circle the box wears the hover; inside it the ripple's alpha is
+      // whatever composites over that hover to exactly the press figure, so
+      // the strongest state still wins and the two are never summed.
+      final layer = control.layer;
+      expect(layer.opacity, theme.stateLayer.hover);
+      final inside =
+          1.0 - (1.0 - layer.opacity) * (1.0 - layer.ripple!.opacity);
+      expect(inside, closeTo(theme.stateLayer.press, 1e-9));
+      expect(inside, lessThan(theme.stateLayer.hover + theme.stateLayer.press));
 
       pointer.up();
+      await tester.pumpAndSettle();
       expect(control.layer.opacity, theme.stateLayer.hover);
+      expect(control.layer.ripple, isNull);
     });
   });
 

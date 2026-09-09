@@ -45,9 +45,24 @@ void main() {
         'surface_tint',
       ]),
     );
+    expect(declared, containsAll(<String>['ripple_origin', 'ripple']));
     for (var i = 0; i < Clip3dRegion.maxPlanes; i++) {
       expect(declared, contains('clip_plane_$i'));
     }
+  });
+
+  test('the ripple is two floats each, and no colour of its own', () {
+    // The design bet of phase 8 stated as a shape: a ripple adds a vec2 for
+    // where it is centred and a vec2 for how big and how strong it is, and
+    // borrows `state_layer`'s colour. A ripple that grew a colour parameter
+    // would be a second wash that could disagree with the first.
+    final byName = <String, FmatParameter>{
+      for (final parameter in compiled.material.parameters)
+        parameter.name: parameter,
+    };
+    expect(byName['ripple_origin']!.type, FmatType.vec2);
+    expect(byName['ripple']!.type, FmatType.vec2);
+    expect(byName.keys.where((n) => n.startsWith('ripple')), hasLength(2));
   });
 
   test('it blends, so a corner that is discarded is not a hole', () {

@@ -95,10 +95,31 @@ smooth interaction becomes a stutter:
 
 1. **Repaint only.** `DecoratedBox3d.decoration` and `.stateLayer` are setters
    that never touch layout — they write shader uniforms. A colour, a corner, an
-   elevation, a hover state: all of this.
+   elevation, a hover state, **a press ripple**: all of this. The ripple is the
+   one that runs on a `Ticker` — `flutter_scene_material3d`'s
+   `MutableInkController3d` assigns `stateLayer` once a frame and nothing else
+   — and `test/ink_ripple_test.dart` there counts the builds and the layouts
+   across sixty frames of one to say so.
 2. **Node only.** `nodeOffset` and `nodeTransform` write one matrix a frame and
    never call `markNeedsLayout`. A slide, a lift, a press, a turn.
 3. **Implicit**, and only when a size really changed.
+
+**An animation that has stopped changing should stop asking for frames**, and
+saying when it has is the driver's job rather than the ticker's. A press
+ripple's circle covers the control after a quarter of a second and then holds
+until the finger lifts; `InkRipple3dRun.isSettledAt` is that sentence, and the
+controller stops its `Ticker` on it. Two things follow that are easy to get
+wrong. A `Ticker` restarted after a stop begins its clock again at **zero**, so
+a driver that stops and resumes has to carry its own baseline and add the
+ticker's elapsed to it. And a ticker that never stops makes
+`tester.pumpAndSettle()` spin forever, so "the animation is finished" and "the
+animation is *resting*" both have to end the ticking.
+
+**A `Ticker`'s first tick is its own zero.** `tester.pump(someDuration)`
+advances the clock, but the baseline is set *by* the first tick, so the first
+frame after an animation starts always reports elapsed zero. A test that pumps
+once and reads a radius reads nothing and concludes the animation never
+started. Pump twice, or settle.
 
 **A bar that fills is a scale, not a width**, and that is worth knowing before
 you write the obvious thing. A slider's active track, a progress bar, a meter:
@@ -603,6 +624,15 @@ Three things that cost time in phase 5 and are invisible from the code.
   from the call; only the geometry waits. A test that opens something and
   asserts in the same turn sees an overlay with one entry and no boxes in it:
   `await tester.pump()` once.
+- **A `Layout3dPointer` carries the live sequences, so make one and keep it.**
+  A test helper that spells `pointer` as a getter returning
+  `Layout3dPointer(surface)` hands out a fresh instance per statement, and the
+  `up()` then lands nowhere: the press never ends, the state never leaves the
+  set, and the next `down()` is swallowed as a state that is already in force.
+  Every symptom is a plausible wrong answer rather than an error — a ripple
+  that keeps the previous press's origin, a cancel that lights nothing up, a
+  wash that never fades — which is what makes it expensive. Hold one in a
+  field.
 - **A component has two `TapTarget3d`s per control, not one.** The outer one
   carries the 48dp reach and the `InkWell3d`'s own sits inside it at
   `Size3d.zero` — one target rather than two nested ones disagreeing about
@@ -646,6 +676,14 @@ write a scene there.
   reads neutral, so "the thumb carries less of the track's purple than the
   track does" compares two quantities of the same kind and has no threshold in
   it at all.
+- **A scene has to be built so the order it asserts is a real question.** The
+  rule below and the one above it say what *not* to assert. This is the other
+  half, and phase 8's ripple scenes are the case: three moments of one
+  animation, and the first attempt had the second and third both covering the
+  whole sample grid, because `Curves.ease` is 95% of the way home two thirds of
+  the way through. The fix is never a looser assertion — it is choosing the
+  moments and the sample grid *together* so the counts come out well separated
+  and every reading is several pixels clear of the edge the claim turns on.
 - **A difference is not a direction, and a shader test wants the direction.**
   "The rim of this panel is a different colour from its middle" is satisfied
   just as well when the two are swapped, which is exactly how the panel shader

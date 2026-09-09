@@ -93,6 +93,14 @@ Two entry points:
   package did not have — a widget subtree as an overlay entry's content, and
   any way at all to anchor one box to another — both landed in
   [a widget under an overlay entry](../packages/flutter_scene_layout3d/plans/2026_09_08_a_widget_under_an_overlay_entry.md).
+  Phase 7, the selection controls, is the one phase since the third that needed
+  **nothing** here — `PointerSequence3d.addArenaMember` had been built for
+  exactly that customer and took a slider without a change. Phase 8, the press
+  ripple, is done as well, and its half of the layout package is
+  [where a press landed](../packages/flutter_scene_layout3d/plans/2026_09_09_where_a_press_landed.md):
+  two shader parameters, a `Ripple3d` on `StateLayer3d`, and
+  `Layout3d.localPointFrom` — `anchorOffsetTo`'s own change of frame,
+  generalized off an alignment, because a finger is not an alignment.
 
 ## Keeping this true
 

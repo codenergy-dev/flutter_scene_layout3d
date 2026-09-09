@@ -1,11 +1,124 @@
+import 'dart:math' as math;
 import 'dart:ui' show Color, lerpDouble;
 
 import 'package:flutter_scene/scene.dart' show Node;
 
 import '../clip.dart';
 import '../geometry/basis3d.dart';
+import '../geometry/offset3d.dart';
 import '../geometry/size3d.dart';
 import '../metrics.dart';
+
+/// A press ripple: a circle of state layer expanding from where the finger
+/// landed.
+///
+/// The half of Material's state layer that one colour and one opacity cannot
+/// express. A [StateLayer3d] washes the whole box; this washes a disc of it,
+/// and a component grows [radius] over a few frames to make the wash arrive
+/// from the point that was touched rather than everywhere at once.
+///
+/// It costs the same as the wash does — two more shader parameters on the
+/// panel material, no second mesh and no second box — because the panel
+/// shader already knows where in the box each fragment is. That is the whole
+/// reason this is a value with three numbers in it rather than an ink feature
+/// that paints itself.
+///
+/// **The colour is [StateLayer3d.color], not a colour of its own.** Material 3
+/// describes the press state layer as *arriving* with a ripple, so the ripple
+/// is the press wash with an origin rather than a second thing drawn over it.
+/// Carrying a colour here would let the two drift apart with nothing to say
+/// which was right.
+///
+/// **[origin] and [radius] are in world units**, unlike every figure on
+/// [BoxDecoration3d], and the reason is where they come from: a press reports
+/// its position through [PointerEvent3d.localPosition], which is in units and
+/// stays exact for a surface seen at any angle, and the radius has to be
+/// compared against a box's extent, which is in units too. Converting through
+/// the metrics and back would be a round trip that could only lose precision.
+/// `InkWell3d.minimumSize` in `flutter_scene_material3d` takes world units for
+/// the same reason.
+class Ripple3d {
+  /// Creates a ripple centred on [origin] at [radius].
+  const Ripple3d({
+    required this.origin,
+    required this.radius,
+    this.opacity = 0.0,
+  }) : assert(radius >= 0.0),
+       assert(opacity >= 0.0 && opacity <= 1.0);
+
+  /// Where the press landed, in the decorated box's **own frame**: the origin
+  /// corner is `(0, 0, 0)`, which is the frame a hit test's local position and
+  /// the clip planes are both already in.
+  ///
+  /// Only the two in-plane components are drawn — a ripple is a circle on the
+  /// face, not a sphere in the slab — so the depth of the point the ray
+  /// entered at is carried and ignored.
+  final Offset3d origin;
+
+  /// How far the ripple has expanded, in world units.
+  final double radius;
+
+  /// How much of [StateLayer3d.color] to blend inside the circle, from zero
+  /// to one.
+  final double opacity;
+
+  /// Whether this ripple draws anything.
+  bool get isNone => opacity == 0.0 || radius == 0.0;
+
+  /// The radius at which a ripple centred on [origin] covers every corner of
+  /// a box of [size].
+  ///
+  /// What a component grows a press ripple *to*: Material's ripple ends
+  /// having covered the control, and a press near a corner therefore has
+  /// further to travel than one in the middle. Measured on the face only, for
+  /// the same reason [origin]'s depth is ignored.
+  static double radiusCovering(Size3d size, Offset3d origin) {
+    final dx = math.max(origin.x.abs(), (size.width - origin.x).abs());
+    final dy = math.max(origin.y.abs(), (size.height - origin.y).abs());
+    return math.sqrt(dx * dx + dy * dy);
+  }
+
+  /// A copy with the given fields replaced.
+  Ripple3d copyWith({Offset3d? origin, double? radius, double? opacity}) =>
+      Ripple3d(
+        origin: origin ?? this.origin,
+        radius: radius ?? this.radius,
+        opacity: opacity ?? this.opacity,
+      );
+
+  /// Linearly interpolates between two ripples, either of which may be null.
+  ///
+  /// A missing end is treated as the other one at zero opacity and zero
+  /// radius, so a ripple appearing or disappearing grows and shrinks from its
+  /// own centre instead of sliding in from `(0, 0)`.
+  static Ripple3d? lerp(Ripple3d? a, Ripple3d? b, double t) {
+    if (a == null && b == null) return null;
+    final from = a ?? Ripple3d(origin: b!.origin, radius: 0.0);
+    final to = b ?? Ripple3d(origin: a!.origin, radius: 0.0);
+    return Ripple3d(
+      origin: Offset3d.lerp(from.origin, to.origin, t),
+      radius: lerpDouble(
+        from.radius,
+        to.radius,
+        t,
+      )!.clamp(0.0, double.infinity),
+      opacity: lerpDouble(from.opacity, to.opacity, t)!.clamp(0.0, 1.0),
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is Ripple3d &&
+      other.origin == origin &&
+      other.radius == radius &&
+      other.opacity == opacity;
+
+  @override
+  int get hashCode => Object.hash(origin, radius, opacity);
+
+  @override
+  String toString() => 'Ripple3d($origin, r: $radius, at: $opacity)';
+}
 
 /// The overlay a control paints over itself to say what is happening to it.
 ///
@@ -17,10 +130,17 @@ import '../metrics.dart';
 /// layout per state. A uniform means a pressed button costs a parameter write
 /// and a frame, and [DecoratedBox3d.stateLayer] enforces that by not marking
 /// anything dirty for layout when it is set.
+///
+/// [ripple] is the one thing a single colour and a single opacity cannot say:
+/// *where* the press landed. It rides on the same object, on the same tier,
+/// and is drawn in the same [color] — see [Ripple3d].
 class StateLayer3d {
   /// Creates a state layer.
-  const StateLayer3d({this.color = const Color(0xFFFFFFFF), this.opacity = 0.0})
-    : assert(opacity >= 0.0 && opacity <= 1.0);
+  const StateLayer3d({
+    this.color = const Color(0xFFFFFFFF),
+    this.opacity = 0.0,
+    this.ripple,
+  }) : assert(opacity >= 0.0 && opacity <= 1.0);
 
   /// No overlay, and the default.
   static const StateLayer3d none = StateLayer3d(opacity: 0.0);
@@ -34,18 +154,36 @@ class StateLayer3d {
   /// How much of [color] to blend in, from zero to one.
   final double opacity;
 
+  /// The press ripple in force, or null for none.
+  ///
+  /// Drawn **over** the uniform wash, in the same [color]: a hovered control
+  /// that is pressed keeps its 8% everywhere and takes the press's 10% inside
+  /// the expanding circle. A component that wants the press to be *only* the
+  /// ripple resolves the uniform half without the pressed state, which is what
+  /// `flutter_scene_material3d`'s ink controller does.
+  ///
+  /// Setting this is on the same tier as [opacity] — one uniform, one
+  /// repaint — which is what makes an animated ripple legal at all. See
+  /// [DecoratedBox3d.stateLayer].
+  final Ripple3d? ripple;
+
   /// Whether this layer changes anything.
-  bool get isNone => opacity == 0.0;
+  bool get isNone => opacity == 0.0 && (ripple?.isNone ?? true);
 
   /// [color] with [opacity] folded into its alpha, which is the single value
   /// a shader wants.
   Color get resolvedColor => color.withValues(alpha: color.a * opacity);
 
   /// A copy with the given fields replaced.
-  StateLayer3d copyWith({Color? color, double? opacity}) => StateLayer3d(
-    color: color ?? this.color,
-    opacity: opacity ?? this.opacity,
-  );
+  ///
+  /// [ripple] cannot be cleared this way; construct a new layer for that, the
+  /// way `copyWith` on a nullable field always has to be used.
+  StateLayer3d copyWith({Color? color, double? opacity, Ripple3d? ripple}) =>
+      StateLayer3d(
+        color: color ?? this.color,
+        opacity: opacity ?? this.opacity,
+        ripple: ripple ?? this.ripple,
+      );
 
   /// Linearly interpolates between two state layers.
   ///
@@ -56,18 +194,27 @@ class StateLayer3d {
       StateLayer3d(
         color: t < 0.5 ? a.color : b.color,
         opacity: lerpDouble(a.opacity, b.opacity, t)!.clamp(0.0, 1.0),
+        ripple: Ripple3d.lerp(a.ripple, b.ripple, t),
       );
 
   @override
   bool operator ==(Object other) =>
-      other is StateLayer3d && other.color == color && other.opacity == opacity;
+      other is StateLayer3d &&
+      other.color == color &&
+      other.opacity == opacity &&
+      other.ripple == ripple;
 
   @override
-  int get hashCode => Object.hash(color, opacity);
+  int get hashCode => Object.hash(color, opacity, ripple);
 
   @override
-  String toString() =>
-      isNone ? 'StateLayer3d.none' : 'StateLayer3d($color at $opacity)';
+  String toString() {
+    if (isNone) return 'StateLayer3d.none';
+    final ripple = this.ripple;
+    return ripple == null
+        ? 'StateLayer3d($color at $opacity)'
+        : 'StateLayer3d($color at $opacity, $ripple)';
+  }
 }
 
 /// The part of a decoration that stands off its parent.

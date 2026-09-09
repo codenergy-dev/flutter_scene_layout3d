@@ -105,6 +105,78 @@ const Color _panelBorder = Color(0xFFEA9F26);
 /// Every decoration scene is this tree with a different decoration on it, so
 /// that a pair of captures differs in exactly the thing under test and the
 /// plain panel can be the control for all three.
+/// The four moments `ripple_*` captures, in the order they happen.
+///
+/// `InkRipple3dStyle.material` grows the circle over 225ms on `Curves.ease`
+/// and brings the wash up over 75ms, so the three pressed moments are all at
+/// **full** opacity — the earliest is the instant the fade-in finishes — and
+/// the only thing that differs between them is the radius. That is deliberate:
+/// the claim under test is how much of the panel is covered, and a run whose
+/// opacity was still climbing would let a growing circle be confused with a
+/// deepening wash.
+///
+/// The figures are picked so that the test's grid lands 15, 21 and 24 lit
+/// points out of 24, with every reading at least eight pixels clear of the
+/// circle's rim — near enough to the boundary to be a real question, far
+/// enough that a pixel of anti-aliasing cannot decide it.
+const List<(String, Duration)> _rippleMoments = <(String, Duration)>[
+  ('ripple_rest', Duration.zero),
+  ('ripple_early', Duration(milliseconds: 75)),
+  ('ripple_growing', Duration(milliseconds: 110)),
+  ('ripple_covered', Duration(milliseconds: 260)),
+];
+
+/// A Material panel with one press ripple on it, [elapsed] into its run.
+///
+/// The ripple is not written by hand. `InkRipple3dRun` is the same object the
+/// ink controller drives from a `Ticker`, asked what the ripple looks like at
+/// a moment — so this scene is a picture of the shipped timeline rather than
+/// of a radius a probe author chose, exactly as `material_hover` resolves a
+/// real `StateLayerOpacity3d` rather than writing 0.08.
+///
+/// A zero elapsed is the control: the run is at radius nothing, which is the
+/// panel with no press on it, and it is what every other moment's grid is
+/// measured against.
+ProbeSceneContent _rippleScene(Duration elapsed) {
+  const theme = Theme3dData.light;
+  final panel = DecoratedBox3d(
+    decoration: Material3d.decorationFor(
+      theme,
+      color: theme.colorScheme.surfaceContainerLow,
+      shape: theme.shape.medium,
+      thickness: theme.thickness.raised,
+      surfaceTint: const Color(0x00000000),
+    ),
+    name: 'panel',
+  );
+  final surface = Layout3dSurface(
+    constraints: Constraints3d.tight(const Size3d(3.6, 1.8, 0.1)),
+    child: panel,
+  );
+  // Flushed here so the run is built against the size *layout* gave the
+  // panel, not against the constraints the scene asked for.
+  surface.flush();
+
+  // Well left of centre, so that a disc around it is plainly not the panel
+  // and the far end of the panel is the last thing it reaches.
+  final origin = Offset3d(
+    panel.size.width * 0.15,
+    panel.size.height * 0.5,
+    0.0,
+  );
+  final run = InkRipple3dRun.covering(
+    size: panel.size,
+    origin: origin,
+    opacity: theme.stateLayer.press,
+  );
+  panel.stateLayer = StateLayer3d(
+    color: theme.colorScheme.onSurface,
+    ripple: run.rippleAt(elapsed),
+  );
+
+  return ProbeSceneContent(surfaces: [surface], probes: {'panel': panel});
+}
+
 ProbeSceneContent _panelScene(
   BoxDecoration3d decoration, {
   StateLayer3d stateLayer = StateLayer3d.none,
@@ -2051,6 +2123,27 @@ final List<ProbeScene> kProbeScenes = <ProbeScene>[
     camera: _wideCamera(),
     preload: installPanelPainter,
   ),
+
+  // ── The press ripple ─────────────────────────────────────────────────
+  //
+  // Phase 8's one claim, and it is a claim about a picture and nothing else:
+  // **the lit fraction of the panel grows.** A ripple mid-expansion covers
+  // more of the box than it did earlier and less of it than the box, and no
+  // amount of arithmetic on this side of the seam can say whether the disc
+  // the shader draws is centred where the finger landed, is round, or is
+  // there at all.
+  //
+  // The four scenes are the *same* panel with the *same* run of the *same*
+  // animation, sampled at four moments. Nothing but the elapsed time differs,
+  // which is what lets the test compare a grid of points across captures
+  // instead of inventing a threshold for "lit": a point is lit when it is
+  // darker than that same point on the same panel with no press on it.
+  //
+  // The light theme, for the reason the elevation scene gives — a dark M3
+  // surface is inside this harness's clear tolerance and reads as background
+  // — so the wash reads as *darker*, since `onSurface` is near black.
+  for (final (id, elapsed) in _rippleMoments)
+    ProbeScene(id, () => _rippleScene(elapsed), preload: installPanelPainter),
 
   // ── The icon question ────────────────────────────────────────────────
   //

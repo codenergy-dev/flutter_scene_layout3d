@@ -24,7 +24,7 @@ once it became clear the scope was its own project. That history is preserved:
 | Package | What it is |
 | --- | --- |
 | `packages/flutter_scene_layout3d` | The layout protocol. Constraints, intrinsics, baselines, flex, stack, wrap, slivers, scrolling, text measurement, decoration, clipping, pointer dispatch, focus, overlays, animation, diagnostics. |
-| `packages/flutter_scene_material3d` | Material Design 3 on that protocol. Today: the six token families (`ColorScheme3d`, `Typography3d`, `ShapeScale3d`, `Elevation3d`, `Thickness3d`, `StateLayerOpacity3d`), `Theme3dData` and `SceneTheme3d`, `initializeMaterial3d()`, the primitive layer — `Material3d`, `InkWell3d`, `Icon3d`, `SceneTextStyle3d` — the seven buttons over one `ButtonStyle3d`, the surfaces and rows (`Card3d`, `ListTile3d`, `Divider3d`, `Chip3d`), the structure (`Scaffold3d`, `AppBar3d`, `SliverAppBar3d`, `NavigationBar3d`, `NavigationRail3d`, `VerticalDivider3d`) and the overlays: `Dialog3d` and `showDialog3d`, `Menu3d` and `PopupMenuButton3d`, `SnackBar3d` behind a `ScaffoldMessenger3d`, `Tooltip3d`, and `BottomSheet3d` in both its forms, and the selection controls (`Checkbox3d`, `Radio3d`, `Switch3d`, `Slider3d`). The catalogue continues with the press ripple. |
+| `packages/flutter_scene_material3d` | Material Design 3 on that protocol. Today: the six token families (`ColorScheme3d`, `Typography3d`, `ShapeScale3d`, `Elevation3d`, `Thickness3d`, `StateLayerOpacity3d`), `Theme3dData` and `SceneTheme3d`, `initializeMaterial3d()`, the primitive layer — `Material3d`, `InkWell3d`, `Icon3d`, `SceneTextStyle3d` — the seven buttons over one `ButtonStyle3d`, the surfaces and rows (`Card3d`, `ListTile3d`, `Divider3d`, `Chip3d`), the structure (`Scaffold3d`, `AppBar3d`, `SliverAppBar3d`, `NavigationBar3d`, `NavigationRail3d`, `VerticalDivider3d`) and the overlays: `Dialog3d` and `showDialog3d`, `Menu3d` and `PopupMenuButton3d`, `SnackBar3d` behind a `ScaffoldMessenger3d`, `Tooltip3d`, and `BottomSheet3d` in both its forms, the selection controls (`Checkbox3d`, `Radio3d`, `Switch3d`, `Slider3d`) and the press ripple. The catalogue continues with the gallery. |
 | `examples/layout3d_gallery` | The example app. Three surfaces — an upright panel, a ground plane, a scrolling list — all hit-testable. |
 | `examples/render_probe` | Render tests. Draws the layout on a GPU and probes the frame at the pixels layout says to check. Commits its platform scaffolding, unlike the gallery. |
 
@@ -86,10 +86,21 @@ took a slider without a change. Two things came out of it that outlive the
 components: `Thickness3d.stepOver`, because the "stand proud of what it is
 drawn on" arithmetic had been written by hand three times and this phase needed
 it four more; and `NodeShift3d`, the declarative form of the node tier, whose
-*scale* channel is what lets a slider's track fill without a relayout. The
-catalogue continues with the press ripple at phase 8.
+*scale* channel is what lets a slider's track fill without a relayout.
+**Phase 8 is done too**: the press ripple, which is the first thing in the
+catalogue that writes a shader uniform every frame and never leaves the
+repaint-only tier while doing it — `Ripple3d` on `StateLayer3d`,
+`InkRipple3dRun` as the timeline with no ticker in it, and a press whose origin
+is carried from the box that recognized it to the box that draws the wash by
+`Layout3d.localPointFrom`, which is `anchorOffsetTo`'s own arithmetic
+generalized off an alignment, under
+[where a press landed](packages/flutter_scene_layout3d/plans/2026_09_09_where_a_press_landed.md).
+It also found that Material 3's ripple *is* the press state layer rather than a
+second wash over it, so a pressed control's uniform opacity is now the hover
+figure and the ripple carries the rest. The catalogue continues with the
+gallery at phase 9.
 
-Eight things worth knowing before building on any of it, all written up in
+Nine things worth knowing before building on any of it, all written up in
 `docs/traps.md`: handing every `BoxDecoration3d` the *same* material makes a
 screen of panels come out one colour; a `TapTarget3d` reaches past its own
 extent but **its parent does not**, so a target has to sit outside every box
@@ -109,7 +120,10 @@ than its child or it is silently clamped to the wrong thickness; and **a
 glyph's rasterization scale has nothing to do with how big the glyph is** — it
 is `AtlasText3dRenderer.resolution` and nothing else, so small type here is not
 a resolution problem and turning a surface's unit rate up magnifies the quad
-without touching the raster.
+without touching the raster; and **an animation that has stopped changing must
+stop asking for frames**, because a `Ticker` that never stops makes
+`pumpAndSettle` spin forever — and one restarted after a stop begins its clock
+again at zero, so a driver that pauses has to carry its own baseline.
 
 ## Running things
 

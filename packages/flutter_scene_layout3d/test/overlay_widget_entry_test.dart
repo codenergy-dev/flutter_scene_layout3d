@@ -399,6 +399,35 @@ void main() {
       expect(TestBox(const Size3d(1, 1, 1)).anchorOffsetTo(anchor), isNull);
     });
 
+    testWidgets('carries an arbitrary point between the two frames', (
+      tester,
+    ) async {
+      // The half of this arithmetic a ripple needs: not an alignment on
+      // either box, but the exact point a finger landed on. The anchor spans
+      // (0, 0) to (2, 2) of the surface and the follower's own origin is at
+      // (4, 4), so the anchor's centre is (-3, -3) in the follower's frame.
+      final (anchor, follower) = await pumpAnchored(tester);
+      final point = follower.localPointFrom(anchor, const Offset3d(1, 1, 0))!;
+      expect(point.x, closeTo(-3, 1e-6));
+      expect(point.y, closeTo(-3, 1e-6));
+
+      // And it is the same arithmetic anchorOffsetTo is written in terms of:
+      // mapping the anchor's centre and subtracting the follower's own is
+      // exactly what that method answers.
+      final delta = follower.anchorOffsetTo(anchor)!;
+      expect(point.x - 1.0, closeTo(delta.x, 1e-6));
+    });
+
+    testWidgets('answers null for a point out of an unlaid-out box', (
+      tester,
+    ) async {
+      final (anchor, follower) = await pumpAnchored(tester);
+      expect(
+        follower.localPointFrom(TestBox(const Size3d(1, 1, 1)), Offset3d.zero),
+        isNull,
+      );
+    });
+
     testWidgets('takes depth too, when asked', (tester) async {
       final (anchor, follower) = await pumpAnchored(tester);
       follower.nodeOffset = const Offset3d(0, 0, -0.5);

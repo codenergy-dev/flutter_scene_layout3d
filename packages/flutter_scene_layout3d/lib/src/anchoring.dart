@@ -18,7 +18,39 @@ import 'layout3d.dart';
 /// world — [Layout3d.worldTransform] is exactly that — so the offset from one
 /// to the other is the anchor's point taken into the world and back out
 /// again in the follower's own frame.
+///
+/// [localPointFrom] is that change of frame on its own, for the case where the
+/// point is not an alignment: where a finger landed, where a model was struck,
+/// where a label should be pinned. [anchorOffsetTo] is written in terms of it,
+/// so there is one piece of arithmetic here and two ways in.
 extension Layout3dAnchoring on Layout3d {
+  /// [point], given in [source]'s own frame, expressed in this box's frame.
+  ///
+  /// Both frames have their origin at the box's corner, which is the frame
+  /// [HitTestEntry3d.localPosition] and [PointerEvent3d.localPosition] are
+  /// already in — so carrying a press from the box that recognized it to the
+  /// box that draws the wash is one call:
+  ///
+  /// ```dart
+  /// final origin = panel.localPointFrom(event.entry.layout, event.localPosition);
+  /// ```
+  ///
+  /// Null when either box has not been laid out yet, or when this box's
+  /// transform cannot be inverted. Like [anchorOffsetTo] it reads
+  /// [worldTransform], so what comes back is measured against the frame
+  /// *layout* put this box in, with [nodeOffset], [sceneOffset] and
+  /// [nodeTransform] undone — which is the frame a decoration's shader draws
+  /// in, and the frame a clip is stated in.
+  Offset3d? localPointFrom(Layout3d source, Offset3d point) {
+    if (!hasSize || !source.hasSize) return null;
+    final intoSelf = Matrix4.zero();
+    if (intoSelf.copyInverse(worldTransform) == 0.0) return null;
+    final moved = intoSelf.transformed3(
+      source.worldTransform.transformed3(Vector3(point.x, point.y, point.z)),
+    );
+    return Offset3d(moved.x, moved.y, moved.z);
+  }
+
   /// The [nodeOffset] that puts this box's [self] point on [anchor]'s
   /// [target] point.
   ///
@@ -67,22 +99,13 @@ extension Layout3dAnchoring on Layout3d {
     Alignment3d target = Alignment3d.center,
     bool includeDepth = false,
   }) {
-    if (!hasSize || !anchor.hasSize) return null;
-    final intoSelf = Matrix4.zero();
-    if (intoSelf.copyInverse(worldTransform) == 0.0) return null;
-    final wanted = intoSelf.transformed3(
-      anchor.worldTransform.transformed3(_pointOf(anchor, target)),
-    );
-    final here = _pointOf(this, self);
+    final wanted = localPointFrom(anchor, target.alongSize(anchor.size));
+    if (wanted == null) return null;
+    final here = self.alongSize(size);
     return Offset3d(
       wanted.x - here.x,
       wanted.y - here.y,
       includeDepth ? wanted.z - here.z : nodeOffset.z,
     );
   }
-}
-
-Vector3 _pointOf(Layout3d layout, Alignment3d alignment) {
-  final point = alignment.alongSize(layout.size);
-  return Vector3(point.x, point.y, point.z);
 }

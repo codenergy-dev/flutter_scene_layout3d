@@ -204,6 +204,51 @@ A component whose *tokens* change with a state — a filled button really is a
 different colour when pressed, not merely washed — cannot use that channel for
 that half. It rebuilds, deliberately, and pays for it.
 
+### The press ripple, on the same tier
+
+A press does not wash the whole control at once: it grows a circle out of the
+point the finger landed on, which is Material 3's own description of how a
+press state layer arrives. That is the one thing in this package that writes a
+shader uniform **every frame**, and it stays exactly where the hover is:
+
+```dart
+Material3d(                     // creates the ticker the ripple runs on
+  child: InkWell3d(             // says where the press landed
+    onTap: submit,
+    child: const SceneText3d('Continue'),
+  ),
+)
+```
+
+Nothing above needs writing, because every component in the catalogue already
+presses through an `InkWell3d`. What is worth knowing about it:
+
+* **The ripple carries the press.** While one is running, the uniform half of
+  the state layer is what the *other* states resolve to and the ripple carries
+  what the press adds over them, so a hovered control still reads 8% outside
+  the circle and 10% inside it. Material resolves one state layer, not a sum,
+  and that rule survives the figure being split in two.
+* **A held press costs nothing.** Once the circle has covered the control the
+  run has settled, the ticker stops, and the picture holds — which is, pixel
+  for pixel, the uniform press wash this package drew before there was a
+  ripple.
+* **One box carries one ripple**, because one box carries one pair of
+  uniforms. A second press replaces the first, origin and clock together.
+* **The timings are `InkRipple3dStyle`**, Flutter's own `InkRipple` figures,
+  and `InkRipple3dRun` is the whole animation as arithmetic — no ticker, no
+  widget, no box in it. Hand a `MutableInkController3d` a different style if
+  you want a slower ripple; it is a component style like `ButtonStyle3d`, not a
+  theme token.
+* **A press that becomes a scroll never ripples.** The run starts on the
+  *reported* press, which Flutter's tap recognizer withholds until it has won
+  the arena or its deadline has passed — so there is no unconfirmed phase to
+  animate, unlike Flutter's.
+
+The claim that it stays on the repaint-only tier is a test, not a promise:
+`test/ink_ripple_test.dart` presses, runs sixty frames of expansion and fade,
+and asserts the build count, the layout count and `needsFlush` are all
+unmoved.
+
 Two edges to know. A press **focuses** the control by default, and since
 nothing here reads Flutter's `highlightMode` to tell a pointer focus from a
 keyboard one, the focus wash outlives the press; pass
@@ -1256,10 +1301,13 @@ filled it.
 
 ## What is not here yet
 
-Honestly, and in the order it is planned: a press **ripple**, which the panel
-shader can express in two more uniforms and a `smoothstep` and which the
-uniform state layer stands in for until then, and a **gallery** — the example
-app installs no painter yet, so it draws no decoration at all.
+Honestly, and in the order it is planned: a **gallery** — the example app
+installs no painter yet, so it draws no decoration at all.
+
+The press ripple has landed; what it deliberately does not do is overlap two
+splashes the way Material does, or escape its own container. Both are the same
+limit seen twice: the ripple is two uniforms on the panel's own shader, so
+there is one of it and it is bounded by the slab the shader draws.
 
 Three things the surfaces and rows left, each for a reason. A filter chip draws
 no **checkmark**: it is a second glyph competing with the container

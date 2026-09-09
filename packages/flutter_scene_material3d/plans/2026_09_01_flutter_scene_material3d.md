@@ -1,8 +1,8 @@
 ---
 status: in progress
-reason: phases 0 to 7 are done — the six token families, the theme channel, initializeMaterial3d, Material3d, InkWell3d, Icon3d, the text styling, the seven buttons, the surfaces and rows, the structure, the overlays, and now the selection controls (Checkbox3d, Radio3d, Switch3d, Slider3d), on 470 headless tests and 70 render probes. Phase 7 is the first phase since phase 3 that needed nothing from the layout package: PointerSequence3d.addArenaMember was waiting for exactly this customer and took a slider without a change. It also turned the "stand proud of what it is drawn on" arithmetic — written by hand in phases 4, 5 and 6 and needed four more times here — into Thickness3d.stepOver. Phases 8 and 9 are open: the ripple, and the gallery
+reason: phases 0 to 8 are done — the six token families, the theme channel, initializeMaterial3d, Material3d, InkWell3d, Icon3d, the text styling, the seven buttons, the surfaces and rows, the structure, the overlays, the selection controls, and now the press ripple, on 488 headless tests and 75 render probes. Phase 8 is the first thing in the catalogue that writes a shader uniform every frame, and it stays on the repaint-only tier: a whole ripple — press, twenty frames of expansion, release, forty frames of fade — costs no build and no layout, and a press *held* costs nothing at all once the circle has grown, because the run settles and the ticker stops. It needed two shader parameters and a change of frame from the layout package, under a plan of its own there. Phase 9 is open: the gallery
 created_at: 2026-09-01T19:15:00Z
-updated_at: 2026-09-09T21:40:00Z
+updated_at: 2026-09-09T23:10:00Z
 commit: 52a2ca7b6a176cf70b5bef6b6b92ff7e7cbf82bd
 ---
 
@@ -230,6 +230,13 @@ focus and drag, and a press that fades in and out is not wrong, only plainer.
 Add the ripple as its own phase with a render probe that watches the lit
 fraction of the panel grow — which is a claim only a drawn frame can check, and
 exactly the kind that the harness was built for.
+
+*Shipped in phase 8, as written.* `ripple_origin` and `ripple` are the two
+parameters, `Ripple3d` on `StateLayer3d` is the value, and the four `ripple_*`
+probe scenes are the same run of the same animation sampled at four moments —
+so the claim is an order between counts of lit points rather than a threshold.
+One thing the paragraph above did not anticipate: the ripple **carries** the
+press rather than being drawn over it. See *What phase 8 found*.
 
 ### Every component needs a thickness, and Material has no token for it
 
@@ -486,9 +493,21 @@ and the unlit wrinkle above is real and documented rather than hypothetical.
       tests** (was 396) and **70 render probes** (was 64). `dart analyze` clean
       across the workspace; the layout package is unchanged at 932. See *What
       phase 7 found*.
-- [ ] **Phase 8 — the ripple.** Two shader parameters, the press animation on
-      the repaint-only tier, and a probe that watches the lit fraction grow.
-      Deliberately last: everything before it works without it.
+- [x] **Phase 8 — the ripple.** Done, and it was two shader parameters as the
+      design said it would be. `Ripple3d` rides on `StateLayer3d` in the layout
+      package, `InkRipple3dRun` is the timeline with no ticker in it,
+      `MutableInkController3d` drives one from a `Ticker` the `Material3d`
+      provides, and `InkWell3d`'s only part is to say *where* — the pointer
+      down's position, moved into the panel's frame by the layout package's new
+      `Layout3d.localPointFrom`. The tier held: a whole ripple costs no build
+      and no layout, and a held press stops asking for frames entirely. The
+      probe passed — the lit fraction of a panel grows from nothing to all of
+      it across four moments of one run, and the early circle is dark where the
+      press landed and not at the far end. **488 headless tests** (was 470) and
+      **75 render probes** (was 70). `dart analyze` clean across the workspace;
+      the layout package is at 944 (was 932), under
+      [where a press landed](../../flutter_scene_layout3d/plans/2026_09_09_where_a_press_landed.md).
+      See *What phase 8 found*.
 - [ ] **Phase 9 — the gallery.** `examples/layout3d_gallery` currently installs
       no painter and therefore draws no decoration at all. A catalogue is
       pointless unseen; give it a screen of real components on the upright
@@ -1342,6 +1361,139 @@ four pixels is all a press has. That is the thinnest the reach has ever been in
 this catalogue (a chip had eight), and `test/selection_test.dart` presses the
 corner from both sides of the boundary.
 
+## What phase 8 found
+
+Nine things. The first changed the shipped meaning of a token, and the last is
+the one that turns a per-frame animation into a free one.
+
+**The ripple does not sit *over* the press wash, it *is* the press wash — and
+that is a change to what a pressed control's `stateLayer.opacity` reads as.**
+The obvious build is Flutter's: a pressed highlight everywhere plus a splash
+on top, which is what `InkWell` does. Material 3 does not describe two things;
+it describes the press state layer *arriving* with a ripple. Building it the
+Flutter way gives a pressed, hovered control about 17% where the circle is —
+the two composited — and this catalogue has a rule against exactly that, which
+`test/ink_well_test.dart` states as *a press over a hover is one wash, the
+stronger one*. So the controller splits one figure in two: the uniform half is
+what the states *other than* the press resolve to, and the ripple carries
+`(press - rest) / (1 - rest)`, the alpha that composites over that wash to
+exactly the press figure. A hovered control still reads 8% outside the circle
+and 10% inside it. The visible consequence for anyone reading the code is that
+`layer.opacity` on a pressed control is now the *hover* figure, or zero, and
+two assertions in `ink_well_test.dart` moved to say so.
+
+**The press has to keep counting toward the peak after the finger has lifted,
+and forgetting that makes the fade instantaneous.** `Material3dState.pressed`
+leaves the set on the up; if the peak is resolved from the live states, it
+drops to the uniform figure at that instant and the ripple's alpha goes to zero
+in one frame — a fade-out that never fades. So while a run is alive the
+controller resolves the peak with the press forced in, and what ends a ripple
+is its own timeline rather than a state leaving a set. This was found by a
+test, not by looking at a frame, which is the argument for having the timeline
+be arithmetic in the first place.
+
+**A held press stops asking for frames, and it falls out of the timeline
+rather than being an optimization bolted on.** Once the circle has covered the
+control and the wash has arrived, nothing about the picture changes until the
+finger lifts — `InkRipple3dRun.isSettledAt` is that sentence — so the
+controller stops its `Ticker` and holds the value. A button held down for a
+minute schedules no frames at all after the first quarter second, and
+`tester.pumpAndSettle()` therefore terminates on a *held* press, which it would
+not if the ripple kept ticking. The run's clock and the ticker's clock part
+company to make it work: the controller keeps a `_base` and adds the ticker's
+own elapsed to it, because a `Ticker` restarted after a stop begins again at
+zero. The minute of holding is simply not counted, which is correct, because
+nothing in the run depends on it.
+
+**A `Ticker`'s first tick is its own zero, and a test that does not know that
+reads a ripple as not having started.** `tester.pump(const Duration(...))`
+advances the clock, but the ticker's baseline is set *by* the first tick, so
+the first frame after a press always reports elapsed zero — radius zero,
+opacity zero. Three tests in `ink_ripple_test.dart` pump twice for this reason
+and say so, and it is why the ink well's own press test settles rather than
+pumping a fade duration. It is not a defect: `AnimationController` behaves
+identically, and a ripple that jumped to its second frame's radius on its first
+would be worse.
+
+**A `Layout3dPointer` carries the live sequences, so a test that makes a new
+one per statement never lets go of the press.** `Inset.pointer` was a getter
+returning `Layout3dPointer(surface)` and four tests failed in four different
+ways — a second press that kept the first one's origin, a cancel that lit
+nothing, a ripple that never faded — all because `up()` went to an instance
+that had never seen the `down()`. The existing `ink_well_test.dart` holds one
+in a local for exactly this reason and never says why. It says why now, in
+`docs/traps.md`, because the failure mode is a *plausible* wrong answer rather
+than an error.
+
+**A `Duration`'s comparisons are method calls, so a `const` constructor cannot
+assert on one.** `InkRipple3dStyle` wanted `assert(expand > Duration.zero)` and
+cannot have it: `>`, `isNegative` and `inMicroseconds` are all beyond a const
+evaluator. This is the same trap phase 5 recorded for `List.length`, met from a
+new direction, and the resolution is the same shape — keep `const`, handle the
+degenerate value gracefully (a zero-length phase is instantaneous rather than an
+infinity), and say in the class why the assert is missing.
+
+**`setColor` does not premultiply, which is what lets the ripple borrow the
+wash's colour.** The ripple carries an alpha and no colour of its own, so the
+shader mixes toward `state_layer.rgb`. That only works because a state layer
+whose *own* alpha is zero — a press with nothing else in force — still has its
+colour in the block. `MaterialParameters.setColor` writes `[r, g, b, a]`
+unpremultiplied, so it does. Had it premultiplied, the ripple would have needed
+a fifth `vec4` and the two colours could have drifted apart.
+
+**The probe's separation had to be designed, not discovered.** The first run of
+`ripple_growth` failed at the second of three moments with 21 lit points out of
+21 — the ripple had already covered the whole grid at 160ms, because
+`Curves.ease` is 95% of the way home by then. The fix is not a looser
+assertion: it is choosing the three moments and the grid together so that the
+counts come out 15, 21 and 24 out of 24 with every reading at least eight
+pixels clear of the circle's rim. That is the harness's rule about thresholds
+seen from the other side — there is still no magnitude in the assertion, but
+the *scene* has to be built so the ordering it asserts is a real question with
+a comfortable answer.
+
+**Turning the ripple on turned it on everywhere, and that is the phase's best
+argument for where it was put.** Nothing in `Button3d`, `Chip3d`,
+`ListTile3d`, `Card3d`, `Checkbox3d`, `Switch3d` or any of the overlays
+changed by a line, and every one of them ripples, because all of them press
+through `InkWell3d` and every `InkWell3d` writes through the one controller a
+`Material3d` publishes. Two of the 470 existing tests moved, both in
+`ink_well_test.dart`, and both because the *figure* moved rather than because
+a component did.
+
+## What phase 8 deliberately left out
+
+Small on purpose, like every phase since the third, and these are the things a
+reader will look for and not find:
+
+- **Two ripples at once.** One box carries one pair of uniforms, so it carries
+  one ripple; a second press replaces the first, origin, radius and clock.
+  Material overlaps its splashes. Doing that here means an array in the uniform
+  block and a loop in the fragment shader — a cost paid by every panel in the
+  tree, for a case a reader meets when they drum their fingers on a button.
+  `test/ink_ripple_test.dart` states the replacement as the behaviour rather
+  than leaving it undefined.
+- **An unbounded ripple.** M3's ripple on a small icon button escapes its
+  container. It cannot here and it is not faked: the ripple is evaluated after
+  the panel's own signed distance field has discarded everything outside the
+  slab, which is what makes a *bounded* ripple free and an unbounded one
+  impossible. There is no box outside the box.
+- **Motion tokens.** `InkRipple3dStyle` holds Flutter's own `InkRipple`
+  figures and is replaceable per controller, exactly as `ButtonStyle3d` is
+  replaceable per button. It is not a seventh token family, and one animation
+  is not a scale — the plan's *Out of scope* section says so and now says why
+  the first animating component did not change its mind.
+- **A ripple on a keyboard activation.** A press with no noted point ripples
+  from the middle of the surface, which is what a space-bar activation would
+  get if anything in this stack activated a control from the keyboard. Nothing
+  does yet; the fallback exists so that a component driving the controller
+  directly — an imperative scene, a component with its own gesture — is never
+  handed a ripple at the origin corner.
+- **`InkResponse3d`'s circular splash.** Flutter distinguishes a bounded ink
+  well from an unbounded ink response with a circular splash. That distinction
+  is about clipping to a container, which is the previous bullet, so there is
+  one interactive primitive here and not two.
+
 ## What phase 7 deliberately left out
 
 Small on purpose, as phases 3 to 6 were told to be, and these are the things a
@@ -1510,7 +1662,11 @@ and a scene that cannot honestly assert its claim is removed, not weakened.
   build every component against, and a generator can be added later without
   changing a single component.
 - **Motion tokens.** M3's easing and duration sets are worth adopting, but only
-  once enough components animate to know which ones are actually used.
+  once enough components animate to know which ones are actually used. Phase 8
+  is the first component that animates at all, and it deliberately did **not**
+  open the family: `InkRipple3dStyle` is a component style like
+  `ButtonStyle3d`, replaceable per controller, and it holds Flutter's own
+  `InkRipple` figures. One animation is not a scale.
 - **Adaptive layouts.** M3's window size classes assume a rectangular window;
   what a size class means for a surface floating in a scene is a genuine design
   question and not one this plan should answer in passing.

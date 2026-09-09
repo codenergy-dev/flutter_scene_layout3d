@@ -137,9 +137,9 @@ failed with a distance of 0.0.
 
 ## The catalogue scenes
 
-The last four scenes belong to `flutter_scene_material3d` rather than to the
-layout protocol, and they are here because there is nowhere else they could
-be: what they check needs a GPU.
+A growing share of the scenes belong to `flutter_scene_material3d` rather than
+to the layout protocol, and they are here because there is nowhere else they
+could be: what they check needs a GPU.
 
 `material_elevation` and `material_hover` build their panels through
 `Material3d.decorationFor`, which is the single place a token becomes a
@@ -209,6 +209,26 @@ perfectly correct. The assertion that survived is a **channel order**: a
 `primary` track reads with blue above red, a near-white thumb reads neutral, so
 "the thumb carries less of the track's purple than the track does" compares two
 quantities of the same kind and has no threshold in it.
+
+The four `ripple_*` scenes are the press ripple, and they are the first family
+here that is *one* scene sampled at several moments. They build the same panel,
+put the same `InkRipple3dRun` on it — the same object the ink controller drives
+from a `Ticker` — and ask it what the ripple looks like at 0, 75, 110 and 260
+milliseconds. The test then samples a grid of twenty-four points on the panel
+in each capture and counts how many are darker than *that same point* in the
+capture with no press on it, which is what makes "lit" a comparison rather than
+a threshold. What is asserted is the order of three such counts: 15, then 21,
+then all 24.
+
+The scene is where the work went, not the assertion. The first version put its
+three moments at 90, 160 and 260ms and the second one already covered the whole
+grid, because `Curves.ease` is 95% of the way home two thirds of the way
+through — so the "order" it asserted was between two numbers that were both the
+maximum. The moments and the grid have to be chosen *together*, so that the
+counts separate and every reading sits several pixels clear of the circle's
+rim. That is the same lesson `switch_thumb` taught from the other side: the
+assertion carries no magnitude, and the *scene* is what has to make the question
+a fair one.
 
 `installPanelPainter` here is `initializeMaterial3d()` — the call a Material
 application makes — which is the only verification lane it has, since loading

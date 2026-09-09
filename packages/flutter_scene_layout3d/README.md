@@ -568,10 +568,64 @@ Everything downstream follows from that:
 * A **state layer** (hover, focus, press, drag) is one uniform.
   `DecoratedBox3d.stateLayer` writes it and asks for a frame; it does not
   even repaint through the layout pipeline.
+* A **press ripple** is two more. `StateLayer3d.ripple` carries a `Ripple3d`
+  — where the press landed, how far the circle has grown and how strong it is
+  — and the shader measures each fragment's distance from that point, because
+  the slab's vertex colours are its own object-space coordinates and a
+  fragment therefore already knows where in the box it is. See *A ripple is a
+  distance* below.
 * Panels **share a painter** through a per-surface cache keyed by
   `Decoration3d.cacheKey`. Every `BoxDecoration3d` returns the same key
   whatever its numbers, so a hundred cards are a hundred boxes, one mesh and
   one material class.
+
+### A ripple is a distance
+
+The one thing one colour and one opacity cannot say is *where* a press landed.
+`StateLayer3d.ripple` says it:
+
+```dart
+// `where` is in world units, in the panel's own frame; `t` runs 0 to 1.
+panel.stateLayer = StateLayer3d(
+  color: const Color(0xFF1D1B20),
+  ripple: Ripple3d(
+    origin: where,
+    radius: Ripple3d.radiusCovering(panel.size, where) * t,
+    opacity: 0.1,
+  ),
+);
+```
+
+Three things about it are worth knowing before you write that line.
+
+**The ripple has no colour of its own.** It is drawn in `StateLayer3d.color`,
+because in Material 3 the ripple *is* the press state layer arriving from a
+point rather than a second wash over it. Two colours could disagree; one
+cannot.
+
+**`origin` and `radius` are in world units, not logical pixels**, which is the
+one place a decoration figure is not a spec number. They are measured against
+a box's extent and they come from a hit test —
+`PointerEvent3d.localPosition`, which is in units and stays exact for a
+surface seen at any angle — so converting to dp and back could only lose
+precision.
+
+**The origin is in the *decorated box's* own frame**, with the origin at its
+corner, which is the frame a hit test's local position and a clip's planes are
+already in. The box that recognizes a press is almost never the box that draws
+the wash, and `Layout3d.localPointFrom` is the change of frame between them:
+
+```dart
+final origin = panel.localPointFrom(event.entry.layout, event.localPosition);
+```
+
+It is the same `worldTransform` round trip `anchorOffsetTo` makes, generalized
+off an alignment, so there is one piece of arithmetic here with two ways in.
+
+Animating a ripple is the same tier as setting a wash: assign the field once a
+frame from a `Ticker` and nothing is laid out or rebuilt.
+`flutter_scene_material3d`'s `InkRipple3dRun` is that timeline with the
+`Ticker` taken out of it, and its `InkWell3d` is where a press turns into one.
 
 ### Elevation is real here
 

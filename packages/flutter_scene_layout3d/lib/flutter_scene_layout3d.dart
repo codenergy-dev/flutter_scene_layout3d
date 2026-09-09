@@ -197,6 +197,7 @@ export 'src/decoration/decoration.dart'
         Decoration3dPainter,
         Decoration3dPainterCache,
         Decoration3dPaintRequest,
+        Ripple3d,
         StateLayer3d;
 export 'src/geometry/alignment3d.dart' show Alignment3d;
 export 'src/geometry/basis3d.dart' show LayoutBasis3d;

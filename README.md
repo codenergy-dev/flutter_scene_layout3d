@@ -162,7 +162,8 @@ The protocol is essentially complete. Constraints, intrinsics and baselines;
 `CustomMultiChildLayout3d` and `LayoutBuilder3d`; the full sliver protocol with
 `CustomScrollView3d`, lazy lists and grids, and persistent headers that pin and
 float; text measurement that matches Skia's line breaking exactly; decoration
-with corners, borders, elevation and state layers; plane clipping; ray-based
+with corners, borders, elevation, state layers and press ripples; plane
+clipping; ray-based
 hit testing with real gesture recognition, hover and focus traversal; overlays,
 modal barriers and a route stack; tweens, implicit animation and scroll
 physics; and a diagnostics layer with tree dumps, overflow reporting and debug
@@ -240,8 +241,11 @@ one `Button3d` over seven `ButtonStyle3d`s; the surfaces and rows are `Card3d`,
 `AppBar3d`, `SliverAppBar3d`, `NavigationBar3d` and `NavigationRail3d`; and the
 overlays are `Dialog3d`, `Menu3d` and `PopupMenuButton3d`, `SnackBar3d` behind
 a queueing `ScaffoldMessenger3d`, `Tooltip3d` and `BottomSheet3d`; and the
-selection controls are `Checkbox3d`, `Radio3d`, `Switch3d` and `Slider3d`. What
-is left is a press ripple and a gallery to see it all in.
+selection controls are `Checkbox3d`, `Radio3d`, `Switch3d` and `Slider3d`. A
+press grows a **ripple** out of the point the finger landed on, which is two
+more uniforms on the same panel shader and one `smoothstep` — and which runs on
+a ticker without rebuilding or laying out a thing. What is left is a gallery to
+see it all in.
 
 The selection controls are where two of this project's rules meet at once. A
 thumb sliding along a track is a `nodeOffset` and a track filling to it is a

@@ -13,6 +13,11 @@
 // (BoxDecoration3dUniforms) converts from the logical pixels a component spec
 // is written in, clamps the radii to what the box can fit and folds the state
 // layer's opacity into its alpha, so nothing here has to know about metrics.
+//
+// That same trick is what makes the press ripple two parameters rather than a
+// redesign: a fragment that knows where in the box it is can measure its own
+// distance from where the finger landed, and the ripple is one smoothstep on
+// that distance.
 
 material {
   name: "BoxDecoration3d",
@@ -36,6 +41,16 @@ material {
     { type: vec4, name: border_color, hint: source_color, default: [0, 0, 0, 1] },
     // Hover / focus / press / drag, opacity already folded into alpha.
     { type: vec4, name: state_layer, hint: source_color, default: [0, 0, 0, 0] },
+    // Where a press landed, in the box's own frame — origin at the box's
+    // corner, the same frame the clip planes are measured in — and only the
+    // two in-plane axes, because a ripple is a circle on the face rather
+    // than a sphere in the slab.
+    { type: vec2, name: ripple_origin, default: [0, 0] },
+    // The press ripple: x its radius, y its alpha. The *colour* is
+    // state_layer.rgb, because Material 3's ripple is the press state layer
+    // with an origin rather than a second wash — which is why this is two
+    // floats and not a fifth vec4.
+    { type: vec2, name: ripple, default: [0, 0] },
     // Material 3's elevation tint, its amount already folded into alpha.
     { type: vec4, name: surface_tint, hint: source_color, default: [0, 0, 0, 0] },
 
@@ -133,6 +148,26 @@ fragment {
     vec4 base = mix(material_params.color, material_params.border_color, border_mix);
     base.rgb = mix(base.rgb, material_params.surface_tint.rgb, material_params.surface_tint.a);
     base.rgb = mix(base.rgb, material_params.state_layer.rgb, material_params.state_layer.a);
+
+    // The press ripple, on top of the uniform wash: the same colour, bounded
+    // by a circle around where the finger landed. The origin arrives in the
+    // corner frame, so it is moved to the centre frame `face` is in by
+    // subtracting the half extent — the same change of frame `clip_p` makes,
+    // in reverse.
+    //
+    // `smoothstep` here is not decoration: without it the circle's rim is a
+    // staircase at any size, and feathering it by one pixel of the *radial*
+    // distance's own screen-space rate of change makes it as sharp as the
+    // display is, exactly as the outline above is.
+    float ripple_alpha = material_params.ripple.y;
+    if (ripple_alpha > 0.0) {
+      vec2 from_origin = face - (material_params.ripple_origin - half_face);
+      float rd = length(from_origin) - material_params.ripple.x;
+      float raa = max(fwidth(rd), 1e-6);
+      float lit = 1.0 - smoothstep(-raa, raa, rd);
+      base.rgb = mix(base.rgb, material_params.state_layer.rgb, ripple_alpha * lit);
+    }
+
     base.a *= coverage;
 
     material.base_color = base;

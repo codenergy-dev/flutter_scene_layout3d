@@ -1,10 +1,18 @@
 import 'dart:ui' show Color;
 
+import 'package:flutter/scheduler.dart' show Ticker, TickerProvider;
 import 'package:flutter/widgets.dart' show BuildContext, InheritedWidget;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart'
-    show DecoratedBox3d, StateLayer3d;
+    show
+        DecoratedBox3d,
+        Layout3d,
+        Layout3dAnchoring,
+        Offset3d,
+        Ripple3d,
+        StateLayer3d;
 
 import '../tokens/state_layer.dart';
+import 'ink_ripple.dart';
 
 /// The seam a hover, a focus or a press reaches a [Material3d] through,
 /// **without rebuilding anything**.
@@ -44,7 +52,24 @@ abstract class InkController3d {
 
   /// Drops every state, for a control that has just been disabled or has lost
   /// the pointer and the focus at once.
+  ///
+  /// A ripple in flight is dropped with them rather than faded: a control that
+  /// has gone disabled or left the tree has nothing left to ripple on.
   void clearInkStates();
+
+  /// Notes where a press landed, so the ripple that may follow knows where to
+  /// start.
+  ///
+  /// [point] is in [source]'s own frame and in **world units**, which is
+  /// exactly what `PointerEvent3d.localPosition` reports — the box that
+  /// recognizes a press and the box that draws the wash are never the same
+  /// box, so the controller does the change of frame with
+  /// `Layout3d.localPointFrom`.
+  ///
+  /// Call it on the pointer *down*. The ripple itself does not start until the
+  /// press is reported, which is later and arena-resolved; a point noted for a
+  /// press that never happens is simply overwritten by the next one.
+  void noteRipplePoint(Layout3d source, Offset3d point);
 
   /// The controller published by the nearest [Material3d] above [context], or
   /// null when there is none.
@@ -102,16 +127,41 @@ class InkController3dScope extends InheritedWidget {
 /// a painter or a pointer: give it a box, set a state, read the box's layer.
 class MutableInkController3d implements InkController3d {
   /// Creates a controller washing in [color] at [opacities].
+  ///
+  /// [vsync] is what makes the press ripple move. Without one the controller
+  /// still works exactly as it did before there was a ripple — a press is the
+  /// uniform press wash, arriving all at once — which is what keeps this class
+  /// constructible in a test that has no ticker to give it, and what a caller
+  /// that wants the plain wash passes. `Material3d` always supplies one.
   MutableInkController3d({
     required Color color,
     StateLayerOpacity3d opacities = StateLayerOpacity3d.baseline,
+    TickerProvider? vsync,
+    InkRipple3dStyle rippleStyle = InkRipple3dStyle.material,
   }) : _color = color,
-       _opacities = opacities;
+       _opacities = opacities,
+       _vsync = vsync,
+       _rippleStyle = rippleStyle;
 
   final Set<Material3dState> _states = <Material3dState>{};
   DecoratedBox3d? _box;
   Color _color;
   StateLayerOpacity3d _opacities;
+
+  final TickerProvider? _vsync;
+  final InkRipple3dStyle _rippleStyle;
+  Ticker? _ticker;
+  InkRipple3dRun? _run;
+  Offset3d? _pressPoint;
+
+  /// The run's own clock, which is not the ticker's.
+  ///
+  /// The two part company on purpose: the ticker is *stopped* while a ripple
+  /// sits at full radius under a held finger, so a button held down for a
+  /// minute schedules no frames at all, and the minute is not counted. See
+  /// [InkRipple3dRun.isSettledAt].
+  Duration _elapsed = Duration.zero;
+  Duration _base = Duration.zero;
 
   @override
   Set<Material3dState> get states => _states;
@@ -119,8 +169,52 @@ class MutableInkController3d implements InkController3d {
   @override
   bool isIn(Material3dState state) => _states.contains(state);
 
+  /// The press ripple in flight, or null when none is.
+  InkRipple3dRun? get ripple => _run;
+
+  /// Whether this controller is currently asking for frames.
+  ///
+  /// False whenever nothing is moving, which includes a press being *held*
+  /// after its ripple has finished growing.
+  bool get isAnimating => _ticker?.isActive ?? false;
+
   /// The layer the current states resolve to.
-  StateLayer3d get layer => _opacities.resolve(_states, _color);
+  ///
+  /// With no ripple in flight this is Material's rule and nothing else: one
+  /// wash, at the strongest of the states in force.
+  ///
+  /// With one, the same figure is split in two. The uniform half is what the
+  /// states *other than* the press resolve to, and the ripple carries what the
+  /// press adds on top of it — `(press - rest) / (1 - rest)`, which is the
+  /// alpha that composites to exactly the press figure over the wash already
+  /// there. So a hovered control that is pressed still reads 8% outside the
+  /// circle and 10% inside it, and never the 18% a sum would give.
+  StateLayer3d get layer {
+    final run = _run;
+    if (run == null) return _opacities.resolve(_states, _color);
+
+    final rest = <Material3dState>{..._states}..remove(Material3dState.pressed);
+    final uniform = _opacities.forStates(rest);
+    // The press counts toward the peak even after the finger has lifted:
+    // what ends a ripple is its own fade, not the state leaving the set.
+    final peak = _opacities.forStates(<Material3dState>{
+      ...rest,
+      Material3dState.pressed,
+    });
+    final over = uniform >= 1.0
+        ? 0.0
+        : ((peak - uniform) / (1.0 - uniform)).clamp(0.0, 1.0);
+
+    return StateLayer3d(
+      color: _color,
+      opacity: uniform,
+      ripple: Ripple3d(
+        origin: run.origin,
+        radius: run.radiusAt(_elapsed),
+        opacity: over * run.opacityAt(_elapsed),
+      ),
+    );
+  }
 
   /// The box this controller washes, or null before the first build.
   DecoratedBox3d? get box => _box;
@@ -137,7 +231,12 @@ class MutableInkController3d implements InkController3d {
   }
 
   /// Forgets the box, when the [Material3d] that owned it is disposed.
+  ///
+  /// A ripple in flight goes with it: there is nothing left to write it onto,
+  /// and a ticker still running would be asking for frames on behalf of a box
+  /// that no longer exists.
   void detach() {
+    _dropRipple();
     _box = null;
   }
 
@@ -159,13 +258,108 @@ class MutableInkController3d implements InkController3d {
   void setInkState(Material3dState state, {required bool active}) {
     final changed = active ? _states.add(state) : _states.remove(state);
     if (!changed) return;
+    if (state == Material3dState.pressed) {
+      if (active) {
+        _startRipple();
+      } else {
+        _releaseRipple();
+      }
+    }
     _apply();
   }
 
   @override
   void clearInkStates() {
-    if (_states.isEmpty) return;
+    final hadRipple = _run != null;
+    if (_states.isEmpty && !hadRipple) return;
     _states.clear();
+    _dropRipple();
+    _apply();
+  }
+
+  @override
+  void noteRipplePoint(Layout3d source, Offset3d point) {
+    _pressPoint = _box?.localPointFrom(source, point);
+  }
+
+  /// Stops the ticker and forgets the ripple, without disposing anything.
+  ///
+  /// Call it when the surface goes away; the controller is reusable
+  /// afterwards, which [detach] and [attach] rely on.
+  void dispose() {
+    _dropRipple();
+    final ticker = _ticker;
+    _ticker = null;
+    // stop() before dispose(): a Ticker with a live future asserts it is not
+    // active when it is disposed, and a control taken out of the tree
+    // mid-press has exactly that.
+    ticker?.stop(canceled: true);
+    ticker?.dispose();
+  }
+
+  void _startRipple() {
+    final box = _box;
+    final vsync = _vsync;
+    if (box == null || vsync == null || !box.hasSize) return;
+    final size = box.size;
+    // A press with no noted point — a keyboard activation, a component driving
+    // the controller directly — ripples from the middle of the surface.
+    final origin =
+        _pressPoint ?? Offset3d(size.width / 2.0, size.height / 2.0, 0.0);
+    // A second press while the first is still fading replaces it. One box
+    // carries one ripple, because one box carries one pair of uniforms, and
+    // the finger that is down now is the one the user is looking at.
+    _run = InkRipple3dRun.covering(
+      size: size,
+      origin: origin,
+      // The peak is applied by [layer], because it depends on the other
+      // states in force and those can change while the ripple runs.
+      opacity: 1.0,
+      style: _rippleStyle,
+    );
+    _elapsed = Duration.zero;
+    _base = Duration.zero;
+    _ticker?.stop();
+    _ensureTicking();
+  }
+
+  void _releaseRipple() {
+    final run = _run;
+    if (run == null) return;
+    run.release(_elapsed);
+    _ensureTicking();
+  }
+
+  void _dropRipple() {
+    if (_run == null) return;
+    _run = null;
+    _pressPoint = null;
+    _ticker?.stop();
+  }
+
+  void _ensureTicking() {
+    final vsync = _vsync;
+    if (vsync == null) return;
+    final ticker = _ticker ??= vsync.createTicker(_tick);
+    if (!ticker.isActive) ticker.start();
+  }
+
+  void _tick(Duration tickerElapsed) {
+    final run = _run;
+    if (run == null) {
+      _ticker?.stop();
+      return;
+    }
+    _elapsed = _base + tickerElapsed;
+    if (run.isDoneAt(_elapsed)) {
+      _dropRipple();
+    } else if (run.isSettledAt(_elapsed)) {
+      // Nothing about the picture will change until the finger lifts, so hold
+      // the clock where it is and stop asking for frames. This is the line
+      // that keeps a held button off the per-frame path entirely.
+      _base = _elapsed;
+      _ticker?.stop();
+    }
     _apply();
   }
 
@@ -175,5 +369,6 @@ class MutableInkController3d implements InkController3d {
 
   @override
   String toString() =>
-      'MutableInkController3d(${_states.isEmpty ? 'idle' : _states.join(', ')})';
+      'MutableInkController3d(${_states.isEmpty ? 'idle' : _states.join(', ')}'
+      '${_run == null ? '' : ', rippling'})';
 }

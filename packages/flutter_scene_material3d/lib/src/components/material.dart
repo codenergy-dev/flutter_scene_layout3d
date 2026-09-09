@@ -2,7 +2,13 @@ import 'dart:ui' show Color;
 
 import 'package:flutter/painting.dart' show TextStyle;
 import 'package:flutter/widgets.dart'
-    show BuildContext, DefaultTextStyle, State, StatefulWidget, Widget;
+    show
+        BuildContext,
+        DefaultTextStyle,
+        SingleTickerProviderStateMixin,
+        State,
+        StatefulWidget,
+        Widget;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart'
     show
         Alignment3d,
@@ -217,11 +223,16 @@ class Material3d extends StatefulWidget {
   State<Material3d> createState() => _Material3dState();
 }
 
-class _Material3dState extends State<Material3d> {
+class _Material3dState extends State<Material3d>
+    with SingleTickerProviderStateMixin {
   MutableInkController3d? _ink;
 
   @override
   void dispose() {
+    // Before `super`, which is where the mixin checks that the ticker it
+    // handed out is no longer running. A control taken out of the tree
+    // mid-press is exactly the case that trips it.
+    _ink?.dispose();
     _ink?.detach();
     super.dispose();
   }
@@ -239,6 +250,11 @@ class _Material3dState extends State<Material3d> {
     final ink = _ink ??= MutableInkController3d(
       color: contentColor,
       opacities: theme.stateLayer,
+      // The press ripple's frames come from here. It is the only per-frame
+      // animation in the catalogue, and it stays on the repaint-only tier:
+      // the ticker writes `DecoratedBox3d.stateLayer` and nothing else, so a
+      // whole ripple costs no build and no layout. See `docs/traps.md`.
+      vsync: this,
     );
     ink.restyle(color: contentColor, opacities: theme.stateLayer);
 

@@ -1897,6 +1897,124 @@ void main() {
       );
     });
   });
+
+  group('the press ripple', () {
+    testWidgets('the lit fraction of the panel grows as the ripple expands', (
+      tester,
+    ) async {
+      // The claim phase 8 exists to make, and the only one a picture can
+      // settle: a ripple mid-expansion covers **more** of the panel than it
+      // did earlier and **less** than the whole of it.
+      //
+      // There is no threshold anywhere in this test, on purpose — a
+      // hand-picked one is a distance wearing a direction's clothes, and
+      // phase 7's switch scene is the standing reminder. A point is "lit"
+      // when it is darker than *that same point* on *that same panel* with no
+      // press on it, which is a comparison between two quantities of the same
+      // kind; and what is asserted is an order between three counts of such
+      // points, not how many there are.
+      const columns = <double>[0.08, 0.2, 0.32, 0.44, 0.56, 0.68, 0.8, 0.92];
+      const rows = <double>[0.15, 0.5, 0.85];
+      int indexOf(double u, double v) =>
+          rows.indexOf(v) * columns.length + columns.indexOf(u);
+
+      // Every reading is taken where the laid-out panel says it is, through
+      // `screenPointOf` — the harness's rule, and the reason a panel that
+      // moved would fail loudly rather than quietly probing the background.
+      Future<List<double>> lumasOf(String id) async {
+        final capture = await _draw(tester, kProbeScenes.byId(id));
+        final out = <double>[];
+        for (final v in rows) {
+          for (final u in columns) {
+            final point = capture.pointOf('panel', Offset3d(u, v, 1.0));
+            final color = capture.frame.meanColorAt(point, radius: 4);
+            expect(color, isNotNull, reason: '$id drew nothing at ($u, $v)');
+            out.add(color!.computeLuminance());
+          }
+        }
+        return out;
+      }
+
+      final rest = await lumasOf('ripple_rest');
+      final early = await lumasOf('ripple_early');
+      final growing = await lumasOf('ripple_growing');
+      final covered = await lumasOf('ripple_covered');
+
+      int lit(List<double> sampled) {
+        var count = 0;
+        for (var i = 0; i < sampled.length; i++) {
+          if (sampled[i] < rest[i]) count++;
+        }
+        return count;
+      }
+
+      final litEarly = lit(early);
+      final litGrowing = lit(growing);
+      final litCovered = lit(covered);
+
+      expect(
+        litEarly,
+        greaterThan(0),
+        reason:
+            'seventy-five milliseconds into a press nothing on the panel is '
+            'darker than the unpressed one, so the ripple uniforms are not '
+            'reaching the shader at all',
+      );
+      expect(
+        litGrowing,
+        greaterThan(litEarly),
+        reason:
+            'the ripple covered no more of the panel at 110ms than at 75ms, '
+            'so the radius is not growing: $litEarly then $litGrowing of '
+            '${rest.length} points',
+      );
+      expect(
+        litCovered,
+        greaterThan(litGrowing),
+        reason:
+            'the ripple stopped growing before it had covered the panel: '
+            '$litGrowing then $litCovered of ${rest.length} points',
+      );
+      expect(
+        litCovered,
+        rest.length,
+        reason:
+            'a finished ripple is supposed to have covered the control, and '
+            'this one left ${rest.length - litCovered} points untouched',
+      );
+      expect(
+        litEarly,
+        lessThan(rest.length),
+        reason:
+            'the panel was lit edge to edge at the earliest moment, which '
+            'is a uniform wash rather than a circle: the origin never reached '
+            'the shader, or the radius started at the whole panel',
+      );
+
+      // And it grows from where the finger landed. The scene presses at 15%
+      // across, so the near sample is well inside the early circle and the
+      // far one — fifteen times further away — is well outside it. A ripple
+      // centred anywhere else, or drawn as a band rather than a disc, fails
+      // here.
+      final near = indexOf(0.2, 0.5);
+      final far = indexOf(0.92, 0.5);
+      expect(
+        early[near],
+        lessThan(rest[near]),
+        reason:
+            'the point the press landed on is no darker than it is at rest, '
+            'so the ripple is not centred where the finger was',
+      );
+      expect(
+        early[far],
+        greaterThan(early[near]),
+        reason:
+            'the far end of the panel is as dark as the press point at the '
+            'earliest moment, so the wash is not bounded by a radius: near '
+            '${early[near]}, far ${early[far]}',
+      );
+    });
+  });
 }
 
 extension on List<ProbeScene> {

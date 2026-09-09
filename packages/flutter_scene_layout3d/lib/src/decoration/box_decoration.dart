@@ -1,10 +1,11 @@
 import 'dart:ui' show Color, lerpDouble;
 
 import 'package:flutter_scene/scene.dart' show MaterialParameters;
-import 'package:vector_math/vector_math.dart' show Vector3, Vector4;
+import 'package:vector_math/vector_math.dart' show Vector2, Vector3, Vector4;
 
 import '../clip.dart';
 import '../geometry/border_radius3d.dart';
+import '../geometry/offset3d.dart';
 import '../geometry/size3d.dart';
 import '../metrics.dart';
 import 'decoration.dart';
@@ -292,6 +293,9 @@ class BoxDecoration3dUniforms {
     required this.stateLayerColor,
     required this.surfaceTintColor,
     required this.clipPlanes,
+    this.rippleOrigin = Offset3d.zero,
+    this.rippleRadius = 0.0,
+    this.rippleOpacity = 0.0,
   });
 
   /// Resolves [decoration] against a box of [size].
@@ -303,6 +307,10 @@ class BoxDecoration3dUniforms {
   /// held to half the smaller face extent (so it cannot cross itself), the
   /// state layer's opacity is folded into its colour's alpha, and the
   /// elevation is turned into a surface-tint alpha through Material's table.
+  ///
+  /// The ripple is the exception to the first of those: [StateLayer3d.ripple]
+  /// arrives in world units already and is copied across untouched. See
+  /// [Ripple3d] for why it is measured differently from everything else here.
   factory BoxDecoration3dUniforms.resolve({
     required BoxDecoration3d decoration,
     required Size3d size,
@@ -318,6 +326,7 @@ class BoxDecoration3dUniforms {
         ? 0.0
         : metrics.dp(decoration.border.width).clamp(0.0, halfFace);
     final tint = decoration.surfaceTint;
+    final ripple = stateLayer.ripple;
     return BoxDecoration3dUniforms(
       halfExtent: size * 0.5,
       radius: radius,
@@ -336,6 +345,9 @@ class BoxDecoration3dUniforms {
                   BoxDecoration3d.surfaceTintOpacityFor(decoration.elevation),
             ),
       clipPlanes: clip.toPlaneBlock(),
+      rippleOrigin: ripple?.origin ?? Offset3d.zero,
+      rippleRadius: ripple?.radius ?? 0.0,
+      rippleOpacity: ripple == null ? 0.0 : stateLayer.color.a * ripple.opacity,
     );
   }
 
@@ -367,6 +379,23 @@ class BoxDecoration3dUniforms {
   /// The clip block, `xyz` a normal and `w` a distance, padded to
   /// [Clip3dRegion.maxPlanes] entries.
   final List<double> clipPlanes;
+
+  /// Where the press ripple is centred, in world units, in the box's own
+  /// frame with the origin at its corner.
+  ///
+  /// The shader moves it to the centre frame the signed distance field works
+  /// in; a caller with a shader of its own has to do the same.
+  final Offset3d rippleOrigin;
+
+  /// How far the ripple has expanded, in world units. Zero for none.
+  final double rippleRadius;
+
+  /// The ripple's alpha, with the state layer's own alpha already folded in,
+  /// exactly as [stateLayerColor]'s is.
+  ///
+  /// The ripple's *colour* is [stateLayerColor]'s: Material's ripple is the
+  /// press wash arriving from a point, not a second wash. See [Ripple3d].
+  final double rippleOpacity;
 
   /// The radii in the order the shader's `vec4` expects them.
   ///
@@ -406,6 +435,8 @@ class BoxDecoration3dUniforms {
       ..setColor('color', color)
       ..setColor('border_color', borderColor)
       ..setColor('state_layer', stateLayerColor)
+      ..setVec2('ripple_origin', Vector2(rippleOrigin.x, rippleOrigin.y))
+      ..setVec2('ripple', Vector2(rippleRadius, rippleOpacity))
       ..setColor('surface_tint', surfaceTintColor);
     for (var i = 0; i < Clip3dRegion.maxPlanes; i++) {
       parameters.setVec4(

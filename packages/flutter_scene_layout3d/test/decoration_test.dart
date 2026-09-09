@@ -1,6 +1,7 @@
 // DecoratedBox3d, BoxDecoration3d and its uniforms, the painter cache,
 // Visibility3d and Offstage3d.
 
+import 'dart:math' as math;
 import 'dart:ui' show Color;
 
 import 'package:flutter_scene/scene.dart' show Node;
@@ -449,6 +450,66 @@ void main() {
       ]);
     });
 
+    test('no ripple resolves to a radius of nothing', () {
+      final uniforms = BoxDecoration3dUniforms.resolve(
+        decoration: const BoxDecoration3d(),
+        size: const Size3d(1, 1, 0),
+        metrics: metrics,
+      );
+      expect(uniforms.rippleRadius, 0.0);
+      expect(uniforms.rippleOpacity, 0.0);
+      expect(uniforms.rippleOrigin, Offset3d.zero);
+    });
+
+    test('a ripple is copied across in world units, not converted', () {
+      // The one figure on this object that is *not* a logical-pixel spec
+      // number, because it comes from a hit test rather than from a
+      // component's specification. A metrics with a rate other than one is
+      // what would catch a conversion sneaking in.
+      const scaled = Layout3dMetrics(unitsPerLogicalPixel: 0.25);
+      final uniforms = BoxDecoration3dUniforms.resolve(
+        decoration: const BoxDecoration3d(),
+        size: const Size3d(2, 1, 0),
+        metrics: scaled,
+        stateLayer: const StateLayer3d(
+          color: Color(0xFF203040),
+          opacity: 0.08,
+          ripple: Ripple3d(
+            origin: Offset3d(0.5, 0.25, 0),
+            radius: 0.75,
+            opacity: 0.1,
+          ),
+        ),
+      );
+      expect(uniforms.rippleOrigin, const Offset3d(0.5, 0.25, 0));
+      expect(uniforms.rippleRadius, 0.75);
+      expect(uniforms.rippleOpacity, closeTo(0.1, 1e-12));
+      expect(
+        uniforms.stateLayerColor.a,
+        closeTo(0.08, 1e-6),
+        reason: 'the uniform wash keeps its own alpha alongside',
+      );
+    });
+
+    test(
+      'the layer alpha is folded into the ripple, as it is into the wash',
+      () {
+        // A half-transparent content colour halves both.
+        final uniforms = BoxDecoration3dUniforms.resolve(
+          decoration: const BoxDecoration3d(),
+          size: const Size3d(1, 1, 0),
+          metrics: metrics,
+          stateLayer: const StateLayer3d(
+            color: Color(0x80203040),
+            opacity: 0.2,
+            ripple: Ripple3d(origin: Offset3d.zero, radius: 1.0, opacity: 0.4),
+          ),
+        );
+        expect(uniforms.rippleOpacity, closeTo(0.4 * (128 / 255), 1e-6));
+        expect(uniforms.stateLayerColor.a, closeTo(0.2 * (128 / 255), 1e-6));
+      },
+    );
+
     test('an unclipped box still packs a full plane block', () {
       final uniforms = BoxDecoration3dUniforms.resolve(
         decoration: const BoxDecoration3d(),
@@ -471,6 +532,80 @@ void main() {
       expect(StateLayer3d.lerp(a, b, 0.25).color, a.color);
       expect(StateLayer3d.lerp(a, b, 0.75).color, b.color);
       expect(StateLayer3d.lerp(a, b, 0.5).opacity, closeTo(0.06, 1e-9));
+    });
+
+    test('a ripple alone is not "none"', () {
+      // The uniform half is zero and the box is still lit, which is exactly
+      // the state a press produces once the press wash has moved into the
+      // ripple.
+      const layer = StateLayer3d(
+        color: Color(0xFF102030),
+        ripple: Ripple3d(origin: Offset3d(1, 1, 0), radius: 0.5, opacity: 0.1),
+      );
+      expect(layer.isNone, isFalse);
+      expect(layer.opacity, 0.0);
+      expect(layer, isNot(StateLayer3d.none));
+    });
+  });
+
+  group('Ripple3d', () {
+    test('a ripple with no radius or no opacity draws nothing', () {
+      const nowhere = Ripple3d(origin: Offset3d.zero, radius: 0.0);
+      expect(nowhere.isNone, isTrue);
+      expect(
+        const Ripple3d(origin: Offset3d.zero, radius: 2.0, opacity: 0.0).isNone,
+        isTrue,
+      );
+    });
+
+    test('the covering radius reaches the furthest corner', () {
+      // Dead centre of a 6 by 8 box: half the diagonal.
+      expect(
+        Ripple3d.radiusCovering(const Size3d(6, 8, 0), const Offset3d(3, 4, 0)),
+        closeTo(5.0, 1e-12),
+      );
+      // The origin corner: the whole diagonal, which is what makes a press
+      // in a corner travel further than one in the middle.
+      expect(
+        Ripple3d.radiusCovering(const Size3d(6, 8, 0), Offset3d.zero),
+        closeTo(10.0, 1e-12),
+      );
+      // And a press outside the box still has to cover it.
+      expect(
+        Ripple3d.radiusCovering(
+          const Size3d(6, 8, 0),
+          const Offset3d(-3, 4, 0),
+        ),
+        closeTo(math.sqrt(9 * 9 + 4 * 4), 1e-12),
+      );
+    });
+
+    test('the depth of the point it was given is ignored', () {
+      expect(
+        Ripple3d.radiusCovering(
+          const Size3d(4, 4, 1),
+          const Offset3d(2, 2, 0.5),
+        ),
+        Ripple3d.radiusCovering(const Size3d(4, 4, 1), const Offset3d(2, 2, 9)),
+      );
+    });
+
+    test('lerp grows a missing end out of its own centre', () {
+      const to = Ripple3d(origin: Offset3d(4, 2, 0), radius: 3.0, opacity: 0.1);
+      final half = Ripple3d.lerp(null, to, 0.5)!;
+      expect(half.origin, to.origin, reason: 'not sliding in from (0, 0)');
+      expect(half.radius, closeTo(1.5, 1e-12));
+      expect(half.opacity, closeTo(0.05, 1e-12));
+      expect(Ripple3d.lerp(null, null, 0.5), isNull);
+    });
+
+    test('a layer lerp carries the ripple with it', () {
+      const a = StateLayer3d(color: Color(0xFF000000));
+      const b = StateLayer3d(
+        color: Color(0xFF000000),
+        ripple: Ripple3d(origin: Offset3d(1, 1, 0), radius: 2.0, opacity: 0.2),
+      );
+      expect(StateLayer3d.lerp(a, b, 0.5).ripple!.radius, closeTo(1.0, 1e-12));
     });
   });
 

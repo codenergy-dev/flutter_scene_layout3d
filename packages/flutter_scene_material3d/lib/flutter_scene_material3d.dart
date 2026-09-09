@@ -89,6 +89,7 @@ export 'src/components/buttons.dart'
 export 'src/components/icon.dart' show Icon3d;
 export 'src/components/ink.dart'
     show InkController3d, InkController3dScope, MutableInkController3d;
+export 'src/components/ink_ripple.dart' show InkRipple3dRun, InkRipple3dStyle;
 export 'src/components/ink_well.dart' show InkWell3d;
 export 'src/components/list_tile.dart' show ListTile3d;
 export 'src/components/material.dart' show Material3d;

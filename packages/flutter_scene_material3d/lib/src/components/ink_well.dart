@@ -4,7 +4,7 @@ import 'package:flutter/gestures.dart'
 import 'package:flutter/widgets.dart'
     show BuildContext, FocusNode, State, StatefulWidget, Widget;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart'
-    show HitTestBehavior3d, Size3d, TapTarget3d;
+    show HitTestBehavior3d, PointerEvent3d, Size3d, TapTarget3d;
 import 'package:flutter_scene_layout3d/widgets.dart'
     show
         SceneFocus3d,
@@ -49,6 +49,14 @@ import 'ink.dart';
 /// It follows that a component whose *tokens* change with a state (a filled
 /// button is a different colour when pressed, not merely washed) cannot use
 /// this channel for that half. It rebuilds, deliberately, and pays for it.
+///
+/// The press **ripple** is on the same tier, and it is the only thing in the
+/// catalogue that writes a uniform every frame. This widget's only part in it
+/// is to say *where*: the pointer down carries a position in the box it landed
+/// on, `InkController3d.noteRipplePoint` moves that point into the frame of the
+/// panel that will be washed, and the ripple itself starts when the press is
+/// reported — which is later, and arena-resolved, so a press that becomes a
+/// scroll never ripples.
 ///
 /// ## Two sharp edges inherited from the protocol
 ///
@@ -185,6 +193,18 @@ class _InkWell3dState extends State<InkWell3d> {
     widget.onHighlightChanged?.call(pressed && widget.enabled);
   }
 
+  /// Notes where the finger landed, in the panel's own frame.
+  ///
+  /// On the *down* rather than on the highlight, because by the time the
+  /// arena has reported a press the event carrying the position is gone —
+  /// `onTapDown` reports one too, but in logical pixels and in the gesture
+  /// detector's frame, while this one is in world units and exact for a
+  /// surface seen at any angle. The controller does the change of frame.
+  void _handleDown(PointerEvent3d event) {
+    if (!widget.enabled) return;
+    _ink?.noteRipplePoint(event.entry.layout, event.localPosition);
+  }
+
   void _handleFocusChange(bool focused) {
     _set(Material3dState.focused, focused);
     widget.onFocusChange?.call(focused);
@@ -209,6 +229,7 @@ class _InkWell3dState extends State<InkWell3d> {
         child: SceneListener3d(
           onPointerEnter: (_) => _handleHover(true),
           onPointerExit: (_) => _handleHover(false),
+          onPointerDown: _handleDown,
           // Defers to the gesture detector below, which is opaque: a control
           // is hovered exactly where it is pressable.
           behavior: HitTestBehavior3d.deferToChild,
