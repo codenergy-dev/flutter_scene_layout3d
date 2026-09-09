@@ -34,11 +34,26 @@ import '../layout3d.dart';
 /// A dimmed background is not an alpha wash over a display list here; there
 /// is no display list. It is geometry: a slab, [thickness] deep, carrying
 /// whatever [child] the caller decorates it with — usually a
-/// [DecoratedBox3d]. Until the opacity contract lands (see the size-driven
-/// geometry plan) a translucent scrim is not expressible, and the honest
-/// fallback is a dark material or a dimming tint on the decoration. Leaving
-/// [child] null gives a barrier that blocks input and shows nothing, which is
-/// what a menu wants.
+/// [DecoratedBox3d]. Leaving [child] null gives a barrier that blocks input
+/// and shows nothing, which is what a menu wants.
+///
+/// **A translucent scrim *is* expressible**, and this class used to say it was
+/// not. `assets/box_decoration3d.fmat` declares `blending: alpha`, so a
+/// `BoxDecoration3d.color` with an alpha in it blends over what is behind:
+/// Material's black-at-32% is one colour and one slab, and
+/// `examples/render_probe`'s `dialog_over_scrim` scene is the picture of it.
+/// What is still missing is *subtree* opacity — there is no way to fade an
+/// arbitrary child, which is what the size-driven geometry plan's opacity
+/// contract is for — and that is a different thing from a translucent
+/// colour.
+///
+/// Two rules a scrim inherits from being geometry, and both cost real time
+/// if they are missed. It needs a **thickness**: a zero-depth slab is
+/// coplanar with whatever it covers and z-fights it, exactly as a divider
+/// does. And whatever stands in front of it needs a **depth step**, which
+/// [Overlay3dEntry.modal]'s own stack does not provide — its barrier and its
+/// content sit on the same plane. `flutter_scene_material3d` builds its own
+/// frame for that reason.
 ///
 /// [thickness] defaults to zero, so a barrier is a plane rather than a box:
 /// a ray still reaches it (a zero-extent slab is intersected on both faces),

@@ -24,7 +24,7 @@ once it became clear the scope was its own project. That history is preserved:
 | Package | What it is |
 | --- | --- |
 | `packages/flutter_scene_layout3d` | The layout protocol. Constraints, intrinsics, baselines, flex, stack, wrap, slivers, scrolling, text measurement, decoration, clipping, pointer dispatch, focus, overlays, animation, diagnostics. |
-| `packages/flutter_scene_material3d` | Material Design 3 on that protocol. Today: the six token families (`ColorScheme3d`, `Typography3d`, `ShapeScale3d`, `Elevation3d`, `Thickness3d`, `StateLayerOpacity3d`), `Theme3dData` and `SceneTheme3d`, `initializeMaterial3d()`, the primitive layer — `Material3d`, `InkWell3d`, `Icon3d`, `SceneTextStyle3d` — the seven buttons over one `ButtonStyle3d`, the surfaces and rows (`Card3d`, `ListTile3d`, `Divider3d`, `Chip3d`), and the structure: `Scaffold3d`, `AppBar3d`, `SliverAppBar3d`, `NavigationBar3d`, `NavigationRail3d` and `VerticalDivider3d`. The catalogue continues with the overlays. |
+| `packages/flutter_scene_material3d` | Material Design 3 on that protocol. Today: the six token families (`ColorScheme3d`, `Typography3d`, `ShapeScale3d`, `Elevation3d`, `Thickness3d`, `StateLayerOpacity3d`), `Theme3dData` and `SceneTheme3d`, `initializeMaterial3d()`, the primitive layer — `Material3d`, `InkWell3d`, `Icon3d`, `SceneTextStyle3d` — the seven buttons over one `ButtonStyle3d`, the surfaces and rows (`Card3d`, `ListTile3d`, `Divider3d`, `Chip3d`), the structure (`Scaffold3d`, `AppBar3d`, `SliverAppBar3d`, `NavigationBar3d`, `NavigationRail3d`, `VerticalDivider3d`) and the overlays: `Dialog3d` and `showDialog3d`, `Menu3d` and `PopupMenuButton3d`, `SnackBar3d` behind a `ScaffoldMessenger3d`, `Tooltip3d`, and `BottomSheet3d` in both its forms. The catalogue continues with the selection controls. |
 | `examples/layout3d_gallery` | The example app. Three surfaces — an upright panel, a ground plane, a scrolling list — all hit-testable. |
 | `examples/render_probe` | Render tests. Draws the layout on a GPU and probes the frame at the pixels layout says to check. Commits its platform scaffolding, unlike the gallery. |
 
@@ -68,10 +68,19 @@ clip had never reached a shader either — and closing that, with the two widget
 forms the declarative layer was missing (`SceneClipBox3d` and
 `SceneSliverPersistentHeader3d`), is
 [the declarative side of a pinned bar](packages/flutter_scene_layout3d/plans/2026_09_08_the_declarative_side_of_a_pinned_bar.md).
-The catalogue continues with the overlays — dialogs, menus, snack bars and
-sheets — at phase 6.
+**Phase 6 is done too**: the overlays — `Dialog3d` and `showDialog3d` over
+`Navigator3d.push`, `Menu3d` and `PopupMenuButton3d`, `SnackBar3d` behind a
+queueing `ScaffoldMessenger3d`, `Tooltip3d`, and `BottomSheet3d` modal or
+persistent on any of four edges — all sitting one depth step in front of the
+frontmost thing a `Scaffold3d` declares, which is `Scaffold3d.overlayLift` and
+is arithmetic rather than a figure. It needed two things the layout package did
+not have, and both landed there under
+[a widget under an overlay entry](packages/flutter_scene_layout3d/plans/2026_09_08_a_widget_under_an_overlay_entry.md):
+a widget subtree as an overlay entry's content, and `Layout3d.anchorOffsetTo`,
+because nothing in the stack anchored anything and a menu belongs at its
+button. The catalogue continues with the selection controls at phase 7.
 
-Five things worth knowing before building on any of it, all written up in
+Six things worth knowing before building on any of it, all written up in
 `docs/traps.md`: handing every `BoxDecoration3d` the *same* material makes a
 screen of panels come out one colour; a `TapTarget3d` reaches past its own
 extent but **its parent does not**, so a target has to sit outside every box
@@ -79,10 +88,13 @@ whose size it is trying to grow — the panel and the semantics box included; a
 `Semantics3d` publishes what it is given and gathers no label from the labels
 below it, so a component states its own; nothing here is as flat as it
 looks — a 1dp divider is a *slab*, because a zero-depth one is coplanar with
-the surface it is drawn on and z-fights it; and **a clip discovered after the
-boxes under it have painted has to be republished**, which is the same defect
-found twice, in a `ClipBox3d` and then in a pinned header, and both times only
-by drawing a frame.
+the surface it is drawn on and z-fights it, and so is a scrim; **a clip
+discovered after the boxes under it have painted has to be republished**, which
+is the same defect found twice, in a `ClipBox3d` and then in a pinned header,
+and both times only by drawing a frame; and **nothing anchors anything** — an
+overlay entry sits where the overlay's alignment puts it, and
+`Layout3d.anchorOffsetTo` is the arithmetic that moves it onto the box that
+asked for it, on the node tier.
 
 ## Running things
 

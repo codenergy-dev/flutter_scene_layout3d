@@ -31,6 +31,7 @@
 /// ```
 library;
 
+export 'src/anchoring.dart' show Layout3dAnchoring;
 export 'src/animation/implicit.dart'
     show
         AnimatedLayout3dWidgetBaseState,
@@ -137,7 +138,14 @@ export 'src/overlay/overlay.dart'
         Overlay3dEntry,
         OverlayLayer3d;
 export 'src/widgets/overlay.dart'
-    show Overlay3dController, SceneModalBarrier3d, SceneOverlay3d;
+    show
+        Overlay3dContentSlot3d,
+        Overlay3dController,
+        SceneModalBarrier3d,
+        SceneOverlay3d,
+        WidgetOverlay3dBuilder,
+        WidgetOverlay3dEntry,
+        WidgetPageRoute3d;
 export 'src/layout3d.dart' show Layout3d;
 export 'src/metrics.dart' show Layout3dMetrics, VisualDensity3d;
 export 'src/semantics.dart'

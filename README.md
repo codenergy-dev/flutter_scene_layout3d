@@ -236,10 +236,11 @@ drawn through the same glyph atlas as every label.
 The components are on top of that, and every one of them is the same shape: a
 `Material3d` with a public token set resolved by state. The seven buttons are
 one `Button3d` over seven `ButtonStyle3d`s; the surfaces and rows are `Card3d`,
-`ListTile3d`, `Divider3d` and `Chip3d`; and the structure is `Scaffold3d`,
-`AppBar3d`, `SliverAppBar3d`, `NavigationBar3d` and `NavigationRail3d`. What
-is left is the overlays — dialogs, menus, snack bars and sheets — the
-selection controls, and a press ripple.
+`ListTile3d`, `Divider3d` and `Chip3d`; the structure is `Scaffold3d`,
+`AppBar3d`, `SliverAppBar3d`, `NavigationBar3d` and `NavigationRail3d`; and the
+overlays are `Dialog3d`, `Menu3d` and `PopupMenuButton3d`, `SnackBar3d` behind
+a queueing `ScaffoldMessenger3d`, `Tooltip3d` and `BottomSheet3d`. What is left
+is the selection controls and a press ripple.
 
 The structure is where the depth stops being decoration. A screen's slots have
 to be *ordered* in depth, because an app bar is over content that scrolls under
@@ -250,6 +251,16 @@ passing under a pinned bar is genuinely cut at the bar's edge, and the bar is
 drawn in front of the row sliding beneath it. Getting there found the same
 defect twice — a clip that never reached the shader — and both times only a
 drawn frame said so.
+
+The overlays are where it stops being about one screen. A dialog is a slab in
+front of a stack of slabs, so its lift has to clear *all* of them —
+`Scaffold3d.overlayLift` is that number, one step in front of the frontmost
+slot the scaffold declares, so the two agree by construction rather than by
+matching figures. A scrim is geometry too, dark and translucent and a
+millimetre thick, and the probe that settles it asks a comparison rather than
+an absolute. And a menu has to be *at* its button: `Layout3d.anchorOffsetTo`
+is the arithmetic, written on the node tier so a menu can follow a scrolling
+button without laying anything out.
 
 ## Running it
 

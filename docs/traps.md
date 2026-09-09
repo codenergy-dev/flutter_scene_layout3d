@@ -288,6 +288,49 @@ it, in the order `Scaffold3dSlot` declares. Anything stacking Material
 components in depth should take its step from that scale rather than picking
 a number.
 
+**An overlay has to clear a whole screen, not the box it was opened from.**
+`Overlay3d.defaultLift` is eight logical pixels, and its own documentation is
+right that this is a depth-buffer separation rather than a distance — for two
+things with no thickness. A Material screen is not two things with no
+thickness: a `Scaffold3d` has already spent four `thickness.depthStep`s on its
+own slots by the time anything is put in front of it, and the frontmost of them
+is a slab. So a dialog at the default lift is *behind* the floating action
+button it was meant to cover. `flutter_scene_material3d`'s
+`Scaffold3d.overlayLift(step)` is the number — one step in front of
+`Scaffold3dSlot.values.last`, 60dp at the baseline scale — and it is arithmetic
+rather than a figure, so adding a slot moves the overlays with it. Anything
+putting an entry in front of a Material screen should take its lift from there
+rather than accepting the default.
+
+**A scrim is a slab too, and `Overlay3dEntry.modal` does not step it.** The
+entry builds its barrier and its content into a `Stack3d` with **no depth
+step**, so a decorated scrim and the dialog over it sit on the same plane and
+z-fight wherever the scrim shows. That is right for a barrier with no geometry
+in it, which is what a menu wants, and wrong the moment the scrim is
+decorated. The way through is to leave `modal` false and build the frame
+yourself — a `SceneModalBarrier3d` with the scrim as its child and the content
+one `depthStep` in front, in one `SceneStack3d` — which is what every modal in
+`flutter_scene_material3d` does. And a scrim needs a **thickness**: a
+zero-depth one is coplanar with whatever it covers, which is the same argument
+`Divider3d` makes about a rule on a card.
+
+**A translucent colour *is* expressible; a translucent subtree is not.** The
+panel shader declares `blending: alpha`, so a `BoxDecoration3d.color` with an
+alpha in it blends over what is behind — Material's black-at-32% scrim is one
+colour and one slab. `ModalBarrier3d` used to say otherwise and was wrong.
+What is still missing is per-node or subtree opacity: there is no way to fade
+an arbitrary child, which is why a disabled control here is a token
+substitution rather than a filter.
+
+**A transparent slab standing on a surface has *two* faces to keep clear of
+it.** A menu item, a snack bar's action, a navigation destination: each needs a
+`Material3d` of its own so that its ink well washes itself rather than the
+component around it, and each is a slab drawn on another slab's front face.
+Resting it there makes its front face coplanar; lifting it by exactly its own
+depth puts its *back* face there instead, which is the same fight seen from
+behind. Lift it by more than its thickness — `MenuStyle3d.itemDepthStep` is
+twice `itemThickness`, and asserts it.
+
 **`Dismissible3d`'s backgrounds are coplanar with the child.**
 `backgroundDepthStep` defaults to zero, exactly as `Stack3d.depthStep` does,
 so the background revealed by a swipe and the row sliding off it sit on the
@@ -361,6 +404,35 @@ positive step pushes the backgrounds away from the viewer and the fight stops.
   separation rather than a distance: content thicker than that will still
   fight the feedback carried over it, exactly as the depth-ordering item above
   describes. Ask for a bigger lift when the rows have real thickness.
+- **Nothing anchors anything, and the arithmetic that does is public now.**
+  An `Overlay3dEntry` is placed by the overlay's own `Stack3d.alignment`,
+  which is nowhere near the box that asked for it, and there is no
+  `CompositedTransformTarget` here. `Layout3d.anchorOffsetTo` is the answer:
+  the anchor's point taken into the world through `worldTransform` and back out
+  in the follower's own frame. It answers a **`nodeOffset`**, so anchoring is
+  the node tier and costs one matrix — and it is a *position* rather than a
+  delta, because `worldTransform` reports the frame layout put the box in with
+  the node nudges undone. Assign it; do not add it.
+- **And `screenPointOf` on an anchored box lies.** The same property that makes
+  re-anchoring safe makes the projection disagree with the picture:
+  `worldTransform` undoes `nodeOffset`, so `screenCenter` and `screenPointOf`
+  report where layout put a follower rather than where it is drawn. A render
+  probe of an anchored overlay has to use the **anchor** as its oracle.
+  `examples/render_probe`'s `menu_at_its_button` does exactly that.
+- **A follower needs more than one hook to follow.** `Layout3d.place` fires on
+  a box that moves and **not** on the boxes below it, so a follower watching
+  its anchor's `place` hears about a row moving inside a list and hears nothing
+  at all about the *ancestor* of its anchor moving — which is what a scroll
+  does, and is the case a first attempt will miss. Watch the follower's own
+  `place`, the anchor's, and a post-frame callback for the rest. The last one
+  schedules no frame of its own, so a still screen costs nothing.
+- **A hover listener over an arbitrary child has to be opaque.**
+  `InkWell3d`'s is `deferToChild`, correctly: a control is hovered exactly
+  where it is pressable. A `Tooltip3d` wraps whatever it is given — a bare
+  label, an icon, a `SizedBox3d` — and most of those answer no ray at all, so a
+  deferring listener never sees a pointer. Its own extent has to be the hover
+  region. The control inside still takes every tap, because children are tested
+  before their parent.
 - **Feedback under the pointer must be wrapped in an `IgnorePointer3d`**, and
   `Draggable3d` does it for you. Hit testing ignores `nodeOffset`, so a piece
   of feedback moved on the node tier is invisible to the ray moving it — but
@@ -475,6 +547,14 @@ Three things that cost time in phase 5 and are invisible from the code.
   `build`, where it is just as loud, and say in the class why it is there;
   `NavigationBar3d.tooFewDestinations` is the shape. A test then asks
   `tester.takeException()` rather than `throwsA`.
+- **A widget-built overlay entry's content arrives one frame late.** Inserting
+  a `WidgetOverlay3dEntry` — which is what `showDialog3d` and every other
+  overlay in the catalogue does — marks the widget that owns the overlay as
+  needing to build, so the subtree exists on the *next* frame. Flutter's own
+  `Overlay` behaves the same way. The entry, the route and its future all exist
+  from the call; only the geometry waits. A test that opens something and
+  asserts in the same turn sees an overlay with one entry and no boxes in it:
+  `await tester.pump()` once.
 - **A component has two `TapTarget3d`s per control, not one.** The outer one
   carries the 48dp reach and the `InkWell3d`'s own sits inside it at
   `Size3d.zero` — one target rather than two nested ones disagreeing about

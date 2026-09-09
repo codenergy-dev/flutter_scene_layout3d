@@ -21,7 +21,7 @@ several files, guidance for using the engine underneath.
 | See it running, or write a demo | [examples/layout3d_gallery](../examples/layout3d_gallery/README.md) |
 | Verify something actually draws | [examples/render_probe](../examples/render_probe/README.md) |
 | Know what is planned, in progress, or was decided and why | the plans directories of [the layout package](../packages/flutter_scene_layout3d/plans/) and [the Material package](../packages/flutter_scene_material3d/plans/) |
-| Know what is being built next | [the Material catalogue plan](../packages/flutter_scene_material3d/plans/2026_09_01_flutter_scene_material3d.md) — phases 0 to 5 done, up to `Scaffold3d` and the bars, and the rest of the catalogue from phase 6 |
+| Know what is being built next | [the Material catalogue plan](../packages/flutter_scene_material3d/plans/2026_09_01_flutter_scene_material3d.md) — phases 0 to 6 done, up to the overlays, and the rest of the catalogue from phase 7 |
 
 ## The pages here
 
@@ -89,6 +89,10 @@ Two entry points:
   second place — a pinned header's clip never reached a shader either — which
   is closed, with the two widget forms the declarative layer was missing, in
   [the declarative side of a pinned bar](../packages/flutter_scene_layout3d/plans/2026_09_08_the_declarative_side_of_a_pinned_bar.md).
+  Phase 6, the overlays, is done as well, and it needed two things the layout
+  package did not have — a widget subtree as an overlay entry's content, and
+  any way at all to anchor one box to another — both landed in
+  [a widget under an overlay entry](../packages/flutter_scene_layout3d/plans/2026_09_08_a_widget_under_an_overlay_entry.md).
 
 ## Keeping this true
 

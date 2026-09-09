@@ -63,6 +63,8 @@ export 'src/app/setup.dart'
         loadPanelMaterialFactory;
 export 'src/components/app_bar.dart' show AppBar3d, SliverAppBar3d;
 export 'src/components/app_bar_style.dart' show AppBarStyle3d, AppBarVariant3d;
+export 'src/components/bottom_sheet.dart'
+    show BottomSheet3d, Sheet3dEdge, showBottomSheet3d, showModalBottomSheet3d;
 export 'src/components/button_style.dart'
     show ButtonStyle3d, ButtonVariant3d, ResolvedButtonStyle3d;
 export 'src/components/card.dart'
@@ -72,6 +74,7 @@ export 'src/components/chip.dart'
     show AssistChip3d, Chip3d, FilterChip3d, InputChip3d, SuggestionChip3d;
 export 'src/components/chip_style.dart'
     show ChipStyle3d, ChipVariant3d, ResolvedChipStyle3d;
+export 'src/components/dialog.dart' show Dialog3d, showDialog3d;
 export 'src/components/divider.dart' show Divider3d, VerticalDivider3d;
 export 'src/components/buttons.dart'
     show
@@ -97,8 +100,27 @@ export 'src/components/navigation.dart'
         NavigationRail3d;
 export 'src/components/navigation_style.dart'
     show NavigationStyle3d, NavigationVariant3d;
+export 'src/components/anchor.dart'
+    show Anchor3d, Anchor3dWidget, Follower3d, Follower3dWidget;
+export 'src/components/menu.dart'
+    show Menu3d, MenuItem3d, MenuItem3dEntry, PopupMenuButton3d, showMenu3d;
+export 'src/components/snack_bar.dart'
+    show
+        ScaffoldMessenger3d,
+        ScaffoldMessenger3dState,
+        SnackBar3d,
+        SnackBar3dClosedReason,
+        SnackBar3dController;
+export 'src/components/overlay_style.dart'
+    show
+        BottomSheetStyle3d,
+        DialogStyle3d,
+        MenuStyle3d,
+        SnackBarStyle3d,
+        TooltipStyle3d;
 export 'src/components/scaffold.dart' show Scaffold3d, Scaffold3dSlot;
 export 'src/components/text_style.dart' show SceneTextStyle3d;
+export 'src/components/tooltip.dart' show Tooltip3d;
 export 'src/theme/theme.dart' show SceneTheme3d, Theme3d;
 export 'src/theme/theme_data.dart' show Layout3dTheme3d, Theme3dData;
 export 'src/theme/tweens.dart'

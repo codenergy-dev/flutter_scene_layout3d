@@ -2,9 +2,11 @@ import 'dart:ui' show Size;
 
 import 'package:flutter/foundation.dart'
     show
+        ChangeNotifier,
         DiagnosticPropertiesBuilder,
         IntProperty,
         IterableProperty,
+        Listenable,
         VoidCallback;
 import 'package:flutter/widgets.dart' show FocusManager, FocusNode;
 import 'package:flutter_scene/scene.dart' show Camera, Node;
@@ -555,7 +557,24 @@ class Overlay3d extends Stack3d {
 
   final List<Overlay3dEntry> _entries = <Overlay3dEntry>[];
 
+  final _Overlay3dEntriesNotifier _entriesChanged = _Overlay3dEntriesNotifier();
+
   bool _flushingDetached = false;
+
+  /// Notified whenever the entry list changes: an insertion, a removal, a
+  /// reordering.
+  ///
+  /// What the declarative layer listens to. An entry's content is a
+  /// [Layout3d] built by [Overlay3dEntry.builder], but a *widget*-built entry
+  /// needs its subtree to exist in the element tree, and only a rebuild of
+  /// the widget that owns the overlay can put it there. [SceneOverlay3d]
+  /// listens here and rebuilds; nothing else has to.
+  ///
+  /// **Fired synchronously, from inside the insertion.** A listener that
+  /// calls `setState` must not be reached from a `build` method, which is the
+  /// same rule Flutter's own `Overlay` keeps: insert from a callback, not
+  /// from a build.
+  Listenable get entriesChanged => _entriesChanged;
 
   /// The entries in this overlay, back to front.
   List<Overlay3dEntry> get entries =>
@@ -673,7 +692,10 @@ class Overlay3d extends Stack3d {
   /// The base children come first and the entries after them, so the stack's
   /// own back-to-front order *is* the overlay's: the last entry is nearest
   /// the viewer and is the first thing a ray reaches.
-  void _syncEntryOrder() => syncChildren(_baseChildren());
+  void _syncEntryOrder() {
+    syncChildren(_baseChildren());
+    _entriesChanged.notify();
+  }
 
   List<Layout3d> _baseChildren() => <Layout3d>[
     for (final child in heldChildren)
@@ -815,6 +837,7 @@ class Overlay3d extends Stack3d {
       entry._removedFrom(this);
     }
     _entries.clear();
+    _entriesChanged.dispose();
     super.dispose();
   }
 
@@ -830,4 +853,13 @@ class Overlay3d extends Stack3d {
       ),
     );
   }
+}
+
+/// Carries [Overlay3d.entriesChanged].
+///
+/// A field rather than a mixin on [Overlay3d] itself: a [Layout3d] already
+/// has a `dispose`, and folding [ChangeNotifier]'s into it would make the two
+/// lifecycles one thing that has to be got right in both directions.
+class _Overlay3dEntriesNotifier extends ChangeNotifier {
+  void notify() => notifyListeners();
 }

@@ -1557,6 +1557,146 @@ void main() {
       );
     });
   });
+
+  group('the overlays', () {
+    double luma(ui.Color c) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+
+    testWidgets('a dialog occludes the scrim behind it', (tester) async {
+      // The claim the catalogue plan named for this phase, and it is two
+      // claims wearing one coat: the scrim darkens what it covers, and the
+      // dialog carried over it is not fighting it for the depth buffer.
+      //
+      // Both are stated as **comparisons**. A scrim is the darkest thing in
+      // the catalogue and this harness decides "is this geometry" by distance
+      // from a dark clear colour, so "is this pixel dark" is a question it
+      // cannot answer. The scene makes the scrim narrower than the backing
+      // for exactly that reason.
+      final capture = await _draw(
+        tester,
+        kProbeScenes.byId('dialog_over_scrim'),
+      );
+
+      // The backing where the scrim reaches it, and where it does not. The
+      // scrim is 2.2 wide over a 3.0 backing, so a twentieth of the way in
+      // from the backing's own edge is outside it.
+      final unscrimmed = capture.frame.meanColorAt(
+        capture.pointOf('backing', const Offset3d(0.03, 0.5, 0)),
+        radius: 5,
+      );
+      final scrimmed = capture.frame.meanColorAt(
+        capture.pointOf('scrim', const Offset3d(0.06, 0.5, 0)),
+        radius: 5,
+      );
+      expect(unscrimmed, isNotNull, reason: 'the backing did not draw');
+      expect(scrimmed, isNotNull, reason: 'nothing drew where the scrim is');
+
+      expect(
+        luma(scrimmed!),
+        lessThan(luma(unscrimmed!)),
+        reason:
+            'the backing is no darker under the scrim than beside it, so the '
+            'scrim never drew — a slab with a 32% alpha that the shader did '
+            'not blend: read $unscrimmed unscrimmed, $scrimmed scrimmed',
+      );
+
+      // And the dialog over it. Two points, near opposite edges of its own
+      // face: a dialog fighting the scrim reads as the scrim in patches, and
+      // patches are what two points at once can catch that one cannot.
+      final left = capture.frame.meanColorAt(
+        capture.pointOf('dialog', const Offset3d(0.2, 0.5, 0)),
+        radius: 6,
+      );
+      final right = capture.frame.meanColorAt(
+        capture.pointOf('dialog', const Offset3d(0.8, 0.5, 0)),
+        radius: 6,
+      );
+      expect(left, isNotNull, reason: 'the dialog did not draw');
+      expect(right, isNotNull, reason: 'the dialog did not draw');
+
+      expect(
+        luma(left!),
+        greaterThan(luma(scrimmed)),
+        reason:
+            'the dialog is no lighter than the scrim beside it, so the scrim '
+            'won the depth test against the thing it was meant to sit '
+            'behind: read $left on the dialog, $scrimmed on the scrim',
+      );
+      expect(
+        (luma(left) - luma(right!)).abs(),
+        lessThan(0.1),
+        reason:
+            'the dialog is a different colour at its two edges, which is what '
+            'a slab fighting the scrim under it looks like: read $left and '
+            '$right',
+      );
+      // The strongest form, and a comparison rather than a distance: what is
+      // drawn over the dialog looks more like an unscrimmed surface than like
+      // a scrimmed one, which is what "occludes" means.
+      expect(
+        (luma(left) - luma(unscrimmed)).abs(),
+        lessThan((luma(left) - luma(scrimmed)).abs()),
+        reason:
+            'what is drawn where the dialog is looks more like the scrim than '
+            'like an unscrimmed surface: read $left on the dialog, '
+            '$unscrimmed unscrimmed, $scrimmed scrimmed',
+      );
+    });
+
+    testWidgets('an anchored menu is drawn at its button', (tester) async {
+      // The half of the anchoring that no headless test can reach.
+      // `Layout3d.worldTransform` undoes `nodeOffset` by design, so
+      // `screenPointOf` on the menu answers with where *layout* put it — the
+      // middle of the panel — while the picture has it at the button. The
+      // button is therefore the oracle, and the question is what is drawn
+      // below it.
+      final capture = await _draw(
+        tester,
+        kProbeScenes.byId('menu_at_its_button'),
+      );
+
+      // A button's height and a half below the button's own top: inside an
+      // anchored menu, and nowhere near an unanchored one.
+      final belowButton = capture.frame.meanColorAt(
+        capture.pointOf('button', const Offset3d(0.5, 2.5, 0)),
+        radius: 5,
+      );
+      // The backing, read where neither the button nor the menu reaches: the
+      // bottom-right corner of the panel.
+      final bare = capture.frame.meanColorAt(
+        capture.pointOf('backing', const Offset3d(0.9, 0.9, 0)),
+        radius: 6,
+      );
+      expect(belowButton, isNotNull);
+      expect(bare, isNotNull);
+
+      expect(
+        luma(belowButton!),
+        greaterThan(luma(bare!)),
+        reason:
+            'what is drawn below the button is no lighter than the bare '
+            'backing, so the near-white menu is not there — the node offset '
+            'the anchoring wrote never reached the scene: read $belowButton '
+            'below the button, $bare on the backing',
+      );
+
+      // The control that makes that mean "anchored" rather than "a menu drew
+      // somewhere": the middle of the panel, which is where the stack put the
+      // menu and where an unanchored one would still be.
+      final middle = capture.frame.meanColorAt(
+        capture.pointOf('backing', const Offset3d(0.5, 0.55, 0)),
+        radius: 6,
+      );
+      expect(middle, isNotNull);
+      expect(
+        luma(middle!),
+        lessThan(luma(belowButton)),
+        reason:
+            'the middle of the panel is as light as the menu, so the menu was '
+            'never moved off the position the stack gave it: read $middle in '
+            'the middle, $belowButton below the button',
+      );
+    });
+  });
 }
 
 extension on List<ProbeScene> {

@@ -665,6 +665,187 @@ SceneRow3d(
 )
 ```
 
+## The overlays: dialogs, menus, snack bars, tooltips and sheets
+
+Everything that goes *in front* of a screen goes through `Overlay3d`, which
+belongs to the surface rather than to the `Scaffold3d` — so a dialog can outlive
+the screen that opened it and a barrier can cover the whole panel. What an
+application has to do is put one there, and hang a messenger inside it:
+
+```dart
+SceneLayout3d(
+  camera: camera,
+  binding: const Layout3dCameraBinding.screenFilling(distance: 2),
+  child: SceneTheme3d(
+    data: Theme3dData.light,
+    textRendererFactory: AtlasText3dRenderer.new,
+    child: SceneOverlay3d(
+      camera: camera,
+      child: ScaffoldMessenger3d(
+        child: Scaffold3d(appBar: bar, body: body),
+      ),
+    ),
+  ),
+)
+```
+
+The order matters and it is Flutter's own: the overlay outside, the messenger
+inside it, the screen inside that. The theme is outermost of the three, because
+an overlay's content is built inside the overlay and has to be able to read it.
+
+A dialog is then a call that returns a future:
+
+```dart
+Future<void> _confirmDelete(BuildContext context) async {
+  final deleted = await showDialog3d<bool>(
+    context: context,
+    builder: (context) => Dialog3d(
+      semanticLabel: 'Delete this file?',
+      child: SceneColumn3d(
+        mainAxisSize: MainAxisSize3d.min,
+        crossAxisAlignment: CrossAxisAlignment3d.start,
+        spacing: Layout3dMetricsScope.of(context).dp(24),
+        children: <Widget>[
+          const SceneText3d('Delete this file?'),
+          SceneRow3d(
+            mainAxisAlignment: MainAxisAlignment3d.end,
+            spacing: Layout3dMetricsScope.of(context).dp(8),
+            children: <Widget>[
+              TextButton3d(
+                semanticLabel: 'Cancel',
+                onPressed: () =>
+                    Navigator3d.of(SceneOverlay3d.of(context))?.pop(false),
+                child: const SceneText3d('Cancel'),
+              ),
+              FilledButton3d(
+                semanticLabel: 'Delete',
+                onPressed: () =>
+                    Navigator3d.of(SceneOverlay3d.of(context))?.pop(true),
+                child: const SceneText3d('Delete'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
+  if (deleted ?? false) {
+    ScaffoldMessenger3d.of(context).show(
+      const SnackBar3d(message: 'File deleted'),
+    );
+  }
+}
+```
+
+`showModalBottomSheet3d` and `showBottomSheet3d` are the same shape for a
+sheet — the first over a scrim and returning a value, the second part of the
+screen and blocking nothing. `PopupMenuButton3d` opens a menu at a button and
+`Tooltip3d` wraps any control at all:
+
+```dart
+Tooltip3d(
+  message: 'More actions',
+  child: PopupMenuButton3d<String>(
+    semanticLabel: 'More actions',
+    itemBuilder: (context) => const <MenuItem3dEntry<String>>[
+      MenuItem3dEntry(value: 'rename', label: 'Rename'),
+      MenuItem3dEntry(value: 'delete', label: 'Delete'),
+    ],
+    onSelected: _act,
+    child: const Icon3d(Icons.more_vert),
+  ),
+)
+```
+
+### The content arrives one frame after the call
+
+`showDialog3d` returns immediately and the dialog — barrier, scrim and all — is
+in the tree on the **next** frame. Flutter's own `showDialog` behaves the same
+way: inserting an overlay entry marks the overlay for a rebuild rather than
+editing the tree in place. A test pumps once after opening. What is *not*
+deferred is the route: the future exists from the call, and popping it works
+whether or not a frame has run.
+
+### A scrim is a slab, and a dialog has to clear a whole screen
+
+Material's scrim is black at 32% over the content. Here it is geometry — a
+`thickness.thin` slab in front of the screen and behind the dialog — and every
+depth rule applies to it. The 32% is real: the panel shader blends, so a
+translucent colour is a translucent slab. What a scrim must not be is
+zero-depth, which would make it coplanar with whatever it covers, and what must
+not sit on its plane is the dialog, which needs a real `thickness.depthStep`
+between them.
+
+The lift is the other half. A `Scaffold3d` has already spent four depth steps
+on its own slots by the time anything is put in front of it, and the frontmost
+of them is a slab in its own right, so `Overlay3d.defaultLift` — eight logical
+pixels, a depth-buffer separation between two things with no thickness — is
+about a seventh of what is needed. Every overlay here takes its lift from
+`Scaffold3d.overlayLift(theme.thickness.depthStep)`, which is one step in front
+of `Scaffold3dSlot.values.last`. That is 60dp at the baseline scale, and it is
+arithmetic rather than a figure: adding a slot to the scaffold moves the
+overlays with it.
+
+### A menu is anchored, and it follows
+
+An overlay entry is placed by the overlay's own alignment, which is in the
+middle of the panel and nowhere near the button that asked for a menu. There is
+no `CompositedTransformTarget` here; there is `Layout3d.anchorOffsetTo`, which
+this package drives through `Anchor3d` (around the trigger) and `Follower3d`
+(around the menu). It answers a `nodeOffset`, so anchoring is the node tier:
+one matrix, no relayout, and re-anchoring every frame costs nothing.
+
+It **follows** rather than closing. Three hooks, because the ways a button can
+move are not one kind of event: the follower re-anchors when it is placed, when
+the anchor is placed, and from a post-frame callback while the menu is open —
+the last of which is the case that actually catches a scroll, since a scrolling
+ancestor is placed and the boxes below it are not. A post-frame callback
+schedules no frame of its own, so a menu over a still screen costs nothing at
+all. The menu does close when its button leaves the tree, because an anchor
+that no longer exists cannot be followed.
+
+What it does not do is reflow to stay inside the panel. Flutter shifts a menu
+against the screen edges; what that should mean for a surface hanging at an
+angle in a room is a real design question rather than an oversight.
+
+### The messenger queues, and waiting costs nothing
+
+`ScaffoldMessenger3d` is Flutter's, in the shape a catalogue over `Overlay3d`
+can have it: one bar at a time, a duration per bar, and a future per bar
+carrying **why** it went away.
+
+```dart
+final shown = ScaffoldMessenger3d.of(context).show(
+  SnackBar3d(message: 'Deleted', actionLabel: 'Undo', onAction: _undo),
+);
+if (await shown.closed == SnackBar3dClosedReason.timeout) _commit();
+```
+
+A second `show` while one is up queues rather than replacing, and a queued bar
+closed before its turn is dropped without ever being shown — its future
+completes all the same, as does every bar still waiting when the messenger
+leaves the tree. Nothing animates: `Route3dTransition.none` is what the layout
+package ships and this package has no motion tokens yet, so a bar appears,
+waits and goes. The waiting is one `Timer` and it touches no layout at all.
+
+`Tooltip3d` keeps the same promise where it matters most, because a hover is a
+per-pointer path: a pointer entering starts a `Timer` and a pointer leaving
+cancels it, and neither calls `setState`, marks anything dirty, or rebuilds the
+control underneath. Only the timer firing does anything. Its label absorbs no
+ray either — a tooltip that took the pointer would dismiss itself the instant
+it appeared.
+
+### A sheet is structure, and it has an edge
+
+`BottomSheet3d` is `thickness.structural`, 8dp, like an app bar and unlike a
+card: a sheet is a piece of the screen that has slid into view rather than an
+object resting on it, and the depth scale is the only place that distinction
+can be stated rather than implied. `Sheet3dEdge` makes Material's side sheet
+the same class on another edge — the corners away from the edge are the rounded
+ones — which is the call `Divider3d` and `VerticalDivider3d` deliberately did
+not make, because a divider's indent runs along its own axis and the two need
+different vocabulary.
+
 ## Icons are a font, and it was checked rather than assumed
 
 `Icon3d` is one code point of an icon font drawn as a one-character
@@ -915,10 +1096,10 @@ filled it.
 
 ## What is not here yet
 
-Honestly, and in the order it is planned: the overlays — dialogs, menus, snack
-bars and sheets — the selection controls; and a press ripple, which the panel
-shader can express in two more uniforms and a `smoothstep` and which the
-uniform state layer stands in for until then.
+Honestly, and in the order it is planned: the selection controls — a switch, a
+checkbox, a radio and a slider — and a press ripple, which the panel shader can
+express in two more uniforms and a `smoothstep` and which the uniform state
+layer stands in for until then.
 
 Three things the surfaces and rows left, each for a reason. A filter chip draws
 no **checkmark**: it is a second glyph competing with the container
@@ -930,8 +1111,9 @@ alignment**, the centred one, where Flutter has four. And a card has no
 carves its own radius, but a *child* overflowing a rounded card is not clipped
 to it.
 
-Four the structure left. A scaffold has no **drawer** and no `endDrawer`: a
-drawer is a route over an overlay, which is the phase after this one. There is
+Four the structure left. A scaffold has no **drawer** and no `endDrawer` —
+which is now a smaller gap than it was, since `showModalBottomSheet3d` on
+`Sheet3dEdge.left` is most of one. There is
 no **`FloatingActionButtonLocation`** — the button sits at the trailing bottom
 corner, above the navigation bar, and a screen wanting it elsewhere positions
 its own. A `SliverAppBar3d` has no **`flexibleSpace`** and no `bottom`, so a
@@ -948,6 +1130,18 @@ to carry an icon size down a subtree — `Material3d` carries the content
 *colour* through a `DefaultTextStyle`, so an icon is the right colour without
 being told, and `IconButton3d` and `FloatingActionButton3d` state their own
 24dp size.
+
+Six the overlays left, each with a reason in the plan's *What phase 6
+deliberately left out*: there is no **`AlertDialog3d`** (a column and a row
+inside a `Dialog3d`, and nothing about that arrangement is three-dimensional);
+a menu does not **reflow** to stay inside the panel; a tooltip has no
+**long-press** trigger, because the innermost recognizer wins the arena and a
+tooltip around a button would take the button's own long press; a snack bar has
+no **swipe to dismiss** and no second line; a sheet has no **drag handle** and
+cannot be dragged to a height, and `showBottomSheet3d` does not shorten the
+screen the way Flutter's `Scaffold.showBottomSheet` does — an overlay is not a
+scaffold slot, by design. And **nothing animates**: `Navigator3d.transition` is
+the seam, one hook away, whenever the motion tokens land.
 
 Text input is not planned at all: there is no `EditableText3d`, no selection,
 no cursor and no keyboard plumbing anywhere in the stack, so a `TextField3d`

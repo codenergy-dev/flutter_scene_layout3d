@@ -1463,6 +1463,166 @@ final List<ProbeScene> kProbeScenes = <ProbeScene>[
     );
   }, preload: installPanelPainter),
 
+  // ── The overlays ─────────────────────────────────────────────────────
+  //
+  // Phase 6's two claims. The first is the one the catalogue plan named
+  // itself, and it is about a depth buffer as much as about a colour.
+  ProbeScene('dialog_over_scrim', () {
+    // **A dialog occludes the scrim behind it rather than fighting it.**
+    //
+    // Material's scrim is black at 32% over the content. Here it is
+    // *geometry* — a slab in front of the screen and behind the dialog — so
+    // every depth rule applies to it, and two things have to be true at once
+    // that no headless test can see: the scrim actually darkens what it
+    // covers, and the dialog drawn over it reads as a dialog everywhere
+    // rather than in patches.
+    //
+    // The scene is built so both claims are **comparisons**. Phase 2 found
+    // that a dark surface can fall inside this harness's clear tolerance, and
+    // a scrim is the darkest thing in the catalogue: asking "is this pixel
+    // dark" would be asking the harness a question it cannot answer. So the
+    // scrim is deliberately **narrower than the backing**, exactly as
+    // `sliver_app_bar_clip`'s bar is narrower than its rows, and the
+    // assertion is scrimmed-against-unscrimmed rather than scrimmed-against-a
+    // -threshold. A full-bleed scrim would photograph a working picture over
+    // a scrim that never drew.
+    //
+    // The light theme, like every catalogue scene here.
+    const theme = Theme3dData.light;
+    final style = DialogStyle3d.of(theme);
+
+    final backing = DecoratedBox3d(
+      decoration: Material3d.decorationFor(
+        theme,
+        color: theme.colorScheme.primary,
+        thickness: theme.thickness.structural,
+        surfaceTint: const Color(0x00000000),
+      ),
+      name: 'backing',
+    );
+    final scrim = DecoratedBox3d(
+      decoration: Material3d.decorationFor(
+        theme,
+        color: style.scrimColor,
+        thickness: style.scrimThickness,
+        surfaceTint: const Color(0x00000000),
+      ),
+      name: 'scrim',
+    );
+    final dialog = DecoratedBox3d(
+      decoration: Material3d.decorationFor(
+        theme,
+        color: style.container,
+        shape: style.shape,
+        elevation: style.elevation,
+        thickness: style.thickness,
+        surfaceTint: const Color(0x00000000),
+      ),
+      name: 'dialog',
+    );
+
+    return ProbeSceneContent(
+      surfaces: [
+        Layout3dSurface(
+          constraints: Constraints3d.tight(const Size3d(3.0, 2.4, 0.6)),
+          child: Stack3d(
+            alignment: Alignment3d.center,
+            // `Thickness3d.depthStep`, in world units at the default rate.
+            // A 1dp scrim over an 8dp backing is a mean of 4.5dp and a 4dp
+            // dialog over the scrim is 2.5dp, so one step clears both several
+            // times over — which is what keeps the dialog from fighting the
+            // slab it is carried on.
+            depthStep: 0.12,
+            children: <Layout3d>[
+              SizedBox3d(width: 3.0, height: 2.4, depth: 0.08, child: backing),
+              // Narrower than the backing on purpose: the strip either side is
+              // where an unscrimmed reading comes from.
+              SizedBox3d(width: 2.2, height: 2.4, depth: 0.01, child: scrim),
+              SizedBox3d(width: 1.4, height: 0.9, depth: 0.04, child: dialog),
+            ],
+          ),
+        ),
+      ],
+      probes: {'backing': backing, 'scrim': scrim, 'dialog': dialog},
+    );
+  }, preload: installPanelPainter),
+
+  ProbeScene('menu_at_its_button', () {
+    // **An anchored menu is drawn at its button, and not where layout put
+    // it.**
+    //
+    // The anchoring is a `nodeOffset` — the node tier, one matrix, no
+    // relayout — and that is precisely why a headless test cannot finish the
+    // job. `Layout3d.worldTransform` *undoes* `nodeOffset` by design, so
+    // `screenPointOf` on the menu reports where layout put it rather than
+    // where it is drawn: the projection and the picture genuinely disagree
+    // here, and only the picture is the truth.
+    //
+    // So the oracle is the **button**. The scene asks what is drawn a button's
+    // height below the button, where an anchored menu is and an unanchored
+    // one — centred by the overlay's own alignment — is not.
+    const theme = Theme3dData.light;
+    final menuStyle = MenuStyle3d.of(theme);
+
+    final backing = DecoratedBox3d(
+      decoration: Material3d.decorationFor(
+        theme,
+        color: theme.colorScheme.primary,
+        thickness: theme.thickness.structural,
+        surfaceTint: const Color(0x00000000),
+      ),
+      name: 'backing',
+    );
+    final button = DecoratedBox3d(
+      decoration: Material3d.decorationFor(
+        theme,
+        color: theme.colorScheme.secondaryContainer,
+        shape: theme.shape.full,
+        thickness: theme.thickness.standard,
+        surfaceTint: const Color(0x00000000),
+      ),
+      name: 'button',
+    );
+    final menu = DecoratedBox3d(
+      decoration: Material3d.decorationFor(
+        theme,
+        color: menuStyle.container,
+        shape: menuStyle.shape,
+        elevation: menuStyle.elevation,
+        thickness: menuStyle.thickness,
+        surfaceTint: const Color(0x00000000),
+      ),
+      name: 'menu',
+    );
+
+    final anchor = Anchor3d()
+      ..child = SizedBox3d(width: 0.5, height: 0.3, depth: 0.02, child: button);
+    final follower = Follower3d(anchor: anchor)
+      ..child = SizedBox3d(width: 1.0, height: 0.8, depth: 0.04, child: menu);
+
+    return ProbeSceneContent(
+      surfaces: [
+        Layout3dSurface(
+          constraints: Constraints3d.tight(const Size3d(3.0, 2.4, 0.6)),
+          child: Stack3d(
+            alignment: Alignment3d.center,
+            depthStep: 0.12,
+            children: <Layout3d>[
+              SizedBox3d(width: 3.0, height: 2.4, depth: 0.08, child: backing),
+              // The button in the top-left corner, which is as far from the
+              // stack's own centre as this surface allows.
+              Positioned3d(left: 0.2, top: 0.2, child: anchor),
+              // The menu, which the stack would centre and the follower moves
+              // onto the button's bottom-left corner.
+              follower,
+            ],
+          ),
+        ),
+      ],
+      probes: {'backing': backing, 'button': anchor, 'menu': follower},
+    );
+  }, preload: installPanelPainter),
+
   // ── The icon question ────────────────────────────────────────────────
   //
   // The catalogue plan guesses that an icon is a one-glyph `Text3d` in the

@@ -84,6 +84,7 @@
 /// `build` method, is in `package:flutter_scene_layout3d/widgets.dart`.
 library;
 
+export 'src/anchoring.dart' show Layout3dAnchoring;
 export 'src/animation/node_transform.dart' show NodeTransform3d;
 export 'src/animation/tweens.dart'
     show

@@ -780,6 +780,8 @@ than none.
 | `ReorderableList3d`, `SliverReorderableList3d`, `Reorder3dCallback` | `ReorderableListView`, `SliverReorderableList`, `ReorderCallback` — with `newIndex` meaning where the item ends up |
 | `Overlay3d`, `Overlay3dEntry`, `OverlayLayer3d` | `Overlay`, `OverlayEntry`, and the 3D question Flutter does not have |
 | `ModalBarrier3d`, `Navigator3d`, `Route3d` | `ModalBarrier`, `Navigator`, `Route` |
+| `WidgetOverlay3dEntry`, `WidgetPageRoute3d` | an entry and a route whose content is a widget subtree |
+| `Layout3d.anchorOffsetTo` | `CompositedTransformTarget` and `CompositedTransformFollower`, as one call on the node tier |
 | `Layout3dPointerGroup` | routing a ray across surfaces, which a screen does not need |
 | `NodeBox3d` | the leaf that holds content |
 | `Text3d`, `TextMeasurement3d` | `Text`, and the `TextPainter` behind it |
@@ -1741,8 +1743,15 @@ itself — which is what stops one reaching the content behind — and calls
 not dismiss it. `Overlay3dEntry(modal: true)` puts one in. A scrim in a scene
 is not an alpha wash over a display list, because there is no display list: it
 is geometry, a slab you decorate, which is what the barrier's child is for.
-Until a per-node opacity lands in the engine a genuinely translucent scrim is
-not expressible, and a dark material or a dimming tint is the honest fallback.
+A **translucent** one is expressible and this page used to say it was not: the
+panel shader blends, so a `BoxDecoration3d.color` carrying Material's
+black-at-32% blends over what is behind it. What still waits on a per-node
+opacity in the engine is fading an arbitrary *subtree*, which is a different
+thing. Two rules the scrim inherits from being geometry: give it a thickness,
+because a zero-depth slab is coplanar with what it covers, and put a depth step
+between it and whatever stands in front of it — `Overlay3dEntry(modal: true)`
+builds its barrier and its content into a stack with **no** step, which is
+right for a barrier with nothing in it and wrong for a decorated scrim.
 
 A modal entry also traps focus, by wrapping its content in a `FocusScope3d`;
 removing it hands focus back to whatever held it before.
@@ -1758,12 +1767,65 @@ system back button popping this stack, are not answered here — an application
 that wants either pushes on this navigator from wherever it likes and calls
 `pop` from its own `PopScope`.
 
-One difference from Flutter's `Overlay` is worth stating plainly: an entry's
-content is a `Layout3d` built by a callback, not a widget subtree. The layout
-objects are the same ones the widgets drive, so nothing is out of reach; what
-an entry does not get is reconciliation, so a component that changes its
-dialog calls `Overlay3dEntry.markNeedsBuild`, which disposes the old subtree
-and builds a new one in place.
+An entry's content is a `Layout3d` built by a callback rather than a widget
+subtree, which is the one place this differs from Flutter's `Overlay`. The
+layout objects are the same ones the widgets drive, so nothing is out of reach;
+what such an entry does not get is reconciliation, so a component that changes
+its dialog calls `Overlay3dEntry.markNeedsBuild`, which disposes the old
+subtree and builds a new one in place.
+
+For a component written in widgets — which is what a catalogue is —
+`WidgetOverlay3dEntry` takes a `contentBuilder` returning a `Widget`, and
+`WidgetPageRoute3d` is the same for a route:
+
+```dart
+final chosen = await navigator.push(
+  WidgetPageRoute3d<String>(
+    builder: (context, route) => myDialog(onPick: route.pop),
+  ),
+);
+```
+
+Everything else about the entry is unchanged — the layer and its lift, the
+barrier, the focus trap, the ordering — and the subtree is reconciled by the
+same element machinery as the rest of the tree, so a `StatefulWidget` inside a
+dialog keeps its state. It only works under a `SceneOverlay3d`, which is what
+listens for the entry and mounts it. **The content arrives one frame after the
+entry does**: inserting one marks the overlay for a rebuild rather than editing
+the tree in place, exactly as Flutter's `Overlay` does, so a test pumps once
+after opening.
+
+### Anchoring one box to another
+
+An entry is placed by the overlay's own `Stack3d.alignment`, which is in the
+middle of the panel and nowhere near the button that asked for a menu. There is
+no `CompositedTransformTarget` here. `Layout3d.anchorOffsetTo` is the
+arithmetic instead — the anchor's point taken into world space through
+`worldTransform` and back out in the follower's own frame:
+
+```dart
+final placed = menu.anchorOffsetTo(
+  button,
+  self: Alignment3d.topLeft,
+  target: Alignment3d.bottomLeft,
+);
+if (placed != null) menu.nodeOffset = placed;
+```
+
+Three things about it. It answers a **`nodeOffset`**, so anchoring is the node
+tier: one matrix, no relayout, and a follower may re-anchor every frame. It is
+a **position**, not a delta — `worldTransform` reports the frame layout put the
+box in, with the node nudges undone — so assign it rather than adding it, and
+re-anchoring after a scroll is another assignment rather than an accumulation
+that drifts. And it leaves **depth** alone by default, keeping whatever lift
+the follower already has: correcting depth too would land the follower on the
+anchor's own plane and hand the depth test a coin toss, which is a lesson
+`Draggable3d` learned from a render probe.
+
+The consequence worth knowing before writing a test: `screenCenter` and
+`screenPointOf` undo `nodeOffset` too, so they report where layout put an
+anchored box rather than where it is drawn. A probe of an anchored overlay uses
+the *anchor* as its oracle.
 
 ## Dragging things around
 

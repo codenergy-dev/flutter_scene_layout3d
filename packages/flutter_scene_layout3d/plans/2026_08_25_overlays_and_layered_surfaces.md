@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-08-25T20:31:04Z
-updated_at: 2026-08-27T00:00:00Z
+updated_at: 2026-09-09T02:00:00Z
 commit: 657eef80eb8dc8085c3b3a84a8069273495506be
 ---
 
@@ -194,8 +194,17 @@ there. Getting this wrong applies the basis twice and mirrors the entry.
 It has to fill what it is given (an absorber is a proxy and takes its child's
 size) and it has to see a down *and* an up to know a tap outside from a drag
 that started on the dialog. `ModalBarrier3d` does both. The scrim is its
-child, so a caller decorates it; a translucent one still waits on per-node
-opacity in the engine, exactly as the plan said.
+child, so a caller decorates it.
+
+**And "a translucent scrim waits on per-node opacity" was wrong**, which
+phase 6 of the Material catalogue found by drawing one. This plan and
+`ModalBarrier3d`'s own dartdoc both said a translucent scrim was not
+expressible until the opacity contract landed. The panel shader declares
+`blending: alpha`, so a `BoxDecoration3d.color` carrying Material's
+black-at-32% blends over what is behind it, and
+`examples/render_probe`'s `dialog_over_scrim` is the picture. What still waits
+on the opacity contract is *subtree* opacity — fading an arbitrary child — and
+that was never what a scrim needed. Both pages are corrected.
 
 **Focus trapping needed a change to `Focus3d`.** `requestFocus` asked
 `owner.focusScope` — the surface's — so a modal's own scope would never have
@@ -214,7 +223,14 @@ the world, and a press captures every surface that answered it.
 
 ## Left open, deliberately
 
-- **Widget-built entries** (see above).
+- ~~**Widget-built entries**~~ — landed, under
+  [a widget under an overlay entry](2026_09_08_a_widget_under_an_overlay_entry.md),
+  when `flutter_scene_material3d`'s phase 6 turned out to need them exactly as
+  this plan predicted. `WidgetOverlay3dEntry` and `WidgetPageRoute3d` are the
+  shape, and there is still no second reconciliation path: a host inside
+  `SceneOverlay3d` hands what the *first* path reconciled to the entry's slot.
+  The same plan added `Layout3d.anchorOffsetTo`, because nothing here anchored
+  anything and a menu belongs at its button.
 - **Focus traversal across surfaces.** Trapping is done and
   `Focus3dTraversal.traversalRootFor` is the hook, but a `Tab` that walks from
   a detached entry into the panel behind it has no policy. It was named as a

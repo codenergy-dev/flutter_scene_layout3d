@@ -167,6 +167,35 @@ class Scaffold3d extends StatelessWidget {
   static double liftFor(Scaffold3dSlot slot, double depthStep) =>
       (slot.index + 1) * depthStep;
 
+  /// How far in front of a screen's backing an **overlay** sits, in the unit
+  /// [depthStep] is stated in.
+  ///
+  /// One step in front of the frontmost slot, which is the same rule every
+  /// other slot follows — so a dialog clears the whole screen rather than
+  /// only the body, and it clears it *by construction*: adding a slot to
+  /// [Scaffold3dSlot] moves this number with it.
+  ///
+  /// This is what an `Overlay3d` entry's lift is set from. It is not a
+  /// scaffold slot and it is deliberately not one: an overlay belongs to the
+  /// surface rather than to the screen, so that a route can outlive the
+  /// screen that opened it and a barrier can cover the whole view. What the
+  /// scaffold owes it is the depth vocabulary, and this is that vocabulary
+  /// stated once.
+  ///
+  /// ```dart
+  /// OverlayLayer3d.inPlane(
+  ///   lift: metrics.dp(Scaffold3d.overlayLift(theme.thickness.depthStep)),
+  /// )
+  /// ```
+  ///
+  /// `Overlay3d.defaultLift` is eight logical pixels, which is a
+  /// depth-buffer separation rather than a distance and is nowhere near
+  /// enough here: a screen has already spent four steps of its own, and the
+  /// floating action button in front of them is a slab. See *Depth ordering*
+  /// in `docs/traps.md`.
+  static double overlayLift(double depthStep) =>
+      liftFor(Scaffold3dSlot.values.last, depthStep) + depthStep;
+
   /// The bar across the top, usually an [AppBar3d].
   ///
   /// A `SliverAppBar3d` does **not** go here: it is a sliver, and it belongs

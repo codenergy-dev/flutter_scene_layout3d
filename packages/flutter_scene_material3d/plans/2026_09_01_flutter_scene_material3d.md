@@ -1,8 +1,8 @@
 ---
 status: in progress
-reason: phases 0 to 5 are done — the six token families, the theme channel, initializeMaterial3d, Material3d, InkWell3d, Icon3d, the text styling, the seven buttons, the surfaces and rows, and the structure (Scaffold3d, AppBar3d, SliverAppBar3d, NavigationBar3d, NavigationRail3d, VerticalDivider3d) over two more public token sets, on 333 headless tests and 60 render probes. Phase 5 found the clip contract's plane tier dead in a *second* place — a pinned header's clip had never reached a shader — and closed it, with the two widget forms the declarative layer was missing, in the layout package. Phases 6 to 9 are open, and phase 6 is the overlays: dialogs, menus, snack bars and sheets
+reason: phases 0 to 6 are done — the six token families, the theme channel, initializeMaterial3d, Material3d, InkWell3d, Icon3d, the text styling, the seven buttons, the surfaces and rows, the structure (Scaffold3d, AppBar3d, SliverAppBar3d, NavigationBar3d, NavigationRail3d, VerticalDivider3d) and now the overlays (Dialog3d and showDialog3d, Menu3d and PopupMenuButton3d, SnackBar3d with a ScaffoldMessenger3d, Tooltip3d, BottomSheet3d in both its forms), on 396 headless tests and 64 render probes. Phase 6 needed two things the layout package did not have — a widget subtree as an overlay entry's content, and any way at all to anchor one box to another — and both landed there under a plan of their own. Phases 7 to 9 are open, and phase 7 is the selection controls
 created_at: 2026-09-01T19:15:00Z
-updated_at: 2026-09-08T20:30:00Z
+updated_at: 2026-09-09T02:30:00Z
 commit: 52a2ca7b6a176cf70b5bef6b6b92ff7e7cbf82bd
 ---
 
@@ -449,11 +449,26 @@ and the unlit wrinkle above is real and documented rather than hypothetical.
       [a plan of its own in the layout package](../../flutter_scene_layout3d/plans/2026_09_08_the_declarative_side_of_a_pinned_bar.md).
       `dart analyze` clean across the workspace; the layout package is at 917
       (was 909). See *What phase 5 found*.
-- [ ] **Phase 6 — the overlays.** `Dialog3d` and `showDialog3d`, `Menu3d` and
-      `PopupMenuButton3d`, `SnackBar3d` with a messenger, `Tooltip3d`,
-      `BottomSheet3d` — all over `Overlay3d` and `Navigator3d`, all with the
-      lift and thickness rules applied so a dialog does not z-fight the screen
-      behind it.
+- [x] **Phase 6 — the overlays.** Done. `Dialog3d` and `showDialog3d` over
+      `Navigator3d.push`; `Menu3d`, `MenuItem3d`, `PopupMenuButton3d` and
+      `showMenu3d`, with the anchoring problem solved rather than deferred;
+      `SnackBar3d` behind a `ScaffoldMessenger3d` that queues, times and
+      completes a future per message; `Tooltip3d`, whose whole design question
+      is what a waiting timer is allowed to touch (nothing); and
+      `BottomSheet3d` in both the forms Material has, modal and persistent,
+      on any of four edges. Five public token sets — `DialogStyle3d`,
+      `MenuStyle3d`, `SnackBarStyle3d`, `TooltipStyle3d`,
+      `BottomSheetStyle3d` — and one number they all share:
+      `Scaffold3d.overlayLift`, one depth step in front of the frontmost slot
+      a screen declares, so a dialog and a scaffold agree **by construction**
+      rather than by two figures that happen to match. **396 headless tests**
+      (was 333) and **64 render probes** (was 60), including the one this plan
+      named: a dialog occludes the scrim behind it rather than fighting it.
+      The phase needed two things from the layout package — a widget subtree
+      as an overlay entry's content, and any anchoring at all — and both are
+      [a plan of their own there](../../flutter_scene_layout3d/plans/2026_09_08_a_widget_under_an_overlay_entry.md).
+      `dart analyze` clean across the workspace; the layout package is at 932
+      (was 917). See *What phase 6 found*.
 - [ ] **Phase 7 — selection controls.** `Switch3d`, `Checkbox3d`, `Radio3d`,
       `Slider3d`. The first three are shape and state; `Slider3d` is the drag
       lane's first non-list customer, and `PointerSequence3d.addArenaMember` is
@@ -1065,6 +1080,156 @@ the fix Flutter has had all along. And a `const` constructor's asserts run at
 compile time, where `List.length` is not a constant expression — so a
 component refusing a one-element list either gives up `const` or moves the
 check to `build`. `NavigationBar3d.tooFewDestinations` is the second.
+
+## What phase 6 found
+
+Ten things. The first two are gaps in the layout package that this phase could
+not have been written around, and both got a plan of their own there.
+
+**An overlay entry's content is a `Layout3d`, and a catalogue is widgets.**
+The overlays plan wrote this down as the one thing
+`flutter_scene_material3d` would probably want first, and it was right on both
+counts. Nothing in the declarative layer could bridge it from outside the
+package either: the mirroring that turns a render child list into a layout
+child list lives on `Layout3dRenderBox`, which is not exported and should not
+be. `WidgetOverlay3dEntry` and `WidgetPageRoute3d` close it, under
+[a widget under an overlay entry](../../flutter_scene_layout3d/plans/2026_09_08_a_widget_under_an_overlay_entry.md),
+and there is still no second reconciliation path — a host inside
+`SceneOverlay3d` hands what the *first* path reconciled to the entry's slot,
+which is twenty lines. The consequence a component author meets is the
+**one-frame rule**: an entry is in the stack at once and its widgets arrive on
+the next frame, exactly as Flutter's own `Overlay` behaves. A test pumps once.
+
+**Nothing anchored anything, and a menu is the first component that needs to.**
+`Overlay3dEntry` takes an alignment — where the entry sits *in the overlay* —
+and there is no `CompositedTransformTarget` here. The arithmetic already
+existed, privately, inside `Draggable3d._homeOver`: take the anchor's point
+into the world through `worldTransform` and back out again in the follower's
+own frame. It is public now as `Layout3d.anchorOffsetTo`, with two alignments
+so a menu's top-left can sit on its button's bottom-left, and this package's
+`Anchor3d` and `Follower3d` are what drive it. **It answers a `nodeOffset`**,
+so anchoring is the node tier: one matrix, no relayout, and a menu may
+re-anchor every frame without costing a thing.
+
+**A menu follows its button, and it took three hooks to do it honestly.** The
+plan asked for either following or closing, and not for leaving it undefined.
+Following turned out to need more than one hook, because the ways a button can
+move are not one kind of event. The follower re-anchors when *it* is placed,
+which covers a resize and anything that relays the overlay out; when the
+*anchor* is placed, which covers a row moving inside a list; and from a
+post-frame callback while a menu is open, which is the backstop for the case
+neither catches — an **ancestor** of the button moving, where `place` is called
+on the ancestor and never on the boxes below it. That last one is a scroll, and
+it is the case the first two hooks were written for and missed. A post-frame
+callback schedules no frame of its own, so a menu over a screen where nothing
+moves costs nothing at all. And the menu closes when its button leaves the
+tree, because an anchor that no longer exists cannot be followed.
+
+**`Overlay3dEntry.modal` cannot be used for a Material scrim, and the reason is
+one line of `Stack3d`.** The entry builds its barrier and its content into a
+stack with **no depth step**, so the two sit on the same plane. That is fine
+for Flutter's barrier, which is a colour in a display list, and wrong here,
+where a scrim is a slab: the two z-fight wherever the scrim shows. So every
+modal in this package passes `modal: false` and builds its own frame —
+`SceneModalBarrier3d` with the scrim as its child, the content one
+`thickness.depthStep` in front, in one `SceneStack3d`. It costs six lines and
+it is the only way to state the step.
+
+**"A translucent scrim is not expressible" was false, and had been since the
+shader landed.** `ModalBarrier3d`'s own dartdoc and the overlays plan both said
+a translucent scrim had to wait for the opacity contract. `box_decoration3d
+.fmat` declares `blending: alpha`, so a `BoxDecoration3d.color` carrying
+Material's black-at-32% blends over what is behind it — the
+`dialog_over_scrim` probe is the picture, and it is the fourth phase in five to
+find a page describing behaviour the code does not have. What *does* still wait
+on the opacity contract is **subtree** opacity, fading an arbitrary child, and
+that was never what a scrim needed. Both pages are corrected.
+
+**The overlay's depth is `Scaffold3d`'s arithmetic, extended by one step.** The
+plan asked for a dialog that clears "all of" a screen rather than only its
+body, and for the two to agree by construction. `Scaffold3d.overlayLift(step)`
+is `liftFor(Scaffold3dSlot.values.last, step) + step` — one step in front of
+the frontmost slot, whatever that slot turns out to be — so adding a value to
+`Scaffold3dSlot` moves the overlays with it and nothing has to be kept in sync
+by hand. It comes out at 60dp against `Overlay3d.defaultLift`'s 8, which is the
+size of the mistake a component picking the default would have made.
+
+**A snack bar's queue is one `Timer` and no animation at all, and saying so is
+the honest version.** `Route3dTransition.none` is what the layout package
+ships, this package has no motion tokens yet, and a messenger that pretended
+otherwise would be a lie in the API. What the queue does have is the shape
+Flutter's `ScaffoldMessenger` has: one bar at a time, a duration per bar, a
+future per bar carrying **why** it went away, and a bar closed before its turn
+dropped rather than shown. Four seconds of waiting rebuild nothing and lay out
+nothing, and a test asserts exactly that.
+
+**A tooltip's design question is what a *waiting* timer may touch, and the
+answer is nothing.** A pointer entering starts a `Timer`; a pointer leaving
+cancels it. Neither calls `setState`, marks anything dirty, or rebuilds the
+control under the pointer — only the timer *firing* does anything, and what it
+does is insert an entry. The test counts the builds and the layouts of the
+child across four hundred milliseconds of hover that never matures, and both
+are unmoved. One thing did have to differ from `InkWell3d`: its hover listener
+is `deferToChild`, because a control is hovered exactly where it is pressable,
+while a tooltip wraps things that answer no ray of their own — a bare label, an
+icon. A tooltip's listener is **opaque**, and its own extent is the hover
+region.
+
+**Every item inside an overlay needs a slab of its own, and it needs to stand
+*clear* rather than rest on the surface.** The trap `docs/traps.md` records for
+a chip's delete icon — an `InkWell3d` washes the *enclosing* `Material3d` —
+would light a whole menu up under one finger, and a menu can afford the answer
+a navigation bar uses. What phase 5 did not have to work out is how far in
+front: a transparent slab resting exactly on the menu's front face is coplanar
+with it, and one lifted by exactly its own depth has its *back* face there
+instead, which is the same fight from the other side. `MenuStyle3d
+.itemDepthStep` is twice `itemThickness`, and the constructor asserts it.
+
+**A sheet is `structural`, not `raised`, and the depth scale is where that is
+said out loud.** A dialog is an object resting in front of a screen and a sheet
+is a piece of the screen that has slid into view — the same distinction an app
+bar and a card make, and the thickness token is the only place in the
+catalogue where it can be stated rather than implied. `Sheet3dEdge` then makes
+a side sheet the same class on another edge, which is the call `Divider3d` and
+`VerticalDivider3d` deliberately did *not* make: a divider's indent runs along
+its own axis and the two need different vocabulary, while a sheet's only
+difference is where it is pinned.
+
+## What phase 6 deliberately left out
+
+Small on purpose, as phases 3 and 4 were told to be, and these are the things a
+reader will look for and not find:
+
+- **`AlertDialog3d`.** Material's dialog with a title, an icon, supporting text
+  and a row of actions. It is a column and a row inside `Dialog3d`, and
+  nothing about that arrangement is three-dimensional: it would be the first
+  component in the catalogue that exists only to save a caller from writing a
+  `SceneColumn3d`. `Dialog3d` is what Flutter's own `Dialog` is, and the
+  arrangement is a caller's.
+- **A menu that reflows to stay inside the panel.** Flutter's
+  `PopupMenuButton` shifts its menu against the screen edges. Here the "screen"
+  is a surface that may be at any angle in a room, and what "off the edge"
+  should mean for it is a real design question rather than an oversight — the
+  same question `docs/traps.md` records for M3's window size classes.
+- **A tooltip on a long press.** Material shows one on a touch screen after a
+  long press. That needs a gesture arena entry beside whatever the child
+  already has, and the innermost recognizer wins the arena — so a tooltip
+  around a button would take the button's own long press. Hover is the trigger
+  that composes.
+- **A snack bar's swipe-to-dismiss and its second line.** `Dismissible3d`
+  exists and would do the first; both are ornament on a component whose design
+  question here was the queue.
+- **A sheet's drag handle, and a draggable sheet.** A sheet that can be dragged
+  to a height is a scroll interaction wearing a sheet's clothes, and it wants
+  the drag lane rather than the overlay lane. `showBottomSheet3d` also does
+  **not** shorten the screen the way Flutter's `Scaffold.showBottomSheet` does:
+  an overlay is not a scaffold slot, by design, and a sheet that has to make
+  room for itself is a different component.
+- **Animation, everywhere.** Nothing here slides, fades or grows.
+  `Route3dTransition.none` is the layout package's honest default and this
+  package has no motion tokens; a dialog appears and disappears. The seam is
+  `Navigator3d.transition`, and it is one hook away whenever the motion tokens
+  land.
 
 ## What phase 4 deliberately left out
 

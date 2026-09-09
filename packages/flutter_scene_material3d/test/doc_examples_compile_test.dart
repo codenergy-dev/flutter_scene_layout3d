@@ -357,6 +357,92 @@ Widget railAndBody(int index, Widget body) => SceneRow3d(
   ],
 );
 
+// ------------------------------------------------------------ The overlays:
+// dialogs, menus, snack bars, tooltips and sheets.
+
+/// The order an application puts an overlay, a messenger and a screen in.
+Widget overlaidApp(Camera camera, Widget bar, Widget body) => SceneLayout3d(
+  camera: camera,
+  binding: const Layout3dCameraBinding.screenFilling(distance: 2),
+  child: SceneTheme3d(
+    data: Theme3dData.light,
+    textRendererFactory: AtlasText3dRenderer.new,
+    child: SceneOverlay3d(
+      camera: camera,
+      child: ScaffoldMessenger3d(
+        child: Scaffold3d(appBar: bar, body: body),
+      ),
+    ),
+  ),
+);
+
+/// A dialog that returns a value, and a snack bar that reports what happened.
+Future<void> confirmDelete(BuildContext context) async {
+  final deleted = await showDialog3d<bool>(
+    context: context,
+    builder: (context) => Dialog3d(
+      semanticLabel: 'Delete this file?',
+      child: SceneColumn3d(
+        mainAxisSize: MainAxisSize3d.min,
+        crossAxisAlignment: CrossAxisAlignment3d.start,
+        spacing: Layout3dMetricsScope.of(context).dp(24),
+        children: <Widget>[
+          const SceneText3d('Delete this file?'),
+          SceneRow3d(
+            mainAxisAlignment: MainAxisAlignment3d.end,
+            spacing: Layout3dMetricsScope.of(context).dp(8),
+            children: <Widget>[
+              TextButton3d(
+                semanticLabel: 'Cancel',
+                onPressed: () =>
+                    Navigator3d.of(SceneOverlay3d.of(context))?.pop(false),
+                child: const SceneText3d('Cancel'),
+              ),
+              FilledButton3d(
+                semanticLabel: 'Delete',
+                onPressed: () =>
+                    Navigator3d.of(SceneOverlay3d.of(context))?.pop(true),
+                child: const SceneText3d('Delete'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
+  if (deleted ?? false) {
+    ScaffoldMessenger3d.of(
+      context,
+    ).show(const SnackBar3d(message: 'File deleted'));
+  }
+}
+
+/// A tooltip over a menu button, which is the pair a toolbar actually uses.
+Widget moreActions(void Function(String) act) => Tooltip3d(
+  message: 'More actions',
+  child: PopupMenuButton3d<String>(
+    semanticLabel: 'More actions',
+    itemBuilder: (context) => const <MenuItem3dEntry<String>>[
+      MenuItem3dEntry(value: 'rename', label: 'Rename'),
+      MenuItem3dEntry(value: 'delete', label: 'Delete'),
+    ],
+    onSelected: act,
+    child: const Icon3d(Icons.more_vert),
+  ),
+);
+
+/// The messenger's future, and the reason it carries a reason.
+Future<void> deleteWithUndo(
+  BuildContext context,
+  VoidCallback undo,
+  VoidCallback commit,
+) async {
+  final shown = ScaffoldMessenger3d.of(
+    context,
+  ).show(SnackBar3d(message: 'Deleted', actionLabel: 'Undo', onAction: undo));
+  if (await shown.closed == SnackBar3dClosedReason.timeout) commit();
+}
+
 void main() {
   test('the README examples compile', () {
     // They do, or this file would not have been compiled to run.
@@ -373,5 +459,9 @@ void main() {
     expect(ScreenDemo.new, isNotNull);
     expect(boundScreen, isNotNull);
     expect(railAndBody, isNotNull);
+    expect(overlaidApp, isNotNull);
+    expect(confirmDelete, isNotNull);
+    expect(moreActions, isNotNull);
+    expect(deleteWithUndo, isNotNull);
   });
 }
