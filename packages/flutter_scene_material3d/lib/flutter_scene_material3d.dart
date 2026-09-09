@@ -92,6 +92,7 @@ export 'src/components/ink.dart'
 export 'src/components/ink_well.dart' show InkWell3d;
 export 'src/components/list_tile.dart' show ListTile3d;
 export 'src/components/material.dart' show Material3d;
+export 'src/components/node_shift.dart' show NodeShift3d, SceneNodeShift3d;
 export 'src/components/navigation.dart'
     show
         NavigationBar3d,
@@ -119,6 +120,19 @@ export 'src/components/overlay_style.dart'
         SnackBarStyle3d,
         TooltipStyle3d;
 export 'src/components/scaffold.dart' show Scaffold3d, Scaffold3dSlot;
+export 'src/components/selection.dart' show Checkbox3d, Radio3d, Switch3d;
+export 'src/components/slider.dart'
+    show SceneSliderGesture3d, Slider3d, SliderGesture3d;
+export 'src/components/selection_style.dart'
+    show
+        CheckboxStyle3d,
+        RadioStyle3d,
+        ResolvedCheckboxStyle3d,
+        ResolvedRadioStyle3d,
+        ResolvedSliderStyle3d,
+        ResolvedSwitchStyle3d,
+        SliderStyle3d,
+        SwitchStyle3d;
 export 'src/components/text_style.dart' show SceneTextStyle3d;
 export 'src/components/tooltip.dart' show Tooltip3d;
 export 'src/theme/theme.dart' show SceneTheme3d, Theme3d;

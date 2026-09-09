@@ -239,8 +239,18 @@ one `Button3d` over seven `ButtonStyle3d`s; the surfaces and rows are `Card3d`,
 `ListTile3d`, `Divider3d` and `Chip3d`; the structure is `Scaffold3d`,
 `AppBar3d`, `SliverAppBar3d`, `NavigationBar3d` and `NavigationRail3d`; and the
 overlays are `Dialog3d`, `Menu3d` and `PopupMenuButton3d`, `SnackBar3d` behind
-a queueing `ScaffoldMessenger3d`, `Tooltip3d` and `BottomSheet3d`. What is left
-is the selection controls and a press ripple.
+a queueing `ScaffoldMessenger3d`, `Tooltip3d` and `BottomSheet3d`; and the
+selection controls are `Checkbox3d`, `Radio3d`, `Switch3d` and `Slider3d`. What
+is left is a press ripple and a gallery to see it all in.
+
+The selection controls are where two of this project's rules meet at once. A
+thumb sliding along a track is a `nodeOffset` and a track filling to it is a
+`nodeTransform` — one matrix a frame and no relayout, which is what lets a
+slider be dragged across twenty frames without laying a single box out — and a
+thumb has to stand *proud* of the track rather than resting on it, because two
+coplanar surfaces fight for the depth buffer. That second rule had been written
+out by hand for a divider on a card, a glyph on a navigation pill and an item
+on a menu surface before it became `Thickness3d.stepOver`.
 
 The structure is where the depth stops being decoration. A screen's slots have
 to be *ordered* in depth, because an app bar is over content that scrolls under

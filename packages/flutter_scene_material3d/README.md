@@ -846,6 +846,166 @@ ones — which is the call `Divider3d` and `VerticalDivider3d` deliberately did
 not make, because a divider's indent runs along its own axis and the two need
 different vocabulary.
 
+## The selection controls: a box, a ring, a thumb and a track
+
+`Checkbox3d`, `Radio3d`, `Switch3d` and `Slider3d`, over `CheckboxStyle3d`,
+`RadioStyle3d`, `SwitchStyle3d` and `SliderStyle3d`. The first three are shape
+and state; the fourth is the first thing in this catalogue that is **dragged**.
+
+```dart
+class SettingsPanel extends StatefulWidget {
+  const SettingsPanel({super.key});
+
+  @override
+  State<SettingsPanel> createState() => _SettingsPanelState();
+}
+
+class _SettingsPanelState extends State<SettingsPanel> {
+  bool _notify = true;
+  bool _wifi = false;
+  String _delivery = 'standard';
+  double _volume = 0.4;
+
+  @override
+  Widget build(BuildContext context) => SceneColumn3d(
+    crossAxisAlignment: CrossAxisAlignment3d.start,
+    children: <Widget>[
+      Checkbox3d(
+        value: _notify,
+        onChanged: (value) => setState(() => _notify = value),
+        semanticLabel: 'Notify me',
+      ),
+      Switch3d(
+        value: _wifi,
+        onChanged: (value) => setState(() => _wifi = value),
+        semanticLabel: 'Wi-Fi',
+      ),
+      Radio3d<String>(
+        value: 'standard',
+        groupValue: _delivery,
+        onChanged: (value) => setState(() => _delivery = value ?? _delivery),
+        semanticLabel: 'Standard delivery',
+      ),
+      Slider3d(
+        value: _volume,
+        onChanged: (value) => setState(() => _volume = value),
+        semanticLabel: 'Volume',
+      ),
+    ],
+  );
+}
+```
+
+Each one **states its own name**, for the reason every component here does: a
+`Semantics3d` publishes what it is given and gathers nothing from the label
+beside it. What it does not need to be told is the state — a checkbox and a
+radio publish `checked`, a switch publishes `toggled`, and a slider publishes
+`slider` with a formatted `value`. Flutter draws that distinction and it is
+worth keeping: a reader says "ticked" for one and "on" for the other.
+
+### Three rectangles for one control, and why they are three
+
+A checkbox is **18dp of ink inside a 40dp wash inside a 48dp touch target**.
+That is Material's own arrangement, and here it has to be three separate boxes
+rather than one padded one, because a `TapTarget3d` reaches past its own extent
+and its parent does not. So the reach sits outside the wash, the wash is the
+control's own extent, and the ink is a slab on top of it.
+
+The consequence is the one this catalogue keeps meeting, at its sharpest here:
+a row of checkboxes is **40dp tall** and answers a finger over 48dp, so there
+are four logical pixels of margin on every side that no box in the layout knows
+about — and at a corner, four pixels is all a press has. `test/selection_test
+.dart` presses exactly there.
+
+### The mark is the signal, and an 18dp glyph had to be checked
+
+Phase 4 declined to draw a checkmark on a selected filter chip: the container
+substitution already said "selected" and a glyph would have been a second voice
+saying the same thing. A checkbox runs the other way. Its substitution is an
+18dp square turning `primary`, which without a mark is a filled swatch — so the
+mark carries the whole signal, and Material draws one.
+
+It is one glyph of the icon font, like every `Icon3d`, and at 18dp it is the
+smallest thing this package has asked the label atlas for.
+`examples/render_probe`'s `checkbox_mark` scene settled that it draws, beside
+an identical box whose glyph has no renderer — the same pairing `icon_glyph`
+used, at the size a real control uses. What it turned up is worth knowing
+before you tune a glyph size: **the atlas's rasterization scale does not depend
+on the glyph's size, or on the surface's unit rate.** It is
+`AtlasText3dRenderer.resolution` and nothing else, because the two metrics
+factors in `unitsPerLogicalPixel * logicalPixelsPerUnit` cancel. An 18dp mark
+and a 220dp heart are rasterized at the same texels-per-logical-pixel, and
+`glyphAtlasScaleFor` rounds **up**, so a bucket is never coarser than asked
+for. Small type here is not a resolution problem.
+
+### The thumb slides on the node tier, and stands proud of its track
+
+`docs/traps.md` lists three tiers of change — repaint only, node only, and a
+real relayout — and a thumb moving along a track is squarely the second. So the
+slide is a `nodeOffset` and the slider's *fill* is a `nodeTransform`, both
+written by `SceneNodeShift3d`, and neither calls `markNeedsLayout`. Layout
+centres the thumb on the track; the shift carries it half the travel either
+way.
+
+The fill is the part worth pausing on. The obvious way to fill a track is to
+give a box a width and change it, which is a relayout on every frame of a drag.
+A node transform pivots on the box's **origin corner**, so the active track is
+the *whole* track scaled by the value: its left end stays exactly where layout
+put it and its right end stops at the thumb, and no box changes size at all.
+`test/slider_test.dart` drags across twenty frames and asserts `needsFlush` is
+false after every one.
+
+Two things follow that will otherwise cost you time. **`worldTransform` undoes
+both channels**, deliberately, so hit testing keeps finding a box where layout
+put it — which means `screenCenter` on a thumb reports the middle of the track
+whichever way the switch is set. A picture of one has to take its oracle from
+the track, exactly as phase 6's anchored menu takes its from the button. And a
+thumb resting on the track's front face would be **coplanar** with it and
+z-fight; every one of these controls stands its ink one `Thickness3d.stepOver`
+clear of what it is drawn on.
+
+### The slider is the drag lane's first customer outside a list
+
+A slider inside a scrolling list has to take a sideways drag while the list
+keeps a vertical one, and the only thing that can arbitrate that is the gesture
+arena. Two of Flutter's four recognizers do not fire in this build, which is
+why `PointerSequence3d.addArenaMember` exists — the drag plan named "a knob, a
+slider, a rotation handle" as its customers, and this is the first of them.
+
+`SliderGesture3d` is that member, and it is exported on its own because it is
+the reusable half: it enters the arena on the press so a view underneath waits
+for the touch slop rather than scrolling out from under the gesture, claims the
+pointer when the finger crosses the slop along the slider's own axis, and gives
+it up quietly when the list claims first. A press that never moves is a **tap**,
+and it claims at the up — which is legal because what ends an arena is the
+sweep, not the close.
+
+`Slider3d` takes an explicit `width` in logical pixels, defaulting to
+Material's narrowest 144dp, where Flutter's fills whatever room it is given.
+That is a real difference and it is the price of the node tier: the thumb's
+position is written by the widget that builds it, so the width has to be known
+before layout rather than after it.
+
+### What the tables say
+
+Every figure is `ColorScheme3d` roles and Material's own dp, and
+`test/selection_defaults_test.dart` is the drift alarm. Five of them are read
+straight out of Flutter — `Checkbox.width`, `kRadialReactionRadius`,
+`kMinInteractiveDimension`, `RoundSliderThumbShape.enabledThumbRadius` and
+`RoundSliderOverlayShape.overlayRadius` are all public — two are measured off a
+real Flutter control with `tester.getSize`, and the rest are transcriptions
+that say so in the test.
+
+Two deliberate departures. A switch's thumb is **one size**, Material's
+selected 24dp, where Material grows it from 16dp as it crosses: that growth is
+an animation and this package has no motion tokens, and a thumb that jumped
+between two sizes would put a size change on the interaction path where every
+other state here is a colour. And the slider is Material's **round-thumb** one
+(a 4dp track and a 20dp thumb) rather than the 2024 bar-handle one, because a
+thumb standing proud of a track is what this catalogue's third dimension is
+for, while a handle inset into a track of its own height is a picture a 3D
+scene has nothing to add to.
+
 ## Icons are a font, and it was checked rather than assumed
 
 `Icon3d` is one code point of an icon font drawn as a one-character
@@ -1096,10 +1256,10 @@ filled it.
 
 ## What is not here yet
 
-Honestly, and in the order it is planned: the selection controls — a switch, a
-checkbox, a radio and a slider — and a press ripple, which the panel shader can
-express in two more uniforms and a `smoothstep` and which the uniform state
-layer stands in for until then.
+Honestly, and in the order it is planned: a press **ripple**, which the panel
+shader can express in two more uniforms and a `smoothstep` and which the
+uniform state layer stands in for until then, and a **gallery** — the example
+app installs no painter yet, so it draws no decoration at all.
 
 Three things the surfaces and rows left, each for a reason. A filter chip draws
 no **checkmark**: it is a second glyph competing with the container
@@ -1142,6 +1302,20 @@ cannot be dragged to a height, and `showBottomSheet3d` does not shorten the
 screen the way Flutter's `Scaffold.showBottomSheet` does — an overlay is not a
 scaffold slot, by design. And **nothing animates**: `Navigator3d.transition` is
 the seam, one hook away, whenever the motion tokens land.
+
+Five the selection controls left. A checkbox has no **tristate**: Material's
+third value is an `Icons.remove` in place of the tick and a `mixed` semantic
+flag, and neither is hard — it is simply not what phase 7 was for. There is no
+**`RadioGroup3d`**, so `Radio3d` keeps the `value` / `groupValue` / `onChanged`
+spelling that Flutter deprecated after 3.32 in favour of a group ancestor; that
+migration is an inherited widget plus a registry, and it belongs beside a
+`FormField3d` rather than inside a leaf control. A slider has no **tick marks**
+for its divisions and no **value indicator** above the thumb, both of which are
+ornament on the component whose design question here was the drag. A switch has
+no **growing thumb** and nothing else animates either, for the reason the whole
+catalogue does not. And a slider takes an explicit **width** rather than
+filling its parent, because the thumb's position is written before layout
+rather than after it.
 
 Text input is not planned at all: there is no `EditableText3d`, no selection,
 no cursor and no keyboard plumbing anywhere in the stack, so a `TextField3d`

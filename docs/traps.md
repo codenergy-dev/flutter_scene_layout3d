@@ -100,6 +100,17 @@ smooth interaction becomes a stutter:
    never call `markNeedsLayout`. A slide, a lift, a press, a turn.
 3. **Implicit**, and only when a size really changed.
 
+**A bar that fills is a scale, not a width**, and that is worth knowing before
+you write the obvious thing. A slider's active track, a progress bar, a meter:
+the natural implementation gives a box a width and changes it, which is a
+relayout on every frame. A `nodeTransform` **pivots on the box's origin
+corner** — `applyNodeTransform` composes `T(offset + sceneOffset + nodeOffset)
+* nodeTransform * localTransform`, and `offset` is the corner — so a
+full-length bar scaled on x keeps its left end exactly where layout put it and
+stops wherever the value says. `flutter_scene_material3d`'s `NodeShift3d` is
+that channel with a name on it, and `Slider3d` fills its track with it: twenty
+frames of drag, `needsFlush` false after every one.
+
 Never put a new `Text3d.text`, a new `NodeBox3d.content`, or a rebuilt mesh on
 a per-frame path. `test/animation_test.dart` asserts `debugTextParagraphCount`
 does not move while a container resizes a label through a whole run; that test
@@ -193,6 +204,21 @@ DefaultTextRenderer3d(factory: AtlasText3dRenderer.new, child: app)
 A `RichText3d` needs no renderer but does need a `SceneView` to host its
 subtree; in a scene nobody is displaying it measures correctly and draws
 nothing.
+
+**A glyph's rasterization scale has nothing to do with how big the glyph is.**
+`AtlasText3dRenderer` asks for `unitsPerLogicalPixel * logicalPixelsPerUnit *
+resolution`, and the first two are reciprocals of each other — so the raster
+scale is `resolution` (2.0 by default) and **nothing else**, whatever the type
+size and whatever the surface's unit rate. Three consequences. An 18dp
+checkmark and a 220dp heart are rasterized at the same texels per logical
+pixel, so small type here is not a resolution problem. `glyphAtlasScaleFor`
+rounds *up* to the next quarter, so a bucket is never coarser than asked for
+and the 32-bucket ceiling costs nothing at a fixed `resolution`. And turning a
+surface's `unitsPerLogicalPixel` up — the dial `divider_rule` and
+`checkbox_mark` use to make a small component probeable — magnifies the drawn
+quad and leaves the rasterization alone, which is exactly what a magnifying
+glass should do and is not what it looks like it does. `resolution` is the only
+dial that changes the raster, and its cost is quadratic.
 
 Both of those are one-frame-late by nature: an atlas glyph nobody has drawn
 before is read back asynchronously, and a widget capture arrives on the frame
@@ -330,6 +356,28 @@ Resting it there makes its front face coplanar; lifting it by exactly its own
 depth puts its *back* face there instead, which is the same fight seen from
 behind. Lift it by more than its thickness — `MenuStyle3d.itemDepthStep` is
 twice `itemThickness`, and asserts it.
+
+**The rule has a name now, after the fourth component needed it.** A divider on
+a card, a glyph on a navigation pill, an item on a menu surface, and then all
+four selection controls at once — a checkmark on a checkbox, a dot in a radio,
+a thumb on a switch track, a thumb and a fill on a slider track. Every one of
+them is one Material surface drawn on another, every one of them needs a step
+above the *mean* of the two thicknesses, and the first three each derived that
+by hand. `Thickness3d.stepOver(back, front)` is it: twice
+`minimumStepFor`, which is what `MenuStyle3d.itemDepthStep` had already chosen
+by hand for two equal slabs. Reach for it rather than picking a figure, and
+`Thickness3d.separates` is how a component says the figure still works.
+
+**A `Material3d` gives its child a *tight* depth, so a thicker child is
+silently clamped to it.** This is the one that decides how a two-part control
+has to be built. `Material3d`'s thickness is a tight depth constraint on its
+own container, and `Constraints3d.enforce` clamps a child's wish into it — so a
+`Thickness3d.standard` (2dp) thumb placed **inside** a `Thickness3d.thin` (1dp)
+track comes out 1dp, with nothing to say why, and the "stand proud of it" step
+is then computed from a thickness the slab does not have. Two surfaces of
+different depths have to be **siblings** in a `Stack3d`, not one inside the
+other. `Switch3d` and `Slider3d` are both built that way, and
+`test/selection_test.dart` pins the thumb's 2dp with that reason in the test.
 
 **`Dismissible3d`'s backgrounds are coplanar with the child.**
 `backgroundDepthStep` defaults to zero, exactly as `Stack3d.depthStep` does,
@@ -587,6 +635,17 @@ write a scene there.
   inside that tolerance — so a dark panel reads as background, every coverage
   comes out zero, and the scene looks like it never drew. The catalogue scenes
   use the light theme, whose near-white surface is unmistakable, and say so.
+- **A hand-picked threshold is a distance wearing a direction's clothes.** The
+  rule below says to assert an order rather than a difference, and the way it
+  is broken in practice is subtler than a bare `!=`: an assertion like "the
+  thumb is lighter than the track *by more than 0.2*" reads like a direction
+  and is a magnitude nobody can justify. Phase 7's switch scene failed on
+  exactly that, by a thousandth — the thumb was drawn perfectly and the number
+  was invented. What the question actually wanted was a **channel order**: the
+  track is a purple and reads with blue above red, the thumb is near white and
+  reads neutral, so "the thumb carries less of the track's purple than the
+  track does" compares two quantities of the same kind and has no threshold in
+  it at all.
 - **A difference is not a direction, and a shader test wants the direction.**
   "The rim of this panel is a different colour from its middle" is satisfied
   just as well when the two are swapped, which is exactly how the panel shader

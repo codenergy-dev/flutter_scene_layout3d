@@ -431,6 +431,50 @@ Widget moreActions(void Function(String) act) => Tooltip3d(
   ),
 );
 
+// ------------------------------------------------- The selection controls.
+
+class SettingsPanel extends StatefulWidget {
+  const SettingsPanel({super.key});
+
+  @override
+  State<SettingsPanel> createState() => _SettingsPanelState();
+}
+
+class _SettingsPanelState extends State<SettingsPanel> {
+  bool _notify = true;
+  bool _wifi = false;
+  String _delivery = 'standard';
+  double _volume = 0.4;
+
+  @override
+  Widget build(BuildContext context) => SceneColumn3d(
+    crossAxisAlignment: CrossAxisAlignment3d.start,
+    children: <Widget>[
+      Checkbox3d(
+        value: _notify,
+        onChanged: (value) => setState(() => _notify = value),
+        semanticLabel: 'Notify me',
+      ),
+      Switch3d(
+        value: _wifi,
+        onChanged: (value) => setState(() => _wifi = value),
+        semanticLabel: 'Wi-Fi',
+      ),
+      Radio3d<String>(
+        value: 'standard',
+        groupValue: _delivery,
+        onChanged: (value) => setState(() => _delivery = value ?? _delivery),
+        semanticLabel: 'Standard delivery',
+      ),
+      Slider3d(
+        value: _volume,
+        onChanged: (value) => setState(() => _volume = value),
+        semanticLabel: 'Volume',
+      ),
+    ],
+  );
+}
+
 /// The messenger's future, and the reason it carries a reason.
 Future<void> deleteWithUndo(
   BuildContext context,
@@ -463,5 +507,6 @@ void main() {
     expect(confirmDelete, isNotNull);
     expect(moreActions, isNotNull);
     expect(deleteWithUndo, isNotNull);
+    expect(SettingsPanel.new, isNotNull);
   });
 }

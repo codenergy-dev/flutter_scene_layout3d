@@ -37,10 +37,13 @@ dependencies:
   flutter_scene: ^0.23.0
   flutter_scene_layout3d:
     path: ../flutter_scene_layout3d
+  # The one matrix this package writes itself: `NodeShift3d` stretches a
+  # slider's active track on the node tier. `vector_math`, never
+  # `vector_math_64` — see docs/engine-rules.md.
+  vector_math: ^2.1.4
 
 dev_dependencies:
   flutter_lints: ^5.0.0
-  vector_math: ^2.1.4
   flutter_test:
     sdk: flutter
 

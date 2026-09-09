@@ -1697,6 +1697,206 @@ void main() {
       );
     });
   });
+
+  group('the selection controls', () {
+    double luma(ui.Color c) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+
+    testWidgets('an 18dp checkmark rasterizes, and it is what says "ticked"', (
+      tester,
+    ) async {
+      // Phase 2 settled that the label atlas rasterizes an icon-font glyph,
+      // with a 220dp heart. This asks the same question at the size a real
+      // control uses, because the size is the part in doubt: a checkbox is
+      // 18dp and `glyphAtlasScaleFor` quantizes the rasterization scale.
+      //
+      // The experiment is the middle pair. Two identical `primary` boxes,
+      // one with a rendered mark and one whose glyph has no renderer, so the
+      // only difference between the two readings is whether the atlas drew.
+      // The direction is `onPrimary` over `primary`: on the light theme the
+      // marked box is lighter in the middle, and a scene where the two were
+      // swapped fails.
+      final capture = await _draw(tester, kProbeScenes.byId('checkbox_mark'));
+
+      final marked = capture.frame.meanColorAt(
+        capture.centerOf('marked'),
+        radius: 8,
+      );
+      final unmarked = capture.frame.meanColorAt(
+        capture.centerOf('unmarked'),
+        radius: 8,
+      );
+      expect(marked, isNotNull, reason: 'the marked box did not draw');
+      expect(unmarked, isNotNull, reason: 'the unmarked box did not draw');
+      expect(
+        luma(marked!),
+        greaterThan(luma(unmarked!)),
+        reason:
+            'the marked box is no lighter in the middle than the identical '
+            'box beside it whose glyph has no renderer, so an 18dp checkmark '
+            'does not reach the atlas — and a selected Checkbox3d is a '
+            'filled swatch with nothing in it: read $marked marked, '
+            '$unmarked unmarked',
+      );
+
+      // And the box itself drew: a `primary` fill is much darker than the
+      // `surfaceContainerLow` card it sits on, so "the mark is lighter" is
+      // being read inside a box rather than off the card.
+      final card = capture.frame.meanColorAt(
+        capture.pointOf('card', const Offset3d(0.08, 0.5, 1.0)),
+        radius: 8,
+      )!;
+      expect(
+        luma(unmarked),
+        lessThan(luma(card)),
+        reason:
+            'the filled box is no darker than the card behind it: read '
+            '$unmarked box, $card card',
+      );
+
+      // The empty box is the third reading, and it is what makes the
+      // substitution visible as a substitution: transparent, so what shows
+      // through it is the card.
+      final empty = capture.frame.meanColorAt(
+        capture.centerOf('empty'),
+        radius: 6,
+      )!;
+      expect(
+        luma(empty),
+        greaterThan(luma(unmarked)),
+        reason:
+            'an empty checkbox is transparent and should read as the card '
+            'behind it: read $empty empty, $unmarked filled',
+      );
+    });
+
+    testWidgets('a switch draws its thumb at the end it is set to', (
+      tester,
+    ) async {
+      // The claim the node tier makes and the projection cannot check. The
+      // slide is a `nodeOffset`, and `worldTransform` undoes `nodeOffset` by
+      // design — so `screenCenter` on the thumb reports the middle of the
+      // track whichever way the switch is set, and the picture is the only
+      // witness. Phase 6 found the same thing about an anchored menu and
+      // answered it the same way: take the oracle from the box that did not
+      // move.
+      //
+      // Two switches, two readings each, and the two directions have
+      // opposite signs — which is what stops "these differ" from being
+      // satisfied by the thumbs coming out at the wrong ends.
+      final capture = await _draw(tester, kProbeScenes.byId('switch_thumb'));
+
+      ui.Color at(String track, double fraction) {
+        final color = capture.frame.meanColorAt(
+          capture.pointOf(track, Offset3d(fraction, 0.5, 1.0)),
+          radius: 5,
+        );
+        expect(color, isNotNull, reason: '$track drew nothing at $fraction');
+        return color!;
+      }
+
+      // On: a `primary` track with an `onPrimary` thumb at the right-hand
+      // end, so the thumb end is lighter.
+      final onLeft = at('onTrack', 0.2);
+      final onRight = at('onTrack', 0.8);
+      expect(
+        luma(onRight),
+        greaterThan(luma(onLeft)),
+        reason:
+            'the thumb of an on switch is not at the right-hand end, so the '
+            'node offset never reached the scene: read $onLeft left, '
+            '$onRight right',
+      );
+
+      // Off: a `surfaceContainerHighest` track with an `outline` thumb at
+      // the left-hand end, so the thumb end is darker. Same claim, opposite
+      // sign.
+      final offLeft = at('offTrack', 0.2);
+      final offRight = at('offTrack', 0.8);
+      expect(
+        luma(offLeft),
+        lessThan(luma(offRight)),
+        reason:
+            'the thumb of an off switch is not at the left-hand end: read '
+            '$offLeft left, $offRight right',
+      );
+
+      // And it stands *in front of* the track rather than fighting it.
+      //
+      // The first draft of this asserted that the thumb was lighter than the
+      // track by more than a number picked out of the air, and it failed by
+      // a thousandth — which is the harness's own rule about distances,
+      // earned again: a magnitude is a threshold nobody can justify, and the
+      // question wants a **channel order**. `primary` is a purple, so it
+      // reads with blue clearly above red; `onPrimary` is near white and
+      // reads neutral. A thumb resting exactly on the track's front face
+      // would be coplanar with it, the two would z-fight, and the track's
+      // purple would bleed through the thumb — so the test is that the thumb
+      // is *less purple* than the track, by a comparison between two
+      // quantities of the same kind.
+      expect(
+        onRight.b - onRight.r,
+        lessThan(onLeft.b - onLeft.r),
+        reason:
+            "the thumb carries as much of the track's purple as the track "
+            'does, which is what a z-fight between two coplanar slabs looks '
+            'like: read $onLeft track, $onRight thumb',
+      );
+    });
+
+    testWidgets('a slider tracks a finger, and its fill stops at the thumb', (
+      tester,
+    ) async {
+      // Two claims, and the scene is mid-drag for both: a real
+      // `Layout3dPointer` drives the component's own `SliderGesture3d` three
+      // quarters of the way across the track before the frame is captured.
+      //
+      // The oracle is the body — the 48dp box that does not move — because
+      // both the thumb and the fill are moved on the node tier and
+      // `screenPointOf` undoes that.
+      final capture = await _draw(tester, kProbeScenes.byId('slider_drag'));
+
+      ui.Color at(double x, double y, {double radius = 5}) {
+        final color = capture.frame.meanColorAt(
+          capture.pointOf('body', Offset3d(x, y, 1.0)),
+          radius: radius,
+        );
+        expect(color, isNotNull, reason: 'nothing drew at ($x, $y)');
+        return color!;
+      }
+
+      // The track's own line. The thumb ends up at three quarters of the
+      // travel, which in the body's frame is (10 + 0.75 * 124) / 144 ≈ 0.715.
+      // Left of that is the active track, `primary`; right of it is
+      // `surfaceContainerHighest`, which is near white. So the fill is the
+      // darker of the two, and a slider whose fill never scaled would read
+      // the same at both points.
+      final filled = at(0.35, 0.5);
+      final unfilled = at(0.92, 0.5);
+      expect(
+        luma(filled),
+        lessThan(luma(unfilled)),
+        reason:
+            'the two ends of the track read the same, so the active track '
+            'either never scaled or scaled the whole way: read $filled '
+            'behind the thumb, $unfilled in front of it',
+      );
+
+      // And the thumb is where the finger left it. Seven logical pixels
+      // above the track's centre line is inside a 20dp thumb and outside a
+      // 4dp track, so this reading is the thumb or it is the card — and the
+      // card is near white while the thumb is `primary`.
+      final atThumb = at(0.715, 0.355);
+      final awayFromThumb = at(0.06, 0.355);
+      expect(
+        luma(atThumb),
+        lessThan(luma(awayFromThumb)),
+        reason:
+            'nothing dark is drawn above the track where the drag left the '
+            'thumb, so the node offset never reached the scene: read '
+            '$atThumb at the thumb, $awayFromThumb away from it',
+      );
+    });
+  });
 }
 
 extension on List<ProbeScene> {

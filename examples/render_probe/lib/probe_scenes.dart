@@ -180,6 +180,13 @@ void _dragAcross(
   surface.flush();
 }
 
+/// The boxes `switch_thumb` builds, collected as it goes.
+///
+/// Two switches with four named parts between them, built by one closure —
+/// so the names are registered where they are created rather than reassembled
+/// afterwards, which is how a probe map goes stale.
+final Map<String, Layout3d> _switchProbes = <String, Layout3d>{};
+
 /// Every scene the render test draws.
 ///
 /// Each one is deterministic, uses primitives generated in code rather than
@@ -1622,6 +1629,428 @@ final List<ProbeScene> kProbeScenes = <ProbeScene>[
       probes: {'backing': backing, 'button': anchor, 'menu': follower},
     );
   }, preload: installPanelPainter),
+
+  // ── The selection controls ───────────────────────────────────────────
+  //
+  // Phase 7's three claims, and each of them is about something a headless
+  // test cannot reach: a glyph small enough that its raster is in question, a
+  // slab moved on the node tier, and a track whose fill is a scale rather
+  // than a size.
+  //
+  // All three raise the *surface's* `unitsPerLogicalPixel` rather than
+  // fattening a token, which is the dial `divider_rule` and `button_outlined`
+  // both reach for. It is worth knowing exactly what that does to a glyph,
+  // because it is not what it looks like: the atlas rasterizes at
+  // `unitsPerLogicalPixel * logicalPixelsPerUnit * resolution`, and the first
+  // two cancel — so the raster scale is `AtlasText3dRenderer.resolution` and
+  // **nothing else**, whatever the surface's unit rate is. Turning the rate
+  // up magnifies the quad and leaves the rasterization alone. These scenes
+  // are therefore a magnifying glass held over the real 18dp raster rather
+  // than a bigger checkbox.
+  ProbeScene(
+    'checkbox_mark',
+    () {
+      // **An 18dp checkmark actually rasterizes, and it is the mark that is
+      // the signal.**
+      //
+      // Phase 4 declined to draw a checkmark on a filter chip, because the
+      // container substitution already said "selected". A checkbox runs the
+      // other way: the substitution is an 18dp square turning `primary`,
+      // which without a mark is indistinguishable from a filled swatch. So
+      // the glyph has to draw — and at 18dp it is the smallest thing this
+      // catalogue has ever asked the label atlas for. `icon_glyph` settled
+      // the question for a 220dp heart; this settles it at the size a real
+      // control uses.
+      //
+      // Three boxes, and the middle pair is the whole experiment: two
+      // identical `primary` boxes, one with a rendered mark and one whose
+      // glyph has **no renderer at all**. That makes the assertion a
+      // comparison between two boxes that differ in exactly one thing,
+      // exactly as `icon_glyph` and its control do — and the direction is
+      // `onPrimary` over `primary`, which on the light theme means the
+      // marked box is *lighter* in the middle.
+      const theme = Theme3dData.light;
+      final style = CheckboxStyle3d.of(theme);
+      const rate = 0.06;
+      final extent = style.size * rate;
+      final depth = style.thickness * rate;
+
+      DecoratedBox3d filled(String name) => DecoratedBox3d(
+        decoration: Material3d.decorationFor(
+          theme,
+          color: style.selectedContainer,
+          shape: style.shape,
+          thickness: style.thickness,
+          surfaceTint: const Color(0x00000000),
+        ),
+        name: name,
+      );
+      Text3d glyph({required bool drawn}) => Text3d(
+        String.fromCharCode(Checkbox3d.defaultIcon.codePoint),
+        style: TextStyle(
+          fontFamily: Checkbox3d.defaultIcon.fontFamily,
+          fontSize: style.markSize,
+          color: style.mark,
+          height: 1.0,
+        ),
+        renderer: drawn ? AtlasText3dRenderer() : null,
+      );
+
+      final empty = DecoratedBox3d(
+        decoration: Material3d.decorationFor(
+          theme,
+          color: style.container,
+          shape: style.shape,
+          thickness: style.thickness,
+          border: Border3d(width: style.outlineWidth, color: style.outline),
+          surfaceTint: const Color(0x00000000),
+        ),
+        name: 'empty',
+      );
+      final marked = filled('marked');
+      final unmarked = filled('unmarked');
+      final card = DecoratedBox3d(
+        decoration: Material3d.decorationFor(
+          theme,
+          color: theme.colorScheme.surfaceContainerLow,
+          shape: theme.shape.medium,
+          thickness: theme.thickness.raised,
+          surfaceTint: const Color(0x00000000),
+        ),
+        name: 'card',
+      );
+
+      Layout3d cell(DecoratedBox3d panel, Text3d? mark) => SizedBox3d(
+        width: extent,
+        height: extent,
+        child: Stack3d(
+          alignment: Alignment3d.center,
+          // `Thickness3d.stepOver(thin, thin)` is 2dp, at this rate 0.12.
+          depthStep: style.depthStep * rate,
+          children: <Layout3d>[
+            SizedBox3d(
+              width: extent,
+              height: extent,
+              depth: depth,
+              child: panel,
+            ),
+            if (mark != null) mark,
+          ],
+        ),
+      );
+
+      return ProbeSceneContent(
+        surfaces: [
+          Layout3dSurface(
+            metrics: const Layout3dMetrics(unitsPerLogicalPixel: rate),
+            constraints: Constraints3d.tight(const Size3d(6.0, 3.0, 0.6)),
+            child: Stack3d(
+              alignment: Alignment3d.center,
+              depthStep: 0.36,
+              children: <Layout3d>[
+                SizedBox3d(width: 5.4, height: 2.4, depth: 0.24, child: card),
+                Row3d(
+                  mainAxisAlignment: MainAxisAlignment3d.center,
+                  crossAxisAlignment: CrossAxisAlignment3d.center,
+                  spacing: 0.6,
+                  children: <Layout3d>[
+                    cell(empty, null),
+                    cell(marked, glyph(drawn: true)),
+                    cell(unmarked, glyph(drawn: false)),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+        probes: {
+          'card': card,
+          'empty': empty,
+          'marked': marked,
+          'unmarked': unmarked,
+        },
+      );
+    },
+    camera: _wideCamera(),
+    preload: installPanelPainter,
+  ),
+
+  ProbeScene(
+    'switch_thumb',
+    () {
+      // **A switch's thumb is drawn where the switch is set, and it wins the
+      // depth test against the track it sits on.**
+      //
+      // Two claims a headless test cannot make, and the first one for a
+      // reason phase 6 wrote down: the slide is a `nodeOffset`, and
+      // `worldTransform` **undoes** `nodeOffset` by design — so
+      // `screenCenter` on the thumb reports the middle of the track whichever
+      // way the switch is set. The projection and the picture genuinely
+      // disagree, and only the picture is the truth.
+      //
+      // So the oracle is the **track**, exactly as `menu_at_its_button`'s is
+      // the button. The scene asks what colour is drawn at two fifths across
+      // each track, and the answer has to flip between the two switches.
+      //
+      // Both directions are asserted, and they have opposite signs, which is
+      // what makes the pair evidence rather than a coincidence. On: the track
+      // is `primary` (a mid purple) and the thumb `onPrimary` (near white),
+      // so the thumb end is *lighter*. Off: the track is
+      // `surfaceContainerHighest` (near white) and the thumb `outline` (a mid
+      // grey), so the thumb end is *darker*.
+      const theme = Theme3dData.light;
+      final style = SwitchStyle3d.of(theme);
+      const rate = 0.06;
+
+      Layout3d aSwitch({
+        required bool value,
+        required String trackName,
+        required String thumbName,
+      }) {
+        final resolved = style.resolve(
+          const {},
+          selected: value,
+          enabled: true,
+        );
+        final track = DecoratedBox3d(
+          decoration: Material3d.decorationFor(
+            theme,
+            color: resolved.track,
+            shape: style.trackShape,
+            thickness: style.trackThickness,
+            border: resolved.border,
+            surfaceTint: const Color(0x00000000),
+          ),
+          name: trackName,
+        );
+        final thumb = DecoratedBox3d(
+          decoration: Material3d.decorationFor(
+            theme,
+            color: resolved.thumb,
+            shape: theme.shape.full,
+            thickness: style.thumbThickness,
+            surfaceTint: const Color(0x00000000),
+          ),
+          name: thumbName,
+        );
+        _switchProbes[trackName] = track;
+        _switchProbes[thumbName] = thumb;
+        return SizedBox3d(
+          width: style.trackWidth * rate,
+          height: style.trackHeight * rate,
+          child: Stack3d(
+            alignment: Alignment3d.center,
+            depthStep: style.depthStep * rate,
+            children: <Layout3d>[
+              SizedBox3d(
+                width: style.trackWidth * rate,
+                height: style.trackHeight * rate,
+                depth: style.trackThickness * rate,
+                child: track,
+              ),
+              // The node tier: layout centres the thumb and this carries it
+              // half the travel. No box changes size, which is the whole
+              // reason a switch may one day animate for free.
+              NodeShift3d(
+                  shift: Offset3d(
+                    style.travel * rate / 2.0 * (value ? 1.0 : -1.0),
+                    0.0,
+                    0.0,
+                  ),
+                )
+                ..child = SizedBox3d(
+                  width: style.thumbSize * rate,
+                  height: style.thumbSize * rate,
+                  depth: style.thumbThickness * rate,
+                  child: thumb,
+                ),
+            ],
+          ),
+        );
+      }
+
+      _switchProbes.clear();
+      final on = aSwitch(
+        value: true,
+        trackName: 'onTrack',
+        thumbName: 'onThumb',
+      );
+      final off = aSwitch(
+        value: false,
+        trackName: 'offTrack',
+        thumbName: 'offThumb',
+      );
+
+      return ProbeSceneContent(
+        surfaces: [
+          Layout3dSurface(
+            metrics: const Layout3dMetrics(unitsPerLogicalPixel: rate),
+            // Tall enough for two 32dp tracks and the gap between them: at
+            // this rate that is 1.92 each, and a surface's constraints are
+            // tight, so a column that does not fit overflows rather than
+            // growing.
+            constraints: Constraints3d.tight(const Size3d(8.0, 5.4, 0.6)),
+            child: Column3d(
+              mainAxisAlignment: MainAxisAlignment3d.center,
+              crossAxisAlignment: CrossAxisAlignment3d.center,
+              spacing: 0.9,
+              children: <Layout3d>[on, off],
+            ),
+          ),
+        ],
+        probes: Map<String, Layout3d>.of(_switchProbes),
+      );
+    },
+    camera: _wideCamera(),
+    preload: installPanelPainter,
+  ),
+
+  ProbeScene(
+    'slider_drag',
+    () {
+      // **A slider's thumb tracks a finger, and the active track stops where
+      // the thumb is.**
+      //
+      // The scene is mid-interaction, like `drag_feedback_depth`: it builds
+      // the boxes, flushes, and drives a real `Layout3dPointer` across the
+      // track inside `build()`, so the harness receives a static frame that
+      // happens to have a live drag in it. What the pointer drives is the
+      // component's own `SliderGesture3d` — the arena member the drag plan
+      // named "a knob, a slider, a rotation handle" for — so the scene is a
+      // picture of the real gesture rather than of a value set by hand.
+      //
+      // The second claim is the one that could not have been made any other
+      // way. The active track is **not** a box that grows: it is the whole
+      // track, scaled on its own node about its origin corner, which is why
+      // a drag lays nothing out. Whether that scale lands where the thumb is
+      // is a question about a matrix and a picture, and this is the picture.
+      //
+      // The oracle is the **body**, the 48dp box that does not move — the
+      // thumb's own `screenCenter` reports the middle of the track whatever
+      // the value is, for the reason `switch_thumb` explains.
+      const theme = Theme3dData.light;
+      final style = SliderStyle3d.of(theme);
+      const rate = 0.06;
+      const width = SliderStyle3d.defaultMinimumTrackWidth;
+      final travel = (width - style.thumbSize) * rate;
+
+      DecoratedBox3d track(Color color, String name) => DecoratedBox3d(
+        decoration: Material3d.decorationFor(
+          theme,
+          color: color,
+          shape: style.trackShape,
+          thickness: style.trackThickness,
+          surfaceTint: const Color(0x00000000),
+        ),
+        name: name,
+      );
+
+      final inactive = track(style.inactiveTrack, 'inactive');
+      final active = track(style.activeTrack, 'active');
+      final thumb = DecoratedBox3d(
+        decoration: Material3d.decorationFor(
+          theme,
+          color: style.thumb,
+          shape: theme.shape.full,
+          thickness: style.thumbThickness,
+          surfaceTint: const Color(0x00000000),
+        ),
+        name: 'thumb',
+      );
+      final card = DecoratedBox3d(
+        decoration: Material3d.decorationFor(
+          theme,
+          color: theme.colorScheme.surfaceContainerLow,
+          shape: theme.shape.medium,
+          thickness: theme.thickness.raised,
+          surfaceTint: const Color(0x00000000),
+        ),
+        name: 'card',
+      );
+
+      final fill = NodeShift3d(scaleX: 0.0)
+        ..child = SizedBox3d(
+          width: travel,
+          height: style.trackHeight * rate,
+          depth: style.trackThickness * rate,
+          child: active,
+        );
+      final rider = NodeShift3d(shift: Offset3d(-travel / 2.0, 0.0, 0.0))
+        ..child = SizedBox3d(
+          width: style.thumbSize * rate,
+          height: style.thumbSize * rate,
+          depth: style.thumbThickness * rate,
+          child: thumb,
+        );
+
+      final body = SizedBox3d(
+        width: width * rate,
+        height: style.stateLayerSize * rate,
+        name: 'body',
+      );
+      final gesture = SliderGesture3d(padding: style.thumbSize / 2.0 * rate)
+        ..onChanged = (value) {
+          fill.scaleX = value;
+          rider.shift = Offset3d(travel * (value - 0.5), 0.0, 0.0);
+        };
+      gesture.child = Stack3d(
+        alignment: Alignment3d.center,
+        depthStep: style.depthStep * rate,
+        children: <Layout3d>[
+          body,
+          SizedBox3d(
+            width: travel,
+            height: style.trackHeight * rate,
+            depth: style.trackThickness * rate,
+            child: inactive,
+          ),
+          fill,
+          rider,
+        ],
+      );
+
+      final surface = Layout3dSurface(
+        metrics: const Layout3dMetrics(unitsPerLogicalPixel: rate),
+        constraints: Constraints3d.tight(const Size3d(10.0, 4.0, 0.6)),
+        child: Stack3d(
+          alignment: Alignment3d.center,
+          depthStep: 0.36,
+          children: <Layout3d>[
+            SizedBox3d(width: 9.4, height: 3.0, depth: 0.24, child: card),
+            gesture,
+          ],
+        ),
+      );
+      surface.flush();
+
+      // A press at the track's left end and a drag three quarters of the way
+      // across it. The first move is under the touch slop on purpose — a
+      // slider that claimed the pointer before the finger committed would be
+      // the bug the arena exists to prevent — and the second commits.
+      final origin = Offset3d(
+        (10.0 - width * rate) / 2.0 + style.thumbSize / 2.0 * rate,
+        2.0,
+        0.0,
+      );
+      final pointer = Layout3dPointer(surface);
+      pointer.down(_rayAt(surface, origin));
+      pointer.move(_rayAt(surface, origin + const Offset3d(0.05, 0, 0)));
+      pointer.move(_rayAt(surface, origin + Offset3d(travel * 0.75, 0, 0)));
+
+      return ProbeSceneContent(
+        surfaces: [surface],
+        probes: {
+          'card': card,
+          'body': body,
+          'inactive': inactive,
+          'active': active,
+          'thumb': thumb,
+        },
+      );
+    },
+    camera: _wideCamera(),
+    preload: installPanelPainter,
+  ),
 
   // ── The icon question ────────────────────────────────────────────────
   //

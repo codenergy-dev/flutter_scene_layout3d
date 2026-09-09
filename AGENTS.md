@@ -24,7 +24,7 @@ once it became clear the scope was its own project. That history is preserved:
 | Package | What it is |
 | --- | --- |
 | `packages/flutter_scene_layout3d` | The layout protocol. Constraints, intrinsics, baselines, flex, stack, wrap, slivers, scrolling, text measurement, decoration, clipping, pointer dispatch, focus, overlays, animation, diagnostics. |
-| `packages/flutter_scene_material3d` | Material Design 3 on that protocol. Today: the six token families (`ColorScheme3d`, `Typography3d`, `ShapeScale3d`, `Elevation3d`, `Thickness3d`, `StateLayerOpacity3d`), `Theme3dData` and `SceneTheme3d`, `initializeMaterial3d()`, the primitive layer — `Material3d`, `InkWell3d`, `Icon3d`, `SceneTextStyle3d` — the seven buttons over one `ButtonStyle3d`, the surfaces and rows (`Card3d`, `ListTile3d`, `Divider3d`, `Chip3d`), the structure (`Scaffold3d`, `AppBar3d`, `SliverAppBar3d`, `NavigationBar3d`, `NavigationRail3d`, `VerticalDivider3d`) and the overlays: `Dialog3d` and `showDialog3d`, `Menu3d` and `PopupMenuButton3d`, `SnackBar3d` behind a `ScaffoldMessenger3d`, `Tooltip3d`, and `BottomSheet3d` in both its forms. The catalogue continues with the selection controls. |
+| `packages/flutter_scene_material3d` | Material Design 3 on that protocol. Today: the six token families (`ColorScheme3d`, `Typography3d`, `ShapeScale3d`, `Elevation3d`, `Thickness3d`, `StateLayerOpacity3d`), `Theme3dData` and `SceneTheme3d`, `initializeMaterial3d()`, the primitive layer — `Material3d`, `InkWell3d`, `Icon3d`, `SceneTextStyle3d` — the seven buttons over one `ButtonStyle3d`, the surfaces and rows (`Card3d`, `ListTile3d`, `Divider3d`, `Chip3d`), the structure (`Scaffold3d`, `AppBar3d`, `SliverAppBar3d`, `NavigationBar3d`, `NavigationRail3d`, `VerticalDivider3d`) and the overlays: `Dialog3d` and `showDialog3d`, `Menu3d` and `PopupMenuButton3d`, `SnackBar3d` behind a `ScaffoldMessenger3d`, `Tooltip3d`, and `BottomSheet3d` in both its forms, and the selection controls (`Checkbox3d`, `Radio3d`, `Switch3d`, `Slider3d`). The catalogue continues with the press ripple. |
 | `examples/layout3d_gallery` | The example app. Three surfaces — an upright panel, a ground plane, a scrolling list — all hit-testable. |
 | `examples/render_probe` | Render tests. Draws the layout on a GPU and probes the frame at the pixels layout says to check. Commits its platform scaffolding, unlike the gallery. |
 
@@ -78,9 +78,18 @@ not have, and both landed there under
 [a widget under an overlay entry](packages/flutter_scene_layout3d/plans/2026_09_08_a_widget_under_an_overlay_entry.md):
 a widget subtree as an overlay entry's content, and `Layout3d.anchorOffsetTo`,
 because nothing in the stack anchored anything and a menu belongs at its
-button. The catalogue continues with the selection controls at phase 7.
+button. **Phase 7 is done too**: the selection controls — `Checkbox3d`,
+`Radio3d`, `Switch3d` and `Slider3d` over four public token sets — and it is
+the first phase since phase 3 to need *nothing* from the layout package, because
+`PointerSequence3d.addArenaMember` had been built for exactly this customer and
+took a slider without a change. Two things came out of it that outlive the
+components: `Thickness3d.stepOver`, because the "stand proud of what it is
+drawn on" arithmetic had been written by hand three times and this phase needed
+it four more; and `NodeShift3d`, the declarative form of the node tier, whose
+*scale* channel is what lets a slider's track fill without a relayout. The
+catalogue continues with the press ripple at phase 8.
 
-Six things worth knowing before building on any of it, all written up in
+Eight things worth knowing before building on any of it, all written up in
 `docs/traps.md`: handing every `BoxDecoration3d` the *same* material makes a
 screen of panels come out one colour; a `TapTarget3d` reaches past its own
 extent but **its parent does not**, so a target has to sit outside every box
@@ -94,7 +103,13 @@ is the same defect found twice, in a `ClipBox3d` and then in a pinned header,
 and both times only by drawing a frame; and **nothing anchors anything** — an
 overlay entry sits where the overlay's alignment puts it, and
 `Layout3d.anchorOffsetTo` is the arithmetic that moves it onto the box that
-asked for it, on the node tier.
+asked for it, on the node tier; **a `Material3d` hands its child a *tight*
+depth**, so a thicker slab drawn on a thinner one has to be its sibling rather
+than its child or it is silently clamped to the wrong thickness; and **a
+glyph's rasterization scale has nothing to do with how big the glyph is** — it
+is `AtlasText3dRenderer.resolution` and nothing else, so small type here is not
+a resolution problem and turning a surface's unit rate up magnifies the quad
+without touching the raster.
 
 ## Running things
 

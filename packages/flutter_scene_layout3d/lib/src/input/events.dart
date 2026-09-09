@@ -79,7 +79,11 @@ enum HitTestBehavior3d {
 /// not an exotic case here: two of Flutter's four recognizers do not fire at
 /// all in this build, so the scroll drag and the drag-and-drop gesture are
 /// both hand-rolled arena members, and anything else that has to compete for
-/// a pointer — a knob, a slider, a rotation handle — will be too.
+/// a pointer — a knob, a slider, a rotation handle — will be too. The slider
+/// is no longer hypothetical: `flutter_scene_material3d`'s `SliderGesture3d`
+/// is fifty lines over this seam, and what it buys is the case the seam
+/// exists for — a slider inside a scrolling list takes a sideways drag while
+/// the list keeps a vertical one.
 abstract interface class PointerSequence3d {
   /// The pointer id this sequence uses in Flutter's gesture arena.
   ///

@@ -1,8 +1,8 @@
 ---
 status: in progress
-reason: phases 0 to 6 are done — the six token families, the theme channel, initializeMaterial3d, Material3d, InkWell3d, Icon3d, the text styling, the seven buttons, the surfaces and rows, the structure (Scaffold3d, AppBar3d, SliverAppBar3d, NavigationBar3d, NavigationRail3d, VerticalDivider3d) and now the overlays (Dialog3d and showDialog3d, Menu3d and PopupMenuButton3d, SnackBar3d with a ScaffoldMessenger3d, Tooltip3d, BottomSheet3d in both its forms), on 396 headless tests and 64 render probes. Phase 6 needed two things the layout package did not have — a widget subtree as an overlay entry's content, and any way at all to anchor one box to another — and both landed there under a plan of their own. Phases 7 to 9 are open, and phase 7 is the selection controls
+reason: phases 0 to 7 are done — the six token families, the theme channel, initializeMaterial3d, Material3d, InkWell3d, Icon3d, the text styling, the seven buttons, the surfaces and rows, the structure, the overlays, and now the selection controls (Checkbox3d, Radio3d, Switch3d, Slider3d), on 470 headless tests and 70 render probes. Phase 7 is the first phase since phase 3 that needed nothing from the layout package: PointerSequence3d.addArenaMember was waiting for exactly this customer and took a slider without a change. It also turned the "stand proud of what it is drawn on" arithmetic — written by hand in phases 4, 5 and 6 and needed four more times here — into Thickness3d.stepOver. Phases 8 and 9 are open: the ripple, and the gallery
 created_at: 2026-09-01T19:15:00Z
-updated_at: 2026-09-09T02:30:00Z
+updated_at: 2026-09-09T21:40:00Z
 commit: 52a2ca7b6a176cf70b5bef6b6b92ff7e7cbf82bd
 ---
 
@@ -469,10 +469,23 @@ and the unlit wrinkle above is real and documented rather than hypothetical.
       [a plan of their own there](../../flutter_scene_layout3d/plans/2026_09_08_a_widget_under_an_overlay_entry.md).
       `dart analyze` clean across the workspace; the layout package is at 932
       (was 917). See *What phase 6 found*.
-- [ ] **Phase 7 — selection controls.** `Switch3d`, `Checkbox3d`, `Radio3d`,
-      `Slider3d`. The first three are shape and state; `Slider3d` is the drag
-      lane's first non-list customer, and `PointerSequence3d.addArenaMember` is
-      the seam it wants.
+- [x] **Phase 7 — selection controls.** Done. `Checkbox3d`, `Radio3d`,
+      `Switch3d` and `Slider3d` over four public token sets, and the drag
+      lane's first customer outside a list took the seam that was built for
+      it: `PointerSequence3d.addArenaMember` and `HitTestTarget3d` needed no
+      change at all, which makes this the first phase since phase 3 to ask
+      nothing of the layout package. The three claims a picture had to settle
+      all passed — an 18dp checkmark rasterizes, a switch draws its thumb at
+      the end it is set to and in front of its track, and a slider mid-drag
+      fills its track to where the finger left the thumb. Two things came out
+      of it that outlive the components: `Thickness3d.stepOver`, because the
+      "stand proud of what it is drawn on" arithmetic had been written by hand
+      three times and this phase needed it four more; and `NodeShift3d` /
+      `SceneNodeShift3d`, the declarative form of the node tier, whose *scale*
+      channel is what lets a track fill without a relayout. **470 headless
+      tests** (was 396) and **70 render probes** (was 64). `dart analyze` clean
+      across the workspace; the layout package is unchanged at 932. See *What
+      phase 7 found*.
 - [ ] **Phase 8 — the ripple.** Two shader parameters, the press animation on
       the repaint-only tier, and a probe that watches the lit fraction grow.
       Deliberately last: everything before it works without it.
@@ -1194,6 +1207,185 @@ a side sheet the same class on another edge, which is the call `Divider3d` and
 `VerticalDivider3d` deliberately did *not* make: a divider's indent runs along
 its own axis and the two need different vocabulary, while a sheet's only
 difference is where it is pinned.
+
+## What phase 7 found
+
+Eleven things. The first is the one three earlier phases each half-found, and
+it is the reason this phase produced a token method rather than a fourth copy
+of an argument.
+
+**The "stand proud of it" arithmetic had been written by hand three times, and
+this phase needed it four more times in one go.** A divider on a card (phase
+4), a glyph on a navigation pill (phase 5), an item on a menu surface (phase
+6) — and now a checkmark on a checkbox, a dot in a radio, a thumb on a switch
+track, and a thumb *and* a fill on a slider track. Every one is one Material
+surface drawn on another; every one needs a step above the **mean** of the two
+thicknesses, because each slab is centred on its own plane; and resting the
+front one on the back one's face makes the faces coplanar while lifting it by
+exactly its own depth puts its *back* face there instead. Three components
+deriving the same sentence is a habit; seven is a token.
+`Thickness3d.stepOver(back, front)` is twice `minimumStepFor`, which is the
+figure `MenuStyle3d.itemDepthStep` had already arrived at by hand for two equal
+slabs, and every style in this phase takes its `depthStep` from it. The rule
+underneath was never wrong — what was wrong was that it lived in four class
+docs instead of in the scale that owns both numbers.
+
+**A `Material3d` gives its child a *tight* depth, so a thicker child is
+silently clamped — and that is what decides the shape of a two-part control.**
+The obvious way to build a switch is a track with a thumb inside it. It does
+not work: `Material3d`'s thickness is a tight depth constraint on its own
+container, `Constraints3d.enforce` clamps a child's wish into it, and a 2dp
+thumb inside a 1dp track comes out 1dp with nothing to say why — after which
+the depth step computed from the token separates two slabs that are not the
+thicknesses the token says. So a thumb has to be a **sibling** of its track in
+a `Stack3d`, not a child of it, and the same goes for a checkbox's ink and its
+wash. Nothing in the catalogue had met this before, because every earlier
+nesting happened to use the same thickness at both levels — a navigation pill
+and its destination are both `destinationThickness`.
+
+**The node tier needed a name, and it turned out to have a second channel
+nobody had used.** `NodeShift3d` and `SceneNodeShift3d` are the widget form of
+`nodeOffset`, which the declarative layer did not have at all; phase 6 built
+`Follower3d` for the same tier and stopped at anchoring. What is new is the
+**scale**. The obvious way to fill a slider's track is to give a box a width
+and change it, which is a relayout on every frame of a drag — and a
+`nodeTransform` **pivots on the box's origin corner**, because the node carries
+`T(offset + sceneOffset + nodeOffset) * nodeTransform * localTransform` and
+`offset` *is* the corner. So the active track is the whole track scaled by the
+value: its left end stays exactly where layout put it, its right end stops at
+the thumb, and no box changes size. `test/slider_test.dart` drags across twenty
+frames and asserts `needsFlush` is false after every one. This is the thing in
+phase 7 that a two-dimensional framework has no equivalent for, and it was
+found by asking "what would this cost per frame" rather than by drawing it.
+
+**The checkmark question had a different answer from the one asked.** This plan
+sent phase 7 to find out whether an 18dp glyph survives `glyphAtlasScaleFor`'s
+32 buckets. It does, and the buckets were never the risk: the function rounds
+**up**, so a bucket is never coarser than asked for. The real finding is one
+step behind that. `AtlasText3dRenderer` asks for `unitsPerLogicalPixel *
+logicalPixelsPerUnit * resolution`, and the first two are reciprocals — so the
+rasterization scale is `resolution` and **nothing else**, independent of the
+type size *and* of the surface's unit rate. An 18dp mark and phase 2's 220dp
+heart are rasterized at the same texels per logical pixel. Small type here is
+not a resolution problem, and `resolution` is the only dial that changes that,
+at quadratic cost.
+
+**And that made the probe's magnifying trick honest for a reason nobody would
+have guessed.** `divider_rule` established turning the *surface's*
+`unitsPerLogicalPixel` up rather than fattening a token, to make something too
+small to probe big enough to probe. For a glyph that looks like cheating — a
+bigger checkbox is not the checkbox under test. It is not cheating, because of
+the paragraph above: raising the unit rate magnifies the drawn quad and leaves
+the raster alone, so `checkbox_mark` is a magnifying glass held over the real
+18dp rasterization. The probe passed: the marked box reads lighter in the
+middle than an identical `primary` box beside it whose glyph has no renderer,
+which is the `icon_glyph` pairing at the size a real control uses.
+
+**A filter chip's checkmark and a checkbox's are opposite cases, and the
+difference is what the substitution leaves behind.** Phase 4 declined the chip's
+glyph because the container substitution already carried the signal. The same
+test run on a checkbox gives the other answer: its substitution is an 18dp
+square turning `primary`, and a filled swatch with nothing in it says nothing
+at all. The rule is not "draw the glyph" or "do not" — it is *does the
+substitution survive being looked at from across the room on its own*, and for
+a chip it does because the chip still has its label.
+
+**The arena did exactly what the drag plan promised, and phase 7 is the first
+phase since phase 3 that needed nothing from the layout package.** Phases 4, 5
+and 6 each found a gap there and each got a plan of its own. This one did not:
+`PointerSequence3d.addArenaMember` and `HitTestTarget3d` were enough, and
+`HitTestTarget3d`'s own dartdoc already named the customer in as many words —
+"a knob that turns, a slider that tracks". `SliderGesture3d` is fifty lines
+modelled on `_Drag3dGesture`, and `test/slider_test.dart`'s *arena* group
+passed on the first run in both directions: a sideways drag moves the slider
+and leaves the list at offset zero, a vertical drag scrolls the list and
+reports no value at all. A seam designed for a customer that did not exist yet,
+used two plans later without a change.
+
+**A press that never moves is the arena's other half, and it claims at the
+up.** Material's slider jumps to a tap on its track, which means the member has
+to win without ever crossing a slop. The drag plan's own finding is what makes
+it legal: what ends an arena is the **sweep** at the up, not the close, and
+`Layout3dPointer.end` dispatches the up along the path *before* it sweeps. So
+`_SliderPress3d.finish` resolves `accepted` from inside the up handler, which
+rejects the scrolling view's member and lands the tap. A slider that waited to
+be swept would work alone on a page and lose to a list.
+
+**Flutter deprecated the spelling this component copies, while the component
+was being written.** `Radio.groupValue` and `Radio.onChanged` are deprecated
+after 3.32 in favour of a `RadioGroup` ancestor, which the defaults test found
+by refusing to analyze clean. `Radio3d` keeps the older spelling deliberately —
+a `RadioGroup3d` is an inherited widget plus a registry, and this catalogue's
+radio is a leaf that states its own semantics — and the divergence is recorded
+in the test rather than left for someone to trip over. It also cost the
+drift-alarm standard a fifth grade: *the figure is reachable and the API around
+it is going away*.
+
+**A hand-picked threshold in a render probe is a distance wearing a
+direction's clothes.** The harness's rule is to assert an order rather than a
+difference, and phase 7 broke it in a way that reads like obeying it: "the
+thumb is lighter than the track by more than 0.2" is a magnitude nobody can
+justify, and it failed by a **thousandth** on a switch whose thumb was drawn
+perfectly. What the question wanted was a channel order — `primary` is a purple
+and reads with blue above red, `onPrimary` is near white and reads neutral, so
+"the thumb carries less of the track's purple than the track does" compares two
+quantities of the same kind and has no threshold in it. `docs/traps.md` records
+it beside the rule it is a special case of.
+
+**Flutter's control *is* its target, and this one's is not — which is the
+48dp reach seen from the other side.** A real `Checkbox` and a real `Radio`
+both lay out at 48 by 48, because a two-dimensional framework can pad a box
+without moving anything in depth. Here the reach is invisible to layout by
+design, so the control's own extent is Material's 40dp state layer and the
+target is 48 — four logical pixels of margin on every side, and at a corner
+four pixels is all a press has. That is the thinnest the reach has ever been in
+this catalogue (a chip had eight), and `test/selection_test.dart` presses the
+corner from both sides of the boundary.
+
+## What phase 7 deliberately left out
+
+Small on purpose, as phases 3 to 6 were told to be, and these are the things a
+reader will look for and not find:
+
+- **A checkbox's tristate.** Material's third value is an `Icons.remove` in
+  place of the tick and a `mixed` semantic flag. Neither is hard; it is simply
+  a third state in every row of a four-state table, and phase 7's table was
+  already the largest in the catalogue.
+- **`RadioGroup3d`.** See the finding above: `Radio3d` keeps the spelling
+  Flutter deprecated, because the replacement is an inherited widget and a
+  registry, and the place that work belongs is beside a `FormField3d` rather
+  than inside a leaf control.
+- **A slider's tick marks and its value indicator.** Divisions *work* — the
+  value snaps and the thumb draws at the step it snapped to — but the marks
+  along the track and the label above the thumb are not drawn. Both are
+  ornament on the component whose design question here was the drag, and the
+  indicator wants the overlay lane as well.
+- **A range slider.** Two thumbs competing for one pointer is a second arena
+  problem rather than a second thumb, and it deserves its own answer.
+- **A growing thumb, and animation generally.** Material's switch grows its
+  thumb from 16dp to 24dp as it crosses. That is a motion token this package
+  does not have, and a thumb that *jumped* between two sizes would put a size
+  change on the interaction path where every other state in this catalogue is
+  a colour. The thumb is one size; what moves is where it is. When the motion
+  tokens land, the slide is already on the tier that can animate for free.
+- **A slider that fills its parent.** `Slider3d` takes a `width` in logical
+  pixels, defaulting to Material's narrowest 144dp, where Flutter's fills
+  whatever room it is given. That is the price of the node tier: the thumb's
+  position is written by the widget that builds it, so the width has to be
+  known before layout rather than after it. A slider that sized itself from
+  its constraints would have to move its thumb from inside `performLayout`,
+  which is a different component and probably a `MultiChildLayout3d`.
+- **The 2024 "expressive" slider.** Flutter now ships two M3 sliders: a 4dp
+  track with a 20dp round thumb, and a 16dp track with a 4 by 44 bar handle.
+  This package takes the first, and not by accident — a thumb standing proud
+  of a track is exactly what this catalogue's third dimension is for, while a
+  handle inset into a track of its own height is a picture that a 3D scene has
+  nothing to add to.
+- **A labelled control.** There is no `CheckboxListTile3d` or its siblings.
+  `ListTile3d` already takes a `trailing` slot and a title string it can
+  announce, so the composition is a caller's — and a component that put a
+  checkbox in a tile would have to decide which of the two states its own
+  announcement, which is the phase-4 two-labels problem with a worse answer.
 
 ## What phase 6 deliberately left out
 

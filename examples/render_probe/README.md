@@ -176,6 +176,40 @@ nothing but a line. The direction asserted is a luminance: `outlineVariant` is
 a mid grey and the card under it is near white, so the rule is darker than
 what it divides, and a scene where the two were swapped fails.
 
+`checkbox_mark`, `switch_thumb` and `slider_drag` are the selection controls,
+and each one asks something the arithmetic cannot. The first draws two
+identical `primary` boxes, one with a rendered checkmark and one whose glyph
+has no renderer, and asks which is lighter in the middle — `icon_glyph`'s
+pairing at 18dp instead of 220dp, because the size was the part in doubt. It
+turns up something worth knowing before you write another glyph scene: raising
+the surface's `unitsPerLogicalPixel` to make a small component probeable
+magnifies the drawn quad and leaves the **rasterization alone**, because the
+atlas scale is `AtlasText3dRenderer.resolution` and the two metrics factors in
+front of it cancel. So that dial is a magnifying glass over the real raster
+rather than a bigger checkbox.
+
+The other two are about the node tier, and both inherit the rule
+`menu_at_its_button` established: `worldTransform` undoes `nodeOffset`, so
+`screenCenter` on a moved thumb reports where *layout* put it. The oracle has
+to be a box that did not move — a switch's track, a slider's body — and every
+reading in both scenes is taken as a fraction along one of those.
+`switch_thumb` draws an on switch and an off one and asserts the thumb ends up
+at opposite ends, by two directions with **opposite signs**: on, the thumb is
+`onPrimary` on a `primary` track and reads lighter; off, it is `outline` on a
+near-white track and reads darker. `slider_drag` is mid-interaction, like the
+drag scenes: it drives a real `Layout3dPointer` through the component's own
+`SliderGesture3d` three quarters of the way across, then asks whether the
+active track stops where the thumb is.
+
+`switch_thumb` is also where the *"a difference is not a direction"* rule below
+earned a corollary. Its first version asserted that the thumb was lighter than
+the track by more than 0.2 — which reads like a direction and is a magnitude
+nobody can justify — and it failed by a thousandth on a frame that was
+perfectly correct. The assertion that survived is a **channel order**: a
+`primary` track reads with blue above red, a near-white thumb reads neutral, so
+"the thumb carries less of the track's purple than the track does" compares two
+quantities of the same kind and has no threshold in it.
+
 `installPanelPainter` here is `initializeMaterial3d()` — the call a Material
 application makes — which is the only verification lane it has, since loading
 a compiled `.fmat` needs a GPU context that `flutter test` does not have. It

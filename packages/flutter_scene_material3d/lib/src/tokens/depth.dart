@@ -228,6 +228,33 @@ class Thickness3d {
   static double minimumStepFor(double back, double front) =>
       (back + front) / 2.0;
 
+  /// A step that genuinely clears a [front] slab of a [back] one, in the same
+  /// unit both are stated in: twice [minimumStepFor].
+  ///
+  /// The catalogue kept arriving at this arithmetic by hand. A rule drawn on
+  /// a card, a glyph on a navigation pill, an item on a menu surface, and now
+  /// a checkmark on a checkbox, a dot in a radio, a thumb on a switch track
+  /// and a thumb on a slider track: seven places where one Material surface
+  /// is drawn on another and the two must not be coplanar. Resting the front
+  /// one exactly on the back one's face makes the two faces coplanar; lifting
+  /// it by exactly its own depth puts its *back* face there instead, which is
+  /// the same z-fight seen from behind. [minimumStepFor] is the floor, and
+  /// [separates] is strict about it, so a step has to be above the mean
+  /// rather than at it.
+  ///
+  /// Twice the mean is what `MenuStyle3d.itemDepthStep` had already chosen
+  /// for two equally thick slabs, and it leaves the same margin here. It is a
+  /// default rather than a law: a component that wants a different step
+  /// states one, and [separates] is how it says the step still works.
+  ///
+  /// ```dart
+  /// // A 1dp checkmark surface standing clear of a 1dp checkbox: 2dp.
+  /// final step = Thickness3d.stepOver(theme.thickness.thin, theme.thickness.thin);
+  /// assert(theme.thickness.separates(theme.thickness.thin, theme.thickness.thin, step: step));
+  /// ```
+  static double stepOver(double back, double front) =>
+      minimumStepFor(back, front) * 2.0;
+
   /// Whether [depthStep] (or an explicit [step]) keeps a [back] slab behind a
   /// [front] one everywhere they overlap.
   ///
