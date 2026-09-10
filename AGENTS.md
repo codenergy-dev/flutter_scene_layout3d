@@ -108,13 +108,20 @@ always put it. A screen's slots were **one logical pixel deep**, because a
 `Material3d`'s thickness tightly constrains its child and the backing was the
 arrangement's parent rather than its sibling. And a `semanticLabel` with no
 `textDirection` **crashed the frame** the moment anything switched semantics
-on, which `flutter test` never does. Two findings are open and have plans of their own:
-[a label that survives a repack](packages/flutter_scene_layout3d/plans/2026_09_10_a_label_that_survives_a_repack.md),
-because a shared glyph atlas repacking under a second surface's letters takes a
-settled panel's labels away and only half of that is fixed; and
-[a transparent slab that does not erase](packages/flutter_scene_layout3d/plans/2026_09_10_a_transparent_slab_that_does_not_erase.md),
-because a fully transparent `Material3d` still writes depth and punches a hole
-through whatever it is drawn on.
+on, which `flutter test` never does. Two more findings needed plans of their own, and both are closed now.
+[A label that survives a repack](packages/flutter_scene_layout3d/plans/2026_09_10_a_label_that_survives_a_repack.md)
+began as a shared glyph atlas repacking under a second surface's letters and
+ended somewhere else entirely: a glyph reserved while the atlas was being
+rasterized was **never drawn into the texture at all**, because only a *repack*
+moved the generation the flush compared against, and a reservation with room to
+spare does not repack. An atlas that grows hides it, which is why one Material
+screen looked perfect and two did not.
+[A transparent slab that does not erase](packages/flutter_scene_layout3d/plans/2026_09_10_a_transparent_slab_that_does_not_erase.md)
+is the panel shader writing depth for a fragment with no alpha, so a
+colourless `Material3d` punched a hole through whatever it stood on; it now
+discards where its own alpha is zero. The obvious fix — turning `depth_write`
+off — was photographed doing something worse, and that judgement is in
+`docs/traps.md`.
 
 Eleven things worth knowing before building on any of it, all written up in
 `docs/traps.md`: handing every `BoxDecoration3d` the *same* material makes a
@@ -153,7 +160,7 @@ Everything below runs from the repository root unless stated otherwise.
 
 ```sh
 flutter pub get                                     # resolves the workspace
-cd packages/flutter_scene_layout3d && flutter test   # 944 today
+cd packages/flutter_scene_layout3d && flutter test   # 946 today
 cd packages/flutter_scene_material3d && flutter test # 505 today
 cd examples/layout3d_gallery && flutter test         # 3 today
 dart analyze                                        # must be clean, everywhere

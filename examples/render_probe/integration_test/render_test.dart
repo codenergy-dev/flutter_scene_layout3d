@@ -583,6 +583,66 @@ void main() {
       );
     });
 
+    testWidgets('a second surface\'s letters do not cost the first its own', (
+      tester,
+    ) async {
+      // The first scene here to put **two lots of type** in one frame, and
+      // the reason it took a gallery to find what it pins. Every other text
+      // scene draws one label, reserves its whole alphabet before the atlas
+      // is ever rasterized, and never meets the case.
+      //
+      // `GlyphAtlas3d.flush` records its picture synchronously and awaits
+      // `toImage`; a glyph reserved during that await is missing from the
+      // image, and a reservation with room to spare does not repack, so the
+      // generation does not move to say the image is stale. Clearing
+      // `needsRaster` on it lost those glyphs permanently — the quads that
+      // point at their slots sample empty atlas and draw nothing at all.
+      final capture = await _draw(
+        tester,
+        kProbeScenes.byId('two_surfaces_of_type'),
+      );
+
+      // Each label is two letters, so the question is asked of each **half**
+      // of the box layout gave it: ink on the left and ink on the right. A
+      // disc at the box's centre is the wrong question and was the first one
+      // tried — the centre of a two-letter label is the gap between them.
+      for (final name in <String>['first', 'second']) {
+        final bounds = capture.state.content.probes[name]!.screenBounds(
+          capture.state.camera,
+          capture.viewSize,
+        )!;
+        for (final half in <(String, ui.Rect)>[
+          (
+            'first',
+            ui.Rect.fromLTRB(
+              bounds.left,
+              bounds.top,
+              bounds.center.dx,
+              bounds.bottom,
+            ),
+          ),
+          (
+            'second',
+            ui.Rect.fromLTRB(
+              bounds.center.dx,
+              bounds.top,
+              bounds.right,
+              bounds.bottom,
+            ),
+          ),
+        ]) {
+          expect(
+            capture.frame.centroidXIn(half.$2),
+            isNotNull,
+            reason:
+                'the ${half.$1} letter of the \'$name\' surface\'s label is '
+                'not drawn at all, so its glyph never reached the shared '
+                'atlas texture',
+          );
+        }
+      }
+    });
+
     testWidgets('a RichText3d captures its subtree onto its own box', (
       tester,
     ) async {
@@ -1554,6 +1614,56 @@ void main() {
             'the bar beside it, which is what a z-fight resolving the wrong '
             'way looks like: read $overlap over the card, $barOnly on the '
             'bar alone, $clear on the card alone',
+      );
+    });
+
+    testWidgets('a transparent surface does not erase what is behind it', (
+      tester,
+    ) async {
+      // The class of defect a whole catalogue rests on: every interactive
+      // part of a Material component gets a `Material3d` of its own so its
+      // ink well washes itself, and that surface is transparent until
+      // something hovers or selects it. The panel shader used to declare
+      // `depth_write: true` alongside `blending: alpha`, so the invisible
+      // slab wrote depth, the bar behind it failed the test, and the frame
+      // showed the scene's clear colour through a stadium-shaped hole.
+      //
+      // The assertion is coverage, which carries neither a colour nor a
+      // magnitude: a hole is clear pixels and nothing else looks like one.
+      final capture = await _draw(
+        tester,
+        kProbeScenes.byId('transparent_slab'),
+      );
+
+      expect(
+        capture.frame.coverageAt(capture.centerOf('slab'), radius: 12),
+        greaterThan(0.98),
+        reason:
+            'the frame is the clear colour where the transparent slab is, '
+            'so the slab wrote depth and punched a hole through the bar '
+            'behind it',
+      );
+
+      // And it did not tint what it covers either: two readings of the same
+      // bar, one under the slab and one clear of it. Sameness rather than a
+      // direction, because the claim is that nothing was drawn at all.
+      final under = capture.frame.meanColorAt(
+        capture.centerOf('slab'),
+        radius: 10,
+      );
+      final beside = capture.frame.meanColorAt(
+        capture.pointOf('bar', const Offset3d(0.06, 0.5, 0)),
+        radius: 6,
+      );
+      expect(under, isNotNull);
+      expect(beside, isNotNull);
+      expect(
+        FrameProbe.colorDistance(under!, beside!),
+        lessThan(0.06),
+        reason:
+            'the bar reads differently under the transparent slab than '
+            'beside it, so the slab drew something: $under under, $beside '
+            'beside',
       );
     });
   });

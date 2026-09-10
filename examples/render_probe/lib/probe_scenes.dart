@@ -612,6 +612,74 @@ final List<ProbeScene> kProbeScenes = <ProbeScene>[
     );
   }, preload: installPanelPainter),
 
+  // ── Two lots of type in one scene ────────────────────────────────────
+  //
+  // Every other text scene here draws **one** label, and that is exactly the
+  // shape of scene that cannot see the defect below. See
+  // `plans/2026_09_10_a_label_that_survives_a_repack.md`.
+  ProbeScene('two_surfaces_of_type', () {
+    // **A second surface's letters do not cost the first surface its own.**
+    //
+    // `GlyphAtlas3d.flush` records its picture of the atlas synchronously and
+    // then awaits `toImage`. Anything reserved during that await is missing
+    // from the image — and a reservation that finds free space does not
+    // repack, so the *generation* has not moved to say the image is stale.
+    // Clearing `needsRaster` on such an image loses those glyphs for good:
+    // nothing ever asks for them again, and the quads that point at their
+    // slots sample empty atlas and draw nothing.
+    //
+    // Two things about the scene are deliberate, and without either of them
+    // it passes whether the bug is there or not:
+    //
+    // - **Two surfaces, laid out one after the other.** The first surface's
+    //   label reserves its glyphs and starts the raster; the second's reserve
+    //   theirs while that raster is in flight. One surface reserves its whole
+    //   alphabet before the first flush and never meets the case.
+    // - **An atlas that cannot grow.** `initialSize` equals `maxSize`, so no
+    //   reservation can ever repack. A repack moves the generation, the
+    //   in-flight raster is discarded as stale and everything is drawn again
+    //   — which is precisely how a single Material screen hid this while a
+    //   scene with two of them did not.
+    //
+    // The type is small and the surfaces magnify it, which is `divider_rule`'s
+    // dial: raising a surface's `unitsPerLogicalPixel` grows the drawn quad
+    // and leaves the rasterization alone, because the atlas scale is
+    // `AtlasText3dRenderer.resolution` and the two metrics factors in front
+    // of it cancel.
+    final atlases = GlyphAtlasCache3d(initialSize: 1024, maxSize: 1024);
+    const style = TextStyle(fontSize: 30, color: Color(0xFFEA9F26));
+
+    Layout3dSurface surfaceFor(Text3d label, Alignment3d origin) =>
+        Layout3dSurface(
+          origin: origin,
+          metrics: const Layout3dMetrics(unitsPerLogicalPixel: 0.05),
+          constraints: Constraints3d.loose(const Size3d(3.0, 1.8, 0.2)),
+          child: Center3d(child: label),
+        );
+
+    final first = Text3d(
+      'AB',
+      style: style,
+      renderer: AtlasText3dRenderer(atlases: atlases),
+      name: 'first',
+    );
+    final second = Text3d(
+      // Letters the first surface never asked for, so that drawing this
+      // surface is what reserves them.
+      'XY',
+      style: style,
+      renderer: AtlasText3dRenderer(atlases: atlases),
+      name: 'second',
+    );
+    return ProbeSceneContent(
+      surfaces: [
+        surfaceFor(first, Alignment3d.centerRight),
+        surfaceFor(second, Alignment3d.centerLeft),
+      ],
+      probes: {'first': first, 'second': second},
+    );
+  }, minCoverage: 0.005),
+
   ProbeScene('rich_text', () {
     // The escape hatch: Flutter lays the paragraph out and rasterizes it, and
     // the capture lands on a quad this package built. Two styles in one span,
@@ -1539,6 +1607,85 @@ final List<ProbeScene> kProbeScenes = <ProbeScene>[
         ),
       ],
       probes: {'backing': backing, 'card': card, 'bar': bar},
+    );
+  }, preload: installPanelPainter),
+
+  ProbeScene('transparent_slab', () {
+    // **A transparent surface does not erase what is behind it.**
+    //
+    // Every interactive part of a Material component gets a `Material3d` of
+    // its own so that its ink well washes itself rather than the component
+    // around it — `docs/traps.md` says so under *Depth ordering*, and a
+    // navigation destination is one of the three examples it gives. That
+    // surface has **no colour in it** until something selects or hovers it,
+    // and it stands on the bar it belongs to.
+    //
+    // The panel shader declares `blending: alpha` and writes depth, so a
+    // fragment with no alpha still occluded everything drawn after it. In the
+    // gallery that punched a stadium-shaped hole clean through the navigation
+    // bar, with the scene's backdrop showing through it.
+    //
+    // **The scene is the arrangement the component actually makes**, measured
+    // off a photographed navigation bar rather than guessed: a destination's
+    // surface is a *child* of the bar's, and a `Material3d` hands its child a
+    // tight depth, so the two slabs come out **centred on the same plane**
+    // with the destination the thinner of the two. Their sort keys are equal
+    // — the translucent pass orders by the world-space centre of each draw's
+    // bounds — and the transparent slab is drawn first, writes its depth, and
+    // the bar behind it never draws.
+    //
+    // The arrangement matters more than it looks. A transparent slab standing
+    // plainly *in front* of a panel, one depth step away, is drawn second and
+    // hides nothing at all: that scene passes whether the bug is there or
+    // not, and it was the first thing tried here.
+    //
+    // The assertion carries no colour and no magnitude: a hole is clear
+    // pixels, and nothing else in this scene looks like one.
+    const theme = Theme3dData.light;
+
+    DecoratedBox3d panel(Color color, double thickness, String name) =>
+        DecoratedBox3d(
+          decoration: Material3d.decorationFor(
+            theme,
+            color: color,
+            thickness: thickness,
+            shape: theme.shape.full,
+            surfaceTint: const Color(0x00000000),
+          ),
+          name: name,
+        );
+
+    final bar = panel(
+      theme.colorScheme.surfaceContainerHighest,
+      theme.thickness.structural,
+      'bar',
+    );
+    // Nothing selected, nothing hovered: the destination's own surface, and
+    // the whole point of the scene.
+    final slab = panel(const Color(0x00000000), theme.thickness.thin, 'slab');
+
+    return ProbeSceneContent(
+      surfaces: [
+        Layout3dSurface(
+          constraints: Constraints3d.tight(const Size3d(3.0, 1.2, 0.8)),
+          child: Stack3d(
+            // Front faces together, then one small step apart: the slab's
+            // face stands proud of the bar's, which is what puts it in front
+            // of the bar for the depth test.
+            alignment: Alignment3d.center,
+            depthStep: 0.0,
+            children: <Layout3d>[
+              SizedBox3d(width: 3.0, height: 1.2, depth: 0.08, child: bar),
+              // Deeper than the bar, so its bounds centre sits further from
+              // the camera than the bar's and the translucent sort draws it
+              // first. Well inside the bar in the plane, so a disc at its
+              // centre reads the overlap and never an edge.
+              SizedBox3d(width: 1.4, height: 0.5, depth: 0.01, child: slab),
+            ],
+          ),
+        ),
+      ],
+      probes: {'bar': bar, 'slab': slab},
     );
   }, preload: installPanelPainter),
 

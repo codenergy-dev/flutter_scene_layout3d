@@ -190,7 +190,7 @@ implementation behind them, in this repository, verified on a real GPU:
 `BoxDecoration3dPainter` over the shipped `assets/box_decoration3d.fmat`, and
 `AtlasText3dRenderer` over a shared glyph atlas, with `RichText3d` beside it
 for what an atlas cannot assemble. `examples/render_probe` draws them and
-checks the frame against the layout, 75 probes of it.
+checks the frame against the layout, 79 probes of it.
 
 **So the two lines that install them are the whole of it**, and a Material
 application does not even write those: `initializeMaterial3d()` is one call

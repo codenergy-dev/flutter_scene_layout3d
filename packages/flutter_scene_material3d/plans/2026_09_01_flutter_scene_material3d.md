@@ -1573,11 +1573,24 @@ were laid out once and thereafter only *turned*, which is precisely what this
 package is for, never rebuilt them.
 
 It now bakes them again from what it already caches, with no layout at all, and
-the tiles and the navigation label come back. **Not all of it**: an app bar
-still comes out `nb` when a second surface shares the style, and one label
-draws as a black quad. That remainder, and the render probe that ought to pin
-both halves — every probe in the harness today draws a single surface — is
+the tiles and the navigation label come back. That was half of it. The
+remainder — an app bar still reading `nb`, one label drawing as a black quad —
+turned out **not to be about repacking at all**, and it is closed now, in
 [a plan of its own in the layout package](../../flutter_scene_layout3d/plans/2026_09_10_a_label_that_survives_a_repack.md).
+`GlyphAtlas3d.flush` records its picture of the atlas synchronously and awaits
+`toImage`; a glyph reserved during that await is missing from the image, and a
+reservation with room to spare does not repack, so the *generation* never moved
+to say the image was stale. Those glyphs were never rasterized at all — their
+quads sampled empty atlas for the life of the process. `GlyphAtlas3d.revision`
+is the counter that tells contents from repacks. The black quad was a third
+thing: `UnlitMaterial` binds a 1x1 *white* placeholder when it has no texture,
+so a glyph mesh attached before the atlas had uploaded anything drew solid
+rectangles in the label's own colour.
+
+`examples/render_probe`'s `two_surfaces_of_type` is the probe, and it is the
+first scene in that harness to draw two lots of type. Its atlas is configured
+so that it can never grow, because **an atlas that grows hides this** — which
+is exactly why one Material screen looked perfect and two did not.
 
 ### 6. A transparent `Material3d` punches a hole in what it is drawn on
 
@@ -1591,9 +1604,24 @@ test. The selected destination hides the same bug behind its opaque pill.
 It is a class of defect rather than one component's, because a transparent
 `Material3d` on a surface is how every ink well in this catalogue is built —
 an `OutlinedButton3d`'s container, a `TextButton3d`'s, a `ListTile3d`'s, a
-menu item's. It is open, as
-[a transparent slab that does not erase](../../flutter_scene_layout3d/plans/2026_09_10_a_transparent_slab_that_does_not_erase.md),
-with the three places to look and the probe that would pin it.
+menu item's. It is closed, as
+[a transparent slab that does not erase](../../flutter_scene_layout3d/plans/2026_09_10_a_transparent_slab_that_does_not_erase.md).
+The fix is in the shader — it discards where its own alpha is zero — and the
+judgement recorded with it is the part worth carrying: the obvious answer,
+turning `depth_write` off, was **photographed doing something worse**. Without
+it the catalogue is ordered by the translucent pass's sort alone, that sort is
+one number per draw, and a Material screen is full of slabs that share a centre
+because a `Material3d` hands its child a tight depth. The bar came back whole
+and the selection indicator was gone.
+
+Two corrections to the paragraph above, both found by measuring rather than
+reasoning: the hole is around the **selected** destination as readily as the
+unselected one, because the destination's own transparent surface is larger
+than the pill that fills part of it; and the destination's slab does not stand
+one step in front of the bar — it is a *child* of it and comes out co-centred,
+which is why the sort ties. What remains open is upstream: a *partly*
+transparent slab needs depth write chosen per instance, and `flutter_scene`
+0.23.0 has no runtime flag for it.
 
 ### And one thing that is not a defect
 
@@ -1625,10 +1653,16 @@ findings above came from a throwaway `integration_test` in the example, and it
 is deliberately not committed: adding `integration_test` makes the app a
 CocoaPods project, and `flutter create` does not finish wiring one, which would
 break the plain `flutter create` / `flutter run` path the example documents.
-The recipe is written down in the layout package's
-[label plan](../../flutter_scene_layout3d/plans/2026_09_10_a_label_that_survives_a_repack.md)
-so the next person can rebuild it in five minutes. The proper home for a
-committed one is `examples/render_probe`.
+
+Closing the two findings above found the cheaper way round, and it is the one
+to reach for next time: **`examples/render_probe` already has all of that
+wiring committed**. A scratch test file in that app, building a `Scaffold3d`
+with a real `NavigationBar3d` on a `SceneLayout3d` and writing
+`boundary.toImage()` to `Directory.systemTemp`, photographs a Material screen
+with no CocoaPods work at all — the file lands under
+`~/Library/Containers/dev.codenergy.renderProbe/Data/tmp` because the runner is
+sandboxed. That is what settled both mechanisms, after reasoning had got one of
+them wrong twice.
 
 ## What the whole plan proved, and what to know before extending it
 

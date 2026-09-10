@@ -361,16 +361,34 @@ one `depthStep` in front, in one `SceneStack3d` — which is what every modal in
 zero-depth one is coplanar with whatever it covers, which is the same argument
 `Divider3d` makes about a rule on a card.
 
-**A fully transparent `Material3d` erases what is behind it.** The panel shader
-declares `blending: alpha` and still writes depth, so a transparent slab
-standing one step in front of a surface writes its depth first and the surface
-behind it fails the test — a *hole*, with the scene's backdrop showing through.
-`examples/layout3d_gallery` shows one: the unselected navigation destination
-punches a pill-shaped hole clean through the bar it sits on. The selected one
-hides the same bug behind its opaque pill. It is open, as
-[a transparent slab that does not erase](../packages/flutter_scene_layout3d/plans/2026_09_10_a_transparent_slab_that_does_not_erase.md),
-and it is a class rather than one component: a transparent `Material3d` on a
-surface is how the whole catalogue builds an ink well.
+**A panel with no ink in it draws nothing *and writes no depth*, and the
+second half is the one that had to be arranged.** The panel shader declares
+`blending: alpha` **and** `depth_write: true`, so a fragment with no alpha used
+to occlude everything drawn after it: a fully transparent `Material3d` punched
+a hole clean through the surface it was standing on, with the scene's backdrop
+showing through. `examples/layout3d_gallery` showed one through its navigation
+bar. The shader now discards where its own alpha is zero, which costs nothing —
+such a fragment contributes no colour, and a state layer cannot rescue it
+either, because the wash mixes into the *colour* and leaves the alpha alone.
+
+**Do not "fix" this by turning `depth_write` off.** It is the engine's default
+for an alpha-blended material and it is wrong here, which was established by
+photographing it: with depth writing off, the whole catalogue is ordered by the
+translucent pass's back-to-front sort and nothing else, and that sort is **one
+number per draw** — the world-space centre of its bounds. A Material screen is
+full of slabs that share a centre, because a `Material3d` hands its child a
+tight depth, and a tie in that sort is not an ordering. The navigation bar came
+back with no hole in it and no selection indicator either.
+
+What is still true, and is an engine gap rather than a defect here: a
+*partly* transparent slab — a 5% wash, a 32% scrim — in front of something the
+sort puts after it has the same problem in a milder form. The rule that fixes
+it is "a decoration whose resolved colour is not opaque does not write depth",
+per instance, and `flutter_scene` 0.23.0 has no runtime flag for it —
+`depth_write` is read once out of the compiled material's metadata. It is
+written up in
+[a transparent slab that does not erase](../packages/flutter_scene_layout3d/plans/2026_09_10_a_transparent_slab_that_does_not_erase.md)
+as what to do when one lands.
 
 **A translucent colour *is* expressible; a translucent subtree is not.** The
 panel shader declares `blending: alpha`, so a `BoxDecoration3d.color` with an
@@ -474,12 +492,34 @@ surface added to the scene draws a letter the first did not have, the atlas
 repacks, and a panel whose labels were laid out once and thereafter only
 *turned* never rebuilds them.
 
-It now bakes them again from what it already cached, without a layout. **Some
-of it is still wrong** when two surfaces share a style — an app bar coming out
-`nb` instead of `Inbox` — and the open half is written up in
-[a label that survives a repack](../packages/flutter_scene_layout3d/plans/2026_09_10_a_label_that_survives_a_repack.md).
-The reason it took a gallery to find: every render probe draws **one** surface,
-and every headless test measures type rather than rasterizing it.
+It now bakes them again from what it already cached, without a layout.
+
+**And the half that looked like a repack was not one at all.** A screen still
+lost letters after that, and the cause was in `flush`: `rasterize` records its
+picture of the atlas *synchronously* and then awaits `toImage`, so a glyph
+reserved during that await is missing from the image — and a reservation that
+finds free space **does not repack**, so the generation has not moved to say
+the image is stale. Clearing `needsRaster` on it lost those glyphs for good.
+`GlyphAtlas3d.revision` is the counter that says so: `generation` answers *are
+my texture coordinates still valid*, `revision` answers *is my picture of the
+atlas still complete*, and only the second one moves when a glyph is reserved.
+
+The reason it took a gallery to find is worth keeping: one surface reserves its
+whole alphabet in a single layout pass, which grows the atlas, and a repack
+*does* move the generation — so the raster is discarded as stale and everything
+is drawn again. **An atlas that grows hides this.** A second surface laying out
+against an atlas that is already big enough is what exposes it, and until the
+gallery every render probe drew one surface and every headless test measured
+type rather than rasterizing it. `examples/render_probe`'s
+`two_surfaces_of_type` is the scene that pins it now, and its atlas is built
+with `initialSize` equal to `maxSize` for exactly that reason.
+
+One more thing behind the same door: **a black rectangle where a label belongs
+is a glyph mesh with no texture**, not a quad sampling empty atlas. An empty
+atlas region has zero alpha and draws nothing; `UnlitMaterial` binds a 1x1
+*white* placeholder when no texture is set, so the quads come out solid in the
+label's own colour. The renderer zeroes its colour factor until the pixels
+arrive.
 
 ## Pointers
 

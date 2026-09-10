@@ -230,6 +230,35 @@ rim. That is the same lesson `switch_thumb` taught from the other side: the
 assertion carries no magnitude, and the *scene* is what has to make the question
 a fair one.
 
+`transparent_slab` and `two_surfaces_of_type` are the two newest, and both are
+scenes whose *arrangement* is the work rather than whose assertion is. Each
+closes a defect that a person found by running the gallery, and in each case
+the obvious scene passes whether the bug is there or not.
+
+`transparent_slab` asks whether a `Material3d` with no colour in it erases what
+it is standing on. The panel shader writes depth, so a fragment with no alpha
+used to occlude everything drawn after it — but a blended draw only erases what
+comes *after* it, and the translucent pass sorts back to front by the
+world-space centre of each draw's bounds. A transparent slab standing plainly
+in front of a panel is therefore drawn second and hides nothing. What
+reproduces the defect is the arrangement the component actually makes, measured
+off a photographed navigation bar: a destination's surface is a **child** of
+the bar's, `Material3d` hands its child a tight depth, and the two come out
+co-centred, so their sort keys tie. The assertion is coverage, which carries
+neither a colour nor a magnitude — a hole is clear pixels and nothing else in
+the scene looks like one.
+
+`two_surfaces_of_type` is the first scene here to draw **two** lots of type,
+which is what every other text scene could not do and what a gallery found in
+its first frame. Two surfaces with two-letter labels share one atlas; the first
+starts a rasterization and the second reserves its letters while that is in
+flight. Its atlas is built with `initialSize` equal to `maxSize`, and that is
+load-bearing: an atlas that can grow *repacks*, a repack is the one thing that
+used to be noticed, and the bug is invisible in any scene where one happens.
+The assertion asks for ink in each half of each label's own screen bounds — a
+disc at the centre of a two-letter label lands in the gap between the letters,
+which was the first version and it failed on a correct frame.
+
 `installPanelPainter` here is `initializeMaterial3d()` — the call a Material
 application makes — which is the only verification lane it has, since loading
 a compiled `.fmat` needs a GPU context that `flutter test` does not have. It

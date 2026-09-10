@@ -1,8 +1,7 @@
 ---
-status: in progress
-reason: the repack invalidation is fixed and a panel's labels come back, but a second surface sharing the atlas still costs *some* labels — an app bar reading "nb" for "Inbox" and a stale black quad where a navigation label should be. The cause of the remainder is not yet identified and there is no probe pinning either half
+status: completed
 created_at: 2026-09-10T13:55:00Z
-updated_at: 2026-09-10T13:55:00Z
+updated_at: 2026-09-10T19:15:00Z
 commit: a29484bca4b1b60ce78d58b061a88bab04de3a6c
 ---
 
@@ -38,7 +37,7 @@ be **this** box. A panel whose labels were laid out once and thereafter only
 this whole package is for — never lays out again, so the mesh it was told to
 drop is never rebuilt and the label is gone for good.
 
-## What is fixed
+## What the first pass fixed
 
 `_onAtlasChanged` now bakes the glyphs again itself rather than waiting for a
 layout. Everything it needs is already cached on the renderer for the identity
@@ -52,63 +51,91 @@ The effect on the gallery is large and visible: the list tiles get their titles
 and subtitles back, the navigation bar gets its selected label back, and the
 table screen's chips all read correctly.
 
-## What is still wrong
+## What was still wrong, and what it turned out to be
 
-Not all of it. On the same frame, after the fix:
+None of the three things this plan proposed trying was the cause. The cause was
+in `GlyphAtlas3d.flush`, one line, and it had nothing to do with texture
+coordinates at all — **the glyphs were never rasterized in the first place.**
 
-- the upright screen's app bar still reads `nb` for `Inbox`, and only ever
-  those two glyphs — which is what a mesh baked against a *very* early
-  generation looks like, since the first glyphs into an atlas keep their slots
-  across a repack;
-- two of the three list tiles show a title but no subtitle;
-- one navigation destination's label is a black rectangle rather than type,
-  which is a quad sampling a region of the atlas that holds nothing.
+`flush` rasterizes like this: `rasterize()` records a `ui.Picture` of every
+reserved glyph *synchronously*, then awaits `picture.toImage`. Anything
+reserved during that await is missing from the image. `_flush` guarded against
+that by comparing the image's `generation` with the atlas's — and a
+**generation only moves when the atlas repacks**. A glyph reserved into free
+space does not repack. So the image came back looking current, `needsRaster`
+was cleared, the texture was uploaded a letter short, and nothing ever asked
+for those glyphs again: their slots existed, their quads pointed at them, and
+the texels behind them stayed empty for the life of the process.
 
-The same screen drawn **alone**, on one surface, is perfect: the head-on
-capture in this phase's notes shows every label, every icon and both
-destinations. So whatever is left is still about two surfaces sharing one
-atlas, and it is not the invalidation path above, because that path now
-rebuilds.
+That is the whole of the remainder, and it explains the shape of it exactly:
 
-Three things worth trying, in order:
+- **Why two surfaces and not one.** One surface reserves its whole alphabet in
+  a single layout pass, which overflows a 128-texel atlas and grows it — and a
+  repack *does* move the generation, so the in-flight image is discarded as
+  stale and everything is drawn again. By the time a second surface lays out
+  the atlas is already big enough, its reservations find free space, and
+  nothing says the picture is out of date. The screen drawn alone was perfect
+  for that reason and no other.
+- **Why only some labels.** Whatever was reserved before the first `flush` of
+  a style survived; everything reserved after its snapshot did not. `Inbox`
+  losing three of five letters, a tile keeping its title and losing its
+  subtitle, are the same sentence.
 
-1. **Reservation order.** `buildTextGlyphQuads` both reserves and bakes. A
-   renderer that bakes while another renderer is mid-reservation may be
-   reading slots that are about to move. The loop above handles the case where
-   the generation changes; it does not handle a generation that stays the same
-   while a slot moves, if that is possible.
-2. **Whether every renderer is actually listening.** `render` adds the
-   listener only when the atlas identity changes. A renderer that is created,
-   renders once, and is then reparented may end up holding an atlas it is no
-   longer subscribed to.
-3. **`flush` ownership.** Only `render` calls `atlas.flush()`. A renderer that
-   rebuilds outside `render` — which is now the common case — never uploads,
-   and depends on some other renderer flushing for it. A panel that has
-   settled has nothing left to call it.
+The fix is to count *contents* as well as repacks. `GlyphAtlas3d.revision`
+moves whenever a glyph is reserved **and** whenever the atlas repacks;
+`GlyphAtlasImage3d` carries the revision it was rasterized from; and `_flush`
+keeps looping until it has an image of the atlas as it now stands. `generation`
+keeps its old meaning — *are my texture coordinates still valid* — and is what
+`AtlasText3dRenderer` still compares against.
 
-## How to see it
+Two smaller things came with it, both real:
 
-There is no probe for this, and that is the gap. It cannot be covered
-headlessly — `AtlasText3dRenderer._attach` calls `GeometryBuilder.build()`,
-which is a GPU upload — so it belongs in `examples/render_probe`, as a scene
-with **two** surfaces whose labels share a style: draw one, then add a second
-whose text introduces glyphs the first did not use, and assert that the first
-surface's label still covers the pixels it covered before. Every probe in that
-harness today draws a single surface, which is why 75 of them passed over this.
+- **The black quad was an `UnlitMaterial` with no texture.** It is not a quad
+  sampling empty atlas — an empty region has zero alpha and draws nothing.
+  `UnlitMaterial` binds a **1x1 white placeholder** when no texture is set, so
+  a glyph mesh attached before the atlas has ever uploaded anything draws its
+  quads as solid rectangles in the label's own colour. `_bindTexture` now
+  zeroes the colour factor while there is no texture, so such a mesh draws
+  nothing until the pixels arrive.
+- **`flush` ownership**, the third thing this plan proposed and the only one
+  that was worth doing anyway. `_onAtlasChanged` rebuilds outside `render`, and
+  `render` used to be the only caller of `flush`; a panel that has settled has
+  nothing left to call it. It now says `flush` itself, which is a no-op when
+  the texture is current.
 
-Until then the reproduction is the gallery itself, and the way to look at it on
-a machine with no screen-recording permission is a throwaway
-`integration_test` in `examples/layout3d_gallery` that pumps
-`Layout3dGalleryApp`'s content inside a `RepaintBoundary` over an opaque
-`ColoredBox`, settles for a hundred frames with real delays between them, and
-writes `boundary.toImage()` to `Directory.systemTemp`. Three notes, each of
-which cost time: the backdrop has to be *inside* the boundary or every
-alpha-blended panel composites over white and the whole scene reads as washed
-out grey; the app is sandboxed, so `/tmp` is not writable and the file lands
-under `~/Library/Containers/<bundle id>/Data/tmp`; and adding `integration_test`
-to the example makes it a CocoaPods project, which `flutter create` does not
-finish wiring — the generated `macos/Flutter/Flutter-*.xcconfig` needs
-`#include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.<config>.xcconfig"`
-adding by hand. The harness is deliberately **not** committed, because that
-last point breaks the plain `flutter create` / `flutter run` path the example
-documents.
+The other two candidates were checked and are not defects. Every renderer *is*
+subscribed — `render` adds the listener whenever the atlas identity changes and
+`_atlas` is only ever assigned there. And a slot cannot move inside a
+generation: `_pack` only ever appends, and the one thing that moves a slot,
+`_grow`, calls `_reset`, which bumps the generation.
+
+## The probe
+
+`examples/render_probe`'s `two_surfaces_of_type`, and it is the first scene in
+that harness to draw **two** lots of type. Two surfaces side by side, each with
+a two-letter label in the same style, sharing one `GlyphAtlasCache3d`; the
+first reserves `A` and `B` and starts the raster, the second reserves `X` and
+`Y` while it is in flight. The assertion asks for ink in each half of each
+label's own screen bounds — two letters straddle the centre of their box, so a
+disc there is the wrong question and was the first one tried.
+
+The scene's atlas is built with `initialSize` equal to `maxSize`, and that is
+load-bearing rather than tidy: it can never repack, so the generation can never
+move, and the revision is the only thing left that can notice. An atlas that
+grows hides this bug, which is the whole reason a Material screen drawn alone
+did.
+
+Verified both ways. Before the fix the second surface's label draws **nothing
+at all** — `centroidXIn` over its box returns null; after it, both letters of
+both labels are there.
+
+## How it was actually looked at
+
+Not with the throwaway harness this plan originally described. `examples/render_probe`
+already has `integration_test` wired up and a macOS runner committed, so a
+scratch test file in *that* app — one that builds a `Scaffold3d` with a real
+`NavigationBar3d` on a `SceneLayout3d` and writes `boundary.toImage()` to
+`Directory.systemTemp` — photographs a Material screen with no CocoaPods work
+at all. The file lands under `~/Library/Containers/dev.codenergy.renderProbe/Data/tmp`,
+because the runner is sandboxed. That is the cheaper recipe, and it is what
+found the mechanism behind the other half of phase 9's findings too.

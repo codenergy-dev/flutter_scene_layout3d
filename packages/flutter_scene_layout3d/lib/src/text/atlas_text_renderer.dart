@@ -2,7 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/painting.dart' show Color, TextStyle;
 import 'package:flutter_scene/scene.dart'
-    show AlphaMode, GeometryBuilder, Mesh, Node, UnlitMaterial;
+    show AlphaMode, GeometryBuilder, Mesh, Node, TextureSource, UnlitMaterial;
 import 'package:vector_math/vector_math.dart'
     show Matrix4, Vector2, Vector3, Vector4;
 
@@ -89,6 +89,7 @@ class AtlasText3dRenderer extends Text3dRenderer {
   double _scale = 0.0;
   double _units = 0.0;
   TextStyle? _style;
+  Vector4 _colorFactor = Vector4(1.0, 1.0, 1.0, 1.0);
   int _generation = -1;
   int _quadCount = 0;
 
@@ -153,12 +154,11 @@ class AtlasText3dRenderer extends Text3dRenderer {
   ) {
     _detach();
     if (quads.isEmpty) return;
+    _colorFactor = linearColor(style.color ?? const Color(0xFFFFFFFF));
     final material = _material = UnlitMaterial()
       ..alphaMode = AlphaMode.blend
-      ..vertexColorWeight = 0.0
-      ..baseColorFactor = linearColor(style.color ?? const Color(0xFFFFFFFF));
-    final texture = _atlas?.texture;
-    if (texture != null) material.baseColorTexture = texture;
+      ..vertexColorWeight = 0.0;
+    _bindTexture(_atlas?.texture);
     final node = _mesh =
         Node(mesh: Mesh(buildGlyphGeometry(quads, units).build(), material))
           ..name = 'Text3d glyphs'
@@ -166,6 +166,23 @@ class AtlasText3dRenderer extends Text3dRenderer {
           // glyphs off the panel behind them is negative.
           ..localTransform = Matrix4.translationValues(0.0, 0.0, -depthOffset);
     parent.add(node);
+  }
+
+  /// Points the material at the atlas, or at nothing when there is no atlas
+  /// texture yet.
+  ///
+  /// The second half is not a nicety. `UnlitMaterial` samples a **1x1 white
+  /// placeholder** when no texture is bound, so a glyph mesh attached before
+  /// the atlas has uploaded anything draws its quads as solid rectangles in
+  /// the label's own colour — which is what a black slab where a navigation
+  /// label belongs actually is, rather than a quad sampling empty atlas. A
+  /// zero colour factor makes the placeholder draw nothing, and the next
+  /// notification from the atlas puts the real colour back with the texture.
+  void _bindTexture(TextureSource? texture) {
+    final material = _material;
+    if (material == null) return;
+    if (texture != null) material.baseColorTexture = texture;
+    material.baseColorFactor = texture == null ? Vector4.zero() : _colorFactor;
   }
 
   void _detach() {
@@ -224,12 +241,17 @@ class AtlasText3dRenderer extends Text3dRenderer {
       } finally {
         _rebuilding = false;
       }
-      final rebuilt = atlas.texture;
-      if (rebuilt != null) _material?.baseColorTexture = rebuilt;
+      _bindTexture(atlas.texture);
+      // Baking outside `render` is the common case now, and `render` used to
+      // be the only caller of `flush`. A panel that has settled has nothing
+      // left to call it, so a glyph this rebuild reserved would wait for
+      // some other renderer to upload it. `flush` is a no-op when the
+      // texture is current and returns the in-flight future otherwise, so
+      // saying it here costs nothing and makes the invariant local.
+      atlas.flush();
       return;
     }
-    final texture = atlas.texture;
-    if (texture != null) _material?.baseColorTexture = texture;
+    _bindTexture(atlas.texture);
   }
 
   @override

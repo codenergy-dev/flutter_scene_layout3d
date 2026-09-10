@@ -98,6 +98,30 @@ void main() {
       expect(atlas.needsRaster, isFalse);
     });
 
+    test('a revision counts contents, a generation counts repacks', () async {
+      // The distinction the fix above rests on. `generation` answers *are my
+      // texture coordinates still valid*, and only a repack moves it;
+      // `revision` answers *is my picture of the atlas still complete*, and
+      // reserving a glyph moves that too. Conflating them is what lost a
+      // screen its letters.
+      final recording = RecordingAtlas(initialSize: 1024, maxSize: 1024);
+      final atlas = recording.atlas;
+      final before = atlas.revision;
+      atlas.slotFor('a');
+      expect(atlas.revision, greaterThan(before));
+      expect(atlas.generation, 0, reason: 'a reservation is not a repack');
+      final image = await atlas.rasterize();
+      expect(image.revision, atlas.revision);
+      atlas.slotFor('b');
+      expect(
+        image.revision,
+        lessThan(atlas.revision),
+        reason:
+            'the image is a glyph behind and nothing but the revision '
+            'says so',
+      );
+    });
+
     test('scale is what the raster is measured in', () {
       final atlas = RecordingAtlas(scale: 2.0).atlas;
       final slot = atlas.slotFor('a');
@@ -202,6 +226,30 @@ void main() {
       await atlas.flush();
       expect(recording.uploads, hasLength(2));
       expect(notified, 2);
+    });
+
+    test('a glyph reserved while a raster is in flight still reaches the '
+        'texture', () async {
+      // The defect two surfaces sharing GlyphAtlasCache3d.shared hit: the
+      // second surface reserves a letter while the first surface's raster is
+      // already awaiting `toImage`, the picture was recorded before that
+      // letter existed, and the generation has not moved because a plain
+      // reservation is not a repack. The upload therefore lands with the
+      // letter missing and `needsRaster` cleared, so nothing ever draws it.
+      final recording = RecordingAtlas();
+      final atlas = recording.atlas;
+      final a = atlas.slotFor('a');
+      final pending = atlas.flush();
+      final b = atlas.slotFor('b');
+      await pending;
+      final image = recording.uploads.last;
+      expect(alphaAt(image, a.x + a.width ~/ 2, a.y + a.height ~/ 2), 255);
+      expect(
+        alphaAt(image, b.x + b.width ~/ 2, b.y + b.height ~/ 2),
+        255,
+        reason: 'the glyph reserved mid-raster is missing from the texture',
+      );
+      expect(atlas.needsRaster, isFalse);
     });
 
     test(

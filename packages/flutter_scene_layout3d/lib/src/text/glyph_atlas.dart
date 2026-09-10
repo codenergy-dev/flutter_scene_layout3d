@@ -78,7 +78,12 @@ class GlyphSlot3d {
 /// [Texture2D.fromPixels] takes.
 class GlyphAtlasImage3d {
   /// Records a rasterized atlas.
-  const GlyphAtlasImage3d(this.pixels, this.size, this.generation);
+  const GlyphAtlasImage3d(
+    this.pixels,
+    this.size,
+    this.generation,
+    this.revision,
+  );
 
   /// The texels, four bytes each.
   final Uint8List pixels;
@@ -88,6 +93,15 @@ class GlyphAtlasImage3d {
 
   /// The [GlyphAtlas3d.generation] these pixels were rasterized from.
   final int generation;
+
+  /// The [GlyphAtlas3d.revision] these pixels were rasterized from.
+  ///
+  /// [generation] moves only when the atlas *repacks*; this moves whenever
+  /// its contents change, which reserving a glyph does. An image whose
+  /// revision is behind the atlas's own is a picture of a smaller alphabet,
+  /// and uploading it as though it were current loses every glyph reserved
+  /// since — see [GlyphAtlas3d.flush].
+  final int revision;
 }
 
 /// Uploads a rasterized atlas to the GPU.
@@ -191,6 +205,7 @@ class GlyphAtlas3d extends ChangeNotifier {
 
   int _size;
   int _generation = 0;
+  int _revision = 0;
   int _shelfTop = 0;
   int _shelfLeft = 0;
   int _shelfHeight = 0;
@@ -209,6 +224,17 @@ class GlyphAtlas3d extends ChangeNotifier {
   /// A renderer that has baked texture coordinates into a mesh compares this
   /// against the generation it baked from, and rebuilds when they differ.
   int get generation => _generation;
+
+  /// Bumped every time the atlas's contents change — a glyph reserved, a
+  /// repack — which is strictly more often than [generation] moves.
+  ///
+  /// [generation] answers *are my texture coordinates still valid*; this
+  /// answers *is my picture of the atlas still complete*. They are different
+  /// questions and conflating them cost a screen its letters: reserving a
+  /// glyph into free space does not repack, so a rasterization already in
+  /// flight comes back at the same generation and looks current while being
+  /// a letter short.
+  int get revision => _revision;
 
   /// The uploaded texture, or null until the first [flush] has resolved.
   TextureSource? get texture => _texture;
@@ -239,6 +265,7 @@ class GlyphAtlas3d extends ChangeNotifier {
     final ink = _ink[grapheme] ??= _measureGlyph(grapheme);
     final slot = _pack(grapheme, ink);
     _slots[grapheme] = slot;
+    _revision++;
     if (!slot.isBlank) _needsRaster = true;
     return slot;
   }
@@ -263,7 +290,21 @@ class GlyphAtlas3d extends ChangeNotifier {
         final image = await rasterize();
         // A glyph reserved while the rasterization was in flight — or a
         // repack triggered by one — means these pixels are already stale.
-        if (image.generation != _generation) continue;
+        //
+        // **This compares the revision and not only the generation**, and
+        // that is the whole of it: `rasterize` records its picture
+        // synchronously and then awaits `toImage`, so every glyph reserved
+        // during that await is missing from the image, and a reservation
+        // that finds free space does not repack, so the generation has not
+        // moved to say so. Clearing `_needsRaster` on such an image lost
+        // those glyphs *permanently* — nothing ever asked for them again —
+        // and that is what took an app bar's letters away the moment a
+        // second surface shared this atlas. A single surface hid it, because
+        // one surface reserves its whole alphabet in one layout pass, which
+        // grows the atlas, which does move the generation.
+        if (image.generation != _generation || image.revision != _revision) {
+          continue;
+        }
         _needsRaster = false;
         _texture = _upload(image);
         notifyListeners();
@@ -279,6 +320,7 @@ class GlyphAtlas3d extends ChangeNotifier {
   /// testable: a headless test rasterizes and reads the texels back.
   Future<GlyphAtlasImage3d> rasterize() async {
     final generation = _generation;
+    final revision = _revision;
     final edge = _size;
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
@@ -303,7 +345,12 @@ class GlyphAtlas3d extends ChangeNotifier {
       if (bytes == null) {
         throw StateError('The glyph atlas could not be read back.');
       }
-      return GlyphAtlasImage3d(bytes.buffer.asUint8List(), edge, generation);
+      return GlyphAtlasImage3d(
+        bytes.buffer.asUint8List(),
+        edge,
+        generation,
+        revision,
+      );
     } finally {
       image.dispose();
     }
@@ -443,6 +490,7 @@ class GlyphAtlas3d extends ChangeNotifier {
     _shelfLeft = 0;
     _shelfHeight = 0;
     _generation++;
+    _revision++;
     _needsRaster = true;
   }
 

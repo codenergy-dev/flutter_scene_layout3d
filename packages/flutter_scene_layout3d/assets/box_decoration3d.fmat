@@ -23,6 +23,37 @@ material {
   name: "BoxDecoration3d",
   shading_model: lit,
   blending: alpha,
+  // **`depth_write` stays on, and a fragment with nothing in it discards.**
+  //
+  // A blended draw that writes depth occludes whatever is drawn after it,
+  // whatever its own alpha — so a fully transparent panel used to punch a
+  // hole clean through the surface behind it. That is not a corner case: a
+  // navigation destination, a text button, an outlined button's interior are
+  // each a `Material3d` with no colour in it, standing on another one.
+  //
+  // The obvious answer is to turn `depth_write` off, which is what the engine
+  // defaults to for an alpha-blended material, and it is **wrong here**. It
+  // leaves the whole catalogue to the translucent pass's back-to-front sort,
+  // and that sort is one number per draw: the world-space centre of the
+  // geometry's bounds along the camera's forward. A Material screen is full
+  // of slabs that share a centre — a `Material3d` hands its child a tight
+  // depth, so a destination's surface and the bar it lives in come out
+  // co-centred — and a tie in that sort is not an ordering at all.
+  // Photographed both ways: turning `depth_write` off traded the hole in the
+  // navigation bar for a selection indicator that was simply not there any
+  // more.
+  //
+  // So the depth buffer keeps ordering these panels, and the fragment shader
+  // takes responsibility for not writing depth where it draws nothing. See
+  // the `base.a` discard at the end of `Surface`.
+  //
+  // What this does **not** fix is a *partly* transparent slab — a 5% wash, a
+  // 32% scrim — standing in front of something the sort puts after it. That
+  // needs depth write chosen per instance rather than per material, and
+  // `flutter_scene` 0.23.0 has no runtime setter for it: `depth_write` is
+  // read once out of the compiled material's metadata. When one lands, the
+  // rule to encode is "a decoration whose resolved colour is not opaque does
+  // not write depth", and the sort is then the only thing ordering it.
   depth_write: true,
   culling: back,
 
@@ -169,6 +200,22 @@ fragment {
     }
 
     base.a *= coverage;
+
+    // **Nothing to draw is not the same as drawing nothing.** A fragment
+    // with no alpha contributes no colour either way, but it still writes
+    // depth, and a panel that writes depth occludes everything drawn behind
+    // it afterwards. A fully transparent `Material3d` — an unselected
+    // navigation destination, a text button, the interior of an outlined
+    // one — therefore erased the surface it was standing on and left the
+    // scene's backdrop showing through its own outline.
+    //
+    // A state layer cannot rescue such a fragment either: the wash mixes
+    // into `base.rgb` and leaves `base.a` alone, so a hover on a colourless
+    // surface has nothing to be seen against and this discards exactly the
+    // fragments that were never going to be visible.
+    if (base.a <= 0.0) {
+      discard;
+    }
 
     material.base_color = base;
     material.metallic = material_params.metallic;
