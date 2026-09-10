@@ -20,6 +20,107 @@ tree of scene `Node` transforms rather than a display list.
 > which now ship in the box — see
 > [What this does not do](#what-this-does-not-do-yet) before you plan around it.
 
+## Installing
+
+Neither package is on pub.dev yet, so depend on them from git. Take the
+layout package on its own if you are arranging your own geometry, and add the
+Material one if you want the component catalogue:
+
+```yaml
+dependencies:
+  flutter_scene: ^0.23.0
+  flutter_scene_layout3d:
+    git:
+      url: https://github.com/codenergy-dev/flutter_scene_layout3d.git
+      path: packages/flutter_scene_layout3d
+  flutter_scene_material3d:
+    git:
+      url: https://github.com/codenergy-dev/flutter_scene_layout3d.git
+      path: packages/flutter_scene_material3d
+```
+
+Two things to know before the first run. **The app has to be launched with
+`--enable-flutter-gpu`** — the engine draws through Flutter GPU and without
+the flag nothing renders at all. And **the panel shader compiles itself**: the
+layout package carries a build hook that runs `impellerc` over its own
+`.fmat`, so there is nothing about panels to add to your app's build hook, and
+usually no build hook to write at all.
+
+Flutter 3.29 or newer. Everything here is developed and verified on macOS,
+which is where the render probes run; the packages declare the platforms
+`flutter_scene` supports, and this project has not tested the others.
+
+## A screen, start to finish
+
+This is a whole application. It draws a Material screen — an app bar and a
+button — on a panel standing in a 3D scene, and the button can be pressed.
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:flutter_scene/scene.dart';
+import 'package:flutter_scene_layout3d/widgets.dart';
+import 'package:flutter_scene_material3d/flutter_scene_material3d.dart';
+import 'package:vector_math/vector_math.dart' show Vector3;
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  // Awaits the engine's static resources, then installs the panel painter.
+  // Nothing in the catalogue draws until this resolves.
+  await initializeMaterial3d();
+  runApp(const MaterialApp(home: Scaffold(body: FirstScreen())));
+}
+
+class FirstScreen extends StatefulWidget {
+  const FirstScreen({super.key});
+
+  @override
+  State<FirstScreen> createState() => _FirstScreenState();
+}
+
+class _FirstScreenState extends State<FirstScreen> {
+  final Scene scene = Scene();
+
+  final PerspectiveCamera camera = PerspectiveCamera(
+    position: Vector3(0, 0, 6),
+    target: Vector3.zero(),
+  );
+
+  @override
+  Widget build(BuildContext context) => SceneView(
+    scene,
+    camera: camera,
+    children: [
+      SceneLayout3d(
+        size: const Size3d(3.5, 2.4, 0.6),
+        child: SceneTheme3d(
+          data: Theme3dData.dark,
+          textRendererFactory: AtlasText3dRenderer.new,
+          child: Scaffold3d(
+            appBar: const AppBar3d(title: SceneText3d('Inbox')),
+            body: SceneCenter3d(
+              child: FilledButton3d(
+                onPressed: () => debugPrint('pressed'),
+                child: const SceneText3d('Continue'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ],
+  );
+}
+```
+
+Three lines in there are the whole setup. `initializeMaterial3d()` installs
+the painter; `SceneLayout3d` is the surface, a plane in the scene that a
+layout tree hangs below; and `SceneTheme3d` publishes the tokens and says
+which renderer draws a label. Everything under it is ordinary Flutter: a
+`Scaffold3d` with an app bar and a body, rebuilt with `setState` like any
+other widget.
+
+That example is compiled by this repository's own test suite, along with every
+other worked example in these files, so it cannot rot quietly.
+
 ## Why
 
 Building a panel in a 3D scene usually means one of two bad options. Either you
@@ -178,31 +279,35 @@ you build a component.
 
 ## What this does not do yet
 
-**It arranges, and it draws only once you have asked it to.** This is the one
-thing to understand before planning around the package.
+**It arranges, and it draws only what you ask it to.** Two seams stand between
+a laid-out tree and a picture: `BoxDecoration3d.painterFactory` is null until
+something sets it, and a `Text3d` takes a renderer and has none by default.
+That is deliberate — a package cannot install either without loading a
+compiled shader before it knows there is a GPU — and both now have an
+implementation shipped behind them, `BoxDecoration3dPainter` over the panel
+shader and `AtlasText3dRenderer` over a shared glyph atlas, with `RichText3d`
+beside it for what an atlas cannot assemble. `initializeMaterial3d()` installs
+them; two lines install them by hand. What stays yours is a painter or a
+renderer of your *own*, which is what having a seam there is for.
 
-Both halves of the drawing are *seams* — `BoxDecoration3d.painterFactory` is
-null until something sets it, and a `Text3d` takes a renderer and has none by
-default — and that is deliberate, because a package that installed them would
-also have to load a compiled shader before it knew there was a GPU. What has
-changed since that was the whole story is that both seams now have an
-implementation behind them, in this repository, verified on a real GPU:
-`BoxDecoration3dPainter` over the shipped `assets/box_decoration3d.fmat`, and
-`AtlasText3dRenderer` over a shared glyph atlas, with `RichText3d` beside it
-for what an atlas cannot assemble. `examples/render_probe` draws them and
-checks the frame against the layout, 79 probes of it.
+Open, each for a stated reason rather than for lack of time:
 
-**So the two lines that install them are the whole of it**, and a Material
-application does not even write those: `initializeMaterial3d()` is one call
-that awaits the engine and installs a painter that gives every box a material
-of its own. What is still your side of the seam is a renderer or a painter of
-your *own* — a different glyph strategy, a different panel shader — which is
-what having a seam there is for.
+- **Text input.** There is no editing layer anywhere in this stack — no
+  cursor, no selection, no keyboard plumbing — so there is no `TextField3d`,
+  and it is not planned.
+- **Subtree opacity.** `flutter_scene` has no per-node opacity for a fade to
+  multiply into, so a subtree cannot be faded as a whole. Disabled states are
+  expressed as colours instead, which is what Material's specification asks
+  for anyway.
+- **Shadows for decorated panels.** The engine drops non-opaque materials
+  before the shadow pass, and the panel shader blends its own anti-aliased
+  outline. An elevation is a real height here rather than a painted shadow, so
+  this costs less than it sounds, but it is a difference.
+- **Keep-alive** for lazily built children, so a stateful item rebuilds when
+  it scrolls back into view.
 
-Also open, each for a stated reason: keep-alive for lazily built children,
-subtree opacity — `flutter_scene` has no per-node opacity for a fade to
-multiply into — and shadows for decorated panels, which the engine will not
-cast at all while the panel shader blends its own anti-aliased outline.
+`docs/traps.md` is the rest of the honesty: the sharp edges that cost real
+time, written down as they were found.
 
 ## Material, built as geometry
 
@@ -223,104 +328,67 @@ pressed — a press is a camera ray walked down the layout tree. The gallery put
 the same screen on the ground plane beside it, where an elevation stops being a
 distance toward the viewer and becomes a **height**.
 
-Its
-[plan](packages/flutter_scene_material3d/plans/2026_09_01_flutter_scene_material3d.md)
-opened with four things missing from *this* package that a first component
-could not do without: the declarative layer could not draw, a label had no
-default renderer, there was nowhere tree-wide to put a theme, and compiling
-the panel shader was an application's job. All four
-[have landed](packages/flutter_scene_layout3d/plans/2026_09_01_the_four_things_before_a_component.md)
-— `SceneDecoratedBox3d`, `DefaultTextRenderer3d`, `Layout3dSlot`, and a build
-hook on this package that compiles its own shader for every consumer.
+### What you get
 
-What exists in
-[`packages/flutter_scene_material3d`](packages/flutter_scene_material3d/) today
-starts with the token layer and the primitive built on it. The tokens are Material 3's
-colour roles, type scale, shape and elevation scales, its state-layer
-opacities, and the one scale Material does not publish at all — **how deep a
-component is**, because on a screen there is none. A `Theme3dData` carries
-them and a `SceneTheme3d` publishes it to both layers at once: an inherited
-widget for `build`, and a layout-owner slot for `performLayout`, which has no
-`BuildContext` to read an inherited widget with.
+The catalogue is complete enough to build a screen out of, and every component
+in it is the same shape underneath: a `Material3d` — the surface, its colour,
+its corner, its elevation, its state layer — with a public token set resolved
+by the state it is in.
 
-On top of that: `initializeMaterial3d()`, the one call an application makes
-before anything draws; `Material3d`, a decorated box with the theme resolved
-into it, which owns the surface, the shape, the elevation, the state layer and
-the thickness; `InkWell3d`, which lights it up for a hover, a focus or a press
-**without rebuilding a thing**; and `Icon3d`, one code point of an icon font
-drawn through the same glyph atlas as every label.
+| | |
+| --- | --- |
+| **Buttons** | `FilledButton3d`, `FilledTonalButton3d`, `OutlinedButton3d`, `TextButton3d`, `ElevatedButton3d`, `IconButton3d`, `FloatingActionButton3d` |
+| **Surfaces and rows** | `Card3d`, `ListTile3d`, `Divider3d`, `Chip3d` |
+| **Structure** | `Scaffold3d`, `AppBar3d`, `SliverAppBar3d`, `NavigationBar3d`, `NavigationRail3d` |
+| **Overlays** | `Dialog3d`, `Menu3d`, `PopupMenuButton3d`, `SnackBar3d`, `Tooltip3d`, `BottomSheet3d` |
+| **Selection** | `Checkbox3d`, `Radio3d`, `Switch3d`, `Slider3d` |
+| **The rest** | `Material3d`, `InkWell3d`, `Icon3d`, `Theme3dData`, `SceneTheme3d` |
 
-The components are on top of that, and every one of them is the same shape: a
-`Material3d` with a public token set resolved by state. The seven buttons are
-one `Button3d` over seven `ButtonStyle3d`s; the surfaces and rows are `Card3d`,
-`ListTile3d`, `Divider3d` and `Chip3d`; the structure is `Scaffold3d`,
-`AppBar3d`, `SliverAppBar3d`, `NavigationBar3d` and `NavigationRail3d`; and the
-overlays are `Dialog3d`, `Menu3d` and `PopupMenuButton3d`, `SnackBar3d` behind
-a queueing `ScaffoldMessenger3d`, `Tooltip3d` and `BottomSheet3d`; and the
-selection controls are `Checkbox3d`, `Radio3d`, `Switch3d` and `Slider3d`. A
-press grows a **ripple** out of the point the finger landed on, which is two
-more uniforms on the same panel shader and one `smoothstep` — and which runs on
-a ticker without rebuilding or laying out a thing.
+Theming is Material 3's, transcribed: forty-six colour roles, the fifteen-style
+type scale, the shape and elevation scales, the state-layer opacities. The
+token tables are tested against Flutter's own generated ones, so if the
+framework's Material tables move, this package's suite says so.
 
-The gallery is what closed it, and it was worth more than the code in it. Four
-of the defects it found had a full green suite standing behind them: the
-example app had **no build hook**, so the committed version could never have
-drawn its own cubes; every slot of every `Scaffold3d` was **unreachable by a
-ray**, because a lift written into a child's *position* puts it outside its
-parent's extent and a hit test clamps there; a `semanticLabel` with no reading
-direction **crashed the frame** the moment anything switched semantics on; and
-a shared glyph atlas repacking under a second surface's letters **took a
-settled panel's labels away for good**. None of that is arithmetic, and none of
-it was going to be found by more of it.
+### Three things Material does not have an answer for
 
-The selection controls are where two of this project's rules meet at once. A
-thumb sliding along a track is a `nodeOffset` and a track filling to it is a
-`nodeTransform` — one matrix a frame and no relayout, which is what lets a
-slider be dragged across twenty frames without laying a single box out — and a
-thumb has to stand *proud* of the track rather than resting on it, because two
-coplanar surfaces fight for the depth buffer. That second rule had been written
-out by hand for a divider on a card, a glyph on a navigation pill and an item
-on a menu surface before it became `Thickness3d.stepOver`.
+These are where a component stops being a picture and starts being an object,
+and they are the reason this is not a port.
 
-The structure is where the depth stops being decoration. A screen's slots have
-to be *ordered* in depth, because an app bar is over content that scrolls under
-it and two slabs no further apart than the mean of their thicknesses fight for
-the same pixels. `Scaffold3d` owns that ordering rather than leaving each
-component to guess, and the render probes photograph both halves of it: a row
-passing under a pinned bar is genuinely cut at the bar's edge, and the bar is
-drawn in front of the row sliding beneath it. Getting there found the same
-defect twice — a clip that never reached the shader — and both times only a
-drawn frame said so.
+**A component has a thickness.** Material publishes a shape scale, a type
+scale and elevation levels, and nothing at all about depth, because on a
+screen there is none. `Thickness3d` is that scale — 1dp for a divider, 8dp for
+an app bar — and two rules come with it. Two slabs no further apart than the
+mean of their thicknesses fight for the same pixels, so a screen's parts have
+to be *ordered* in depth; `Scaffold3d` owns that ordering rather than leaving
+each component to guess. And a thick slab wants its rim bevelled, or it has a
+hard square edge where a real object would not.
 
-The overlays are where it stops being about one screen. A dialog is a slab in
-front of a stack of slabs, so its lift has to clear *all* of them —
-`Scaffold3d.overlayLift` is that number, one step in front of the frontmost
-slot the scaffold declares, so the two agree by construction rather than by
-matching figures. A scrim is geometry too, dark and translucent and a
-millimetre thick, and the probe that settles it asks a comparison rather than
-an absolute. And a menu has to be *at* its button: `Layout3d.anchorOffsetTo`
-is the arithmetic, written on the node tier so a menu can follow a scrolling
-button without laying anything out.
+**An elevation is a height, not a shadow.** Material's elevation model is
+entirely shadows; here a raised card is genuinely nearer the viewer, and reads
+as raised through parallax, occlusion and Material 3's surface tint. On the
+ground plane it stops being a distance toward the viewer and becomes a height
+above the table.
 
-## Running it
+**Disabled is a colour, not a filter.** There is no subtree opacity in this
+stack, so a disabled control resolves to different colours — `onSurface` at
+38% for a label, 12% for a container — which is what Material's own
+specification says the result should be anyway.
 
-```sh
-flutter pub get                                       # resolves the workspace
-cd packages/flutter_scene_layout3d && flutter test     # the layout suite
-cd packages/flutter_scene_material3d && flutter test   # the Material suite
-```
+Interaction stays off the layout path by construction. A hover, a focus, a
+press and the ripple that grows out of the point your finger landed on are all
+shader uniforms; a slider's thumb and its filling track are one matrix a frame.
+None of it rebuilds a widget or lays out a box, and the test suite asserts that
+in those terms rather than trusting it.
 
-Both suites are arithmetic and run headless. To check that a frame actually
-comes out, `examples/render_probe` draws the layout on a GPU and probes the result at
-the pixels layout says to check:
+The [package README](packages/flutter_scene_material3d/README.md) is the deep
+reference, component by component, and it is honest at the end about what is
+not there — text input above all, which needs an editing layer that does not
+exist anywhere in this stack and is not planned.
 
-```sh
-cd examples/render_probe
-flutter drive --driver=test_driver/integration_test.dart \
-  --target=integration_test/render_test.dart -d macos --enable-flutter-gpu
-```
+## Seeing it run
 
-The example app commits no platform scaffolding, so generate a platform first:
+`examples/layout3d_gallery` is the fastest way to see what any of this looks
+like. It commits no platform scaffolding, so generate one first:
 
 ```sh
 cd examples/layout3d_gallery
@@ -328,11 +396,31 @@ flutter create . --platforms=macos
 flutter run -d macos --enable-flutter-gpu
 ```
 
-It shows three surfaces at once, all live and all hit-testable: a Material
-screen standing upright on a panel that turns, the same catalogue lying flat on
-the ground plane, and a scrolling list of raw meshes beside them — the same
-protocol arranging an application's own geometry rather than a component
-library's.
+Three surfaces at once, all live and all hit-testable: a Material screen
+standing upright on a panel that turns, the same catalogue lying flat on the
+ground plane at a unit rate of its own, and a scrolling list of raw meshes
+beside them — the same protocol arranging an application's own geometry rather
+than a component library's.
+
+The suites are two, and both matter:
+
+```sh
+flutter pub get                                        # resolves the workspace
+cd packages/flutter_scene_layout3d && flutter test      # 946, arithmetic
+cd packages/flutter_scene_material3d && flutter test    # 505, arithmetic
+
+cd examples/render_probe                                # 79, on a real GPU
+flutter drive --driver=test_driver/integration_test.dart \
+  --target=integration_test/render_test.dart -d macos --enable-flutter-gpu
+```
+
+The headless suites prove the protocol arranges correctly and prove nothing
+about whether a frame comes out. `examples/render_probe` is the other half: it
+draws real geometry and asks the frame whether the geometry is where layout
+said it would be, taking its expected coordinates from the layout tree rather
+than from a golden image. It has repeatedly caught things a thousand
+arithmetic tests agreed with — a border drawn inside out, a clip that never
+reached the shader, an overlay lift that did nothing.
 
 ## Relationship to flutter_scene
 

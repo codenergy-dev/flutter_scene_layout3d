@@ -10,6 +10,28 @@ tree of scene `Node` transforms rather than a display list.
 
 > **Status: experimental.** The API may change between releases.
 
+## Installing
+
+Not on pub.dev yet, so take it from git:
+
+```yaml
+dependencies:
+  flutter_scene: ^0.23.0
+  flutter_scene_layout3d:
+    git:
+      url: https://github.com/codenergy-dev/flutter_scene_layout3d.git
+      path: packages/flutter_scene_layout3d
+```
+
+Flutter 3.29 or newer, and the app must be run with `--enable-flutter-gpu`;
+without that flag the engine renders nothing at all. Verified on macOS, which
+is where this project's render probes run.
+
+If you want Material components rather than the protocol on its own,
+[`flutter_scene_material3d`](../flutter_scene_material3d) is built on this and
+installs the drawing seams for you in one call.
+
+
 ```dart
 final surface = Layout3dSurface(
   constraints: Constraints3d.tight(const Size3d(4, 3, 0.5)),

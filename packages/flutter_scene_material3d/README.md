@@ -26,6 +26,71 @@ all.
 `examples/layout3d_gallery` draws all of it, on a panel and on a table, and is
 the shortest way to see what any of this looks like.
 
+## Installing, and a screen to start from
+
+Not on pub.dev yet, so take both packages from git — this one depends on the
+layout protocol underneath it:
+
+```yaml
+dependencies:
+  flutter_scene: ^0.23.0
+  flutter_scene_layout3d:
+    git:
+      url: https://github.com/codenergy-dev/flutter_scene_layout3d.git
+      path: packages/flutter_scene_layout3d
+  flutter_scene_material3d:
+    git:
+      url: https://github.com/codenergy-dev/flutter_scene_layout3d.git
+      path: packages/flutter_scene_material3d
+```
+
+Flutter 3.29 or newer, run with `--enable-flutter-gpu`. There is no build hook
+to write: the layout package compiles the panel shader itself, for whatever
+application depends on it.
+
+Three things stand between an empty app and the screen below —
+`initializeMaterial3d()`, a `SceneLayout3d` to be the surface, and a
+`SceneTheme3d` to carry the tokens and say which renderer draws a label:
+
+```dart
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await initializeMaterial3d();
+  runApp(const MaterialApp(home: Scaffold(body: FirstScreen())));
+}
+
+// ... inside the State's build:
+SceneView(
+  scene,
+  camera: camera,
+  children: [
+    SceneLayout3d(
+      size: const Size3d(3.5, 2.4, 0.6),
+      child: SceneTheme3d(
+        data: Theme3dData.dark,
+        textRendererFactory: AtlasText3dRenderer.new,
+        child: Scaffold3d(
+          appBar: const AppBar3d(title: SceneText3d('Inbox')),
+          body: SceneCenter3d(
+            child: FilledButton3d(
+              onPressed: () => debugPrint('pressed'),
+              child: const SceneText3d('Continue'),
+            ),
+          ),
+        ),
+      ),
+    ),
+  ],
+)
+```
+
+Everything under `SceneTheme3d` is ordinary Flutter — rebuilt with `setState`,
+scrolled with a controller, pressed with a finger. The rest of this file is
+the reference for what you can put there, and *Getting a theme in place* below
+covers the same setup in more detail, including how a component of your own
+reads the theme from `performLayout`, where there is no `BuildContext`.
+
+
 ## The six families, and why two of them are invented
 
 Four of the families are Material's, transcribed:

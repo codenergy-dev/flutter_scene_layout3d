@@ -13,6 +13,7 @@ import 'package:flutter_scene/scene.dart';
 import 'package:flutter_scene_layout3d/widgets.dart';
 import 'package:flutter_scene_material3d/flutter_scene_material3d.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:vector_math/vector_math.dart' show Vector3;
 
 // ------------------------------------------------------ The one call that
 // makes anything draw.
@@ -487,6 +488,49 @@ Future<void> deleteWithUndo(
   if (await shown.closed == SnackBar3dClosedReason.timeout) commit();
 }
 
+// ------------------------------------------------- The root README's whole
+// first application, start to finish.
+
+class FirstScreen extends StatefulWidget {
+  const FirstScreen({super.key});
+
+  @override
+  State<FirstScreen> createState() => _FirstScreenState();
+}
+
+class _FirstScreenState extends State<FirstScreen> {
+  final Scene scene = Scene();
+
+  final PerspectiveCamera camera = PerspectiveCamera(
+    position: Vector3(0, 0, 6),
+    target: Vector3.zero(),
+  );
+
+  @override
+  Widget build(BuildContext context) => SceneView(
+    scene,
+    camera: camera,
+    children: [
+      SceneLayout3d(
+        size: const Size3d(3.5, 2.4, 0.6),
+        child: SceneTheme3d(
+          data: Theme3dData.dark,
+          textRendererFactory: AtlasText3dRenderer.new,
+          child: Scaffold3d(
+            appBar: const AppBar3d(title: SceneText3d('Inbox')),
+            body: SceneCenter3d(
+              child: FilledButton3d(
+                onPressed: () {},
+                child: const SceneText3d('Continue'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ],
+  );
+}
+
 void main() {
   test('the README examples compile', () {
     // They do, or this file would not have been compiled to run.
@@ -508,5 +552,6 @@ void main() {
     expect(moreActions, isNotNull);
     expect(deleteWithUndo, isNotNull);
     expect(SettingsPanel.new, isNotNull);
+    expect(FirstScreen.new, isNotNull);
   });
 }
