@@ -17,6 +17,7 @@ import '../theme/theme.dart';
 import 'material.dart';
 import 'overlay_style.dart';
 import 'overlay_support.dart';
+import 'reading_direction.dart';
 
 /// Which edge a [BottomSheet3d] is anchored to.
 ///
@@ -145,7 +146,7 @@ class BottomSheet3d extends StatelessWidget {
         scopesRoute: true,
         namesRoute: semanticLabel != null,
         label: semanticLabel,
-        textDirection: textDirection,
+        textDirection: readingDirection3d(context, textDirection),
       ),
       child: SceneConstrainedBox3d(
         constraints: edge.isHorizontal

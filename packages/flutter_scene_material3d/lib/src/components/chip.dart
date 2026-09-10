@@ -33,6 +33,7 @@ import 'chip_style.dart';
 import 'icon.dart';
 import 'ink_well.dart';
 import 'material.dart';
+import 'reading_direction.dart';
 
 /// A compact 32dp control holding one short label, of whichever of Material's
 /// four kinds its [style] describes.
@@ -220,7 +221,7 @@ class Chip3d extends StatelessWidget {
               button: true,
               enabled: enabled,
               label: deleteSemanticLabel,
-              textDirection: textDirection,
+              textDirection: readingDirection3d(context, textDirection),
               onTap: enabled ? delete : null,
             ),
             child: SceneGestureDetector3d(
@@ -302,7 +303,7 @@ class Chip3d extends StatelessWidget {
         // control does not have.
         selected: tokens.selectable ? resolved.selected : null,
         label: semanticLabel,
-        textDirection: textDirection,
+        textDirection: readingDirection3d(context, textDirection),
         onTap: enabled ? tap : null,
       ),
       child: constrained,

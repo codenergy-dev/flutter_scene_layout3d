@@ -134,14 +134,75 @@ void main() {
       );
       final step = _theme.thickness.depthStep * _dp;
       for (final slot in Scaffold3dSlot.values) {
+        final box = slotOf(pumped.surface, slot);
+        // The slot's *box* is at z zero, and its geometry is what moves.
         // Toward the viewer is negative depth, the direction every lift in
         // this stack goes.
+        expect(box.offset.z, 0.0, reason: '$slot');
         expect(
-          slotOf(pumped.surface, slot).offset.z,
+          (box.child! as NodeShift3d).shift.z,
           closeTo(-Scaffold3d.liftFor(slot, step), 1e-9),
           reason: '$slot',
         );
       }
+    });
+
+    testWidgets('and a slot gets a real depth budget, not the backing\'s', (
+      tester,
+    ) async {
+      // The backing is a `thickness.thin` slab and a `Material3d`'s thickness
+      // is a *tight* depth constraint on everything below it. While the
+      // arrangement was the backing's child, every slot inherited a 1dp
+      // budget: an 8dp app bar came out 1dp and its title, aligned to the
+      // bar's front face, ended up coplanar with the bar and lost the depth
+      // test. Nothing said so — the arithmetic was all correct — and only a
+      // drawn frame showed a screen with no titles on it.
+      final pumped = await pumpComponent(
+        tester,
+        () => Scaffold3d(
+          appBar: AppBar3d.text(title: 'Inbox'),
+          body: const SceneSizedBox3d(),
+        ),
+        centred: false,
+      );
+      final bar = slotOf(pumped.surface, Scaffold3dSlot.appBar);
+      expect(
+        bar.size.depth,
+        closeTo(_theme.thickness.structural * _dp, 1e-9),
+        reason: 'an 8dp bar is 8dp deep inside a screen',
+      );
+    });
+
+    testWidgets('and a ray still reaches what is lifted', (tester) async {
+      // The regression this arrangement exists for. A lift written into the
+      // slot's *position* is a negative z, which puts the slot outside its
+      // parent's own extent — and a ray is clamped to the stretch inside each
+      // box before its children are asked. A screen lifted that way draws
+      // perfectly and cannot be pressed anywhere: the scaffold's backing
+      // answers every hit and nothing below it is ever reached. Only running
+      // the gallery found it.
+      final chosen = <int>[];
+      final pumped = await pumpComponent(
+        tester,
+        () => Scaffold3d(
+          appBar: AppBar3d.text(title: 'Inbox'),
+          body: const SceneSizedBox3d(),
+          bottomNavigationBar: NavigationBar3d(
+            destinations: _destinations,
+            selectedIndex: 0,
+            onDestinationSelected: chosen.add,
+          ),
+        ),
+        centred: false,
+      );
+      final target = boxesOf<TapTarget3d>(
+        pumped.surface,
+      ).where((t) => t.effectiveMinimumSize.width > 0.0).toList()[1];
+      final middle = offsetInSurface(target) + target.size.center;
+      pumped.pointer.down(rayAt(pumped.surface, middle));
+      pumped.pointer.up();
+      await tester.pump();
+      expect(chosen, <int>[1]);
     });
 
     testWidgets('and the default step really does separate a bar from a card', (

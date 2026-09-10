@@ -39,6 +39,7 @@ import 'ink_well.dart';
 import 'material.dart';
 import 'overlay_style.dart';
 import 'overlay_support.dart';
+import 'reading_direction.dart';
 
 /// Why a snack bar went away.
 enum SnackBar3dClosedReason {
@@ -406,7 +407,7 @@ class _SnackBar3dFrame extends StatelessWidget {
                   button: true,
                   enabled: true,
                   label: bar.actionLabel,
-                  textDirection: bar.textDirection,
+                  textDirection: readingDirection3d(context, bar.textDirection),
                   onTap: onAction,
                 ),
                 child: InkWell3d(
@@ -435,7 +436,7 @@ class _SnackBar3dFrame extends StatelessWidget {
       properties: SemanticsProperties(
         liveRegion: true,
         label: bar.semanticLabel ?? bar.message,
-        textDirection: bar.textDirection,
+        textDirection: readingDirection3d(context, bar.textDirection),
       ),
       child: ScenePadding3d(
         padding: metrics.dpInsets(resolved.margin),

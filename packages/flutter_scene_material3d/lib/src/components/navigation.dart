@@ -31,6 +31,7 @@ import 'ink_well.dart';
 import 'material.dart';
 import 'navigation_style.dart';
 import 'text_style.dart';
+import 'reading_direction.dart';
 
 /// One place a [NavigationBar3d] or a [NavigationRail3d] can take you.
 ///
@@ -474,7 +475,7 @@ Widget buildNavigationDestination3d(
       enabled: enabled,
       selected: selected,
       label: destination.label,
-      textDirection: textDirection,
+      textDirection: readingDirection3d(context, textDirection),
       onTap: enabled ? onSelected : null,
     ),
     child: surface,

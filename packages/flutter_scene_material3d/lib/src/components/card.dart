@@ -18,6 +18,7 @@ import '../theme/theme.dart';
 import 'card_style.dart';
 import 'ink_well.dart';
 import 'material.dart';
+import 'reading_direction.dart';
 
 /// A Material card: a surface that holds a piece of content, of whichever of
 /// the three kinds its [style] describes.
@@ -167,7 +168,7 @@ class Card3d extends StatelessWidget {
         button: interactive ? true : null,
         enabled: interactive ? true : null,
         label: semanticLabel,
-        textDirection: textDirection,
+        textDirection: readingDirection3d(context, textDirection),
         onTap: onTap,
         onLongPress: onLongPress,
       ),

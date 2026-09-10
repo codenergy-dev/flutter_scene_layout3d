@@ -46,6 +46,25 @@ pump one ordinary Flutter frame first (some backends race GPU context setup
 otherwise), then await the engine, then build the scene, then settle for
 several frames rather than one.
 
+## The camera's right is **-x**, so +x is on the viewer's left
+
+`PerspectiveCamera` builds its view matrix as `right = up × forward`. With the
+conventional `up` of `(0, 1, 0)` and a camera out on `+z` looking back toward
+the origin, `forward` is roughly `(0, 0, -1)` and that cross product is
+`(-1, 0, 0)`. A box at positive x therefore appears on the **left** of the
+window.
+
+It costs a whole framing to discover, because nothing about the scene looks
+wrong — the type is not mirrored and the lighting is right; the pieces are
+simply not where the code said. `examples/layout3d_gallery` calls the surface
+at positive x "left" for exactly this reason, and says so where the camera is
+built. If you want a scene authored with +x on the right, put the camera on
+`-z` and turn whatever has a front face around with it.
+
+Nothing else in this repository is affected: the layout protocol's own axes
+are the plane's, not the camera's, and `Layout3dCameraBinding` derives from
+the frustum rather than from a handedness.
+
 ## The engine has more than you expect
 
 Before hand-rolling any of these, know they exist: directional, point, spot and

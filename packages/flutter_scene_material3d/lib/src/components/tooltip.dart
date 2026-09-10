@@ -29,6 +29,7 @@ import 'anchor.dart';
 import 'material.dart';
 import 'overlay_style.dart';
 import 'overlay_support.dart';
+import 'reading_direction.dart';
 
 /// A Material tooltip: a short label that appears under whatever it describes
 /// while a pointer rests on it.
@@ -208,7 +209,7 @@ class _Tooltip3dState extends State<Tooltip3d> {
   Widget build(BuildContext context) => SceneSemantics3d(
     properties: SemanticsProperties(
       tooltip: widget.semanticLabel ?? widget.message,
-      textDirection: widget.textDirection,
+      textDirection: readingDirection3d(context, widget.textDirection),
     ),
     child: SceneListener3d(
       onPointerEnter: (_) => _handleEnter(),

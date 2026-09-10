@@ -27,6 +27,7 @@ import 'ink_well.dart';
 import 'material.dart';
 import 'node_shift.dart';
 import 'selection_style.dart';
+import 'reading_direction.dart';
 
 /// Transparent: the colour a wash surface and an empty box are drawn in.
 const Color _none = Color(0x00000000);
@@ -156,7 +157,7 @@ class Checkbox3d extends StatelessWidget {
         checked: value,
         enabled: enabled,
         label: semanticLabel,
-        textDirection: textDirection,
+        textDirection: readingDirection3d(context, textDirection),
         onTap: changed == null ? null : () => changed(!value),
       ),
       children: <Widget>[
@@ -289,7 +290,7 @@ class Radio3d<T> extends StatelessWidget {
         inMutuallyExclusiveGroup: true,
         enabled: enabled,
         label: semanticLabel,
-        textDirection: textDirection,
+        textDirection: readingDirection3d(context, textDirection),
         onTap: tap,
       ),
       children: <Widget>[
@@ -486,7 +487,7 @@ class Switch3d extends StatelessWidget {
         toggled: value,
         enabled: enabled,
         label: semanticLabel,
-        textDirection: textDirection,
+        textDirection: readingDirection3d(context, textDirection),
         onTap: tap,
       ),
       child: SceneStack3d(

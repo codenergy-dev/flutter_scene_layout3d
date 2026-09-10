@@ -11,14 +11,20 @@ opacity in this stack at all; a component has no thickness on a screen and
 must have one when it is an object. Half the work of this package is answering
 those honestly. The other half is a long, ordinary list of components.
 
-**What is here today is the token layer, the theme that carries it, the
-primitive every component is made of, and the first seven components.**
-`Material3d` is the surface; `InkWell3d` makes it interactive; `Icon3d` draws
-a glyph; `SceneTextStyle3d` styles a group of labels. Over those sit
-Material's seven buttons — filled, tonal, outlined, text, elevated, icon and
-the floating action button — which are one widget with seven sets of tokens.
-There is no `Card3d` or `ListTile3d` yet; those come next, and this README
-will grow with them.
+**The catalogue is here.** The token layer and the theme that carries it; the
+primitive every component is made of — `Material3d` is the surface, `InkWell3d`
+makes it interactive, `Icon3d` draws a glyph, `SceneTextStyle3d` styles a group
+of labels; Material's seven buttons over one `ButtonStyle3d`; the surfaces and
+rows (`Card3d`, `ListTile3d`, `Divider3d`, `Chip3d`); the structure
+(`Scaffold3d`, `AppBar3d`, `SliverAppBar3d`, `NavigationBar3d`,
+`NavigationRail3d`); the overlays (`Dialog3d`, `Menu3d`, `SnackBar3d`,
+`Tooltip3d`, `BottomSheet3d`); the selection controls (`Checkbox3d`,
+`Radio3d`, `Switch3d`, `Slider3d`); and the press ripple. What is *not* here
+is listed honestly at the end of this file, and text input is not planned at
+all.
+
+`examples/layout3d_gallery` draws all of it, on a panel and on a table, and is
+the shortest way to see what any of this looks like.
 
 ## The six families, and why two of them are invented
 
@@ -414,6 +420,17 @@ Flutter's `Semantics(container: true)` merge does — there is no semantics tree
 under a scene node to fold up — so a button without one announces itself as a
 button with no name.
 
+**The `textDirection` beside it is not optional, and you do not have to supply
+it.** `SemanticsData` asserts that a non-empty label carries a reading
+direction, and the assert fires inside `PipelineOwner.flushSemantics` — which a
+headless `flutter test` never runs and a screen reader runs on every frame. So
+every component here resolves null to the enclosing `Directionality`, exactly
+as Flutter's own `Semantics` widget does, and falls back to `ltr` when a
+surface is mounted with nothing above it to ask. Pass `textDirection`
+explicitly only when a particular string reads the other way. A `Semantics3d`
+you write **yourself**, in the imperative layer, has no `BuildContext` and must
+state its own.
+
 ## Surfaces and rows: cards, tiles, dividers and chips
 
 Everything above is a control. This is what a screen is made of.
@@ -623,6 +640,32 @@ The body is inside a `SceneClipBox3d`, and it has to be: a list is taller than
 the room it was given, and without a window its rows draw over the bars rather
 than ending at them. The window clips the **face and not the depth**, so a
 raised card in the body still stands proud of the screen.
+
+**Where that lift is written matters more than the figure.** It goes on the
+node tier — each slot is *positioned* at z zero and its geometry is moved
+forward by a `NodeShift3d` — and not into the position the arrangement gives
+the slot, which is what it used to be. Toward the viewer is negative z, so a
+slot lifted by its position sits outside its parent's own extent, and
+`Layout3d.hitTest` clamps the ray to the stretch inside each box before it asks
+that box's children. A screen lifted that way drew perfectly and **could not be
+pressed anywhere**: the scaffold's own backing answered every hit. The node
+tier draws identically and keeps the boxes where layout put them, which is what
+a ray looks for. `Stack3d.depthStep` has always separated its children that
+way, for the same reason, and `ParentData3d.sceneOffset` says so in as many
+words.
+
+The backing is a **sibling** of the arrangement rather than its parent, for the
+other half of the same story: a `Material3d`'s thickness is a *tight* depth
+constraint on everything below it, and a screen backed by a `thickness.thin`
+slab used to hand every slot a 1dp depth budget — an 8dp app bar came out 1dp,
+its title ended up coplanar with the bar it was drawn on, and it vanished.
+
+One consequence worth planning around: four steps of 12dp is 48dp of parallax
+between a screen's backing and its floating action button, and on a 340dp phone
+that is a seventh of the width. Seen off-axis the bars stand visibly proud; on
+the ground plane those 48dp are 48dp of *height*. The number is a depth-buffer
+figure rather than a visual one, and a screen that cares says so:
+`Scaffold3d(depthStep: 8)` still clears the 6dp a bar over a card needs.
 
 ### The bars
 
@@ -1300,9 +1343,6 @@ materials"*, and a generated tree is not cleaned by removing the call that
 filled it.
 
 ## What is not here yet
-
-Honestly, and in the order it is planned: a **gallery** — the example app
-installs no painter yet, so it draws no decoration at all.
 
 The press ripple has landed; what it deliberately does not do is overlap two
 splashes the way Material does, or escape its own container. Both are the same

@@ -10,10 +10,14 @@ import 'package:flutter_scene_layout3d/widgets.dart'
         Layout3dMetricsScope,
         SceneClipBox3d,
         SceneCustomMultiChildLayout3d,
-        SceneLayoutId3d;
+        SceneLayoutId3d,
+        ScenePositioned3d,
+        SceneStack3d,
+        StackFit3d;
 
 import '../theme/theme.dart';
 import 'material.dart';
+import 'node_shift.dart';
 
 /// The parts a [Scaffold3d] arranges, **in depth order**.
 ///
@@ -255,72 +259,118 @@ class Scaffold3d extends StatelessWidget {
       'Raise depthStep, or thin the scale it came from.',
     );
 
-    return Material3d(
-      color: backgroundColor ?? theme.colorScheme.surface,
-      shape: theme.shape.none,
-      elevation: theme.elevation.level0,
-      thickness: theme.thickness.thin,
-      surfaceTint: const Color(0x00000000),
-      // The arrangement fills the backing rather than being centred in it.
-      alignment: null,
-      child: SceneCustomMultiChildLayout3d(
-        delegate: _Scaffold3dLayout(
-          depthStep: metrics.dp(step),
-          fabMargin: metrics.dp(floatingActionButtonMargin),
-          extendBody: extendBody,
-          extendBodyBehindAppBar: extendBodyBehindAppBar,
+    // The backing and the arrangement are **siblings**, not parent and child,
+    // and that is not a matter of taste. A `Material3d`'s thickness is a
+    // *tight* depth constraint on everything below it, so a screen whose
+    // backing is a `thickness.thin` slab used to hand every slot a 1dp depth
+    // budget: an 8dp app bar came out 1dp, its title ended up coplanar with
+    // the bar it was drawn on, and the title vanished into the depth test —
+    // which is the failure `AppBar3d`'s own front-face alignment exists to
+    // avoid, reintroduced one level up. Cards inside the body lost their
+    // labels the same way. `docs/traps.md` states the rule in general: two
+    // surfaces of different depths are siblings in a stack, never one inside
+    // the other.
+    return SceneStack3d(
+      fit: StackFit3d.expand,
+      children: <Widget>[
+        ScenePositioned3d(
+          left: 0,
+          top: 0,
+          right: 0,
+          bottom: 0,
+          back: 0,
+          depth: metrics.dp(theme.thickness.thin),
+          child: Material3d(
+            color: backgroundColor ?? theme.colorScheme.surface,
+            shape: theme.shape.none,
+            elevation: theme.elevation.level0,
+            thickness: theme.thickness.thin,
+            surfaceTint: const Color(0x00000000),
+          ),
         ),
-        children: <Widget>[
-          if (body != null)
-            SceneLayoutId3d(
-              id: Scaffold3dSlot.body,
-              // The window. Without it a list taller than its slot draws
-              // over the bars instead of ending at them.
-              child: SceneClipBox3d(child: body!),
-            ),
-          if (bottomNavigationBar != null)
-            SceneLayoutId3d(
-              id: Scaffold3dSlot.bottomNavigationBar,
-              child: bottomNavigationBar!,
-            ),
-          if (appBar != null)
-            SceneLayoutId3d(id: Scaffold3dSlot.appBar, child: appBar!),
-          if (floatingActionButton != null)
-            SceneLayoutId3d(
-              id: Scaffold3dSlot.floatingActionButton,
-              child: floatingActionButton!,
-            ),
-        ],
-      ),
+        SceneCustomMultiChildLayout3d(
+          delegate: _Scaffold3dLayout(
+            fabMargin: metrics.dp(floatingActionButtonMargin),
+            extendBody: extendBody,
+            extendBodyBehindAppBar: extendBodyBehindAppBar,
+          ),
+          children: <Widget>[
+            if (body != null)
+              _lifted(
+                Scaffold3dSlot.body,
+                metrics.dp(step),
+                // The window. Without it a list taller than its slot draws
+                // over the bars instead of ending at them.
+                SceneClipBox3d(child: body!),
+              ),
+            if (bottomNavigationBar != null)
+              _lifted(
+                Scaffold3dSlot.bottomNavigationBar,
+                metrics.dp(step),
+                bottomNavigationBar!,
+              ),
+            if (appBar != null)
+              _lifted(Scaffold3dSlot.appBar, metrics.dp(step), appBar!),
+            if (floatingActionButton != null)
+              _lifted(
+                Scaffold3dSlot.floatingActionButton,
+                metrics.dp(step),
+                floatingActionButton!,
+              ),
+          ],
+        ),
+      ],
     );
   }
+
+  /// One slot: the box the delegate arranges, with its subtree's **geometry**
+  /// moved [Scaffold3d.liftFor] toward the viewer.
+  ///
+  /// The lift is a [SceneNodeShift3d] rather than a z in the position the
+  /// delegate gives the slot, and the difference is the whole reason this
+  /// helper exists. Toward the viewer is *negative* z, so a slot positioned
+  /// there sits outside its parent's own extent — and a ray is clamped to the
+  /// stretch inside each box before its children are asked, exactly as
+  /// Flutter gates a hit on `size.contains(position)`. A screen lifted that
+  /// way draws correctly and **cannot be pressed at all**: the scaffold's own
+  /// backing answers every hit and no bar, tile or button below it is ever
+  /// reached.
+  ///
+  /// So the depth ordering goes on the node tier, where `Stack3d.depthStep`
+  /// has always put it: the geometry moves, the box stays where layout put
+  /// it, and [Layout3d.worldTransform] undoes the shift so a ray still finds
+  /// it. Drawing is unaffected — the slabs are the same distance apart in the
+  /// scene — and the guarantee is the same one, stated in the tier that can
+  /// keep it.
+  static Widget _lifted(Scaffold3dSlot slot, double step, Widget child) =>
+      SceneLayoutId3d(
+        id: slot,
+        child: SceneNodeShift3d(
+          shift: Offset3d(0, 0, -liftFor(slot, step)),
+          child: child,
+        ),
+      );
 }
 
 /// The arrangement, which is Flutter's `_ScaffoldLayout` with a third axis.
 ///
-/// Every `positionChild` carries a **negative z**, which is toward the
-/// viewer — the same direction `Stack3d.depthStep` separates its children in
-/// and `SliverPersistentHeader3d` lifts a pinned bar in. That is the whole of
-/// the depth guarantee: it is a position, so layout, intrinsics and hit
-/// testing all agree that the bar really is in front of the body.
+/// It arranges in **two dimensions only**: every `positionChild` here carries
+/// z zero. The depth ordering is real and is applied one level down, by the
+/// [SceneNodeShift3d] `Scaffold3d._lifted` wraps each slot in — see there for
+/// why a lift written into the position instead makes a whole screen
+/// unpressable.
 class _Scaffold3dLayout extends MultiChildLayout3dDelegate {
   _Scaffold3dLayout({
-    required this.depthStep,
     required this.fabMargin,
     required this.extendBody,
     required this.extendBodyBehindAppBar,
   });
-
-  /// How far apart two successive slots sit, in world units.
-  final double depthStep;
 
   /// The floating action button's inset, in world units.
   final double fabMargin;
 
   final bool extendBody;
   final bool extendBodyBehindAppBar;
-
-  double _z(Scaffold3dSlot slot) => -Scaffold3d.liftFor(slot, depthStep);
 
   @override
   void performLayout(Size3d size) {
@@ -340,10 +390,7 @@ class _Scaffold3dLayout extends MultiChildLayout3dDelegate {
     if (hasChild(Scaffold3dSlot.appBar)) {
       final bar = layoutChild(Scaffold3dSlot.appBar, barConstraints());
       top = bar.height;
-      positionChild(
-        Scaffold3dSlot.appBar,
-        Offset3d(0, 0, _z(Scaffold3dSlot.appBar)),
-      );
+      positionChild(Scaffold3dSlot.appBar, Offset3d.zero);
     }
 
     if (hasChild(Scaffold3dSlot.bottomNavigationBar)) {
@@ -354,11 +401,7 @@ class _Scaffold3dLayout extends MultiChildLayout3dDelegate {
       bottom = bar.height;
       positionChild(
         Scaffold3dSlot.bottomNavigationBar,
-        Offset3d(
-          0,
-          size.height - bottom,
-          _z(Scaffold3dSlot.bottomNavigationBar),
-        ),
+        Offset3d(0, size.height - bottom, 0),
       );
     }
 
@@ -375,10 +418,7 @@ class _Scaffold3dLayout extends MultiChildLayout3dDelegate {
           ),
         ),
       );
-      positionChild(
-        Scaffold3dSlot.body,
-        Offset3d(0, bodyTop, _z(Scaffold3dSlot.body)),
-      );
+      positionChild(Scaffold3dSlot.body, Offset3d(0, bodyTop, 0));
     }
 
     if (hasChild(Scaffold3dSlot.floatingActionButton)) {
@@ -391,7 +431,7 @@ class _Scaffold3dLayout extends MultiChildLayout3dDelegate {
         Offset3d(
           math.max(0.0, size.width - fab.width - fabMargin),
           math.max(0.0, size.height - bottom - fab.height - fabMargin),
-          _z(Scaffold3dSlot.floatingActionButton),
+          0,
         ),
       );
     }
@@ -399,7 +439,6 @@ class _Scaffold3dLayout extends MultiChildLayout3dDelegate {
 
   @override
   bool shouldRelayout(_Scaffold3dLayout oldDelegate) =>
-      oldDelegate.depthStep != depthStep ||
       oldDelegate.fabMargin != fabMargin ||
       oldDelegate.extendBody != extendBody ||
       oldDelegate.extendBodyBehindAppBar != extendBodyBehindAppBar;

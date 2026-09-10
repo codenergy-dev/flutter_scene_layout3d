@@ -30,9 +30,19 @@ pubspec_overrides.yaml
 
 # The example app commits no platform scaffolding; generate it with
 # `flutter create .` before running. See examples/layout3d_gallery/README.md.
+#
+# `flutter create` writes more than the platform directories, and everything
+# it writes there is generated: a .metadata, an analysis_options.yaml the
+# repository root already provides, a .gitignore, and a widget_test.dart stub
+# for a `MyApp` this app does not have. All of it is listed here so that a
+# `git add -A` after generating a platform commits source and nothing else.
 examples/layout3d_gallery/android/
 examples/layout3d_gallery/ios/
 examples/layout3d_gallery/linux/
 examples/layout3d_gallery/macos/
 examples/layout3d_gallery/web/
 examples/layout3d_gallery/windows/
+examples/layout3d_gallery/.gitignore
+examples/layout3d_gallery/.metadata
+examples/layout3d_gallery/analysis_options.yaml
+examples/layout3d_gallery/test/widget_test.dart

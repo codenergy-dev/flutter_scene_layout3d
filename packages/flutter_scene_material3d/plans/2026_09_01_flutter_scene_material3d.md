@@ -1,8 +1,7 @@
 ---
-status: in progress
-reason: phases 0 to 8 are done — the six token families, the theme channel, initializeMaterial3d, Material3d, InkWell3d, Icon3d, the text styling, the seven buttons, the surfaces and rows, the structure, the overlays, the selection controls, and now the press ripple, on 488 headless tests and 75 render probes. Phase 8 is the first thing in the catalogue that writes a shader uniform every frame, and it stays on the repaint-only tier: a whole ripple — press, twenty frames of expansion, release, forty frames of fade — costs no build and no layout, and a press *held* costs nothing at all once the circle has grown, because the run settles and the ticker stops. It needed two shader parameters and a change of frame from the layout package, under a plan of its own there. Phase 9 is open: the gallery
+status: completed
 created_at: 2026-09-01T19:15:00Z
-updated_at: 2026-09-09T23:10:00Z
+updated_at: 2026-09-10T14:05:00Z
 commit: 52a2ca7b6a176cf70b5bef6b6b92ff7e7cbf82bd
 ---
 
@@ -508,10 +507,21 @@ and the unlit wrinkle above is real and documented rather than hypothetical.
       the layout package is at 944 (was 932), under
       [where a press landed](../../flutter_scene_layout3d/plans/2026_09_09_where_a_press_landed.md).
       See *What phase 8 found*.
-- [ ] **Phase 9 — the gallery.** `examples/layout3d_gallery` currently installs
-      no painter and therefore draws no decoration at all. A catalogue is
-      pointless unseen; give it a screen of real components on the upright
-      panel and on the ground plane.
+- [x] **Phase 9 — the gallery.** Done, and it is the phase that paid for
+      itself several times over. `examples/layout3d_gallery` now draws a
+      `Scaffold3d` on the upright panel — an app bar, filter chips over a
+      scrolling list of cards and tiles, the selection controls on a second
+      tab, a navigation bar and a floating action button — the same catalogue
+      lying on the ground plane at a unit rate of its own, and the mesh list
+      beside them, all three in one `Layout3dPointerGroup`. It needed three
+      things nobody had noticed were missing: the app had **no build hook at
+      all**, so `Scene.initializeStaticResources()` never resolved and the
+      committed example could not have drawn its own cubes; every slot of every
+      `Scaffold3d` was **unreachable by a ray**; and every component in the
+      catalogue crashed the frame the moment semantics were switched on. **505
+      headless tests** in this package (was 488) plus **3** in the gallery, and
+      the layout package unchanged at 944. `dart analyze` clean across the
+      workspace. See *What phase 9 found*.
 
 ## What phase 1 found
 
@@ -1461,6 +1471,220 @@ through `InkWell3d` and every `InkWell3d` writes through the one controller a
 `ink_well_test.dart`, and both because the *figure* moved rather than because
 a component did.
 
+## What phase 9 found
+
+Six things, and five of them are defects that every test in the repository had
+agreed with. The gallery is a small amount of code sitting on top of nine
+phases of work; almost all of the effort went into the things it turned up.
+
+### 1. The example app could not draw at all, and never could have
+
+`examples/layout3d_gallery` had no `hook/build.dart`. `buildEngineAssets` is
+what makes `Scene.initializeStaticResources()` resolve, it is an
+**application's** job — a library that called it would put a second copy of the
+engine's shaders in every application that used it — and the gallery had never
+had one. The committed example could not have rendered its own cubes, let alone
+a panel. It is the plainest possible instance of this plan's own thesis: the
+arithmetic passed and nothing drew, and nobody noticed because nobody ran it.
+
+Along with it the app needed `uses-material-design: true` (an `Icon3d` is a
+code point of the `MaterialIcons` font), `flutter_scene_generated/` as an asset
+directory with the `.gitignore` that keeps its contents out of the repository,
+and `initializeMaterial3d()` in place of the bare
+`Scene.initializeStaticResources()` it was calling.
+
+### 2. Every slot of every `Scaffold3d` was unreachable by a ray
+
+The largest finding, and the one that makes the gallery a gallery rather than a
+picture. `Scaffold3d` placed each slot one depth step in front of the one
+behind it by writing a **negative z into `positionChild`**, and its dartdoc
+said so with confidence: *"it is a position, so layout, intrinsics and hit
+testing all agree that the bar really is in front of the body."*
+
+The opposite was true. Toward the viewer is negative z, so a slot lifted that
+way sits **outside its parent's own extent**, and `Layout3d.hitTest` clamps the
+ray to the stretch inside each box before it asks that box's children — the
+3D form of Flutter's `size.contains(position)` gate. Nothing below the
+scaffold's own backing was ever reached. A Material screen drew perfectly and
+could not be pressed anywhere: no button, no tile, no chip, no destination.
+
+`ParentData3d.sceneOffset` had documented this from the beginning, in as many
+words: *"separating them in the layout would push them out of their parent's
+box, break a `Positioned3d` pin, and take the topmost child out of reach of a
+ray."* That is why `Stack3d.depthStep` is a scene offset. The scaffold simply
+did not follow it.
+
+The fix is the node tier: every slot is positioned at z zero and its *geometry*
+is moved by a `SceneNodeShift3d`, whose `worldTransform` undoes the shift so a
+ray still finds the box where layout put it. Drawing is unchanged — the slabs
+are the same distance apart in the scene — and the guarantee is now stated in a
+tier that can keep it. `test/scaffold_test.dart` grew a test that presses a
+navigation destination through a real scaffold, which is the thing 488 tests
+never did: the navigation tests press a bar in a bare `SceneColumn3d`.
+
+**488 headless tests and 75 render probes all passed over this**, because a
+probe asks whether a frame came out and a headless test asks about arithmetic.
+Only running it found it.
+
+### 3. And the screen was one logical pixel deep
+
+Immediately behind the first one. A `Material3d`'s thickness is a **tight**
+depth constraint on everything below it, and `Scaffold3d`'s backing is a
+`thickness.thin` slab — so the arrangement, as the backing's *child*, handed
+every slot a 1dp depth budget. An 8dp app bar came out 1dp; its title, aligned
+to the bar's front face, ended up coplanar with the bar and lost the depth
+test; a 4dp card in the body came out 1dp too. The failure `AppBar3d`'s own
+front-face alignment exists to avoid, reintroduced one level up.
+
+`docs/traps.md` had the rule already, from phase 7: two surfaces of different
+depths are **siblings** in a stack, never one inside the other. The scaffold is
+now built that way — a `ScenePositioned3d` backing beside the arrangement in a
+`SceneStack3d` — and `test/scaffold_test.dart` pins an 8dp bar at 8dp inside a
+screen.
+
+### 4. A `semanticLabel` with no `textDirection` crashes the frame
+
+`SemanticsData` asserts that a non-empty label, value or hint carries a
+`textDirection`, and the assert fires inside `PipelineOwner.flushSemantics`.
+Every component in this catalogue took a nullable `textDirection` and passed it
+straight through, so null meant *none* rather than *the enclosing one* — and a
+`flutter test` never runs `flushSemantics`, while a screen reader and an
+integration test both do. The gallery could not draw a single frame with a
+`Checkbox3d` on it.
+
+Flutter's own `Semantics` widget resolves from the ambient `Directionality`,
+and `readingDirection3d` now does the same at all twenty-four sites, with a
+final fallback to `ltr` because a layout surface can legitimately be mounted
+with no `Directionality` above it. `test/semantics_direction_test.dart` walks
+thirteen components and asserts that none of them ever publishes a label
+without a direction.
+
+### 5. A shared glyph atlas repacks, and a settled panel loses its labels
+
+The gallery is the first thing in this repository to put **two lots of type in
+one scene**, and the first frame it produced had an app bar reading `nb` for
+`Inbox` and three list tiles with no titles. `GlyphAtlasCache3d.shared` is
+shared by every renderer; reserving a glyph can repack it and invalidate every
+texture coordinate already baked; and `AtlasText3dRenderer` answered that by
+dropping its mesh and waiting for a layout, *"which the box will do, because a
+repack only happens while it is laying out"*. A repack does only happen while
+something is laying out — but not necessarily that box. A panel whose labels
+were laid out once and thereafter only *turned*, which is precisely what this
+package is for, never rebuilt them.
+
+It now bakes them again from what it already caches, with no layout at all, and
+the tiles and the navigation label come back. **Not all of it**: an app bar
+still comes out `nb` when a second surface shares the style, and one label
+draws as a black quad. That remainder, and the render probe that ought to pin
+both halves — every probe in the harness today draws a single surface — is
+[a plan of its own in the layout package](../../flutter_scene_layout3d/plans/2026_09_10_a_label_that_survives_a_repack.md).
+
+### 6. A transparent `Material3d` punches a hole in what it is drawn on
+
+The last thing the gallery showed, and the plainest to see: the **unselected**
+navigation destination has a pill-shaped hole through the bar it sits on, with
+the scene's backdrop reading through it. The panel shader declares
+`blending: alpha` and still writes depth, so a transparent slab one step in
+front of a surface writes its depth first and the surface behind it fails the
+test. The selected destination hides the same bug behind its opaque pill.
+
+It is a class of defect rather than one component's, because a transparent
+`Material3d` on a surface is how every ink well in this catalogue is built —
+an `OutlinedButton3d`'s container, a `TextButton3d`'s, a `ListTile3d`'s, a
+menu item's. It is open, as
+[a transparent slab that does not erase](../../flutter_scene_layout3d/plans/2026_09_10_a_transparent_slab_that_does_not_erase.md),
+with the three places to look and the probe that would pin it.
+
+### And one thing that is not a defect
+
+`flutter_scene`'s camera basis is `right = up × forward`, so a camera out on
+`+z` looking back at the origin has a right vector of **-x**: a box at positive
+x appears on the viewer's **left**. It costs a whole framing to discover,
+because nothing looks wrong — the type is not mirrored, the lighting is right,
+the pieces are simply not where the code says. The gallery's committed README
+had called the surface at negative x "left" since it was written. It is in
+`docs/engine-rules.md` now.
+
+## What phase 9 deliberately left out
+
+**The gallery is not every widget.** There is no dialog, no menu, no tooltip,
+no bottom sheet, no navigation rail, no `SliverAppBar3d` and no radio group on
+it, and that is the README rule about worked examples applied to a screen: one
+arrangement that does something real beats five that demonstrate a constructor.
+What is on it was chosen to exercise the seams rather than the catalogue — a
+scrolling list inside a clipped body, a card inside that list, a control whose
+state a press actually changes, a snack bar that needs an overlay, and the
+whole thing on a plane that turns.
+
+**Neither screen animates between tabs.** `Navigator3d.transition` is the seam
+and nothing in the catalogue moves yet, which is phase 6's deferral rather than
+this one's.
+
+**There is no committed way to photograph it.** The captures that produced the
+findings above came from a throwaway `integration_test` in the example, and it
+is deliberately not committed: adding `integration_test` makes the app a
+CocoaPods project, and `flutter create` does not finish wiring one, which would
+break the plain `flutter create` / `flutter run` path the example documents.
+The recipe is written down in the layout package's
+[label plan](../../flutter_scene_layout3d/plans/2026_09_10_a_label_that_survives_a_repack.md)
+so the next person can rebuild it in five minutes. The proper home for a
+committed one is `examples/render_probe`.
+
+## What the whole plan proved, and what to know before extending it
+
+Ten phases, from an empty package to a screen a person can look at. What it
+set out to answer was whether Material 3 survives having a real third
+dimension, and the answer is **yes, and the re-derivations are small**. Four of
+its six token families are Material's own, transcribed and pinned against
+Flutter's defaults so the suite is a drift alarm rather than a second
+transcription. The two that are not — `Thickness3d`, because a screen has no
+thickness to publish, and `StateLayerOpacity3d`, which this plan did not know
+it needed — carry almost the whole of the difference. Every component in the
+catalogue is a `Material3d` with a public token set resolved by state; there is
+no second mechanism anywhere in it.
+
+**The thing this plan got most wrong was thinking the hard part was the
+components.** It is not. Every phase from 4 onward found a defect that lived
+*underneath* the component it was writing — a clip that had never reached a
+shader, and then the same clip dead in a second place; nothing anchoring
+anything; a tap target whose reach delivered no press; a scaffold whose slots
+could not be pressed at all; a glyph atlas that dropped a settled panel's
+labels. Five of those were found by **drawing a frame and looking at it**, and
+every one of them had a full green suite standing behind it. The lesson is the
+one the render-probe lane was built on and this phase restates at the top of
+its lungs: in this stack, *arithmetic is not evidence*.
+
+**The second thing it got wrong was the depth vocabulary's scale.**
+`Thickness3d.depthStep` is 12dp, chosen so an 8dp bar clears a 4dp card, which
+is a question about the depth buffer. It is also 12dp of *parallax*: a
+`Scaffold3d` spends four steps between its backing and its floating action
+button, and 48dp on a 340dp phone is a seventh of the screen's width. Seen
+off-axis the bars stand visibly proud and offset, and on the ground plane those
+48dp are 48dp of **height**, which leaves a title bar hanging in the air above
+the thing it belongs to. The number is not wrong — nothing z-fights — but it
+was never chosen with a picture in mind, and a screen that cares says
+`Scaffold3d(depthStep: 8)`, as the gallery's table does. A future scale might
+make the step a function of the surface rather than a constant.
+
+Three things to know before building on any of it:
+
+- **Read the `deliberately left out` sections, not just the findings.** Four
+  phases have one. They are where the reasons live for the gaps a reader will
+  otherwise assume are oversights: no `AlertDialog3d`, no tristate checkbox, no
+  `flexibleSpace`, no rounded-rectangle clip, no text input anywhere in the
+  stack.
+- **`docs/traps.md` is the price of admission.** Every trap on that page was
+  paid for once already, and the two this phase added — a lift written into a
+  position taking a child out of reach of a ray, and a flex centring a label
+  inside the card it is drawn on — are the two most likely to be met by an
+  application author rather than a component author.
+- **The catalogue has no motion.** Nothing in it animates: not a route, not a
+  switch's thumb, not an elevation change. The tiers are all in place —
+  `NodeShift3d` for the node tier, `InkRipple3dRun` for a timeline with no
+  ticker in it, `Theme3dDataTween` for the tokens — and the ripple proves the
+  whole path works without a build or a layout. Motion is the obvious next
+  project, and it is a project rather than a phase.
+
 ## What phase 8 deliberately left out
 
 Small on purpose, like every phase since the third, and these are the things a
@@ -1623,6 +1847,21 @@ behind it rather than fighting it. A ripple grows.
 The rule the harness earned: **the laid-out tree is the oracle** — ask
 `screenCenter` or `screenPointOf` where a box is, never a hard-coded pixel —
 and a scene that cannot honestly assert its claim is removed, not weakened.
+
+**And a third lane, which phase 9 is the argument for: run the app and look at
+it.** Five of that phase's six findings are invisible to both of the lanes
+above, because a probe asks whether a frame came out at a named pixel and this
+package's suite asks about arithmetic. A screen nothing can press, a screen one
+logical pixel deep, a frame that will not build with semantics on, a label that
+disappears when a second surface draws a letter, a hole punched through a
+navigation bar — every one of those was found by starting
+`examples/layout3d_gallery` and looking at the window. Where the probes end and
+that lane begins is roughly: a probe answers *is this one claim true*, and
+looking answers *is anything obviously wrong*. Both are needed and neither
+substitutes.
+
+The final tally: **505** headless tests here, **944** in the layout package,
+**3** in `examples/layout3d_gallery`, and **75** render probes.
 
 ## The seams to keep an eye on
 

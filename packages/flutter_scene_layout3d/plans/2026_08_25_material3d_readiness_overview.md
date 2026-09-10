@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-08-25T20:31:04Z
-updated_at: 2026-09-08T20:45:00Z
+updated_at: 2026-09-10T13:40:00Z
 commit: 657eef80eb8dc8085c3b3a84a8069273495506be
 ---
 
@@ -249,10 +249,15 @@ In the order I would take them:
    not cast a shadow from that material at all, and the plan records both the
    gate and what a catalogue does instead. Subtree opacity stays unshipped for
    the reason above, which is the plan's own rule and not a shortcut.
-4. **[`flutter_scene_material3d`](../../flutter_scene_material3d/plans/2026_09_01_flutter_scene_material3d.md)**,
-   the catalogue this whole map was drawn for. Everything the readiness work
-   set out to provide is in place, and the render harness means a `Button3d`
-   can be checked as a picture and not only as arithmetic. Its plan started
+4. ~~**[`flutter_scene_material3d`](../../flutter_scene_material3d/plans/2026_09_01_flutter_scene_material3d.md)**,
+   the catalogue this whole map was drawn for.~~ **Done — it shipped.** All
+   ten phases of it, from the tokens to the gallery: `Material3d` and the
+   primitive layer, the seven buttons, the surfaces and rows, `Scaffold3d` and
+   the bars, the overlays, the selection controls, the press ripple, and an
+   example app that draws every one of them on an upright panel and on a
+   table. Everything the readiness work set out to provide was in place before
+   it started, and the render harness meant a `Button3d` could be checked as a
+   picture and not only as arithmetic. Its plan started
    with four things missing from *this* package rather than from that one —
    the widget layer could not draw, a label had no default renderer, there was
    nowhere tree-wide to put a theme, and compiling the panel shader was an
@@ -261,13 +266,11 @@ In the order I would take them:
    `SceneDecoratedBox3d`, `DefaultTextRenderer3d`, `Layout3dSlot<T>`, and a
    build hook on this package that compiles its own shader for every consumer.
    Read that plan's *what the original reasoning got wrong* before building on
-   any of them; two of the four came out differently than expected. Phases 1
-   to 5 have since landed — the tokens, the primitive layer, the buttons, the
-   surfaces and rows, and the structure — so `packages/flutter_scene_material3d`
-   reaches as far as `Scaffold3d` and the bars, and **the catalogue continues
-   at phase 6, the overlays.**
+   any of them; two of the four came out differently than expected. The
+   catalogue's own plan is `completed`, and its closing section is the thing
+   to read before extending any of it.
 
-   Building it turned up **four** things this map did not have on its list,
+   Building it turned up **five** things this map did not have on its list,
    each closed in *this* package with a plan of its own, the way phase 0's
    four were. Read them in order; the last two are the same defect found
    twice.
@@ -289,6 +292,22 @@ In the order I would take them:
      `SliverAppBar3d` cut nothing either. Closed, with the two widget forms
      the declarative layer was missing, in
      [the declarative side of a pinned bar](2026_09_08_the_declarative_side_of_a_pinned_bar.md).
+   - ~~**Nothing anchored anything.**~~ An overlay entry sat where the
+     overlay's alignment put it, so a menu could not be *at* its button, and a
+     widget subtree could not be an entry's content at all. Both closed in
+     [a widget under an overlay entry](2026_09_08_a_widget_under_an_overlay_entry.md),
+     with `Layout3d.anchorOffsetTo` as the arithmetic.
+
+   The fifth thing this map did not list is not a gap in the layout package at
+   all — it is a rule about it that was written down and then broken. **A lift
+   written into a child's position takes that child out of reach of a ray**,
+   because a hit test clamps the ray to each box before asking its children.
+   `ParentData3d.sceneOffset` has always said so, in as many words, and it is
+   why `Stack3d.depthStep` is a scene offset. `Scaffold3d` wrote its depth
+   ordering into `positionChild` anyway and every slot of every Material
+   screen was unpressable, with 488 headless tests and 75 render probes all
+   green. Only running the gallery found it. It is now in
+   [docs/traps.md](../../../docs/traps.md) under *Depth ordering*.
 
 **Every plan's `commit:` field resolves in this repository.** The plans that
 predate the move out of the engine's monorepo were written against fork

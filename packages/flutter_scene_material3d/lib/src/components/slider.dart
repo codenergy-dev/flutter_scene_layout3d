@@ -40,6 +40,7 @@ import 'ink_well.dart';
 import 'material.dart';
 import 'node_shift.dart';
 import 'selection_style.dart';
+import 'reading_direction.dart';
 
 /// Transparent.
 const Color _none = Color(0x00000000);
@@ -291,7 +292,7 @@ class Slider3d extends StatelessWidget {
         enabled: enabled,
         label: semanticLabel,
         value: (semanticFormatter ?? _percent)(value),
-        textDirection: textDirection,
+        textDirection: readingDirection3d(context, textDirection),
       ),
       child: body,
     );

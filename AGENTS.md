@@ -24,8 +24,8 @@ once it became clear the scope was its own project. That history is preserved:
 | Package | What it is |
 | --- | --- |
 | `packages/flutter_scene_layout3d` | The layout protocol. Constraints, intrinsics, baselines, flex, stack, wrap, slivers, scrolling, text measurement, decoration, clipping, pointer dispatch, focus, overlays, animation, diagnostics. |
-| `packages/flutter_scene_material3d` | Material Design 3 on that protocol. Today: the six token families (`ColorScheme3d`, `Typography3d`, `ShapeScale3d`, `Elevation3d`, `Thickness3d`, `StateLayerOpacity3d`), `Theme3dData` and `SceneTheme3d`, `initializeMaterial3d()`, the primitive layer — `Material3d`, `InkWell3d`, `Icon3d`, `SceneTextStyle3d` — the seven buttons over one `ButtonStyle3d`, the surfaces and rows (`Card3d`, `ListTile3d`, `Divider3d`, `Chip3d`), the structure (`Scaffold3d`, `AppBar3d`, `SliverAppBar3d`, `NavigationBar3d`, `NavigationRail3d`, `VerticalDivider3d`) and the overlays: `Dialog3d` and `showDialog3d`, `Menu3d` and `PopupMenuButton3d`, `SnackBar3d` behind a `ScaffoldMessenger3d`, `Tooltip3d`, and `BottomSheet3d` in both its forms, the selection controls (`Checkbox3d`, `Radio3d`, `Switch3d`, `Slider3d`) and the press ripple. The catalogue continues with the gallery. |
-| `examples/layout3d_gallery` | The example app. Three surfaces — an upright panel, a ground plane, a scrolling list — all hit-testable. |
+| `packages/flutter_scene_material3d` | Material Design 3 on that protocol. Today: the six token families (`ColorScheme3d`, `Typography3d`, `ShapeScale3d`, `Elevation3d`, `Thickness3d`, `StateLayerOpacity3d`), `Theme3dData` and `SceneTheme3d`, `initializeMaterial3d()`, the primitive layer — `Material3d`, `InkWell3d`, `Icon3d`, `SceneTextStyle3d` — the seven buttons over one `ButtonStyle3d`, the surfaces and rows (`Card3d`, `ListTile3d`, `Divider3d`, `Chip3d`), the structure (`Scaffold3d`, `AppBar3d`, `SliverAppBar3d`, `NavigationBar3d`, `NavigationRail3d`, `VerticalDivider3d`) and the overlays: `Dialog3d` and `showDialog3d`, `Menu3d` and `PopupMenuButton3d`, `SnackBar3d` behind a `ScaffoldMessenger3d`, `Tooltip3d`, and `BottomSheet3d` in both its forms, the selection controls (`Checkbox3d`, `Radio3d`, `Switch3d`, `Slider3d`) and the press ripple. **Complete, through the gallery.** |
+| `examples/layout3d_gallery` | The example app, and the only place a person sees any of this drawn. A Material screen on an upright panel that turns, the same catalogue flat on the ground, and a scrolling list of raw meshes beside them — all hit-testable, through one `Layout3dPointerGroup`. |
 | `examples/render_probe` | Render tests. Draws the layout on a GPU and probes the frame at the pixels layout says to check. Commits its platform scaffolding, unlike the gallery. |
 
 `flutter_scene_material3d` is the reason the layout package exists: a Material
@@ -97,10 +97,26 @@ generalized off an alignment, under
 [where a press landed](packages/flutter_scene_layout3d/plans/2026_09_09_where_a_press_landed.md).
 It also found that Material 3's ripple *is* the press state layer rather than a
 second wash over it, so a pressed control's uniform opacity is now the hover
-figure and the ripple carries the rest. The catalogue continues with the
-gallery at phase 9.
+figure and the ripple carries the rest. **Phase 9 closes it**: the gallery, and
+four defects that a full green suite had been standing behind. The example app
+had **no build hook at all**, so the committed version could never have drawn
+its own cubes. Every slot of every `Scaffold3d` was **unreachable by a ray**,
+because the depth lift was written into the slot's *position* and toward the
+viewer is negative z, which puts a child outside its parent's extent where a
+hit test clamps — it is on the node tier now, where `Stack3d.depthStep` has
+always put it. A screen's slots were **one logical pixel deep**, because a
+`Material3d`'s thickness tightly constrains its child and the backing was the
+arrangement's parent rather than its sibling. And a `semanticLabel` with no
+`textDirection` **crashed the frame** the moment anything switched semantics
+on, which `flutter test` never does. Two findings are open and have plans of their own:
+[a label that survives a repack](packages/flutter_scene_layout3d/plans/2026_09_10_a_label_that_survives_a_repack.md),
+because a shared glyph atlas repacking under a second surface's letters takes a
+settled panel's labels away and only half of that is fixed; and
+[a transparent slab that does not erase](packages/flutter_scene_layout3d/plans/2026_09_10_a_transparent_slab_that_does_not_erase.md),
+because a fully transparent `Material3d` still writes depth and punches a hole
+through whatever it is drawn on.
 
-Nine things worth knowing before building on any of it, all written up in
+Eleven things worth knowing before building on any of it, all written up in
 `docs/traps.md`: handing every `BoxDecoration3d` the *same* material makes a
 screen of panels come out one colour; a `TapTarget3d` reaches past its own
 extent but **its parent does not**, so a target has to sit outside every box
@@ -123,23 +139,30 @@ a resolution problem and turning a surface's unit rate up magnifies the quad
 without touching the raster; and **an animation that has stopped changing must
 stop asking for frames**, because a `Ticker` that never stops makes
 `pumpAndSettle` spin forever — and one restarted after a stop begins its clock
-again at zero, so a driver that pauses has to carry its own baseline.
+again at zero, so a driver that pauses has to carry its own baseline; and the
+two the gallery added, which are the ones an *application* author meets rather
+than a component author: **a lift written into a child's position takes that
+child out of reach of a ray**, so depth separation belongs on the node tier and
+a negative z in an offset is the bug; and **a flex inside a card centres its
+children in depth**, so a label beside anything with a thickness ends up behind
+the card's own face and is not there at all.
 
 ## Running things
 
 Everything below runs from the repository root unless stated otherwise.
 
 ```sh
-flutter pub get                                    # resolves the workspace
-cd packages/flutter_scene_layout3d && flutter test  # the layout suite
-cd packages/flutter_scene_material3d && flutter test # the Material suite
-dart analyze                                       # must be clean, everywhere
-dart format .                                      # before every commit
+flutter pub get                                     # resolves the workspace
+cd packages/flutter_scene_layout3d && flutter test   # 944 today
+cd packages/flutter_scene_material3d && flutter test # 505 today
+cd examples/layout3d_gallery && flutter test         # 3 today
+dart analyze                                        # must be clean, everywhere
+dart format .                                       # before every commit
 ```
 
-Both suites are headless, and both must be green. The Material package's is
-arithmetic and state — tokens, `lerp`, and the theme reaching a box's
-`performLayout` — so nothing in it needs a GPU.
+All three suites are headless, and all three must be green. The Material
+package's is arithmetic and state — tokens, `lerp`, and the theme reaching a
+box's `performLayout` — so nothing in it needs a GPU.
 
 The example app commits no platform scaffolding, so generate the platform you
 want first:
@@ -149,6 +172,16 @@ cd examples/layout3d_gallery
 flutter create . --platforms=macos
 flutter run -d macos --enable-flutter-gpu
 ```
+
+**And then look at it.** Phase 9 of the Material catalogue found six things,
+five of which were invisible to 944 headless tests and 75 render probes alike —
+a screen nothing could press, a screen one logical pixel deep, a frame that
+would not build with semantics switched on, labels that vanished when a second
+surface drew a letter, and a hole punched through a navigation bar. A probe
+answers *is this one claim true*; running the app answers *is anything
+obviously wrong*, and in this stack that is a different question. The gallery's
+own README has the recipe for photographing a frame when the window itself
+cannot be captured.
 
 ## What you need to know before writing code
 

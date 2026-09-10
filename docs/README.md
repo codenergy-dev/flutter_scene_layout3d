@@ -21,7 +21,7 @@ several files, guidance for using the engine underneath.
 | See it running, or write a demo | [examples/layout3d_gallery](../examples/layout3d_gallery/README.md) |
 | Verify something actually draws | [examples/render_probe](../examples/render_probe/README.md) |
 | Know what is planned, in progress, or was decided and why | the plans directories of [the layout package](../packages/flutter_scene_layout3d/plans/) and [the Material package](../packages/flutter_scene_material3d/plans/) |
-| Know what is being built next | [the Material catalogue plan](../packages/flutter_scene_material3d/plans/2026_09_01_flutter_scene_material3d.md) — phases 0 to 6 done, up to the overlays, and the rest of the catalogue from phase 7 |
+| Know what is being built next | the two open plans, both from the gallery: [a label that survives a repack](../packages/flutter_scene_layout3d/plans/2026_09_10_a_label_that_survives_a_repack.md) and [a transparent slab that does not erase](../packages/flutter_scene_layout3d/plans/2026_09_10_a_transparent_slab_that_does_not_erase.md) |
 
 ## The pages here
 
@@ -45,6 +45,9 @@ Used by the root README, and worth reading on their own:
   the ground, and what "down" means in each.
 - **[units.svg](units.svg)** — where the dp ↔ world-unit rate comes from when
   a surface is bound to the camera.
+- **[material-screen.png](material-screen.png)** — a `Scaffold3d` drawn as
+  geometry, captured from `examples/layout3d_gallery` running on macOS. Not a
+  diagram; the first picture in this repository of what any of it looks like.
 
 ## Where the reasoning lives
 
@@ -62,7 +65,10 @@ Two entry points:
   built the lane that draws a frame and checks it, and its findings section is
   a good sample of what surprises people here.
 - [The Material catalogue plan](../packages/flutter_scene_material3d/plans/2026_09_01_flutter_scene_material3d.md)
-  is what happens next, and the only plan in either package still open. Its
+  is **completed**, all ten phases of it, and its closing section is the thing
+  to read before extending any of the catalogue: what the whole thing proved,
+  what its original reasoning got wrong, and what was deliberately left out.
+  Its
   middle section — what an elevation, a ripple, a disabled state and a
   thickness mean once the depth is real — is design reasoning that exists
   nowhere else. Its phase 0 is done, in
@@ -100,7 +106,17 @@ Two entry points:
   [where a press landed](../packages/flutter_scene_layout3d/plans/2026_09_09_where_a_press_landed.md):
   two shader parameters, a `Ripple3d` on `StateLayer3d`, and
   `Layout3d.localPointFrom` — `anchorOffsetTo`'s own change of frame,
-  generalized off an alignment, because a finger is not an alignment.
+  generalized off an alignment, because a finger is not an alignment. Phase 9
+  is the gallery, and it is the phase that most repays reading: four of the
+  five things it found were defects that a full green suite had been standing
+  behind, including a `Scaffold3d` whose every slot was unreachable by a ray.
+  The fifth is still open, as
+  [a label that survives a repack](../packages/flutter_scene_layout3d/plans/2026_09_10_a_label_that_survives_a_repack.md)
+  — a shared glyph atlas repacking under a second surface's letters takes a
+  settled panel's labels away — and its sixth is open too, as
+  [a transparent slab that does not erase](../packages/flutter_scene_layout3d/plans/2026_09_10_a_transparent_slab_that_does_not_erase.md).
+  Those two are the only plans in either package that are not finished, and
+  both of them are things a picture found and a suite did not.
 
 ## Keeping this true
 

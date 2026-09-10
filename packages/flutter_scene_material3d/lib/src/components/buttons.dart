@@ -30,6 +30,7 @@ import 'button_style.dart';
 import 'icon.dart';
 import 'ink_well.dart';
 import 'material.dart';
+import 'reading_direction.dart';
 
 /// A Material button, of whichever variant its [style] describes.
 ///
@@ -206,7 +207,7 @@ class _Button3dState extends State<Button3d> {
           button: true,
           enabled: enabled,
           label: widget.semanticLabel,
-          textDirection: widget.textDirection,
+          textDirection: readingDirection3d(context, widget.textDirection),
           onTap: enabled ? widget.onPressed : null,
           onLongPress: enabled ? widget.onLongPress : null,
         ),

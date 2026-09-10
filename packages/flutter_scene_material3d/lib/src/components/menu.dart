@@ -38,6 +38,7 @@ import 'ink_well.dart';
 import 'material.dart';
 import 'overlay_style.dart';
 import 'overlay_support.dart';
+import 'reading_direction.dart';
 
 /// A Material menu: a small surface of items, put in front of everything.
 ///
@@ -85,7 +86,7 @@ class Menu3d extends StatelessWidget {
         scopesRoute: true,
         namesRoute: semanticLabel != null,
         label: semanticLabel,
-        textDirection: textDirection,
+        textDirection: readingDirection3d(context, textDirection),
       ),
       child: SceneConstrainedBox3d(
         constraints: Constraints3d(
@@ -203,7 +204,7 @@ class MenuItem3d extends StatelessWidget {
         button: true,
         enabled: live,
         label: semanticLabel ?? label,
-        textDirection: textDirection,
+        textDirection: readingDirection3d(context, textDirection),
         onTap: live ? onPressed : null,
       ),
       child: SceneSizedBox3d(
@@ -393,7 +394,7 @@ class _PopupMenuButton3dState<T> extends State<PopupMenuButton3d<T>> {
       button: true,
       enabled: widget.enabled,
       label: widget.semanticLabel,
-      textDirection: widget.textDirection,
+      textDirection: readingDirection3d(context, widget.textDirection),
       onTap: widget.enabled ? _open3d : null,
     ),
     child: Anchor3dWidget(

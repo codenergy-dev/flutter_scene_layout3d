@@ -31,6 +31,7 @@ import '../tokens/typography.dart';
 import 'app_bar_style.dart';
 import 'material.dart';
 import 'text_style.dart';
+import 'reading_direction.dart';
 
 /// The bar across the top of a screen: a leading widget, a title, and
 /// actions.
@@ -160,6 +161,7 @@ class AppBar3d extends StatelessWidget {
     final resolved = styleOf(theme);
     final height = toolbarHeight ?? resolved.toolbarHeight;
     return announce(
+      context,
       SceneSizedBox3d(
         height: Layout3dMetricsScope.of(context).dp(height),
         child: buildBar(
@@ -264,14 +266,19 @@ class AppBar3d extends StatelessWidget {
   }
 
   /// The semantics wrapper both constructors' bars get.
-  Widget announce(Widget bar) {
+  ///
+  /// Takes a [BuildContext] because the reading direction a bar announces in
+  /// falls back to the enclosing `Directionality`, and a bar with a label and
+  /// no direction at all is a framework assertion the moment semantics are
+  /// switched on — see [readingDirection3d].
+  Widget announce(BuildContext context, Widget bar) {
     final label = semanticLabel;
     if (label == null) return bar;
     return SceneSemantics3d(
       properties: SemanticsProperties(
         header: true,
         label: label,
-        textDirection: textDirection,
+        textDirection: readingDirection3d(context, textDirection),
       ),
       child: bar,
     );
@@ -491,7 +498,7 @@ class SliverAppBar3d extends StatelessWidget {
       pinned: pinned,
       floating: floating,
       lift: metrics.dp(lift ?? theme.thickness.depthStep),
-      child: bar.announce(filling),
+      child: bar.announce(context, filling),
     );
   }
 }

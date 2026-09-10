@@ -15,8 +15,9 @@ tree of scene `Node` transforms rather than a display list.
 
 ![Constraints go down, sizes come up, the parent positions the child — and the result is geometry on a plane](docs/protocol.svg)
 
-> **Status: experimental.** The API moves between releases, and the package
-> deliberately draws almost nothing on its own yet — see
+> **Status: experimental.** The API moves between releases. The package draws
+> nothing until an application installs a painter and a text renderer, both of
+> which now ship in the box — see
 > [What this does not do](#what-this-does-not-do-yet) before you plan around it.
 
 ## Why
@@ -177,35 +178,50 @@ you build a component.
 
 ## What this does not do yet
 
-**It arranges; it mostly does not draw.** This is the one thing to understand
-before planning around the package.
+**It arranges, and it draws only once you have asked it to.** This is the one
+thing to understand before planning around the package.
 
-`BoxDecoration3d` has a real shader shipped with it and `Text3d` measures text
-exactly, but the painter that turns a decoration into geometry and the glyph
-atlas that turns a text layout into quads are both *seams* with no in-tree
-implementation. The reason is honest rather than tidy: neither can be verified
-in `flutter test`, which has no GPU context, and shipping several hundred lines
-that nothing in the repository can execute would be worse than shipping the
-seam. Today the debug wireframe is the only thing that puts geometry into a
-scene on its own account.
+Both halves of the drawing are *seams* — `BoxDecoration3d.painterFactory` is
+null until something sets it, and a `Text3d` takes a renderer and has none by
+default — and that is deliberate, because a package that installed them would
+also have to load a compiled shader before it knew there was a GPU. What has
+changed since that was the whole story is that both seams now have an
+implementation behind them, in this repository, verified on a real GPU:
+`BoxDecoration3dPainter` over the shipped `assets/box_decoration3d.fmat`, and
+`AtlasText3dRenderer` over a shared glyph atlas, with `RichText3d` beside it
+for what an atlas cannot assemble. `examples/render_probe` draws them and
+checks the frame against the layout, 75 probes of it.
 
-So: the arithmetic is trustworthy and well covered by tests. The pixels are
-your side of the seam, for now — though `examples/render_probe` now draws real
-geometry on a GPU and checks the frame against the layout, and it is what
-compiles the panel shader, so the seam is a shorter reach than it was.
+**So the two lines that install them are the whole of it**, and a Material
+application does not even write those: `initializeMaterial3d()` is one call
+that awaits the engine and installs a painter that gives every box a material
+of its own. What is still your side of the seam is a renderer or a painter of
+your *own* — a different glyph strategy, a different panel shader — which is
+what having a seam there is for.
 
 Also open, each for a stated reason: keep-alive for lazily built children,
 subtree opacity — `flutter_scene` has no per-node opacity for a fade to
 multiply into — and shadows for decorated panels, which the engine will not
 cast at all while the panel shader blends its own anti-aliased outline.
 
-## Where this is going
+## Material, built as geometry
 
 The reason the package exists is **`flutter_scene_material3d`**: a Material
 catalogue — `Button3d`, `Card3d`, `Icon3d`, `ListTile3d`, `Scaffold3d`,
 `AppBar3d` — built as real geometry on this protocol, with a button that is an
 actual object you can light, tilt and press into the panel rather than a
-picture of one. It has started, and lives here as a second package.
+picture of one. **It is here, and it draws.**
+
+![A Material screen — an app bar, filter chips, and a scrolling list of cards
+holding list tiles and checkboxes — drawn as geometry on a panel in a 3D
+scene](docs/material-screen.png)
+
+That is the upright panel of `examples/layout3d_gallery`, photographed from a
+frame of the app running on macOS. Every panel in it is a slab with a thickness,
+every label is a quad out of a shared glyph atlas, and every one of them can be
+pressed — a press is a camera ray walked down the layout tree. The gallery puts
+the same screen on the ground plane beside it, where an elevation stops being a
+distance toward the viewer and becomes a **height**.
 
 Its
 [plan](packages/flutter_scene_material3d/plans/2026_09_01_flutter_scene_material3d.md)
@@ -244,8 +260,18 @@ a queueing `ScaffoldMessenger3d`, `Tooltip3d` and `BottomSheet3d`; and the
 selection controls are `Checkbox3d`, `Radio3d`, `Switch3d` and `Slider3d`. A
 press grows a **ripple** out of the point the finger landed on, which is two
 more uniforms on the same panel shader and one `smoothstep` — and which runs on
-a ticker without rebuilding or laying out a thing. What is left is a gallery to
-see it all in.
+a ticker without rebuilding or laying out a thing.
+
+The gallery is what closed it, and it was worth more than the code in it. Four
+of the defects it found had a full green suite standing behind them: the
+example app had **no build hook**, so the committed version could never have
+drawn its own cubes; every slot of every `Scaffold3d` was **unreachable by a
+ray**, because a lift written into a child's *position* puts it outside its
+parent's extent and a hit test clamps there; a `semanticLabel` with no reading
+direction **crashed the frame** the moment anything switched semantics on; and
+a shared glyph atlas repacking under a second surface's letters **took a
+settled panel's labels away for good**. None of that is arithmetic, and none of
+it was going to be found by more of it.
 
 The selection controls are where two of this project's rules meet at once. A
 thumb sliding along a track is a `nodeOffset` and a track filling to it is a
@@ -302,10 +328,11 @@ flutter create . --platforms=macos
 flutter run -d macos --enable-flutter-gpu
 ```
 
-It shows three surfaces at once: an upright panel driven imperatively and
-turning on its axis, the same protocol on the ground plane, and a scrolling
-list described declaratively — all three hit-testable while the panel beside
-them turns.
+It shows three surfaces at once, all live and all hit-testable: a Material
+screen standing upright on a panel that turns, the same catalogue lying flat on
+the ground plane, and a scrolling list of raw meshes beside them — the same
+protocol arranging an application's own geometry rather than a component
+library's.
 
 ## Relationship to flutter_scene
 

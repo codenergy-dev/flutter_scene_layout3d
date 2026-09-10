@@ -29,6 +29,7 @@ import '../tokens/typography.dart';
 import 'ink_well.dart';
 import 'material.dart';
 import 'text_style.dart';
+import 'reading_direction.dart';
 
 /// A single fixed-height row: a leading slot, one or two lines of text, and a
 /// trailing slot.
@@ -370,7 +371,7 @@ class ListTile3d extends StatelessWidget {
         enabled: onTap != null || onLongPress != null ? enabled : null,
         selected: selected ? true : null,
         label: semanticLabel,
-        textDirection: textDirection,
+        textDirection: readingDirection3d(context, textDirection),
         onTap: interactive ? onTap : null,
         onLongPress: interactive ? onLongPress : null,
       ),

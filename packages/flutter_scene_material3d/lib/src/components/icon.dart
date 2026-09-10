@@ -14,6 +14,7 @@ import 'package:flutter_scene_layout3d/widgets.dart'
     show SceneSemantics3d, SceneText3d;
 
 import '../theme/theme.dart';
+import 'reading_direction.dart';
 
 /// A Material icon, which is one glyph of a font and nothing else.
 ///
@@ -120,7 +121,7 @@ class Icon3d extends StatelessWidget {
     return SceneSemantics3d(
       properties: SemanticsProperties(
         label: label,
-        textDirection: textDirection,
+        textDirection: readingDirection3d(context, textDirection),
       ),
       child: glyph,
     );

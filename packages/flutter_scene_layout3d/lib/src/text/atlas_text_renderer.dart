@@ -8,6 +8,7 @@ import 'package:vector_math/vector_math.dart'
 
 import 'glyph_atlas.dart';
 import 'text_geometry.dart';
+import 'text_layout.dart';
 import 'text_renderer.dart';
 
 /// Draws text as textured quads out of a shared glyph atlas.
@@ -84,7 +85,7 @@ class AtlasText3dRenderer extends Text3dRenderer {
   UnlitMaterial? _material;
   Node? _parent;
 
-  Object? _layout;
+  TextLayout3d? _layout;
   double _scale = 0.0;
   double _units = 0.0;
   TextStyle? _style;
@@ -174,16 +175,57 @@ class AtlasText3dRenderer extends Text3dRenderer {
     _material = null;
   }
 
+  bool _rebuilding = false;
+
   void _onAtlasChanged() {
     final atlas = _atlas;
-    if (atlas == null) return;
+    if (atlas == null || _rebuilding) return;
     if (atlas.generation != _generation) {
-      // The atlas repacked under someone else's glyph: every UV in this mesh
-      // is stale. Drop it and let the next layout bake new ones — which the
-      // box will do, because a repack only happens while it is laying out.
-      _generation = -1;
-      _layout = null;
-      _detach();
+      // The atlas repacked under someone else's glyph, so every UV in this
+      // mesh is stale. **Bake them again here rather than waiting for a
+      // layout.** This used to drop the mesh and rely on the box laying out
+      // again, on the reasoning that a repack only happens while something is
+      // laying out — which is true, but the something is not necessarily
+      // *this* box. A second surface added to the scene shares
+      // `GlyphAtlasCache3d.shared`, and the glyph that overflows the atlas is
+      // usually its, not ours: a panel whose labels were laid out once and
+      // then only turned lost every one of them the moment another surface
+      // drew a letter it did not have. The gallery is where that showed up —
+      // an app bar reading "nb" where it should have read "Inbox" — because
+      // it is the first thing in this repository to put two lots of type in
+      // one scene.
+      final layout = _layout;
+      final parent = _parent;
+      final style = _style;
+      if (layout == null || parent == null || style == null) {
+        _generation = -1;
+        _layout = null;
+        _detach();
+        return;
+      }
+      // Baking our glyphs can reserve one the atlas does not have, which
+      // repacks it again and invalidates what we have just baked — the same
+      // re-entrancy `render` guards against, and the reason this is a loop
+      // with a stop rather than one pass. `_rebuilding` keeps the repack our
+      // own reservation causes from re-entering here.
+      _rebuilding = true;
+      try {
+        var guard = 0;
+        do {
+          _generation = atlas.generation;
+          final quads = buildTextGlyphQuads(
+            layout: layout,
+            atlas: atlas,
+            shaper: _shaper,
+          );
+          _quadCount = quads.length;
+          _attach(parent, quads, _units, style);
+        } while (_generation != atlas.generation && ++guard < 4);
+      } finally {
+        _rebuilding = false;
+      }
+      final rebuilt = atlas.texture;
+      if (rebuilt != null) _material?.baseColorTexture = rebuilt;
       return;
     }
     final texture = atlas.texture;

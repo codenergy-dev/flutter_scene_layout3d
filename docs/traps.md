@@ -361,6 +361,17 @@ one `depthStep` in front, in one `SceneStack3d` — which is what every modal in
 zero-depth one is coplanar with whatever it covers, which is the same argument
 `Divider3d` makes about a rule on a card.
 
+**A fully transparent `Material3d` erases what is behind it.** The panel shader
+declares `blending: alpha` and still writes depth, so a transparent slab
+standing one step in front of a surface writes its depth first and the surface
+behind it fails the test — a *hole*, with the scene's backdrop showing through.
+`examples/layout3d_gallery` shows one: the unselected navigation destination
+punches a pill-shaped hole clean through the bar it sits on. The selected one
+hides the same bug behind its opaque pill. It is open, as
+[a transparent slab that does not erase](../packages/flutter_scene_layout3d/plans/2026_09_10_a_transparent_slab_that_does_not_erase.md),
+and it is a class rather than one component: a transparent `Material3d` on a
+surface is how the whole catalogue builds an ink well.
+
 **A translucent colour *is* expressible; a translucent subtree is not.** The
 panel shader declares `blending: alpha`, so a `BoxDecoration3d.color` with an
 alpha in it blends over what is behind — Material's black-at-32% scrim is one
@@ -389,6 +400,24 @@ by hand. `Thickness3d.stepOver(back, front)` is it: twice
 by hand for two equal slabs. Reach for it rather than picking a figure, and
 `Thickness3d.separates` is how a component says the figure still works.
 
+**A flex inside a card centres its children in depth, and a label centred in a
+card is *inside* it.** The other half of the tight-depth rule, and the one an
+application meets rather than a component author. `Material3d` aligns its child
+to its own **front face**, which is right; a `Column3d` or `Row3d` then aligns
+*its* children on the depth axis by `depthAxisAlignment`, which defaults to
+`center`, in the depth of its deepest child. Put a `SceneText3d` and a
+`Chip3d` in a column inside a `Card3d` and the chip's 1dp makes the column 1dp
+deep, the label is centred half a millimetre behind the card's own drawn face,
+and it is simply not there. Two 24dp icons and a 2dp tile do it more
+dramatically. `AppBar3d` says the same thing about its toolbar in its own
+source — "a toolbar centred in an 8dp slab is 4dp inside it, where the surface
+it is drawn on wins the depth test and the title vanishes with nothing to say
+why" — and the general form is: **anything drawn on a surface states
+`depthAxisAlignment: CrossAxisAlignment3d.start`, or sits inside a
+`SceneAlign3d(alignment: Alignment3d.frontCenter)`.** Start is the front:
+layout's z runs away from the viewer, so the axis begins at the face you are
+looking at.
+
 **A `Material3d` gives its child a *tight* depth, so a thicker child is
 silently clamped to it.** This is the one that decides how a two-part control
 has to be built. `Material3d`'s thickness is a tight depth constraint on its
@@ -400,6 +429,30 @@ different depths have to be **siblings** in a `Stack3d`, not one inside the
 other. `Switch3d` and `Slider3d` are both built that way, and
 `test/selection_test.dart` pins the thumb's 2dp with that reason in the test.
 
+**A lift written into a child's *position* takes it out of reach of a ray, and
+nothing says so.** This is the sharpest edge on this page, because everything
+about the screen still looks right. Toward the viewer is **negative z**, so a
+slot lifted that way sits outside its parent's own extent — and
+`Layout3d.hitTest` clamps the ray to the stretch inside each box *before* it
+asks that box's children, which is exactly what Flutter's
+`size.contains(position)` gate does in two dimensions. The lifted child is
+never reached. `ParentData3d.sceneOffset`'s own documentation has said this
+from the start — "separating them in the layout would push them out of their
+parent's box, break a `Positioned3d` pin, and take the topmost child out of
+reach of a ray" — which is why `Stack3d.depthStep` is a scene offset rather
+than a position.
+
+`Scaffold3d` wrote its depth ordering into `positionChild` instead, and its own
+dartdoc claimed that made layout, intrinsics and hit testing agree. The
+opposite was true: **every slot of every Material screen was unpressable**, the
+scaffold's own backing answered every hit, and 488 headless tests and 75 render
+probes all passed, because nothing in either suite pressed a control that was
+inside a `Scaffold3d`. Running the gallery is what found it. The fix is the
+node tier — the slots are positioned at z zero and their *geometry* is moved by
+a `NodeShift3d`, whose `worldTransform` undoes the shift so a ray still finds
+the box where layout put it. **Depth separation belongs on the node tier. If
+you find yourself writing a negative z into an offset, that is the bug.**
+
 **`Dismissible3d`'s backgrounds are coplanar with the child.**
 `backgroundDepthStep` defaults to zero, exactly as `Stack3d.depthStep` does,
 so the background revealed by a swipe and the row sliding off it sit on the
@@ -407,6 +460,26 @@ same plane and z-fight where they overlap. That is the right default for a flat
 Material row — the child covers the background until it moves, so there is
 nothing to fight over — and the wrong one the moment either has depth. A small
 positive step pushes the backgrounds away from the viewer and the fight stops.
+
+### A shared glyph atlas repacks, and a panel that has stopped laying out
+loses its labels
+
+`GlyphAtlasCache3d.shared` is shared by every `AtlasText3dRenderer` in the
+application, and reserving a glyph in it can repack the whole atlas — which
+invalidates every texture coordinate already baked into every mesh drawn out of
+it. `AtlasText3dRenderer` used to answer that by dropping its mesh and waiting
+for the box to lay out again, on the reasoning that a repack only happens while
+something is laying out. It does — but not necessarily *that* box. A second
+surface added to the scene draws a letter the first did not have, the atlas
+repacks, and a panel whose labels were laid out once and thereafter only
+*turned* never rebuilds them.
+
+It now bakes them again from what it already cached, without a layout. **Some
+of it is still wrong** when two surfaces share a style — an app bar coming out
+`nb` instead of `Inbox` — and the open half is written up in
+[a label that survives a repack](../packages/flutter_scene_layout3d/plans/2026_09_10_a_label_that_survives_a_repack.md).
+The reason it took a gallery to find: every render probe draws **one** surface,
+and every headless test measures type rather than rasterizing it.
 
 ## Pointers
 

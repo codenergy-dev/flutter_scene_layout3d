@@ -15,6 +15,7 @@ import 'package:flutter_scene_layout3d/widgets.dart'
 
 import '../theme/theme.dart';
 import 'material.dart';
+import 'reading_direction.dart';
 
 /// A one-pixel rule between two pieces of content.
 ///
@@ -189,7 +190,7 @@ class Divider3d extends StatelessWidget {
     return SceneSemantics3d(
       properties: SemanticsProperties(
         label: label,
-        textDirection: textDirection,
+        textDirection: readingDirection3d(context, textDirection),
       ),
       child: divider,
     );
@@ -301,7 +302,7 @@ class VerticalDivider3d extends StatelessWidget {
     return SceneSemantics3d(
       properties: SemanticsProperties(
         label: label,
-        textDirection: textDirection,
+        textDirection: readingDirection3d(context, textDirection),
       ),
       child: divider,
     );
