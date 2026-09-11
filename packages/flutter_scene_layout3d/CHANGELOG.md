@@ -1,5 +1,112 @@
 ## Unreleased
 
+- **A paragraph has a side to it.** `RichText3d` was the one label left flat by
+  the glyph work, and its capture is a `gpu.Texture` with no readable copy, so
+  the atlas trick does not transfer. The silhouette comes from a **second, CPU
+  rasterization of the box's own `TextPainter`** instead — `rasterizeParagraph`
+  and `ParagraphRaster3d` — and because that mask is on this side of the GPU,
+  each wall segment's colour is *sampled off it* through `sampleParagraphInk`,
+  which is how one wall carries a span's several colours.
+  `buildParagraphWallSegments` assembles them and `kParagraphWallSampleDepth`
+  is where along the wall the sample is taken.
+  - **`RichText3d.maxWallSegments`** refuses the work out loud rather than
+    quietly. The benefit runs opposite to the cost: thickness is invisible on
+    body copy, which is exactly the text that traces into thousands of
+    segments.
+  - The cheap answer was photographed failing. Extruding the *box* rather than
+    the letters — which `RichText3d.depth` already reserved room for — produces
+    a doubled paragraph with a back face and a stray rule without one, because
+    extrusion reads as thickness only when the thing extruded is the ink.
+- **A letter has a side to it.** A glyph is a front face, a back face and a
+  wall around its silhouette, rather than one flat quad — so a screen of type
+  on a four-millimetre panel no longer reads as a decal stuck to it, and
+  `Icon3d` came out thick for free because an icon is one glyph of a font.
+  `dart:ui` exposes no glyph outlines and there is no font parser here, so the
+  outline is **traced out of the atlas raster** (`traceGlyphOutline`,
+  `GlyphOutline3d`, with `kGlyphOutlineThreshold` and
+  `kGlyphOutlineTolerance`), which the atlas already reads back to the CPU on
+  its way to the GPU. That makes it arithmetic over a bitmap, and testable
+  headless like the rest of the text layer.
+  - **`GlyphAtlas3d.outlineRevision`**, and the trap it adds: **a glyph's wall
+    arrives with the texture rather than with the layout.** A label is flat on
+    the frame it is first laid out on and grows its thickness when the atlas
+    listener fires. It is a third counter answering a third question, beside
+    the two the atlas already had.
+  - `GlyphWallSegment3d` and `buildGlyphWallSegments` are the geometry;
+    `AtlasText3dRenderer` consumes them.
+- **A label stays on the panel it is written on while the panel turns.** Four
+  defects, reported as one symptom — type on an upright screen appearing and
+  disappearing as it rotated — and none of them was the atlas.
+  - **The decoration's slab was built inside out.** Its depth-facing triangles
+    wound clockwise around their own normals, so back-face culling kept the
+    face pointing *away* from the camera: every panel wrote the depth of its
+    rear face, lit by a normal facing away, drawn at the projected size of the
+    wrong face. Fixed in `BoxDecoration3dPainter`.
+  - **A line's depth cross axis now starts at the front.** It centred by
+    default, and since a `Material3d` hands its child a tight depth, that
+    buried every label inside the slab it was written on. `Flex3d` and
+    `Table3d` default their depth cross axis to the front; an explicit
+    `Center3d` still centres in depth, which is the documented way to ask for
+    the old behaviour. **The depth axis is not symmetric with the other two,
+    because the viewer is on one side of it.** This and the winding fix had to
+    land together: correcting the winding turns a buried label from a coin toss
+    into a certainty.
+  - **A glyph mesh now writes depth.** It did not, and the translucent sort is
+    one number per draw — the distance to the centre of an object's bounds — so
+    a turned panel could be drawn *after* the label written on it and paint
+    over it. The package ships **`assets/text_glyph3d.fmat`** for that, with
+    `FmatGlyphMaterial3d`, `UnlitGlyphMaterial3d`, `installGlyphMaterial3d`,
+    `kGlyphMaterialSource` and `linearColor` as the seam; `hook/build.dart`
+    compiles it beside the panel shader, and `initializeMaterial3d()` installs
+    it.
+  - **The glyph atlas is keyed by a style stripped of what cannot change a
+    raster.** It still carried `decorationColor`, so the gallery held
+    twenty-seven atlases for nine styles.
+- **A glyph reserved while the atlas was being rasterized is now drawn into the
+  texture.** It never was: only a *repack* moved the generation the flush
+  compared against, and a reservation with room to spare does not repack. An
+  atlas that grows hides the defect, which is why one Material screen looked
+  perfect and two did not.
+- **A transparent slab no longer erases what it stands on.** The panel shader
+  wrote depth for a fragment with no alpha, so a colourless `Material3d`
+  punched a hole through whatever was behind it; `box_decoration3d.fmat`
+  discards where its own alpha is zero. The obvious fix — turning `depth_write`
+  off — was photographed doing something worse, and that judgement is recorded
+  in `docs/traps.md` rather than only in the diff.
+- **A press has an origin, and it reaches the shader.** **`Ripple3d`** on
+  `StateLayer3d`, with `rippleOrigin`, `rippleRadius` and `rippleOpacity` in
+  `BoxDecoration3dUniforms` and two new parameters in the panel shader — the
+  first thing here that writes a uniform every frame and never leaves the
+  repaint-only tier while doing it.
+  - **`Layout3d.localPointFrom`** carries the point from the box that
+    recognized the press to the box that draws the wash. It is
+    `anchorOffsetTo`'s own change of frame generalized off an alignment,
+    because a finger is not an alignment.
+  - The ripple is evaluated *after* the panel's signed distance field has
+    discarded everything outside the slab, which is what makes a bounded ripple
+    free and an unbounded one impossible.
+- **A widget subtree can be an overlay entry's content, and a box can be
+  anchored to another.** Two things the declarative layer could not do at all.
+  `SceneOverlay3d`, `Overlay3dController`, `WidgetOverlay3dEntry`,
+  `WidgetOverlay3dBuilder`, `Overlay3dContentSlot3d`, `SceneModalBarrier3d` and
+  `WidgetPageRoute3d` are the first half.
+  - **`Layout3d.anchorOffsetTo`** and `Layout3dAnchoring` are the second, and
+    they close a gap worth stating plainly: **nothing anchored anything.** An
+    overlay entry sat where the overlay's alignment put it, so a menu could not
+    be *at* its button. The offset is applied on the node tier, never in a
+    child's position.
+- **A pinned header's clip now reaches the shader.** The same defect as the one
+  below, found in a second place: a viewport learns what a pinned header is
+  sitting on only after its rows have painted, so a `SliverAppBar3d` cut
+  nothing. **A clip discovered after the boxes under it have painted has to be
+  republished** — `CustomScrollView3d` and `SliverPersistentHeader3d` do.
+  - **`SceneClipBox3d`** and **`SceneSliverPersistentHeader3d`**, the two
+    widget forms the declarative layer was missing.
+- **The clip contract's plane tier had never fired at all.** A `ClipBox3d`
+  takes its size from its child, so every panel underneath one was born with
+  the unbounded block and kept it: the tier that cuts a box half inside a
+  window was dead code from the day it shipped. `ClipBox3d`, `DecoratedBox3d`
+  and `Layout3d.clipRegionForChild` between them make it fire.
 - **A `build` method can read the unit contract.** `SceneLayout3d` publishes
   the surface's `Layout3dMetrics` as a `Layout3dMetricsScope`, so
   `Layout3dMetricsScope.of(context)` (or `maybeOf`) hands a widget the same

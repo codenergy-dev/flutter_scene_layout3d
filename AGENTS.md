@@ -5,8 +5,12 @@ in three dimensions, over the [flutter_scene](https://github.com/bdero/flutter_s
 realtime 3D engine. Constraints go down, sizes come up, the parent positions
 the child — arranged on a freely transformable plane in a real 3D scene.
 
-This file orients coding agents, and the people directing them. Read it before
-working here.
+This file orients coding agents, and the people directing them. It is about
+**how work is done here** — the process, the contracts, and what "done" means.
+What the packages *are*, and where they bite, is in `docs/` and in the package
+READMEs; what has *happened* is in the changelogs and the plans. Read this
+before working here, and put any new agent instruction in this file rather
+than scattering it.
 
 ## What this repository is, and is not
 
@@ -19,220 +23,92 @@ The package began inside a fork of the engine's own monorepo and was moved out
 once it became clear the scope was its own project. That history is preserved:
 `git log` reaches back to the first layout commit.
 
+## Why this file differs from the engine's
+
+`flutter_scene`'s own agent instructions take the position that documentation
+is for people *using* the package, not for people developing it. That is a
+good position for a repository where an agent is an occasional tool. It is the
+wrong one here, and the divergence is deliberate rather than drift — **do not
+"correct" this file back toward it.**
+
+The reason is the working method. Work here goes plan → agent → reviewed by a
+person who is following along, and the thing that prevents a deviation costing
+a day is a written contract for the process: what a plan is, what verification
+means, what has to be true before a change is called finished. So this file is
+the process contract, and it earns its length by being *only* that.
+
+Three places, three questions, and keeping them apart is what stops any of
+them rotting:
+
+| Where | The question it answers |
+| --- | --- |
+| this file | how work is done here |
+| [docs/](docs/) and the package READMEs | how the packages are used, and where they bite |
+| `CHANGELOG.md` and `plans/` | what happened, and why it was done that way |
+
+That separation was learned the hard way. This file once carried a
+phase-by-phase narrative of everything that had shipped — 185 lines of it,
+half the file — while the changelogs it belonged in stayed empty for nine
+commits. The discipline was real and pointed at the wrong target. **History
+goes in the changelog and the plans. This file stays a contract.**
+
 ## The packages
 
 | Package | What it is |
 | --- | --- |
-| `packages/flutter_scene_layout3d` | The layout protocol. Constraints, intrinsics, baselines, flex, stack, wrap, slivers, scrolling, text measurement, decoration, clipping, pointer dispatch, focus, overlays, animation, diagnostics. |
-| `packages/flutter_scene_material3d` | Material Design 3 on that protocol. Today: the six token families (`ColorScheme3d`, `Typography3d`, `ShapeScale3d`, `Elevation3d`, `Thickness3d`, `StateLayerOpacity3d`), `Theme3dData` and `SceneTheme3d`, `initializeMaterial3d()`, the primitive layer — `Material3d`, `InkWell3d`, `Icon3d`, `SceneTextStyle3d` — the seven buttons over one `ButtonStyle3d`, the surfaces and rows (`Card3d`, `ListTile3d`, `Divider3d`, `Chip3d`), the structure (`Scaffold3d`, `AppBar3d`, `SliverAppBar3d`, `NavigationBar3d`, `NavigationRail3d`, `VerticalDivider3d`) and the overlays: `Dialog3d` and `showDialog3d`, `Menu3d` and `PopupMenuButton3d`, `SnackBar3d` behind a `ScaffoldMessenger3d`, `Tooltip3d`, and `BottomSheet3d` in both its forms, the selection controls (`Checkbox3d`, `Radio3d`, `Switch3d`, `Slider3d`) and the press ripple. **Complete, through the gallery.** |
+| `packages/flutter_scene_layout3d` | The layout protocol. Constraints, intrinsics, baselines, flex, stack, wrap, slivers, scrolling, text measurement and geometry, decoration, clipping, pointer dispatch, focus, overlays, animation, diagnostics. |
+| `packages/flutter_scene_material3d` | Material Design 3 on that protocol: six token families, a theme both layers read, and the catalogue over one `Material3d` primitive — buttons, cards, rows, chips, the structure, the overlays, the selection controls and the press ripple. |
 | `examples/layout3d_gallery` | The example app, and the only place a person sees any of this drawn. A Material screen on an upright panel that turns, the same catalogue flat on the ground, and a scrolling list of raw meshes beside them — all hit-testable, through one `Layout3dPointerGroup`. |
 | `examples/render_probe` | Render tests. Draws the layout on a GPU and probes the frame at the pixels layout says to check. Commits its platform scaffolding, unlike the gallery. |
 
 `flutter_scene_material3d` is the reason the layout package exists: a Material
-catalogue (`Button3d`, `Card3d`, `Scaffold3d`, `AppBar3d`) built as real
-geometry rather than as a picture of it. It is
-[planned in full](packages/flutter_scene_material3d/plans/2026_09_01_flutter_scene_material3d.md)
-and partly written. Phase 0 — four additions to `flutter_scene_layout3d` that
-a first component could not do without — landed in the layout package under
-[its own plan](packages/flutter_scene_layout3d/plans/2026_09_01_the_four_things_before_a_component.md).
-Phase 1, the package and its tokens, is done, and the one gap it left in the
-layout package — a `build` method that could not read the unit contract, so a
-dp padding could not be written — is closed under
-[its own plan](packages/flutter_scene_layout3d/plans/2026_09_02_the_metrics_a_build_method_can_read.md)
-there. Phase 2 is done too: `initializeMaterial3d()` is the one call an
-application makes, `Material3d` is the primitive with the theme resolved into
-it, `InkWell3d` drives its state layer without rebuilding anything, and
-`Icon3d` is one code point of an icon font through the label atlas — which a
-render probe settled rather than a guess. **Phase 3 is done as well**: the
-seven buttons — `FilledButton3d`, `FilledTonalButton3d`, `OutlinedButton3d`,
-`TextButton3d`, `ElevatedButton3d`, `IconButton3d`,
-`FloatingActionButton3d` — are one `Button3d` with seven `ButtonStyle3d` token
-sets, and the gap phase 2 recorded in the layout package is closed with them
-under
-[a tap target that delivers a press](packages/flutter_scene_layout3d/plans/2026_09_02_a_tap_target_that_delivers_a_press.md).
-**Phase 4 is done too**: `Card3d` in Material's three kinds, `ListTile3d` with
-its slots and its three heights, `Divider3d` — which had to decide what a 1dp
-line *is* when depth is real — and `Chip3d` in four, each over a public token
-set of its own. It also found something larger than itself: the clip
-contract's *plane* tier, the one that cuts a box half inside a window, had
-never fired at all, and closing it is
-[a clip that reaches the shader](packages/flutter_scene_layout3d/plans/2026_09_03_a_clip_that_reaches_the_shader.md).
-**Phase 5 is done as well**: `Scaffold3d`, which owns the depths between a
-screen's slots rather than leaving each component to guess; `AppBar3d` and
-`SliverAppBar3d` over one `AppBarStyle3d`; `NavigationBar3d` and
-`NavigationRail3d` over one `NavigationStyle3d`, with M3's selection pill
-turning out to be a `Material3d` with a `full` shape and nothing new at all;
-and the `VerticalDivider3d` the rail finally had something to separate with.
-It found the same clip tier dead in a **second** place — a pinned header's
-clip had never reached a shader either — and closing that, with the two widget
-forms the declarative layer was missing (`SceneClipBox3d` and
-`SceneSliverPersistentHeader3d`), is
-[the declarative side of a pinned bar](packages/flutter_scene_layout3d/plans/2026_09_08_the_declarative_side_of_a_pinned_bar.md).
-**Phase 6 is done too**: the overlays — `Dialog3d` and `showDialog3d` over
-`Navigator3d.push`, `Menu3d` and `PopupMenuButton3d`, `SnackBar3d` behind a
-queueing `ScaffoldMessenger3d`, `Tooltip3d`, and `BottomSheet3d` modal or
-persistent on any of four edges — all sitting one depth step in front of the
-frontmost thing a `Scaffold3d` declares, which is `Scaffold3d.overlayLift` and
-is arithmetic rather than a figure. It needed two things the layout package did
-not have, and both landed there under
-[a widget under an overlay entry](packages/flutter_scene_layout3d/plans/2026_09_08_a_widget_under_an_overlay_entry.md):
-a widget subtree as an overlay entry's content, and `Layout3d.anchorOffsetTo`,
-because nothing in the stack anchored anything and a menu belongs at its
-button. **Phase 7 is done too**: the selection controls — `Checkbox3d`,
-`Radio3d`, `Switch3d` and `Slider3d` over four public token sets — and it is
-the first phase since phase 3 to need *nothing* from the layout package, because
-`PointerSequence3d.addArenaMember` had been built for exactly this customer and
-took a slider without a change. Two things came out of it that outlive the
-components: `Thickness3d.stepOver`, because the "stand proud of what it is
-drawn on" arithmetic had been written by hand three times and this phase needed
-it four more; and `NodeShift3d`, the declarative form of the node tier, whose
-*scale* channel is what lets a slider's track fill without a relayout.
-**Phase 8 is done too**: the press ripple, which is the first thing in the
-catalogue that writes a shader uniform every frame and never leaves the
-repaint-only tier while doing it — `Ripple3d` on `StateLayer3d`,
-`InkRipple3dRun` as the timeline with no ticker in it, and a press whose origin
-is carried from the box that recognized it to the box that draws the wash by
-`Layout3d.localPointFrom`, which is `anchorOffsetTo`'s own arithmetic
-generalized off an alignment, under
-[where a press landed](packages/flutter_scene_layout3d/plans/2026_09_09_where_a_press_landed.md).
-It also found that Material 3's ripple *is* the press state layer rather than a
-second wash over it, so a pressed control's uniform opacity is now the hover
-figure and the ripple carries the rest. **Phase 9 closes it**: the gallery, and
-four defects that a full green suite had been standing behind. The example app
-had **no build hook at all**, so the committed version could never have drawn
-its own cubes. Every slot of every `Scaffold3d` was **unreachable by a ray**,
-because the depth lift was written into the slot's *position* and toward the
-viewer is negative z, which puts a child outside its parent's extent where a
-hit test clamps — it is on the node tier now, where `Stack3d.depthStep` has
-always put it. A screen's slots were **one logical pixel deep**, because a
-`Material3d`'s thickness tightly constrains its child and the backing was the
-arrangement's parent rather than its sibling. And a `semanticLabel` with no
-`textDirection` **crashed the frame** the moment anything switched semantics
-on, which `flutter test` never does. Two more findings needed plans of their own, and both are closed now.
-[A label that survives a repack](packages/flutter_scene_layout3d/plans/2026_09_10_a_label_that_survives_a_repack.md)
-began as a shared glyph atlas repacking under a second surface's letters and
-ended somewhere else entirely: a glyph reserved while the atlas was being
-rasterized was **never drawn into the texture at all**, because only a *repack*
-moved the generation the flush compared against, and a reservation with room to
-spare does not repack. An atlas that grows hides it, which is why one Material
-screen looked perfect and two did not.
-[A transparent slab that does not erase](packages/flutter_scene_layout3d/plans/2026_09_10_a_transparent_slab_that_does_not_erase.md)
-is the panel shader writing depth for a fragment with no alpha, so a
-colourless `Material3d` punched a hole through whatever it stood on; it now
-discards where its own alpha is zero. The obvious fix — turning `depth_write`
-off — was photographed doing something worse, and that judgement is in
-`docs/traps.md`.
+catalogue built as real geometry rather than as a picture of it. It is
+[planned in full](packages/flutter_scene_material3d/plans/2026_09_01_flutter_scene_material3d.md),
+all ten phases of it are `completed`, and that plan's closing sections — what
+the whole thing proved, what its reasoning got wrong, and what each phase
+deliberately left out — are the thing to read before extending any of it.
 
-After all of that, one thing the same app was still doing wrong was not a
-defect at all but an absence: every letter and every icon was **one flat
-quad**, so a screen of Material sat on panels four millimetres thick with type
-on it that had no thickness whatever, and turning a panel made the type read as
-a decal stuck to it. [A letter with a side to it](packages/flutter_scene_layout3d/plans/2026_09_11_a_letter_with_a_side_to_it.md)
-gives a glyph a front face, a back face and a wall around its silhouette. The
-silhouette is the interesting part: `dart:ui` exposes no glyph outlines and
-there is no font parser here, so the outline is **traced out of the atlas
-raster**, which the atlas already reads back to the CPU on its way to the GPU.
-That makes it arithmetic over a bitmap, which is testable headless like the
-rest of the text layer — and it puts the wall on the atlas's asynchronous clock
-rather than on layout's, which is the trap it added. `Icon3d` is one glyph of a
-font, so icons came out thick for free.
-
-The one thing that plan left flat was `RichText3d`, and
-[a paragraph with a side to it](packages/flutter_scene_layout3d/plans/2026_09_11_a_paragraph_with_a_side_to_it.md)
-closes it. Its capture is a `gpu.Texture` with no readable copy, so the atlas
-trick does not transfer; the silhouette comes from a **second, CPU
-rasterization of the box's own `TextPainter`** instead. Because that mask is on
-this side of the GPU, each wall segment's colour is *sampled off it*, which is
-how one wall carries a span's several colours. Two findings outlive it: the
-cheap answer — extruding the box rather than the letters, which the existing
-`depth` already reserved space for — was photographed producing a doubled
-paragraph with a back face and a stray rule without one, because **extrusion
-reads as thickness only when the thing extruded is the ink**; and the benefit
-runs opposite to the cost, being invisible on the body copy that traces into
-thousands of segments, which is what `RichText3d.maxWallSegments` refuses out
-loud.
-
-A third finding came out of the same app a day later, reported as *the gallery
-blinks*: type on the upright screen appearing and disappearing as the panel
-turned. [A letter on a slab](packages/flutter_scene_layout3d/plans/2026_09_10_a_letter_on_a_slab.md)
-is four defects stacked, and none of them is the atlas. The decoration's slab
-was **built inside out** — its depth-facing triangles wound clockwise around
-their own normals, so back-face culling kept the face pointing away from the
-camera and every panel wrote the depth of its *rear* face, lit by a normal
-facing away and drawn at the projected size of the wrong face. The catalogue
-**buried its content inside its slabs**, because a line's depth cross axis
-centred by default and a `Material3d` hands its child a tight depth. A glyph
-mesh **writes no depth**, so the translucent sort — one number per draw, the
-distance to the centre of the object's bounds — let a turned panel be drawn
-*after* the label written on it and paint over it; the package ships
-`assets/text_glyph3d.fmat` for that now, and `initializeMaterial3d()` installs
-it. And the glyph atlas was keyed by a style that still carried
-`decorationColor`, so the gallery held **twenty-seven atlases for nine
-styles**. The first two had to land together: correcting the winding turns a
-buried label from a coin toss into a certainty.
-
-Fourteen things worth knowing before building on any of it, all written up in
-`docs/traps.md`: handing every `BoxDecoration3d` the *same* material makes a
-screen of panels come out one colour; a `TapTarget3d` reaches past its own
-extent but **its parent does not**, so a target has to sit outside every box
-whose size it is trying to grow — the panel and the semantics box included; a
-`Semantics3d` publishes what it is given and gathers no label from the labels
-below it, so a component states its own; nothing here is as flat as it
-looks — a 1dp divider is a *slab*, because a zero-depth one is coplanar with
-the surface it is drawn on and z-fights it, and so is a scrim; **a clip
-discovered after the boxes under it have painted has to be republished**, which
-is the same defect found twice, in a `ClipBox3d` and then in a pinned header,
-and both times only by drawing a frame; and **nothing anchors anything** — an
-overlay entry sits where the overlay's alignment puts it, and
-`Layout3d.anchorOffsetTo` is the arithmetic that moves it onto the box that
-asked for it, on the node tier; **a `Material3d` hands its child a *tight*
-depth**, so a thicker slab drawn on a thinner one has to be its sibling rather
-than its child or it is silently clamped to the wrong thickness; and **a
-glyph's rasterization scale has nothing to do with how big the glyph is** — it
-is `AtlasText3dRenderer.resolution` and nothing else, so small type here is not
-a resolution problem and turning a surface's unit rate up magnifies the quad
-without touching the raster; and **an animation that has stopped changing must
-stop asking for frames**, because a `Ticker` that never stops makes
-`pumpAndSettle` spin forever — and one restarted after a stop begins its clock
-again at zero, so a driver that pauses has to carry its own baseline; and the
-two the gallery added, which are the ones an *application* author meets rather
-than a component author: **a lift written into a child's position takes that
-child out of reach of a ray**, so depth separation belongs on the node tier and
-a negative z in an offset is the bug; and **the depth axis is not symmetric
-with the other two**, because the viewer is on one side of it — a line's depth
-cross axis therefore *starts* at the front while its other one centres, an
-explicit `Center3d` still centres in depth and puts a label inside the slab it
-is on, and a `Material3d`'s content belongs on its face; and the last two,
-which are about the *picture* rather than the arrangement: **a glyph mesh has
-to write depth or the translucent sort erases it**, because that sort is one
-number per draw and turning a panel swings a label near its edge behind the
-panel's own centre — `initializeMaterial3d()` installs the material that does
-it; and **a surface has to lift what is drawn on it off its own face**, because
-two surfaces sharing a plane both write depth there and come out striped rather
-than missing, which no component can fix for itself when the thing behind it
-belongs to the application (`Material3d.contentLift`); and **a glyph's wall
-arrives with the texture rather than with the layout**, because a letter's
-silhouette is traced off the atlas raster and there is no other description of
-its shape on this side of the GPU — a label is flat on the frame it is first
-laid out on and grows its thickness when the atlas listener fires, which is a
-third counter (`GlyphAtlas3d.outlineRevision`) answering a third question.
+**What is being built next**, and the map of the plans that get there, is
+[what a real application still needs](packages/flutter_scene_layout3d/plans/2026_09_11_what_a_real_application_still_needs.md).
+Start there rather than here when you want the shape of the remaining work.
 
 ## Running things
 
 Everything below runs from the repository root unless stated otherwise.
 
 ```sh
-flutter pub get                                     # resolves the workspace
+flutter pub get                                      # resolves the workspace
 cd packages/flutter_scene_layout3d && flutter test   # 991 today
 cd packages/flutter_scene_material3d && flutter test # 517 today
 cd examples/layout3d_gallery && flutter test         # 3 today
-dart analyze                                        # must be clean, everywhere
-dart format .                                       # before every commit
+dart analyze                                         # must be clean, everywhere
+dart format .                                        # before every commit
 ```
 
 All three suites are headless, and all three must be green. The Material
 package's is arithmetic and state — tokens, `lerp`, and the theme reaching a
-box's `performLayout` — so nothing in it needs a GPU.
+box's `performLayout` — so nothing in it needs a GPU. The counts are there as
+a drift alarm: a green suite that is suddenly four hundred tests shorter is a
+signal. Update them when they move.
+
+What cannot be covered headlessly goes in `examples/render_probe`, which draws
+real geometry and asks the frame whether it matches the layout:
+
+```sh
+cd examples/render_probe
+flutter drive --driver=test_driver/integration_test.dart \
+  --target=integration_test/render_test.dart -d macos --enable-flutter-gpu
+```
+
+How to write a scene is in
+[examples/render_probe/README.md](examples/render_probe/README.md); the
+gotchas are in [docs/traps.md](docs/traps.md), under *When probing a rendered
+frame*. That lane is also the only thing that *runs* the compiled shaders in
+`packages/flutter_scene_layout3d/assets/`. The package's own `hook/build.dart`
+compiles them — for the render probe, the gallery, and any application that
+depends on the package — so a syntax error in the panel shader fails every
+build, while a shader that compiles and draws the wrong thing fails there and
+nowhere else.
 
 The example app commits no platform scaffolding, so generate the platform you
 want first:
@@ -243,33 +119,32 @@ flutter create . --platforms=macos
 flutter run -d macos --enable-flutter-gpu
 ```
 
-**And then look at it.** Phase 9 of the Material catalogue found six things,
-five of which were invisible to 944 headless tests and 75 render probes alike —
-a screen nothing could press, a screen one logical pixel deep, a frame that
-would not build with semantics switched on, labels that vanished when a second
-surface drew a letter, and a hole punched through a navigation bar. The next
-four came from a person watching the same app *turn*: every panel in the
-catalogue drawn from its back face, every label sunk into the slab it belongs
-to, a glyph mesh the translucent sort could erase, and an atlas per text
-colour. A probe answers *is this one claim true*; running the app answers *is
-anything obviously wrong*, and in this stack that is a different question —
-and **turning something is a question of its own**, which nothing in this
-repository had asked until `type_on_a_turning_panel`. The gallery's
-own README has the recipe for photographing a frame when the window itself
-cannot be captured.
+**And then look at it.** This is a third verification lane and not a nicety.
+Ten of the worst defects ever found here were invisible to the headless suites
+and the render probes alike, and every one was found by a person starting the
+gallery and looking at the window: a screen nothing could press, a screen one
+logical pixel deep, a frame that would not build with semantics on, every
+panel drawn from its back face, a label sunk into the slab it belongs to. A
+probe answers *is this one claim true*; running the app answers *is anything
+obviously wrong*, and in this stack those are different questions. **Turning
+something is a question of its own**, and nothing here had asked it until a
+person watched a panel rotate. The gallery's own README has the recipe for
+photographing a frame when the window itself cannot be captured.
 
 ## What you need to know before writing code
 
 Both of these are short, and both are lists of things that cost real time.
-They live in `docs/` rather than here because they grow, and this file should
-stay readable end to end.
+They live in `docs/` rather than here because they grow, and because they
+answer a different question than this file does.
 
-- **[docs/traps.md](docs/traps.md)** — the sharp edges of *this package*.
+- **[docs/traps.md](docs/traps.md)** — the sharp edges of *these packages*.
   A box's size is in world units while a Material figure is in logical pixels;
   writing `metrics` relayouts everything; there are four transform channels and
   a `Stack3d` silently erases one of them; the package draws almost nothing
-  until you install a painter; a corner radius is not a clip. **Read it before
-  building a component.**
+  until you install a painter; a corner radius is not a clip; the depth axis is
+  not symmetric with the other two, because the viewer is on one side of it.
+  **Read it before building a component.** Do not summarize it here — it has
+  been tried, and the summary rotted while the page stayed right.
 - **[docs/engine-rules.md](docs/engine-rules.md)** — using `flutter_scene`
   correctly. `vector_math` not `vector_math_64`, `--enable-flutter-gpu` alone,
   `node.position` getters return copies, and nothing renders until
@@ -277,6 +152,33 @@ stay readable end to end.
 
 [docs/README.md](docs/README.md) maps everything else — which document answers
 which question, and where the reasoning behind past decisions is recorded.
+
+## Before you call it done
+
+Every one of these, every time. They are not a summary of the conventions
+below; they are the conventions reduced to the things that can be checked, and
+the list exists because the ones that were only described in prose are the
+ones that got skipped.
+
+1. **`flutter test` is green** in both packages and in the gallery.
+2. **`dart analyze` is clean** across the whole workspace.
+3. **`dart format .`** has been run.
+4. **The changed package's `CHANGELOG.md` has its entry**, in this commit.
+5. **The page that describes the changed behaviour changed too**, in this
+   commit — a README, a dartdoc, a `docs/` page.
+6. **The plan's `status` and `updated_at` moved**, what the original reasoning
+   got wrong is written down, and the `reason:` of every plan it mentions has
+   been reread.
+7. **The indexes that track state were checked**:
+   [docs/README.md](docs/README.md) and the
+   [plan index](packages/flutter_scene_layout3d/plans/2026_09_11_what_a_real_application_still_needs.md).
+   An index pointing at finished work as "next" is the failure mode here.
+8. **A commit message is proposed, and nothing is committed** unless the user
+   asked.
+
+If something on this list cannot be satisfied, say which and why in the
+round's summary. An unsatisfied item reported is fine; an unsatisfied item
+unmentioned is what makes the next reader trust something false.
 
 ## Conventions
 
@@ -320,33 +222,66 @@ trusts it. **Never mark a plan `completed` while items are open** — if the
 plan's own text defers something to a follow-up, that is out of scope rather
 than an open item, and saying so in the body is what makes `completed` honest.
 
+**Closing a plan can invalidate another one.** The render-coverage work made
+three statements in other plans false: they still said the work was blocked on
+infrastructure that now existed. Nothing warns you.
+
 ### Tests are the verification, and there is room to be thorough here
 
-`flutter test` must be green and `dart analyze` clean before anything is
-committed — both, every time, no exceptions. This repository is not bound by
-the engine's test conventions, so cover the edge cases properly: the protocol
-is arithmetic, and arithmetic is cheap to pin down.
+`flutter test` green and `dart analyze` clean, both, every time, no
+exceptions. This repository is not bound by the engine's test conventions, so
+cover the edge cases properly: the protocol is arithmetic, and arithmetic is
+cheap to pin down.
 
-What cannot be covered headlessly goes in `examples/render_probe`, which draws
-real geometry and asks the frame whether it matches the layout:
+The split between the lanes is the one *Running things* describes, and the
+rule the render harness earned is worth restating: **the laid-out tree is the
+oracle.** Ask `screenCenter` or `screenPointOf` where a box is, never a
+hard-coded pixel — and a scene that cannot honestly assert its claim is
+removed, not weakened.
 
-```sh
-cd examples/render_probe
-flutter drive --driver=test_driver/integration_test.dart \
-  --target=integration_test/render_test.dart -d macos --enable-flutter-gpu
-```
+### Versions and the changelog
 
-How to write a scene is in
-[examples/render_probe/README.md](examples/render_probe/README.md); the
-gotchas are in [docs/traps.md](docs/traps.md), under *When probing a rendered
-frame*.
+**Every change a consumer of the package would notice gets a `CHANGELOG.md`
+entry, in the package that changed, in the same commit.** New API, changed
+behaviour, a fixed defect, a new asset, a deprecation. What does not need one:
+a plan, a documentation-only change, an internal refactor with no visible
+effect, a test.
 
-That lane is also the only thing that *runs* the compiled
-`packages/flutter_scene_layout3d/assets/box_decoration3d.fmat`. The package's
-own `hook/build.dart` compiles it — for the render probe, the gallery, and any
-application that depends on the package — so a syntax error in the panel
-shader fails every build; a shader that compiles and draws the wrong thing
-fails there and nowhere else.
+Entries here are prose in the same voice as everything else — a bold lead-in
+naming the thing, then what it is for and why it is that way. Not "Added
+`Foo3d`". The existing entries are the model; match them.
+
+Accumulate under `## Unreleased`. **Do not bump a version or cut a release
+heading** — that is the user's call, and it is tied to a publishing decision
+that has not been made yet.
+
+This convention exists because it was absent and the cost was visible. The
+habit held for the first weeks and then died the moment the catalogue phases
+began: nine commits of shipped work — the whole catalogue from the buttons to
+the gallery, the clip tier, the overlays and anchoring, the ripple, the glyph
+walls — went unrecorded, so the Material package's own changelog still
+described it as "the token layer, and the buttons are the next phase" after
+all nine had landed. A changelog is the first thing a consumer of these
+packages reads.
+
+### Documentation is part of the change, not follow-up work
+
+Prose lives next to what it describes, and [docs/](docs/) holds what has no
+such home — cross-cutting traps, engine rules, the map. When you change
+behaviour, the page that describes it changes in the same commit; when you add
+a page, it gets a row in [docs/README.md](docs/README.md).
+
+Two rules under that:
+
+- **A page that is wrong is worse than a page that is missing**, because the
+  next reader trusts it. If you find one describing behaviour the code no
+  longer has, fix it or say so; do not leave it. This applies hardest to the
+  rows in an index that claim to say what is current.
+- **Verify before you write it down.** Grep for the symbol before naming it,
+  read the file before describing it, run the suite before quoting a count.
+  The prose here is confident by house style, which means an unchecked claim
+  reads exactly like a checked one — and this repository's own documentation
+  drift was found by grepping, not by reading.
 
 ### Suggest a commit message each round
 
@@ -358,23 +293,6 @@ message.
 Subject lines here are short, imperative and say what the change does for the
 reader, not which files moved: "Pin a header to the leading edge and cut the
 content under it", not "Add SliverPersistentHeader3d".
-
-### Documentation is part of the change, not follow-up work
-
-Prose lives next to what it describes, and [docs/](docs/) holds what has no
-such home — cross-cutting traps, engine rules, the map. When you change
-behaviour, the page that describes it changes in the same commit; when you add
-a page, it gets a row in [docs/README.md](docs/README.md).
-
-Two habits that this repository learned the hard way:
-
-- **Closing a plan can invalidate another one.** The render-coverage work made
-  three statements in other plans false — they still said the work was blocked
-  on infrastructure that now existed. Nothing warns you. When you finish a
-  plan, reread the `reason:` of every plan it mentions.
-- **A page that is wrong is worse than a page that is missing**, because the
-  next reader trusts it. If you find one describing behaviour the code no
-  longer has, fix it or say so; do not leave it.
 
 ### README files are written for humans
 

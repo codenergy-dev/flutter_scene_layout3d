@@ -1,7 +1,8 @@
 ---
-status: pending
+status: in progress
+reason: sixteen of the seventeen items are open; the record of what shipped is closed
 created_at: 2026-09-11T21:20:18Z
-updated_at: 2026-09-11T21:20:18Z
+updated_at: 2026-09-11T22:40:00Z
 commit: abc2469ce5c4ec4c41e2738fc5acf55bcf40640a
 ---
 
@@ -106,7 +107,7 @@ plan, which is the rule phase 0 established and every phase since has obeyed.
 | [A scheme from one colour](#a-scheme-from-one-colour) | material3d | any application with a brand |
 | [The controls that wait on a keyboard](#the-controls-that-wait-on-a-keyboard) | material3d | search, dropdowns, date and time entry |
 | [A catalogue that speaks more than one language](#a-catalogue-that-speaks-more-than-one-language) | material3d | every locale, and the strings the catalogue invents |
-| [The record of what shipped](#the-record-of-what-shipped) | both | the next reader trusting what they read |
+| ~~[The record of what shipped](#the-record-of-what-shipped)~~ | both | **done** — the next reader trusting what they read |
 
 ## The order, and why
 
@@ -136,9 +137,10 @@ captures that settled those findings came from throwaway files, and the
 package exports no test helper an application author could use at all. Build
 the instrument before the wave, not after.
 
-**[The record of what shipped](#the-record-of-what-shipped) whenever there is
-an hour**, because it is the cheapest item here and the only one that is
-actively misleading rather than merely missing.
+~~**[The record of what shipped](#the-record-of-what-shipped) whenever there is
+an hour**~~ — **done, first of the seventeen**, because it turned out to be
+the same work as restructuring `AGENTS.md`: the history that belonged in the
+changelogs was sitting in the file every agent loads. See its entry.
 
 Then the four the first real port will demand, in whatever order the ported
 screens demand them:
@@ -717,6 +719,38 @@ against a convention that says documentation is part of the change. Clearing
 it is an hour or two. **Doing it also front-loads the only part of the
 publication work worth doing before the real-application ports**, since a
 changelog is what a consumer of these packages reads first.
+
+**Closed, and it did not get a plan of its own** — it was small enough to do
+directly, and it arrived attached to something larger. Asked to review whether
+`AGENTS.md` carried the right instructions, the answer turned out to explain
+this item rather than sit beside it: **half of that file was a changelog
+written in prose.** 185 of its 399 lines were a phase-by-phase narrative of
+what had shipped, it had been touched in 22 of the repository's 70 commits to
+keep that narrative current, and `grep -i changelog` over it and over `docs/`
+returned nothing at all. The discipline was never missing; it was pointed at
+the wrong file, and the changelog habit died in the same commit the catalogue
+phases began.
+
+So the two were done together:
+
+- `AGENTS.md` is 317 lines and is a process contract. The narrative is gone,
+  the compressed restatement of `docs/traps.md` is gone, and in their place are
+  a *Before you call it done* checklist whose fourth item is the changelog
+  entry, a *Versions and the changelog* convention that says what earns an
+  entry and forbids bumping a version, a **verify before you write it down**
+  rule, and a section saying why this file deliberately diverges from
+  `flutter_scene`'s own — so the next reader does not shorten it back.
+- Both changelogs now carry what shipped, newest first, in the house voice.
+- `docs/README.md`'s reasoning section is current: the two 09-10 plans are
+  recorded as closed rather than open, the three newest plans have their
+  paragraph, and *what is being built next* points here.
+
+**What this item's own reasoning got wrong:** it was filed as hygiene, worth
+an hour, and it was really a diagnosis. The changelog did not drift because
+someone forgot — it drifted because the instruction did not exist, and the
+place the instinct went instead was the one file with no mechanism to stop it
+growing. Writing the missing rule mattered more than filling in the missing
+entries.
 
 ## Keeping this document true
 

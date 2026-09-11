@@ -1,9 +1,119 @@
 ## Unreleased
 
-- Initial contents: the token layer, the theme that carries it, and the
-  primitive every component is made of. The buttons, cards and bars are the
-  next phase of
-  [the plan](plans/2026_09_01_flutter_scene_material3d.md).
+The first contents of this package, and they are the whole catalogue: ten
+phases from an empty package to a screen a person can look at, all of them
+`completed` in [the plan](plans/2026_09_01_flutter_scene_material3d.md). Every
+component in it is a **`Material3d` with a public token set resolved by
+state**; there is no second mechanism anywhere in the catalogue.
+
+Material 3 is a specification for a flat surface, so every token in it that
+stands in for depth is re-derived here. An elevation is a shadow in Flutter
+and a distance here. A disabled control is 38% opacity in Flutter and a
+substituted colour here, because there is no opacity in this stack. A
+component has no thickness in Flutter and must have one here, which is the
+token Material does not publish at all. The plan's middle section is where
+that reasoning lives.
+
+- **Every label and icon on a panel is lifted off its face.**
+  **`Material3d.contentLift`**: two surfaces sharing a plane both write depth
+  there and come out striped rather than one hiding the other, and no
+  component can fix that for itself when the thing behind it belongs to the
+  application. Icons came out thick for free when a glyph gained a wall,
+  because an `Icon3d` is one glyph of a font.
+- **The gallery**, in `examples/layout3d_gallery` — a Material screen on an
+  upright panel that turns, the same catalogue flat on the ground, and raw
+  meshes beside them. It is the phase that most repays reading, because four
+  of the things it found were defects a full green suite had been standing
+  behind:
+  - **Every slot of every `Scaffold3d` was unreachable by a ray.** The depth
+    lift was written into the slot's *position*, and toward the viewer is
+    negative z, which puts a child outside its parent's extent where a hit
+    test clamps. It is on the node tier now, where `Stack3d.depthStep` has
+    always put it. **A lift written into a child's position takes that child
+    out of reach of a ray.**
+  - **A screen's slots were one logical pixel deep**, because a `Material3d`
+    hands its child a *tight* depth and the backing was the arrangement's
+    parent rather than its sibling.
+  - **A `semanticLabel` with no `textDirection` crashed the frame** the moment
+    anything switched semantics on, which `flutter test` never does.
+    `readingDirection3d` resolves it from the ambient `Directionality`, with a
+    final fallback because a scene is not obliged to have one.
+  - The example app had **no build hook at all**, so the committed version
+    could never have drawn its own cubes.
+- **The press ripple.** **`Ripple3d`** on `StateLayer3d` is the layout
+  package's half; here it is **`InkRipple3dRun`**, the timeline with no ticker
+  in it, and **`InkRipple3dStyle`**, which holds Flutter's own `InkRipple`
+  figures and is replaceable per controller the way `ButtonStyle3d` is
+  replaceable per button.
+  - **Material 3's ripple *is* the press state layer** rather than a second
+    wash over it, so a pressed control's uniform opacity is now the hover
+    figure and the ripple carries the rest.
+  - One box carries one pair of uniforms, so it carries one ripple; a second
+    press replaces the first, and the suite states that as the behaviour
+    rather than leaving it undefined. A press with no noted point ripples from
+    the middle of the surface, which is what a keyboard activation would get
+    if anything in this stack activated a control from the keyboard.
+- **The selection controls**: **`Checkbox3d`**, **`Radio3d`**, **`Switch3d`**
+  and **`Slider3d`**, over `CheckboxStyle3d`, `RadioStyle3d`, `SwitchStyle3d`
+  and `SliderStyle3d` with a resolved form each. The one phase since the
+  buttons that needed **nothing** from the layout package:
+  `PointerSequence3d.addArenaMember` had been built for exactly this customer
+  and took a slider without a change, through `SliderGesture3d` and
+  `SceneSliderGesture3d`.
+  - **`Thickness3d.stepOver`**, because the "stand proud of what it is drawn
+    on" arithmetic had been written by hand three times and this phase needed
+    it four more.
+  - **`NodeShift3d`** and **`SceneNodeShift3d`**, the declarative form of the
+    node tier. Its *scale* channel is what lets a slider's track fill without
+    a relayout.
+  - `Slider3d` takes a `width` in logical pixels where Flutter's fills the room
+    it is given: the thumb's position is written by the widget that builds it,
+    so the width has to be known before layout rather than after it.
+- **The overlays**, all sitting one depth step in front of the frontmost thing
+  a `Scaffold3d` declares — which is **`Scaffold3d.overlayLift`** and is
+  arithmetic rather than a figure. **`Dialog3d`** and `showDialog3d` over
+  `Navigator3d.push`; **`Menu3d`**, `MenuItem3d`, `MenuItem3dEntry`,
+  `PopupMenuButton3d` and `showMenu3d`; **`SnackBar3d`** behind a queueing
+  **`ScaffoldMessenger3d`** with `SnackBar3dController` and
+  `SnackBar3dClosedReason`; **`Tooltip3d`**; and **`BottomSheet3d`** modal or
+  persistent on any of four `Sheet3dEdge`s, through `showBottomSheet3d` and
+  `showModalBottomSheet3d`. Their tokens are `DialogStyle3d`, `MenuStyle3d`,
+  `SnackBarStyle3d`, `TooltipStyle3d` and `BottomSheetStyle3d`.
+  - **`Anchor3d`** and **`Follower3d`** (with their widget forms) put a menu at
+    its button, over the layout package's `Layout3d.anchorOffsetTo`.
+  - Nothing here slides, fades or grows. `Route3dTransition.none` is the
+    honest default and this package has no motion tokens yet; the seam is
+    `Navigator3d.transition`.
+- **The structure.** **`Scaffold3d`** and `Scaffold3dSlot`, which owns the
+  depths between a screen's slots rather than leaving each component to guess;
+  **`AppBar3d`** and **`SliverAppBar3d`** over one `AppBarStyle3d` with
+  `AppBarVariant3d`; **`NavigationBar3d`** and **`NavigationRail3d`** over one
+  `NavigationStyle3d`, with `NavigationDestination3d`; and
+  **`VerticalDivider3d`**, which the rail finally gave something to separate
+  with.
+  - M3's selection pill turned out to be a `Material3d` with a `full` shape and
+    nothing new at all.
+- **The surfaces and rows.** **`Card3d`** in Material's three kinds
+  (`ElevatedCard3d`, `FilledCard3d`, `OutlinedCard3d`) over `CardStyle3d`;
+  **`ListTile3d`** with its slots and its three heights; **`Divider3d`**,
+  which had to decide what a 1dp line *is* when depth is real — a slab, because
+  a zero-depth one is coplanar with the surface it is drawn on and z-fights
+  it; and **`Chip3d`** in four (`AssistChip3d`, `FilterChip3d`, `InputChip3d`,
+  `SuggestionChip3d`) over `ChipStyle3d`.
+  - A card's `clipBehavior` is **not** implemented: it needs a clip whose
+    region is a rounded rectangle, and `Clip3dRegion` is an intersection of
+    planes — convex, and a radius is not expressible that way. A child
+    overflowing a rounded card is not clipped to it.
+- **The seven buttons**, which are one **`Button3d`** with seven
+  `ButtonStyle3d` token sets: **`FilledButton3d`**,
+  **`FilledTonalButton3d`**, **`OutlinedButton3d`**, **`TextButton3d`**,
+  **`ElevatedButton3d`**, **`IconButton3d`** and
+  **`FloatingActionButton3d`**, with `ButtonVariant3d` and
+  `ResolvedButtonStyle3d`.
+  - The placement rule every component from here on obeys: **a `TapTarget3d`
+    reaches past its own extent and its parent does not**, so the target sits
+    outside every box the size of the control — the panel and the semantics box
+    included.
 - **`initializeMaterial3d()`**, the one call a Material application makes
   before `runApp`: it awaits `Scene.initializeStaticResources()` and installs
   the panel painter, without which every component measures, lays out and

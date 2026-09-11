@@ -110,13 +110,34 @@ Two entry points:
   is the gallery, and it is the phase that most repays reading: four of the
   five things it found were defects that a full green suite had been standing
   behind, including a `Scaffold3d` whose every slot was unreachable by a ray.
-  The fifth is still open, as
-  [a label that survives a repack](../packages/flutter_scene_layout3d/plans/2026_09_10_a_label_that_survives_a_repack.md)
-  — a shared glyph atlas repacking under a second surface's letters takes a
-  settled panel's labels away — and its sixth is open too, as
-  [a transparent slab that does not erase](../packages/flutter_scene_layout3d/plans/2026_09_10_a_transparent_slab_that_does_not_erase.md).
-  Those two are the only plans in either package that are not finished, and
-  both of them are things a picture found and a suite did not.
+  Its fifth and sixth findings each got a plan and both are closed:
+  [a label that survives a repack](../packages/flutter_scene_layout3d/plans/2026_09_10_a_label_that_survives_a_repack.md),
+  which began as a shared glyph atlas repacking under a second surface's
+  letters and ended somewhere else — a glyph reserved while the atlas was
+  being rasterized was never drawn into the texture at all — and
+  [a transparent slab that does not erase](../packages/flutter_scene_layout3d/plans/2026_09_10_a_transparent_slab_that_does_not_erase.md),
+  the panel shader writing depth for a fragment with no alpha.
+
+- **Four more plans came from watching the same app *turn***, which is a
+  question nothing here had asked.
+  [A letter on a slab](../packages/flutter_scene_layout3d/plans/2026_09_10_a_letter_on_a_slab.md)
+  is four defects stacked and none of them is the atlas: the decoration's slab
+  was built inside out, the catalogue buried its content inside its slabs, a
+  glyph mesh wrote no depth so the translucent sort could erase it, and the
+  atlas was keyed by a style that still carried `decorationColor`.
+  [A letter with a side to it](../packages/flutter_scene_layout3d/plans/2026_09_11_a_letter_with_a_side_to_it.md)
+  gives a glyph a front face, a back face and a wall traced out of the atlas
+  raster, because `dart:ui` exposes no outlines and there is no font parser
+  here.
+  [A paragraph with a side to it](../packages/flutter_scene_layout3d/plans/2026_09_11_a_paragraph_with_a_side_to_it.md)
+  does the same for `RichText3d`, whose capture has no readable copy, so its
+  silhouette comes from a second CPU rasterization it can sample colours off.
+- **What is being built next** is
+  [what a real application still needs](../packages/flutter_scene_layout3d/plans/2026_09_11_what_a_real_application_still_needs.md),
+  the index of the seventeen plans between a finished catalogue and an
+  application people use. It is the only plan in either package that is not
+  finished, and it is a map rather than a work item: each row becomes a plan
+  of its own when it is picked up.
 
 ## Keeping this true
 
