@@ -123,7 +123,26 @@ discards where its own alpha is zero. The obvious fix — turning `depth_write`
 off — was photographed doing something worse, and that judgement is in
 `docs/traps.md`.
 
-Eleven things worth knowing before building on any of it, all written up in
+A third finding came out of the same app a day later, reported as *the gallery
+blinks*: type on the upright screen appearing and disappearing as the panel
+turned. [A letter on a slab](packages/flutter_scene_layout3d/plans/2026_09_10_a_letter_on_a_slab.md)
+is four defects stacked, and none of them is the atlas. The decoration's slab
+was **built inside out** — its depth-facing triangles wound clockwise around
+their own normals, so back-face culling kept the face pointing away from the
+camera and every panel wrote the depth of its *rear* face, lit by a normal
+facing away and drawn at the projected size of the wrong face. The catalogue
+**buried its content inside its slabs**, because a line's depth cross axis
+centred by default and a `Material3d` hands its child a tight depth. A glyph
+mesh **writes no depth**, so the translucent sort — one number per draw, the
+distance to the centre of the object's bounds — let a turned panel be drawn
+*after* the label written on it and paint over it; the package ships
+`assets/text_glyph3d.fmat` for that now, and `initializeMaterial3d()` installs
+it. And the glyph atlas was keyed by a style that still carried
+`decorationColor`, so the gallery held **twenty-seven atlases for nine
+styles**. The first two had to land together: correcting the winding turns a
+buried label from a coin toss into a certainty.
+
+Twelve things worth knowing before building on any of it, all written up in
 `docs/traps.md`: handing every `BoxDecoration3d` the *same* material makes a
 screen of panels come out one colour; a `TapTarget3d` reaches past its own
 extent but **its parent does not**, so a target has to sit outside every box
@@ -150,9 +169,16 @@ again at zero, so a driver that pauses has to carry its own baseline; and the
 two the gallery added, which are the ones an *application* author meets rather
 than a component author: **a lift written into a child's position takes that
 child out of reach of a ray**, so depth separation belongs on the node tier and
-a negative z in an offset is the bug; and **a flex inside a card centres its
-children in depth**, so a label beside anything with a thickness ends up behind
-the card's own face and is not there at all.
+a negative z in an offset is the bug; and **the depth axis is not symmetric
+with the other two**, because the viewer is on one side of it — a line's depth
+cross axis therefore *starts* at the front while its other one centres, an
+explicit `Center3d` still centres in depth and puts a label inside the slab it
+is on, and a `Material3d`'s content belongs on its face; and the last one,
+which is about the *picture* rather than the arrangement: **a glyph mesh has
+to write depth or the translucent sort erases it**, because that sort is one
+number per draw and turning a panel swings a label near its edge behind the
+panel's own centre. `initializeMaterial3d()` installs the material that does
+it.
 
 ## Running things
 
@@ -160,8 +186,8 @@ Everything below runs from the repository root unless stated otherwise.
 
 ```sh
 flutter pub get                                     # resolves the workspace
-cd packages/flutter_scene_layout3d && flutter test   # 946 today
-cd packages/flutter_scene_material3d && flutter test # 505 today
+cd packages/flutter_scene_layout3d && flutter test   # 953 today
+cd packages/flutter_scene_material3d && flutter test # 513 today
 cd examples/layout3d_gallery && flutter test         # 3 today
 dart analyze                                        # must be clean, everywhere
 dart format .                                       # before every commit
@@ -184,9 +210,14 @@ flutter run -d macos --enable-flutter-gpu
 five of which were invisible to 944 headless tests and 75 render probes alike —
 a screen nothing could press, a screen one logical pixel deep, a frame that
 would not build with semantics switched on, labels that vanished when a second
-surface drew a letter, and a hole punched through a navigation bar. A probe
-answers *is this one claim true*; running the app answers *is anything
-obviously wrong*, and in this stack that is a different question. The gallery's
+surface drew a letter, and a hole punched through a navigation bar. The next
+four came from a person watching the same app *turn*: every panel in the
+catalogue drawn from its back face, every label sunk into the slab it belongs
+to, a glyph mesh the translucent sort could erase, and an atlas per text
+colour. A probe answers *is this one claim true*; running the app answers *is
+anything obviously wrong*, and in this stack that is a different question —
+and **turning something is a question of its own**, which nothing in this
+repository had asked until `type_on_a_turning_panel`. The gallery's
 own README has the recipe for photographing a frame when the window itself
 cannot be captured.
 

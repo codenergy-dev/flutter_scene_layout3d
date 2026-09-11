@@ -259,9 +259,35 @@ The assertion asks for ink in each half of each label's own screen bounds — a
 disc at the centre of a two-letter label lands in the gap between the letters,
 which was the first version and it failed on a correct frame.
 
+`slab_occludes_its_inside` and `type_on_a_turning_panel` are the newest pair,
+and they belong together: they are the two halves of what it takes to draw a
+letter on a panel, and each one fails on its own arrangement rather than on a
+sharp reading.
+
+`slab_occludes_its_inside` puts one label on a slab's front face and one a
+third of the way into it, and asks for ink at the first and none at the second.
+The claim is a *difference* on purpose — no exposure, tone-mapping or lighting
+change can satisfy "here and not there" by accident — and it is the only thing
+in this repository that would have noticed that the panel's slab was wound
+inside out. Both labels drew before that was fixed, because the slab's
+back-face culling kept the face pointing *away* from the camera and the panel
+wrote the depth of its own rear.
+
+`type_on_a_turning_panel` is the first scene here to **turn a surface**. Three
+labels on a card-thin slab — one at each edge, one in the middle — on a plane
+yawed a quarter of a radian. The middle one is the control: it sits at the
+panel's own sort depth whatever the plane does. Both edges are asked, because
+which edge swings away from the camera depends on the sign of the turn and on
+whether the surface's basis is a mirror, and naming only the near one would
+pass while the defect stood. The slab's thickness is load-bearing in the other
+direction from `two_surfaces_of_type`'s atlas size: what keeps a label in front
+of the panel it is written on is *half the panel's thickness*, so a thick slab
+hides the defect and a 4dp card is where it lives.
+
 `installPanelPainter` here is `initializeMaterial3d()` — the call a Material
 application makes — which is the only verification lane it has, since loading
 a compiled `.fmat` needs a GPU context that `flutter test` does not have. It
 also gives every decorated box a material of its own, which is what lets
 `material_elevation` show three different colours at once instead of three
-copies of whichever panel painted last.
+copies of whichever panel painted last, and it installs the glyph material,
+without which `type_on_a_turning_panel` fails by design.

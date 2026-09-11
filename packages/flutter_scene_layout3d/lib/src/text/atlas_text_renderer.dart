@@ -1,12 +1,10 @@
-import 'dart:math' as math;
-
 import 'package:flutter/painting.dart' show Color, TextStyle;
 import 'package:flutter_scene/scene.dart'
-    show AlphaMode, GeometryBuilder, Mesh, Node, TextureSource, UnlitMaterial;
-import 'package:vector_math/vector_math.dart'
-    show Matrix4, Vector2, Vector3, Vector4;
+    show GeometryBuilder, Mesh, Node, TextureSource;
+import 'package:vector_math/vector_math.dart' show Matrix4, Vector2, Vector3;
 
 import 'glyph_atlas.dart';
+import 'glyph_material.dart';
 import 'text_geometry.dart';
 import 'text_layout.dart';
 import 'text_renderer.dart';
@@ -48,7 +46,7 @@ class AtlasText3dRenderer extends Text3dRenderer {
   /// scale.
   AtlasText3dRenderer({
     this.resolution = 2.0,
-    this.depthOffset = 0.002,
+    this.depthOffset = 0.2,
     GlyphAtlasCache3d? atlases,
     TextRunShaper3d? shaper,
   }) : assert(resolution > 0.0),
@@ -68,13 +66,28 @@ class AtlasText3dRenderer extends Text3dRenderer {
   /// more, a distant one less, and the memory cost is quadratic.
   final double resolution;
 
-  /// How far toward the viewer the glyphs sit, in world units.
+  /// How far toward the viewer the glyphs sit, in **logical pixels**.
   ///
   /// Text drawn exactly on the plane of the panel behind it is text at the
   /// same depth as that panel, and the depth test does not break ties: the
   /// label vanishes into the surface it labels. This is the nudge that stops
   /// that, and it is applied to the glyph mesh alone — layout, hit testing
   /// and the box's own size never see it.
+  ///
+  /// A fifth of a logical pixel, which is a hair against the type it lifts and
+  /// several hundred depth-buffer steps at any distance a panel is legible
+  /// from. It is in logical pixels rather than world units because everything
+  /// else a caller states here is — the lift has to clear the *face* of a
+  /// slab whose own thickness is a dp figure, so it scales with the surface's
+  /// unit rate and a panel authored small does not get a label floating a
+  /// centimetre off it.
+  ///
+  /// **It is not what keeps a label on a turning panel.** That is
+  /// [GlyphMaterial3d]: no lift small enough to be invisible can win the
+  /// translucent pass's back-to-front sort, because that sort is one number
+  /// per draw and turning the plane swings a label near an edge much further
+  /// through it than any nudge. See
+  /// `plans/2026_09_10_a_letter_on_a_slab.md`.
   final double depthOffset;
 
   final GlyphAtlasCache3d _atlases;
@@ -82,14 +95,13 @@ class AtlasText3dRenderer extends Text3dRenderer {
 
   GlyphAtlas3d? _atlas;
   Node? _mesh;
-  UnlitMaterial? _material;
+  GlyphMaterial3d? _material;
   Node? _parent;
 
   TextLayout3d? _layout;
   double _scale = 0.0;
   double _units = 0.0;
   TextStyle? _style;
-  Vector4 _colorFactor = Vector4(1.0, 1.0, 1.0, 1.0);
   int _generation = -1;
   int _quadCount = 0;
 
@@ -154,36 +166,38 @@ class AtlasText3dRenderer extends Text3dRenderer {
   ) {
     _detach();
     if (quads.isEmpty) return;
-    _colorFactor = linearColor(style.color ?? const Color(0xFFFFFFFF));
-    final material = _material = UnlitMaterial()
-      ..alphaMode = AlphaMode.blend
-      ..vertexColorWeight = 0.0;
+    final material = _material = GlyphMaterial3d.factory()
+      ..tint(style.color ?? const Color(0xFFFFFFFF));
     _bindTexture(_atlas?.texture);
     final node = _mesh =
-        Node(mesh: Mesh(buildGlyphGeometry(quads, units).build(), material))
+        Node(
+            mesh: Mesh(
+              buildGlyphGeometry(quads, units).build(),
+              material.material,
+            ),
+          )
           ..name = 'Text3d glyphs'
           // Layout's z runs away from the viewer, so the nudge that lifts the
-          // glyphs off the panel behind them is negative.
-          ..localTransform = Matrix4.translationValues(0.0, 0.0, -depthOffset);
+          // glyphs off the panel behind them is negative, and it is in dp, so
+          // it goes through the surface's unit rate like every other figure.
+          ..localTransform = Matrix4.translationValues(
+            0.0,
+            0.0,
+            -depthOffset * units,
+          );
     parent.add(node);
   }
 
   /// Points the material at the atlas, or at nothing when there is no atlas
   /// texture yet.
   ///
-  /// The second half is not a nicety. `UnlitMaterial` samples a **1x1 white
-  /// placeholder** when no texture is bound, so a glyph mesh attached before
-  /// the atlas has uploaded anything draws its quads as solid rectangles in
-  /// the label's own colour — which is what a black slab where a navigation
-  /// label belongs actually is, rather than a quad sampling empty atlas. A
-  /// zero colour factor makes the placeholder draw nothing, and the next
-  /// notification from the atlas puts the real colour back with the texture.
-  void _bindTexture(TextureSource? texture) {
-    final material = _material;
-    if (material == null) return;
-    if (texture != null) material.baseColorTexture = texture;
-    material.baseColorFactor = texture == null ? Vector4.zero() : _colorFactor;
-  }
+  /// The second half is not a nicety: a material with no texture samples a
+  /// **1x1 white placeholder**, so a glyph mesh attached before the atlas has
+  /// uploaded anything draws its quads as solid rectangles in the label's own
+  /// colour — which is what a black slab where a navigation label belongs
+  /// actually is, rather than a quad sampling empty atlas. Drawing nothing
+  /// until the pixels arrive is [GlyphMaterial3d.bindAtlas]'s contract.
+  void _bindTexture(TextureSource? texture) => _material?.bindAtlas(texture);
 
   void _detach() {
     final mesh = _mesh;
@@ -331,20 +345,3 @@ class AtlasText3dRenderer extends Text3dRenderer {
   @override
   String toString() => 'AtlasText3dRenderer(${resolution}x, $_quadCount quads)';
 }
-
-/// [color] as the linear RGBA a material's colour factor multiplies in.
-///
-/// A `Color` is sRGB and `UnlitMaterial.baseColorFactor` is linear, so a
-/// label handed a mid grey and drawn without this comes out visibly too
-/// light. The engine's own `setColor` does the same decode for a shader
-/// parameter tagged `source_color`.
-Vector4 linearColor(Color color) => Vector4(
-  _srgbToLinear(color.r),
-  _srgbToLinear(color.g),
-  _srgbToLinear(color.b),
-  color.a,
-);
-
-double _srgbToLinear(double component) => component <= 0.04045
-    ? component / 12.92
-    : math.pow((component + 0.055) / 1.055, 2.4).toDouble();

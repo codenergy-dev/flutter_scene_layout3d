@@ -9,7 +9,7 @@ void main() {
   final tight10 = Constraints3d.tight(const Size3d(10, 10, 10));
 
   group('Column3d', () {
-    test('stacks children along y and centres them on the cross axes', () {
+    test('stacks children along y, centred across and on the front', () {
       final children = [
         TestBox(const Size3d(2, 2, 2)),
         TestBox(const Size3d(2, 2, 2)),
@@ -19,9 +19,12 @@ void main() {
       final surface = laidOut(column, constraints: tight10);
 
       expect(surface.size, const Size3d(10, 10, 10));
-      expect(children[0].offset, const Offset3d(4, 0, 4));
-      expect(children[1].offset, const Offset3d(4, 2, 4));
-      expect(children[2].offset, const Offset3d(4, 4, 4));
+      // Centred horizontally, and on the front face in depth: the two cross
+      // axes do not default alike, because the viewer is on one side of the
+      // depth axis. See Flex3d.depthAxisAlignment.
+      expect(children[0].offset, const Offset3d(4, 0, 0));
+      expect(children[1].offset, const Offset3d(4, 2, 0));
+      expect(children[2].offset, const Offset3d(4, 4, 0));
     });
 
     test('spaceBetween spreads the leftover room', () {

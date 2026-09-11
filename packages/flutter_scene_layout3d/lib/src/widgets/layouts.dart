@@ -993,7 +993,7 @@ abstract class SceneFlex3d extends Layout3dWidget {
     this.mainAxisAlignment = MainAxisAlignment3d.start,
     this.mainAxisSize = MainAxisSize3d.max,
     this.crossAxisAlignment = CrossAxisAlignment3d.center,
-    this.depthAxisAlignment = CrossAxisAlignment3d.center,
+    this.depthAxisAlignment,
     this.spacing = 0.0,
     super.children,
   });
@@ -1011,7 +1011,10 @@ abstract class SceneFlex3d extends Layout3dWidget {
   final CrossAxisAlignment3d crossAxisAlignment;
 
   /// How children are positioned on the second cross axis.
-  final CrossAxisAlignment3d depthAxisAlignment;
+  ///
+  /// Null — the default — is [Flex3d.defaultDepthAxisAlignmentFor], which is
+  /// the front face on any line that does not itself run in depth.
+  final CrossAxisAlignment3d? depthAxisAlignment;
 
   /// A fixed gap between adjacent children.
   final double spacing;
@@ -2079,7 +2082,7 @@ class SceneTable3d extends Layout3dWidget {
     this.columnWidths = const <int, TableColumnWidth3d>{},
     this.defaultColumnWidth = const FlexColumnWidth3d(),
     this.defaultVerticalAlignment = TableCellAlignment3d.top,
-    this.depthAxisAlignment = CrossAxisAlignment3d.center,
+    this.depthAxisAlignment = CrossAxisAlignment3d.start,
     this.columnSpacing = 0.0,
     this.rowSpacing = 0.0,
     super.children,

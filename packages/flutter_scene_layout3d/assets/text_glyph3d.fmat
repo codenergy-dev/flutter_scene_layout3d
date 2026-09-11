@@ -1,0 +1,73 @@
+// The material a line of type is drawn with: one textured quad per glyph, cut
+// out of a shared atlas, tinted by the label's own colour.
+//
+// It exists for one reason, and it is not the picture — `UnlitMaterial` draws
+// the same pixels. It is **`depth_write`**.
+//
+// `flutter_scene` draws translucent geometry back to front, sorted by one
+// number per draw: the distance from the camera to the centre of the object's
+// world bounds. A glyph mesh drawn with a material that does not write depth
+// has nothing to defend itself with, so a panel that happens to sort *after*
+// it paints straight over the letters — and whether the panel sorts after a
+// label depends on the label's distance from the panel's centre times the sine
+// of however far the plane has turned. A screen of type on a panel that rotates
+// therefore loses a different half of its labels every few degrees, which is
+// exactly what the gallery did. See
+// `plans/2026_09_10_a_letter_on_a_slab.md`.
+//
+// Writing depth makes the picture independent of that sort: whichever of the
+// two is drawn first, the depth buffer settles which one is in front, and the
+// answer is the one the geometry gives. It is the same argument
+// `box_decoration3d.fmat` makes for panels, and the same trade: a fragment
+// with nothing in it must not write depth, which is what `alpha_cutoff` below
+// is for.
+
+material {
+  name: "TextGlyph3d",
+  shading_model: unlit,
+  blending: alpha,
+  depth_write: true,
+  // **Not `back`.** A glyph quad is one triangle pair with no inside, and
+  // which way it faces depends on whether the surface it hangs from carries a
+  // mirrored basis — `flutter_scene` flips the front face for a mirrored
+  // transform, so a quad that is correct on an upright panel can be culled on
+  // a plane laid flat. Drawing both sides of a flat quad costs the same
+  // fragments and takes the question away.
+  culling: none,
+
+  parameters: [
+    // The label's colour. `source_color` so `MaterialParameters.setColor`
+    // decodes sRGB to linear, which is what the engine's own unlit material
+    // does to its base colour factor.
+    { type: vec4, name: color, hint: source_color, default: [1, 1, 1, 1] },
+    // Below this coverage a fragment is thrown away rather than blended.
+    //
+    // The dial between two evils, and neither is the one it looks like. Too
+    // high and the soft outer edge of every glyph is cut off square. Too low
+    // and a nearly-empty fragment writes depth, so a panel drawn after it is
+    // rejected there and the letter carries a fringe of whatever was *behind*
+    // the panel. A third of the way up is comfortably inside the ramp a
+    // 3x-rasterized glyph edge covers, so the silhouette keeps its shape, and
+    // high enough that the fringe never has more than a sliver to appear in.
+    { type: float, name: alpha_cutoff, default: 0.35 },
+    // The glyph atlas. White ink, straight alpha; the colour is this
+    // material's, which is what lets one atlas serve every colour the same
+    // font is drawn in.
+    { type: sampler2d, name: atlas, hint: default_white },
+  ],
+}
+
+fragment {
+  void Surface(inout MaterialInputs material) {
+    vec4 sampled = texture(atlas, GetUV(0));
+    float alpha = sampled.a * material_params.color.a;
+    if (alpha < material_params.alpha_cutoff) {
+      discard;
+    }
+    // `sampled.rgb` is white across an atlas, and is not white for the one
+    // other customer of this material: a `RichText3d` captures a paragraph
+    // Flutter rasterized in full colour and draws it through the same quad,
+    // with the tint left at white.
+    material.base_color = vec4(material_params.color.rgb * sampled.rgb, alpha);
+  }
+}

@@ -454,6 +454,33 @@ glyphs toward the viewer, because text drawn exactly on the plane of the panel
 behind it is text at the same depth as that panel, and the depth test does not
 break ties.
 
+### Type on a panel wants one more call
+
+A glyph mesh blends, so it is drawn in the engine's translucent pass, and that
+pass is sorted back to front by **one number per draw**: the distance to the
+centre of the object's bounds. A panel is a big object whose centre is behind
+its own face, so turning the plane a label is written on can put the panel
+*after* the label in that order — and a panel drawn after a label paints over
+it. A whole line disappears, a few degrees later it comes back, and nothing
+anywhere says why.
+
+The way out is for the glyph mesh to write depth, so the depth buffer settles
+the order whichever draw comes first. `flutter_scene`'s `UnlitMaterial` cannot
+be made to, so this package ships `assets/text_glyph3d.fmat` and one call to
+install it:
+
+```dart
+await Scene.initializeStaticResources();
+await installGlyphMaterial3d();      // type that survives a turning panel
+```
+
+`initializeMaterial3d()` in `flutter_scene_material3d` does it for you, so an
+application using the catalogue has nothing to add. Without it, type still
+draws exactly as it always did — `GlyphMaterial3d.factory` falls back to
+`UnlitGlyphMaterial3d` — and loses letters whenever a panel it is on turns.
+Install a factory of your own if you want different rules; it is called once
+per label, because the colour and the atlas are per-label.
+
 What the atlas cannot do is assemble a script whose glyphs change shape
 according to their neighbours. It holds one raster per grapheme cluster, so
 Arabic, Devanagari and their relatives come out wrong; ligatures across a
@@ -2391,9 +2418,15 @@ announced at its full size.
 
 ## How it differs from Flutter
 
-* **Two cross axes.** A flex has one main axis and two cross axes, so
-  `crossAxisAlignment` is joined by `depthAxisAlignment`. They follow
-  canonical `x`, `y`, `z` order with the main axis removed.
+* **Two cross axes, and they do not default alike.** A flex has one main axis
+  and two cross axes, so `crossAxisAlignment` is joined by
+  `depthAxisAlignment`; they follow canonical `x`, `y`, `z` order with the
+  main axis removed. The first centres, as Flutter's does. The second
+  **starts** — at the front, the face nearest the viewer — because the viewer
+  is on one side of the depth axis: a line inside a slab is as deep as the
+  slab, and a label centred in that depth is a label inside the surface it is
+  written on. A `Depth3d` is the exception and knows it, since its second
+  cross axis is vertical rather than depth.
 * **`Flexible3d` and `Positioned3d` are layouts, not parent-data widgets.**
   They sit in the tree as real boxes, and the enclosing flex or stack reads
   their properties off them.

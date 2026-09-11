@@ -2,7 +2,7 @@ import 'package:flutter/services.dart' show AssetBundle;
 import 'package:flutter_scene/scene.dart'
     show PreprocessedMaterial, Scene, loadFmatMaterial;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart'
-    show BoxDecoration3d, BoxDecoration3dPainter;
+    show BoxDecoration3d, BoxDecoration3dPainter, installGlyphMaterial3d;
 
 /// The `.fmat` every Material surface is drawn with, named the way
 /// `loadFmatMaterial` wants it: relative to the root of the package that
@@ -28,7 +28,7 @@ typedef PanelMaterialFactory = PreprocessedMaterial Function();
 /// }
 /// ```
 ///
-/// Two things happen, in an order that cannot be swapped:
+/// Three things happen, and the first cannot be swapped with the others:
 ///
 /// 1. `Scene.initializeStaticResources()` is awaited. Until it resolves the
 ///    engine prints *"Flutter Scene is not ready to render. Skipping frame"*
@@ -38,6 +38,12 @@ typedef PanelMaterialFactory = PreprocessedMaterial Function();
 /// 2. The panel painter is installed, which is what turns a themed component
 ///    from a correctly laid-out nothing into a picture. See
 ///    [installPanelPainter3d] for what that actually is.
+/// 3. The glyph material is installed, which is what keeps a label from being
+///    painted over by the panel it is written on. It is a
+///    `flutter_scene_layout3d` shader and `installGlyphMaterial3d` is its
+///    installer; it is called here because a catalogue is the case that needs
+///    it — type on slabs, on a surface that turns — and because an
+///    application should not have to know that type has a shader at all.
 ///
 /// **The default text renderer is deliberately not here**, and the reason is
 /// the reason `DefaultTextRenderer3d` carries a factory rather than a
@@ -61,6 +67,7 @@ typedef PanelMaterialFactory = PreprocessedMaterial Function();
 Future<void> initializeMaterial3d({AssetBundle? bundle}) async {
   await Scene.initializeStaticResources();
   await installPanelPainter3d(bundle: bundle);
+  await installGlyphMaterial3d(bundle: bundle);
 }
 
 /// Loads the panel shader and points `BoxDecoration3d.painterFactory` at it.

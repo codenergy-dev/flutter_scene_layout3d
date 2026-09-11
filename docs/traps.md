@@ -390,6 +390,44 @@ written up in
 [a transparent slab that does not erase](../packages/flutter_scene_layout3d/plans/2026_09_10_a_transparent_slab_that_does_not_erase.md)
 as what to do when one lands.
 
+**A slab occludes what is inside it only if its faces are wound the right way
+round.** For most of this package's life none of them were, and it was
+invisible: `BoxDecoration3dPainter.buildUnitSlab` wound the two faces along the
+depth axis *clockwise* around their own normals, a surface's basis is a mirror,
+`flutter_scene` flips the front face for a mirrored transform, and
+`culling: back` then kept the face **pointing away from the camera**. A convex
+box has the same silhouette either way, so the picture looked right — while
+every panel was lit by a normal facing away from the viewer, was drawn at the
+projected size of its *rear* face, and wrote the depth of that face. A label
+2dp inside a card was never rejected by the card, because the card's depth was
+4dp further back than the face you could see.
+
+Each face's triangles now wind counter-clockwise around that face's own normal,
+which is the convention the glyph quads already used and document.
+`BoxDecoration3dPainter.unitSlabFaces` is the arithmetic, split out so a
+headless test can check it, and `examples/render_probe`'s
+`slab_occludes_its_inside` is the picture. If you ever build a slab of your own
+for a `Decoration3dPainter`, this is the rule to build it to.
+
+**Type on a panel needs a material that writes depth, and that is a shader
+this package ships.** The translucent pass is back-to-front by **one number per
+draw** — the distance to the centre of the object's world bounds — so a panel
+whose centre sorts nearer than a label's is drawn *after* it and paints over
+it. Turning the plane is what makes that happen: a label `d` units from the
+centre of a slab swings `d · sin θ` through that comparison, which for a label
+at the edge of a three-unit card at a tenth of a radian is more than ten times
+the half-thickness keeping it in front. The label is not behind anything; it is
+painted over by something behind it.
+
+The fix is for the glyph mesh to write depth, so the buffer settles the order
+whichever draw comes first. The engine's `UnlitMaterial` cannot:
+`translucentDepthWrite` is not settable and `AlphaMode.mask` is unimplemented
+for unlit. So `assets/text_glyph3d.fmat` exists, `GlyphMaterial3d.factory` is
+the seam, and **`initializeMaterial3d()` installs it** —
+`installGlyphMaterial3d()` is the call for an application that is not using the
+Material catalogue. Without it type still draws, exactly as it always did, and
+loses letters whenever the surface it is on turns.
+
 **A translucent colour *is* expressible; a translucent subtree is not.** The
 panel shader declares `blending: alpha`, so a `BoxDecoration3d.color` with an
 alpha in it blends over what is behind — Material's black-at-32% scrim is one
@@ -418,23 +456,32 @@ by hand. `Thickness3d.stepOver(back, front)` is it: twice
 by hand for two equal slabs. Reach for it rather than picking a figure, and
 `Thickness3d.separates` is how a component says the figure still works.
 
-**A flex inside a card centres its children in depth, and a label centred in a
-card is *inside* it.** The other half of the tight-depth rule, and the one an
-application meets rather than a component author. `Material3d` aligns its child
-to its own **front face**, which is right; a `Column3d` or `Row3d` then aligns
-*its* children on the depth axis by `depthAxisAlignment`, which defaults to
-`center`, in the depth of its deepest child. Put a `SceneText3d` and a
-`Chip3d` in a column inside a `Card3d` and the chip's 1dp makes the column 1dp
-deep, the label is centred half a millimetre behind the card's own drawn face,
-and it is simply not there. Two 24dp icons and a 2dp tile do it more
-dramatically. `AppBar3d` says the same thing about its toolbar in its own
-source — "a toolbar centred in an 8dp slab is 4dp inside it, where the surface
-it is drawn on wins the depth test and the title vanishes with nothing to say
-why" — and the general form is: **anything drawn on a surface states
-`depthAxisAlignment: CrossAxisAlignment3d.start`, or sits inside a
-`SceneAlign3d(alignment: Alignment3d.frontCenter)`.** Start is the front:
-layout's z runs away from the viewer, so the axis begins at the face you are
-looking at.
+**A line's depth cross axis starts at the front, and the other one centres.**
+`Flex3d.depthAxisAlignment` is `CrossAxisAlignment3d.start` while
+`crossAxisAlignment` is `center`, and the asymmetry is the point: the viewer is
+on one side of the depth axis. A line inside a slab is as deep as the slab —
+`Material3d` hands its child a tight depth — so centring a zero-depth label in
+it puts the label half a thickness *inside* the surface it is written on,
+where the face in front of it hides it. `Table3d` places its cells the same
+way, for the same reason.
+
+It defaulted to `center` until
+[a letter on a slab](../packages/flutter_scene_layout3d/plans/2026_09_10_a_letter_on_a_slab.md),
+and what it cost is worth keeping: every title, subtitle, icon and navigation
+label in the gallery was a couple of dp behind the card or bar it belonged to.
+It did not read as "the label is behind the card" — a slab did not occlude what
+was inside it at the time, see below — it read as *blinking*.
+
+**Start is the front**: layout's z runs away from the viewer, so the axis
+begins at the face you are looking at. A `Depth3d` is the exception and knows
+it: its main axis is depth, so its second cross axis is *vertical* and defaults
+to centred — `Flex3d.defaultDepthAxisAlignmentFor` is that sentence as a
+function.
+
+**An explicit centre still means centre.** `Center3d`, and `Align3d` with
+`Alignment3d.center`, centre in depth as well, which is what they say. On a
+slab that is a label inside the slab. `Alignment3d.frontCenter` is the one that
+means "on the face", and `Material3d.alignment` defaults to it.
 
 **A `Material3d` gives its child a *tight* depth, so a thicker child is
 silently clamped to it.** This is the one that decides how a two-part control
@@ -516,10 +563,20 @@ with `initialSize` equal to `maxSize` for exactly that reason.
 
 One more thing behind the same door: **a black rectangle where a label belongs
 is a glyph mesh with no texture**, not a quad sampling empty atlas. An empty
-atlas region has zero alpha and draws nothing; `UnlitMaterial` binds a 1x1
-*white* placeholder when no texture is set, so the quads come out solid in the
-label's own colour. The renderer zeroes its colour factor until the pixels
-arrive.
+atlas region has zero alpha and draws nothing; a material with no texture binds
+a 1x1 *white* placeholder, so the quads come out solid in the label's own
+colour. `GlyphMaterial3d.bindAtlas` draws nothing until the pixels arrive, and
+both implementations of it have to.
+
+**An atlas is keyed by the style with its colours taken out — all of them.**
+Glyphs are rasterized white and tinted by the material, so two labels that
+differ only in colour share an atlas. That is what `glyphAtlasStyleOf` is for,
+and it stripped `color` alone until the gallery was counted: **twenty-seven
+atlases for nine styles**, because Material's typography carries
+`decorationColor` alongside `color` — `TextStyle.apply` sets both — and the key
+still had it. The raster is white either way, underline included
+(`GlyphAtlas3d.rasterStyle` whitens the decoration too), so the key must not
+carry a colour the raster does not.
 
 ## Pointers
 

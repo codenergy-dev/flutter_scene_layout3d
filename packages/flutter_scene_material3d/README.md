@@ -185,6 +185,18 @@ and a `.fmat` cannot be loaded before it — and then points
 `BoxDecoration3d.painterFactory` at the panel shader. It is idempotent, so
 calling it beside an application that already awaits the engine costs nothing.
 
+It installs a second shader while it is there, and this one is about **type**.
+A glyph mesh blends, so the engine draws it in the translucent pass, which is
+ordered back to front by one number per draw — the distance to the centre of
+the object's bounds. A panel's centre is behind its own face, so turning the
+plane a label is written on can put the panel *after* the label in that order,
+and a panel drawn after a label paints over it. Half a screen of labels
+vanishes and comes back a few degrees later. `installGlyphMaterial3d()` — a
+`flutter_scene_layout3d` call, made here on your behalf — points
+`GlyphMaterial3d.factory` at a material that blends *and writes depth*, so the
+depth buffer settles the order instead of the sort. It is why this call is
+what makes anything draw **correctly** rather than merely draw.
+
 **The default text renderer is not in it, and cannot be.** A `Text3dRenderer`
 is owned by the label that holds it and disposed with it, so there is no
 global one to install; it reaches labels through the widget tree, one instance
@@ -1391,12 +1403,13 @@ gives nothing. `Elevation3d.tintOpacityFor` is Material's published table, and
 it delegates to the same function the shader's uniforms are resolved through,
 so a component and the panel it draws on cannot disagree.
 
-## Compiling the shader, and the build hook that does it
+## Compiling the shaders, and the build hook that does it
 
 **It is not your job.** `flutter_scene_layout3d`'s own
-build hook runs `impellerc` over it for every application that depends on the
-package, so the source path above resolves through that package's generated
-manifest and your hook needs nothing in it about panels. This package ships no
+build hook runs `impellerc` over both of them — the panel shader and the glyph
+one — for every application that depends on the package, so the source path
+above resolves through that package's generated manifest and your hook needs
+nothing in it about panels or type. This package ships no
 build hook at all, deliberately: the only thing it might call there is
 `buildEngineAssets`, and a *library* must never call that — it would put a
 second copy of the engine's shaders in every application that used it.

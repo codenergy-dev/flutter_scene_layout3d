@@ -225,7 +225,7 @@ class Table3d extends MultiChildLayout3d<ParentData3d> {
     Map<int, TableColumnWidth3d> columnWidths = const {},
     TableColumnWidth3d defaultColumnWidth = const FlexColumnWidth3d(),
     TableCellAlignment3d defaultVerticalAlignment = TableCellAlignment3d.top,
-    CrossAxisAlignment3d depthAxisAlignment = CrossAxisAlignment3d.center,
+    CrossAxisAlignment3d depthAxisAlignment = CrossAxisAlignment3d.start,
     double columnSpacing = 0.0,
     double rowSpacing = 0.0,
     super.children,

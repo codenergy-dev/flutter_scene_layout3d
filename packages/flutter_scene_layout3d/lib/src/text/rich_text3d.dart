@@ -23,13 +23,11 @@ import 'package:flutter/widgets.dart'
 import 'package:flutter_scene/gpu.dart' as gpu;
 import 'package:flutter_scene/scene.dart'
     show
-        AlphaMode,
         GeometryBuilder,
         GpuTextureSource,
         Mesh,
         MeshGeometry,
         Node,
-        UnlitMaterial,
         WidgetComponent,
         WidgetInput,
         WidgetUpdatePolicy;
@@ -39,7 +37,8 @@ import '../geometry/constraints3d.dart';
 import '../geometry/offset3d.dart';
 import '../geometry/size3d.dart';
 import '../layout3d.dart';
-import 'atlas_text_renderer.dart' show AtlasText3dRenderer, linearColor;
+import 'atlas_text_renderer.dart' show AtlasText3dRenderer;
+import 'glyph_material.dart' show GlyphMaterial3d;
 
 /// A span of rich text, drawn by Flutter itself onto a quad.
 ///
@@ -98,7 +97,7 @@ class RichText3d extends Layout3d {
     StrutStyle? strutStyle,
     TextWidthBasis textWidthBasis = TextWidthBasis.parent,
     double resolution = 2.0,
-    double depthOffset = 0.002,
+    double depthOffset = 0.2,
     WidgetUpdatePolicy update = WidgetUpdatePolicy.everyFrame,
     super.name,
   }) : _text = text,
@@ -251,19 +250,22 @@ class RichText3d extends Layout3d {
 
   double _depthOffset;
 
-  /// How far toward the viewer the quad sits, in world units.
+  /// How far toward the viewer the quad sits, in **logical pixels**.
   ///
-  /// The same nudge [AtlasText3dRenderer.depthOffset] applies, for the same
-  /// reason: a paragraph coplanar with the panel behind it loses the depth
-  /// test to it.
+  /// The same nudge [AtlasText3dRenderer.depthOffset] applies, in the same
+  /// units and for the same reason: a paragraph coplanar with the panel behind
+  /// it loses the depth test to it.
   double get depthOffset => _depthOffset;
 
   set depthOffset(double value) {
     if (_depthOffset == value) return;
     assert(value >= 0.0);
     _depthOffset = value;
-    _quad?.localTransform = Matrix4.translationValues(0.0, 0.0, -value);
+    _quad?.localTransform = Matrix4.translationValues(0.0, 0.0, -_liftInUnits);
   }
+
+  /// [depthOffset] in world units, through the surface's own unit rate.
+  double get _liftInUnits => _depthOffset * metrics.unitsPerLogicalPixel;
 
   WidgetUpdatePolicy _update;
 
@@ -285,7 +287,12 @@ class RichText3d extends Layout3d {
   }
 
   Node? _quad;
-  UnlitMaterial? _material;
+  GlyphMaterial3d? _material;
+
+  /// Whether a capture has reached the material, which is what [isDrawn]
+  /// answers: a [GlyphMaterial3d] deliberately hides what it is bound to, so
+  /// the one bit a caller needs is kept here.
+  bool _hasCapture = false;
   WidgetComponent? _component;
   Size3d _quadSize = Size3d.zero;
   Size3d? _builtSize;
@@ -302,7 +309,7 @@ class RichText3d extends Layout3d {
       metrics.unitsPerLogicalPixel * metrics.textScaleFactor;
 
   /// Whether the hosted subtree has produced a texture yet.
-  bool get isDrawn => _material?.baseColorTexture != null;
+  bool get isDrawn => _hasCapture;
 
   void _invalidateContent() {
     _releaseSurface();
@@ -432,9 +439,10 @@ class RichText3d extends Layout3d {
     if (_quad != null && _builtSize == _quadSize) return;
     final existing = _quad;
     if (existing != null) node.remove(existing);
-    _quad = Node(mesh: Mesh(buildTextQuadGeometry(_quadSize), _material!))
-      ..name = 'RichText3d surface'
-      ..localTransform = Matrix4.translationValues(0.0, 0.0, -_depthOffset);
+    _quad =
+        Node(mesh: Mesh(buildTextQuadGeometry(_quadSize), _material!.material))
+          ..name = 'RichText3d surface'
+          ..localTransform = Matrix4.translationValues(0.0, 0.0, -_liftInUnits);
     node.add(_quad!);
     _builtSize = _quadSize;
   }
@@ -459,13 +467,15 @@ class RichText3d extends Layout3d {
   );
 
   void _bind(gpu.Texture texture) {
-    final material = _material ??= UnlitMaterial()
-      ..alphaMode = AlphaMode.blend
-      ..vertexColorWeight = 0.0
-      // The capture already carries the colours the span asked for; the
-      // factor is here only so the material multiplies by one.
-      ..baseColorFactor = linearColor(const Color(0xFFFFFFFF));
-    material.baseColorTexture = GpuTextureSource(texture);
+    // The same material a `Text3d`'s glyphs are drawn with, and for the same
+    // reason: it writes depth, so a panel the paragraph is written on cannot
+    // erase it by being drawn afterwards. The capture already carries the
+    // colours the span asked for, so the tint is white and the material
+    // multiplies by one.
+    final material = _material ??= GlyphMaterial3d.factory()
+      ..tint(const Color(0xFFFFFFFF));
+    material.bindAtlas(GpuTextureSource(texture));
+    _hasCapture = true;
     _syncQuad();
   }
 
@@ -479,6 +489,7 @@ class RichText3d extends Layout3d {
     if (quad != null) node.remove(quad);
     _quad = null;
     _material = null;
+    _hasCapture = false;
     _quadSize = Size3d.zero;
     _builtSize = null;
   }

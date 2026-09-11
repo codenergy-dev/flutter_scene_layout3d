@@ -13,7 +13,8 @@ import 'package:flutter/painting.dart'
     show Color, TextAlign, TextSpan, TextStyle;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
 import 'package:flutter_scene_material3d/flutter_scene_material3d.dart';
-import 'package:vector_math/vector_math.dart' show Ray, Vector3, Vector4;
+import 'package:vector_math/vector_math.dart'
+    show Quaternion, Ray, Vector3, Vector4;
 
 import 'probe_scene.dart';
 
@@ -585,13 +586,20 @@ final List<ProbeScene> kProbeScenes = <ProbeScene>[
     // win the depth test against the surface they sit on — which they only do
     // because the renderer lifts them toward the viewer. Coplanar text is
     // text that vanishes, and nothing but a frame notices.
+    //
+    // **`Align3d(frontCenter)` rather than `Center3d`**, and the difference is
+    // the whole of `slab_occludes_its_inside` below: a `Center3d` centres in
+    // *depth* too, which puts the label half a thickness inside a slab that
+    // occludes what is inside it. This scene is about a label on a face, so
+    // it asks for a face.
     final panel = DecoratedBox3d(
       decoration: const BoxDecoration3d(
         color: Color(0xFF26B3A8),
         borderRadius: BorderRadius3d.circular(40),
       ),
       name: 'panel',
-      child: Center3d(
+      child: Align3d(
+        alignment: Alignment3d.frontCenter,
         child: Text3d(
           'OK',
           style: _labelStyle,
@@ -600,7 +608,7 @@ final List<ProbeScene> kProbeScenes = <ProbeScene>[
         ),
       ),
     );
-    final label = (panel.child! as Center3d).child! as Text3d;
+    final label = (panel.child! as Align3d).child! as Text3d;
     return ProbeSceneContent(
       surfaces: [
         Layout3dSurface(
@@ -2336,7 +2344,119 @@ final List<ProbeScene> kProbeScenes = <ProbeScene>[
       probes: {'icon': icon},
     );
   }, minCoverage: 0),
+
+  // ── A letter on a slab ───────────────────────────────────────────────
+  //
+  // Two scenes for the two halves of what it takes to draw type on a panel:
+  // a slab that occludes what is inside it, and a label that survives the
+  // translucent sort when the plane it is written on turns. See
+  // `packages/flutter_scene_layout3d/plans/2026_09_10_a_letter_on_a_slab.md`.
+  ProbeScene('slab_occludes_its_inside', () {
+    // A thick slab with two labels: one on its front face, one sunk a third
+    // of the way into it. Exactly one of them should be readable, and for a
+    // long time **both** were — the slab's faces were wound clockwise around
+    // their own normals, so back-face culling kept the face pointing away
+    // from the camera and the panel wrote the depth of its own rear. Nothing
+    // inside a card was ever occluded by the card.
+    //
+    // The two labels are each other's control: the claim is not "there is ink
+    // here" but "there is ink here and none there", which no exposure or
+    // lighting change can satisfy by accident.
+    final onFace = _slabLabel('A');
+    final inside = _slabLabel('B');
+    final panel = DecoratedBox3d(
+      decoration: const BoxDecoration3d(color: _panelFill),
+      name: 'panel',
+    );
+    return ProbeSceneContent(
+      surfaces: [
+        Layout3dSurface(
+          constraints: Constraints3d.tight(const Size3d(3.6, 1.8, 0.6)),
+          child: Stack3d(
+            children: <Layout3d>[
+              Positioned3d(
+                left: 0.1,
+                top: 0.1,
+                front: 0.0,
+                width: 3.4,
+                height: 1.6,
+                depth: 0.6,
+                child: panel,
+              ),
+              Positioned3d(left: 0.7, top: 0.5, front: 0.0, child: onFace),
+              Positioned3d(left: 2.2, top: 0.5, front: 0.2, child: inside),
+            ],
+          ),
+        ),
+      ],
+      probes: {'panel': panel, 'onFace': onFace, 'inside': inside},
+    );
+  }, preload: installPanelPainter),
+
+  ProbeScene('type_on_a_turning_panel', () {
+    // A card-thin slab, turned, with a label at each edge and one in the
+    // middle. The engine sorts translucent draws by one number — the distance
+    // from the camera to the centre of the object's bounds — so turning the
+    // plane by `theta` moves a label `d` units off-centre by `d * sin(theta)`
+    // in that comparison. The only thing keeping a label in front of the
+    // panel it is written on is *half the panel's thickness*, which for a 4dp
+    // card is two hundredths of a unit against the third of a unit the turn
+    // is worth here. One of the two edges swings away from the camera at any
+    // given angle, and its label is drawn before the panel and painted over
+    // — unless the glyph material writes depth.
+    //
+    // The middle label is the control: it sits at the panel's own sort depth
+    // and survives either way. Both edges are asked, because which one swings
+    // away depends on the sign of the turn and on whether the surface's basis
+    // is a mirror, and a probe that happened to name the near one would pass
+    // while the defect stood.
+    final middle = _slabLabel('M');
+    final left = _slabLabel('E');
+    final right = _slabLabel('G');
+    final panel = DecoratedBox3d(
+      decoration: const BoxDecoration3d(color: _panelFill),
+      name: 'panel',
+    );
+    final surface = Layout3dSurface(
+      constraints: Constraints3d.tight(const Size3d(3.6, 1.8, 0.3)),
+      child: Stack3d(
+        children: <Layout3d>[
+          Positioned3d(
+            left: 0.1,
+            top: 0.1,
+            front: 0.0,
+            width: 3.4,
+            height: 1.6,
+            // A card's thickness at the default unit rate: 8dp. What a label
+            // on a face has to beat the turn with is half of it.
+            depth: 0.08,
+            child: panel,
+          ),
+          Positioned3d(left: 0.3, top: 0.5, front: 0.0, child: left),
+          Positioned3d(left: 1.6, top: 0.5, front: 0.0, child: middle),
+          Positioned3d(left: 2.9, top: 0.5, front: 0.0, child: right),
+        ],
+      ),
+    );
+    surface.plane.rotation = Quaternion.axisAngle(Vector3(0, 1, 0), 0.25);
+    return ProbeSceneContent(
+      surfaces: [surface],
+      probes: {'panel': panel, 'middle': middle, 'left': left, 'right': right},
+    );
+  }, preload: installPanelPainter),
 ];
+
+/// One letter, small enough that three of them fit across a slab and big
+/// enough for a probe disc to land inside one.
+///
+/// Amber on the blue panel fill, so "is the label there" is a colour question
+/// a mean over a disc answers without depending on the exposure.
+Text3d _slabLabel(String text) => Text3d(
+  text,
+  style: const TextStyle(fontSize: 90, color: _panelBorder),
+  renderer: AtlasText3dRenderer(),
+  name: text,
+);
 
 /// A persistent header over one subtree, for the scenes that need a pinned
 /// bar without a widget tree to build one from.

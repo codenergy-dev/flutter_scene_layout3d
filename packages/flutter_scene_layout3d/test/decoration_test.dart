@@ -358,6 +358,54 @@ void main() {
     });
   });
 
+  group('the unit slab', () {
+    // A face wound the wrong way draws a picture that looks almost right — a
+    // convex box keeps its silhouette either way — and orders depth wrongly:
+    // `culling: back` keeps the face pointing *away* from the camera, so the
+    // panel writes the depth of its rear face and never rejects anything
+    // drawn inside it. Nothing but arithmetic can catch that before a GPU
+    // does. See plans/2026_09_10_a_letter_on_a_slab.md.
+    test('winds every face counter-clockwise around its own normal', () {
+      final faces = BoxDecoration3dPainter.unitSlabFaces();
+      expect(faces.length, 6);
+      for (final (normal, corners) in faces) {
+        expect(corners.length, 4);
+        final first = (corners[1] - corners[0]).cross(corners[2] - corners[1])
+          ..normalize();
+        final second = (corners[2] - corners[0]).cross(corners[3] - corners[2])
+          ..normalize();
+        expect(
+          first.distanceTo(normal),
+          closeTo(0.0, 1e-9),
+          reason: 'the first triangle of the $normal face is backwards',
+        );
+        expect(
+          second.distanceTo(normal),
+          closeTo(0.0, 1e-9),
+          reason: 'the second triangle of the $normal face is backwards',
+        );
+      }
+    });
+
+    test('covers all six directions, each corner on the unit cube', () {
+      final faces = BoxDecoration3dPainter.unitSlabFaces();
+      expect(
+        faces.map((face) => face.$1).toSet().length,
+        6,
+        reason: 'two faces share a normal',
+      );
+      for (final (normal, corners) in faces) {
+        for (final corner in corners) {
+          expect(corner.x.abs(), closeTo(0.5, 1e-9));
+          expect(corner.y.abs(), closeTo(0.5, 1e-9));
+          expect(corner.z.abs(), closeTo(0.5, 1e-9));
+          // Every corner of a face is on that face's own plane.
+          expect(corner.dot(normal), closeTo(0.5, 1e-9));
+        }
+      }
+    });
+  });
+
   group('BoxDecoration3dUniforms', () {
     const metrics = Layout3dMetrics(unitsPerLogicalPixel: 0.01);
 

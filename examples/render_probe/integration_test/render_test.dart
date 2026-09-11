@@ -682,6 +682,80 @@ void main() {
             'capture is not the paragraph Flutter laid out: $left, $right',
       );
     });
+
+    testWidgets('a slab occludes the label sunk into it, and not the one on '
+        'its face', (tester) async {
+      final capture = await _draw(
+        tester,
+        kProbeScenes.byId('slab_occludes_its_inside'),
+      );
+
+      // A patch of bare panel, well away from either label, to compare both
+      // against. Colour rather than coverage: everything here is drawn, the
+      // question is what is on top.
+      final bare = capture.frame.meanColorAt(
+        capture.pointOf('panel', const Offset3d(0.5, 0.92, 0)),
+        radius: 6,
+      )!;
+      final onFace = capture.frame.meanColorAt(
+        capture.centerOf('onFace'),
+        radius: 24,
+      )!;
+      final inside = capture.frame.meanColorAt(
+        capture.centerOf('inside'),
+        radius: 24,
+      )!;
+
+      expect(
+        FrameProbe.colorDistance(bare, onFace),
+        greaterThan(0.05),
+        reason:
+            'the label on the slab\'s front face did not draw: bare $bare, '
+            'label $onFace',
+      );
+      expect(
+        FrameProbe.colorDistance(bare, inside),
+        lessThan(0.02),
+        reason:
+            'a label sunk into the slab is visible through its front face, '
+            'so the panel is writing the depth of its *rear* face — its '
+            'triangles are wound the wrong way round: bare $bare, '
+            'label $inside',
+      );
+    });
+
+    testWidgets('type survives the sort when the plane it is on turns', (
+      tester,
+    ) async {
+      final capture = await _draw(
+        tester,
+        kProbeScenes.byId('type_on_a_turning_panel'),
+      );
+
+      final bare = capture.frame.meanColorAt(
+        capture.pointOf('panel', const Offset3d(0.5, 0.92, 0)),
+        radius: 6,
+      )!;
+      // The centred label is the control: it is at the panel's own sort
+      // depth whatever the plane does.
+      for (final name in <String>['middle', 'left', 'right']) {
+        final label = capture.frame.meanColorAt(
+          capture.centerOf(name),
+          radius: 24,
+        )!;
+        expect(
+          FrameProbe.colorDistance(bare, label),
+          greaterThan(0.05),
+          reason:
+              'the \'$name\' label is not on the panel any more. The '
+              'translucent sort is one number per draw — the distance to the '
+              'centre of the object — so a turned plane puts a label near the '
+              'edge behind the panel it is written on, and the panel paints '
+              'over it unless the glyph material writes depth: bare $bare, '
+              'label $label',
+        );
+      }
+    });
   });
 
   // The seam nothing could reach until this lane existed.
@@ -1240,10 +1314,18 @@ void main() {
       // filled control beside it holds ink in both.
       final capture = await _draw(tester, kProbeScenes.byId('button_outlined'));
 
-      // 4% of a 2.4-unit height is 0.096 units in from the top edge, and the
-      // outline is 1dp at six hundredths of a unit to the pixel — 0.06 — so
-      // the point sits inside the band with the anti-aliasing either side.
-      const rim = Offset3d(0.5, 0.04, 0);
+      // The outline is 1dp, which is six hundredths of a unit here, so on a
+      // 2.4-unit height the band runs from the edge to 2.5% of the way down.
+      // The point goes half way into it.
+      //
+      // It used to say 4%, which is 0.096 units — outside a 0.06 band
+      // entirely — and passed anyway, because every panel was drawn at the
+      // projected size of its *rear* face and the band landed one thickness
+      // of parallax further in than layout said. Correcting the slab's
+      // winding put the geometry back where the box is, and this arithmetic
+      // had to become true. See
+      // `packages/flutter_scene_layout3d/plans/2026_09_10_a_letter_on_a_slab.md`.
+      const rim = Offset3d(0.5, 0.0125, 0);
       const middle = Offset3d(0.5, 0.5, 0);
 
       expect(

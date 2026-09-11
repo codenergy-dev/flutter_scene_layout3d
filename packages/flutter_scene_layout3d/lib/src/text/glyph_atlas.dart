@@ -248,8 +248,16 @@ class GlyphAtlas3d extends ChangeNotifier {
 
   /// The style a glyph is rasterized at: [style] at [scale], white, with
   /// room around it.
+  ///
+  /// **White includes the decoration.** An underline or a strikethrough is
+  /// part of the raster — `drawParagraph` paints it — so a style that kept
+  /// its own `decorationColor` here would bake a colour into an atlas that is
+  /// supposed to serve every colour, and [glyphAtlasStyleOf] would have to
+  /// key by it to stay honest. One rule instead: everything in the raster is
+  /// white and the material tints it.
   TextStyle get rasterStyle => style.copyWith(
     color: const Color(0xFFFFFFFF),
+    decorationColor: const Color(0xFFFFFFFF),
     fontSize: (style.fontSize ?? 14.0) * scale,
     height: rasterLineHeight,
   );
@@ -529,16 +537,27 @@ class _GlyphInk {
 double glyphAtlasScaleFor(double scale) =>
     (scale.clamp(0.25, 8.0) * 4.0).ceilToDouble() / 4.0;
 
-/// The style an atlas is keyed by: [style] with its colour taken out.
+/// The style an atlas is keyed by: [style] with its colours taken out.
 ///
 /// Glyphs are rasterized white and tinted by the material, so two labels
 /// that differ only in colour share an atlas. A style carrying a
 /// `foreground` paint is returned untouched, because a `TextStyle` refuses
 /// to hold both — such a style is not supported by the atlas renderer, and
 /// this at least keeps it from crashing on the way to not being drawn.
+///
+/// **`decorationColor` comes out too, and leaving it in was expensive.**
+/// Material's typography carries it alongside `color` — a `TextStyle.apply`
+/// sets both — so keying by it meant one atlas per *text colour* after all:
+/// the gallery had twenty-seven atlases for nine styles, the same alphabet
+/// rasterized once per colour it is drawn in. The raster is white either way
+/// (see [GlyphAtlas3d.rasterStyle]), so the key must not carry the colour a
+/// decoration would have been drawn in.
 TextStyle glyphAtlasStyleOf(TextStyle style) => style.foreground != null
     ? style
-    : style.copyWith(color: const Color(0xFFFFFFFF));
+    : style.copyWith(
+        color: const Color(0xFFFFFFFF),
+        decorationColor: const Color(0xFFFFFFFF),
+      );
 
 /// The atlases an application has, one per style and resolution.
 ///

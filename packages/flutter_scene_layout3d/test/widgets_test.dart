@@ -76,8 +76,10 @@ void main() {
     expect(boxes, hasLength(2));
     expect(boxes[0].size, const Size3d(2, 2, 2));
     expect(boxes[1].size, const Size3d(4, 3, 2));
-    expect(boxes[0].offset, const Offset3d(4, 0, 4));
-    expect(boxes[1].offset, const Offset3d(3, 2, 4));
+    // Centred across, and on the plane's front face in depth: a column's
+    // depth cross axis starts at the front. See Flex3d.depthAxisAlignment.
+    expect(boxes[0].offset, const Offset3d(4, 0, 0));
+    expect(boxes[1].offset, const Offset3d(3, 2, 0));
   });
 
   testWidgets('an intrinsic box sizes a column to its widest child', (

@@ -171,6 +171,18 @@ class _EmptyBox3d extends Layout3d {
 /// [depthAxisAlignment] is depth; for a [Column3d] (main `y`)
 /// [crossAxisAlignment] is horizontal and [depthAxisAlignment] is depth; for
 /// a [Depth3d] (main `z`) they are horizontal and vertical.
+///
+/// **The two cross axes do not default alike, and that is deliberate.**
+/// [crossAxisAlignment] centres, the way Flutter's does; [depthAxisAlignment]
+/// starts — at the *front*, the face nearest the viewer — whenever the axis it
+/// lands on really is the depth axis. Depth is not symmetric with the other
+/// two, because the viewer is on one side of it: a line inside a slab is as
+/// deep as the slab, and centring a label in that depth puts it half a
+/// thickness *inside* the surface it is written on, where the face in front of
+/// it hides it. Front is where a label on a card belongs, and a caller who
+/// wants a child suspended in the middle of a line's depth still says so.
+/// See [defaultDepthAxisAlignmentFor], and
+/// `plans/2026_09_10_a_letter_on_a_slab.md` for what the old default cost.
 class Flex3d extends MultiChildLayout3d<ParentData3d>
     with Layout3dOverflowReportingMixin {
   /// Creates a flex line along [direction].
@@ -179,7 +191,7 @@ class Flex3d extends MultiChildLayout3d<ParentData3d>
     MainAxisAlignment3d mainAxisAlignment = MainAxisAlignment3d.start,
     MainAxisSize3d mainAxisSize = MainAxisSize3d.max,
     CrossAxisAlignment3d crossAxisAlignment = CrossAxisAlignment3d.center,
-    CrossAxisAlignment3d depthAxisAlignment = CrossAxisAlignment3d.center,
+    CrossAxisAlignment3d? depthAxisAlignment,
     double spacing = 0.0,
     super.children,
     super.name,
@@ -235,12 +247,30 @@ class Flex3d extends MultiChildLayout3d<ParentData3d>
     markNeedsLayout();
   }
 
-  CrossAxisAlignment3d _depthAxisAlignment;
+  CrossAxisAlignment3d? _depthAxisAlignment;
+
+  /// The alignment the second cross axis takes when a caller names none.
+  ///
+  /// The front face when that axis is the depth axis — a [Row3d] or a
+  /// [Column3d] — and centred when it is not, which is a [Depth3d]: its main
+  /// axis is depth, so its second cross axis is *vertical* and the argument
+  /// for the front does not apply to it. The name says which slot it is,
+  /// not which axis it lands on.
+  static CrossAxisAlignment3d defaultDepthAxisAlignmentFor(Axis3d direction) =>
+      direction == Axis3d.depth
+      ? CrossAxisAlignment3d.center
+      : CrossAxisAlignment3d.start;
 
   /// How children are positioned on the second cross axis.
-  CrossAxisAlignment3d get depthAxisAlignment => _depthAxisAlignment;
+  ///
+  /// [defaultDepthAxisAlignmentFor] until a caller says otherwise, which
+  /// means the front face on every line that does not run in depth. Assigning
+  /// null puts it back to that default, and it follows [direction] rather
+  /// than being frozen at the value the line was built with.
+  CrossAxisAlignment3d get depthAxisAlignment =>
+      _depthAxisAlignment ?? defaultDepthAxisAlignmentFor(_direction);
 
-  set depthAxisAlignment(CrossAxisAlignment3d value) {
+  set depthAxisAlignment(CrossAxisAlignment3d? value) {
     if (_depthAxisAlignment == value) return;
     _depthAxisAlignment = value;
     markNeedsLayout();
@@ -268,7 +298,7 @@ class Flex3d extends MultiChildLayout3d<ParentData3d>
 
   CrossAxisAlignment3d _alignmentFor(Axis3d axis) {
     final (first, _) = crossAxes;
-    return axis == first ? _crossAxisAlignment : _depthAxisAlignment;
+    return axis == first ? _crossAxisAlignment : depthAxisAlignment;
   }
 
   Constraints3d _childConstraints(double minMain, double maxMain) {
@@ -612,7 +642,9 @@ class Flex3d extends MultiChildLayout3d<ParentData3d>
       EnumProperty<CrossAxisAlignment3d>(
         'depthAxisAlignment',
         depthAxisAlignment,
-        defaultValue: CrossAxisAlignment3d.center,
+        // Hidden while it is whatever this direction defaults to, so a dump
+        // only mentions the second cross axis when a caller chose something.
+        defaultValue: defaultDepthAxisAlignmentFor(direction),
       ),
     );
     properties.add(DoubleProperty('spacing', spacing, defaultValue: 0.0));

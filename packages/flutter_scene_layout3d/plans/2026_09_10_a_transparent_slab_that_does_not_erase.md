@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-09-10T14:20:00Z
-updated_at: 2026-09-10T19:15:00Z
+updated_at: 2026-09-11T00:00:00Z
 commit: a29484bca4b1b60ce78d58b061a88bab04de3a6c
 ---
 
@@ -146,3 +146,16 @@ pixels*: coverage over the slab must be one. A second reading compares the bar
 under the slab with the bar beside it, so a slab that drew a tint rather than a
 hole fails too. Verified both ways: without the discard, coverage at the slab's
 centre is **0.0**.
+
+## What came after
+
+The judgement above — *the depth buffer keeps ordering these panels* — was the
+right one and was only half working when it was made. A day later
+[a letter on a slab](2026_09_10_a_letter_on_a_slab.md) found that the slab's
+two depth-facing triangles were wound clockwise around their own normals, so
+back-face culling kept the face **pointing away from the camera** and each
+panel wrote the depth of its own rear face. Panels did order each other, near
+enough, because they were all wrong by their own thickness in the same
+direction; what could never be occluded was anything drawn *inside* a slab,
+which is where the catalogue was putting its labels. Nothing in this plan
+changes, and its probe passed before and after.

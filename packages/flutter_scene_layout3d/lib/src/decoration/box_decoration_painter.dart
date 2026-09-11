@@ -130,27 +130,25 @@ class BoxDecoration3dPainter implements Decoration3dPainter {
   /// Built with flat per-face normals and no vertex merging, because a cube
   /// with averaged corner normals lights like a sphere. Six faces, twenty-four
   /// vertices, twelve triangles, built once for a whole application.
+  ///
+  /// **Each face's triangles wind counter-clockwise around that face's own
+  /// normal**, which is the package's convention and is load-bearing rather
+  /// than tidy. The slab is authored in layout axes, a surface's basis is a
+  /// mirror, and `flutter_scene` flips the front face for a mirrored transform
+  /// on its own; wound the other way that flip lands on the wrong side and
+  /// `culling: back` keeps the face **pointing away from the camera**. It
+  /// looks almost right — a convex box has the same silhouette either way —
+  /// and it is not: the panel is lit by a normal facing away from the viewer,
+  /// and it writes its depth a whole thickness too far back, so nothing drawn
+  /// *inside* the slab is ever rejected by the depth test. That is what the
+  /// panel shader's `depth_write: true` is for and it had never landed where
+  /// it was aimed. `examples/render_probe`'s `slab_occludes_its_inside` is the
+  /// standing check; see
+  /// `plans/2026_09_10_a_letter_on_a_slab.md`.
   static MeshGeometry buildUnitSlab() {
     final builder = GeometryBuilder(deduplicate: false);
-    // (normal, first in-plane axis, second in-plane axis) for each face.
-    final List<(Vector3, Vector3, Vector3)> spec =
-        <(Vector3, Vector3, Vector3)>[
-          (Vector3(0, 0, -1), Vector3(1, 0, 0), Vector3(0, 1, 0)),
-          (Vector3(0, 0, 1), Vector3(-1, 0, 0), Vector3(0, 1, 0)),
-          (Vector3(-1, 0, 0), Vector3(0, 0, 1), Vector3(0, 1, 0)),
-          (Vector3(1, 0, 0), Vector3(0, 0, -1), Vector3(0, 1, 0)),
-          (Vector3(0, -1, 0), Vector3(1, 0, 0), Vector3(0, 0, 1)),
-          (Vector3(0, 1, 0), Vector3(1, 0, 0), Vector3(0, 0, -1)),
-        ];
-    for (final (normal, u, v) in spec) {
+    for (final (normal, corners) in unitSlabFaces()) {
       builder.normal(normal);
-      final centre = normal * 0.5;
-      final corners = <Vector3>[
-        centre - u * 0.5 - v * 0.5,
-        centre + u * 0.5 - v * 0.5,
-        centre + u * 0.5 + v * 0.5,
-        centre - u * 0.5 + v * 0.5,
-      ];
       final indices = <int>[];
       for (final corner in corners) {
         builder.color(
@@ -163,6 +161,47 @@ class BoxDecoration3dPainter implements Decoration3dPainter {
         ..addTriangle(indices[0], indices[2], indices[3]);
     }
     return builder.build();
+  }
+
+  /// The six faces [buildUnitSlab] is made of: each one's outward normal, and
+  /// its four corners in winding order.
+  ///
+  /// Separated from [buildUnitSlab] for the reason
+  /// `AtlasText3dRenderer.glyphQuadCorners` is separated from its mesh:
+  /// everything up to `build()` is arithmetic a headless test can check, and
+  /// `build()` is a GPU upload no headless test survives. A face wound the
+  /// wrong way is exactly the kind of defect that wants checking that way —
+  /// it draws a picture that looks almost right and orders depth wrongly.
+  ///
+  /// The ring runs `-u-v`, `+u-v`, `+u+v`, `-u+v` around each face's centre,
+  /// so `u cross v == normal` is what makes it counter-clockwise around the
+  /// outward normal.
+  static List<(Vector3, List<Vector3>)> unitSlabFaces() {
+    // (normal, first in-plane axis, second in-plane axis), with
+    // `u cross v == normal` on every row. The four side faces always had that
+    // identity; the two facing along the depth axis — the ones a viewer
+    // actually looks at — did not.
+    final List<(Vector3, Vector3, Vector3)> spec =
+        <(Vector3, Vector3, Vector3)>[
+          (Vector3(0, 0, -1), Vector3(1, 0, 0), Vector3(0, -1, 0)),
+          (Vector3(0, 0, 1), Vector3(-1, 0, 0), Vector3(0, -1, 0)),
+          (Vector3(-1, 0, 0), Vector3(0, 0, 1), Vector3(0, 1, 0)),
+          (Vector3(1, 0, 0), Vector3(0, 0, -1), Vector3(0, 1, 0)),
+          (Vector3(0, -1, 0), Vector3(1, 0, 0), Vector3(0, 0, 1)),
+          (Vector3(0, 1, 0), Vector3(1, 0, 0), Vector3(0, 0, -1)),
+        ];
+    return <(Vector3, List<Vector3>)>[
+      for (final (normal, u, v) in spec)
+        (
+          normal,
+          <Vector3>[
+            normal * 0.5 - u * 0.5 - v * 0.5,
+            normal * 0.5 + u * 0.5 - v * 0.5,
+            normal * 0.5 + u * 0.5 + v * 0.5,
+            normal * 0.5 - u * 0.5 + v * 0.5,
+          ],
+        ),
+    ];
   }
 }
 

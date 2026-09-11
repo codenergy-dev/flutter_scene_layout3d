@@ -171,8 +171,15 @@ export 'src/sliver/sliver_constraints.dart'
     show SliverConstraints3d, SliverGeometry3d;
 export 'src/slot.dart' show Layout3dSlot;
 export 'src/surface.dart' show Layout3dSurface;
-export 'src/text/atlas_text_renderer.dart'
-    show AtlasText3dRenderer, linearColor;
+export 'src/text/atlas_text_renderer.dart' show AtlasText3dRenderer;
+export 'src/text/glyph_material.dart'
+    show
+        FmatGlyphMaterial3d,
+        GlyphMaterial3d,
+        UnlitGlyphMaterial3d,
+        installGlyphMaterial3d,
+        kGlyphMaterialSource,
+        linearColor;
 export 'src/text/break_rules.dart'
     show OverflowWrap3d, TextBreakRules3d, TextWhitespace3d, WordBreak3d;
 export 'src/text/text3d.dart' show Text3d;

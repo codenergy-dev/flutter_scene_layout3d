@@ -599,6 +599,22 @@ void main() {
       final table = Table3d(columnCount: 2, children: [thin, thick]);
       laidOut(table, constraints: const Constraints3d(maxWidth: 4));
       expect(table.size.depth, 3);
+      // Cells share the depth of the deepest of them and their *faces* line
+      // up on the front of it, rather than their middles on its middle: a
+      // thin cell centred in a deep table is a cell sunk into the table.
+      expect(thin.offset.z, 0);
+      expect(thick.offset.z, 0);
+    });
+
+    test('a cell can still be centred in the table depth', () {
+      final thin = TestBox(const Size3d(1, 1, 1));
+      final thick = TestBox(const Size3d(1, 1, 3));
+      final table = Table3d(
+        columnCount: 2,
+        depthAxisAlignment: CrossAxisAlignment3d.center,
+        children: [thin, thick],
+      );
+      laidOut(table, constraints: const Constraints3d(maxWidth: 4));
       expect(thin.offset.z, 1);
       expect(thick.offset.z, 0);
     });

@@ -10,7 +10,8 @@
 
 import 'dart:typed_data';
 
-import 'package:flutter/painting.dart' show Color, TextAlign, TextStyle;
+import 'package:flutter/painting.dart'
+    show Color, TextAlign, TextDecoration, TextStyle;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -276,6 +277,44 @@ void main() {
       );
       expect(identical(plain, coloured), isTrue);
       expect(cache.length, 1);
+    });
+
+    test('including the colour a decoration would have been drawn in', () {
+      // Material's typography carries `decorationColor` alongside `color` —
+      // `TextStyle.apply` sets both — so an atlas keyed by it is an atlas per
+      // text colour however carefully the colour itself is stripped. The
+      // gallery had twenty-seven of them for nine styles.
+      final cache = GlyphAtlasCache3d(upload: (_) => null);
+      final plain = cache.atlasFor(
+        style.copyWith(
+          color: const Color(0xFF101010),
+          decorationColor: const Color(0xFF101010),
+        ),
+        1.0,
+      );
+      final other = cache.atlasFor(
+        style.copyWith(
+          color: const Color(0xFFEEEEEE),
+          decorationColor: const Color(0xFFEEEEEE),
+        ),
+        1.0,
+      );
+      expect(identical(plain, other), isTrue);
+      expect(cache.length, 1);
+    });
+
+    test('and an underline is rasterized white like the ink', () {
+      final atlas = GlyphAtlas3d(
+        style: const TextStyle(
+          fontSize: 20,
+          decoration: TextDecoration.underline,
+          decorationColor: Color(0xFFFF0000),
+        ),
+        scale: 1.0,
+        upload: (_) => null,
+      );
+      expect(atlas.rasterStyle.decorationColor, const Color(0xFFFFFFFF));
+      expect(atlas.rasterStyle.color, const Color(0xFFFFFFFF));
     });
 
     test('but not between sizes or resolutions', () {
