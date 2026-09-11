@@ -137,6 +137,21 @@ rest of the text layer — and it puts the wall on the atlas's asynchronous cloc
 rather than on layout's, which is the trap it added. `Icon3d` is one glyph of a
 font, so icons came out thick for free.
 
+The one thing that plan left flat was `RichText3d`, and
+[a paragraph with a side to it](packages/flutter_scene_layout3d/plans/2026_09_11_a_paragraph_with_a_side_to_it.md)
+closes it. Its capture is a `gpu.Texture` with no readable copy, so the atlas
+trick does not transfer; the silhouette comes from a **second, CPU
+rasterization of the box's own `TextPainter`** instead. Because that mask is on
+this side of the GPU, each wall segment's colour is *sampled off it*, which is
+how one wall carries a span's several colours. Two findings outlive it: the
+cheap answer — extruding the box rather than the letters, which the existing
+`depth` already reserved space for — was photographed producing a doubled
+paragraph with a back face and a stray rule without one, because **extrusion
+reads as thickness only when the thing extruded is the ink**; and the benefit
+runs opposite to the cost, being invisible on the body copy that traces into
+thousands of segments, which is what `RichText3d.maxWallSegments` refuses out
+loud.
+
 A third finding came out of the same app a day later, reported as *the gallery
 blinks*: type on the upright screen appearing and disappearing as the panel
 turned. [A letter on a slab](packages/flutter_scene_layout3d/plans/2026_09_10_a_letter_on_a_slab.md)
@@ -208,7 +223,7 @@ Everything below runs from the repository root unless stated otherwise.
 
 ```sh
 flutter pub get                                     # resolves the workspace
-cd packages/flutter_scene_layout3d && flutter test   # 983 today
+cd packages/flutter_scene_layout3d && flutter test   # 991 today
 cd packages/flutter_scene_material3d && flutter test # 517 today
 cd examples/layout3d_gallery && flutter test         # 3 today
 dart analyze                                        # must be clean, everywhere

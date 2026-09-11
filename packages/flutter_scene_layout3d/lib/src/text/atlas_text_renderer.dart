@@ -475,8 +475,13 @@ class AtlasText3dRenderer extends Text3dRenderer {
   /// The shading is baked into the vertex colours rather than computed by a
   /// shader, which is what lets the wall be drawn with the engine's own
   /// `UnlitMaterial` and adds no second `.fmat` to the package. Vertex
-  /// colours are multiplied in linearly by that shader, so [color] is decoded
-  /// here.
+  /// colours are multiplied in linearly by that shader, so the colour is
+  /// decoded here.
+  ///
+  /// [color] is the wall's colour for every segment that does not state one.
+  /// A glyph out of an atlas never does — a label is one colour — and a
+  /// paragraph's segments always do, because a [RichText3d] samples each
+  /// one's colour out of the bitmap it traced.
   ///
   /// Separated from [render] for the same reason [buildGlyphGeometry] is:
   /// everything up to `build()` is arithmetic a headless test can check.
@@ -488,11 +493,13 @@ class AtlasText3dRenderer extends Text3dRenderer {
   ) {
     final builder = GeometryBuilder(deduplicate: false);
     if (thickness <= 0.0) return builder;
-    final tint = linearColor(color);
+    final fallback = linearColor(color);
     for (final segment in segments) {
       final (nx, ny) = segment.outwardNormal;
       if (nx == 0.0 && ny == 0.0) continue;
       final shade = wallShade(nx, ny);
+      final own = segment.color;
+      final tint = own == null ? fallback : linearColor(own);
       builder
         ..normal(Vector3(nx, ny, 0.0))
         ..color(

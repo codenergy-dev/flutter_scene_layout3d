@@ -2259,6 +2259,33 @@ void main() {
             'flat at $flatCentre, thick at $thickCentre',
       );
     });
+
+    testWidgets('so does a paragraph, by a different route', (tester) async {
+      // The same claim over the other mechanism. A `RichText3d`'s wall is not
+      // traced out of the atlas — there is no atlas — but off a second, CPU
+      // rasterization of the box's own `TextPainter`, and everything from the
+      // rasterization to the sampled colours is code the glyph path never
+      // runs.
+      final thick = await _draw(
+        tester,
+        kProbeScenes.byId('paragraph_extrusion'),
+      );
+      final flat = await _draw(
+        tester,
+        kProbeScenes.byId('paragraph_extrusion_flat'),
+      );
+
+      expect(flat.frame.coverage, greaterThan(0.01));
+      expect(thick.frame.coverage, greaterThan(0.01));
+      expect(
+        thick.frame.coverage,
+        greaterThan(flat.frame.coverage * 1.1),
+        reason:
+            'the extruded paragraph covers no more of the frame than the flat '
+            'one (${thick.frame.coverage} against ${flat.frame.coverage}): '
+            'the trace never came back, or the wall is wound inside out',
+      );
+    });
   });
 }
 

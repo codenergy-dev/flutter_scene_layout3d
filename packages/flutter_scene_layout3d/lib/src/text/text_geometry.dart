@@ -3,7 +3,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:characters/characters.dart';
-import 'package:flutter/painting.dart' show TextStyle;
+import 'package:flutter/painting.dart' show Color, TextStyle;
 
 import 'glyph_atlas.dart';
 import 'glyph_outline.dart';
@@ -219,6 +219,7 @@ class GlyphWallSegment3d {
     required this.y0,
     required this.x1,
     required this.y1,
+    this.color,
   });
 
   /// The grapheme cluster this segment walls.
@@ -229,6 +230,15 @@ class GlyphWallSegment3d {
   final double y0;
   final double x1;
   final double y1;
+
+  /// This segment's own colour, or null to take the caller's.
+  ///
+  /// Null for every glyph out of an atlas, and the reason is the atlas: a
+  /// label is one colour, the raster is white, and the material tints the
+  /// lot. A [RichText3d] has no such thing — the whole reason to reach for
+  /// one is a paragraph carrying several colours — so it samples each
+  /// segment's colour out of the bitmap it traced and states it here.
+  final Color? color;
 
   /// How far the segment runs across the face, in logical pixels.
   double get length => math.sqrt((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0));

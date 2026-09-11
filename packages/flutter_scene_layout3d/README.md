@@ -547,9 +547,6 @@ serves every colour, and the colour is applied by the material.
 ### RichText3d, the escape hatch
 
 When the atlas is the wrong tool, hand the whole problem back to Flutter.
-Note what you give up along with the atlas: a `RichText3d` is one quad
-carrying a picture of a paragraph, so it has no per-glyph mask and no wall,
-and it will read as flat beside a `Text3d` on the same surface.
 
 ```dart
 RichText3d(
@@ -580,6 +577,36 @@ scene, which is where its tickers run and where the capture happens. Pointer
 input is not forwarded into that subtree — this package dispatches its own
 pointers against the layout tree, and a hit on a `RichText3d` stops at the box
 exactly as it stops at a `Text3d`.
+
+A paragraph has a thickness too, and it does not get it from the atlas —
+there is no atlas here. Its capture is a `gpu.Texture` with no readable copy,
+so the silhouette comes from a **second, CPU rasterization of the box's own
+`TextPainter`**: paint it into a `PictureRecorder`, read the bytes back, and
+hand the same `traceGlyphOutline` the same kind of bitmap. Because that mask is
+on this side of the GPU, each segment's colour is **read off it** — a texel
+inside the ink, along the inward normal — so one wall carries a span's several
+colours with no bookkeeping at all. A paragraph reading "Signed in as **Ada** —
+admin" comes out with a blue-grey edge, an orange one on `Ada` and a green one
+on `admin`.
+
+`glyphDepth` is the dial and `depth` is not: `depth` is what the box
+*reserves*, the way a `SizedBox3d`'s is, and extruding the box rather than the
+letters was tried and photographed doing something worse — see
+[docs/traps.md](../../docs/traps.md).
+
+Three things to know before leaving it on:
+
+```dart
+// A paragraph that is there to be read rather than looked at.
+RichText3d(span, glyphDepth: 0.0)
+```
+
+A `WidgetSpan`'s content gets no wall, because a `TextPainter` paints a
+placeholder as nothing. The wall does not follow anything animating *inside*
+the subtree, because the trace runs on layout rather than on the capture. And
+a full page of body copy traces into tens of thousands of segments for an edge
+nobody can see at that size, so past `maxWallSegments` the wall is dropped and
+reported rather than silently built.
 
 ## Sizing real 3D content
 

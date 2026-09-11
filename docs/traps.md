@@ -623,9 +623,33 @@ Two consequences worth stating:
   centred on the glyph plane would have buried half of every letter in the
   panel it is written on.
 
-`RichText3d` has no wall. It draws a whole paragraph Flutter rasterized in
-colour onto one quad, so there is no per-glyph mask to trace and no atlas
-holding one.
+**`RichText3d` has a wall too, on a different clock.** It draws a whole
+paragraph onto one quad and its capture is a `gpu.Texture` with no readable
+copy, so its silhouette cannot come from the atlas — it comes from a *second,
+CPU* rasterization of the box's own `TextPainter`, run when the box lays out.
+Three things follow, and all three are the kind that cost an afternoon:
+
+- **A `WidgetSpan`'s content gets no wall.** A `TextPainter` paints a
+  placeholder as nothing, so an inline widget is in the capture and not in the
+  mask.
+- **The wall does not follow an animating subtree.** The trace runs on layout;
+  `WidgetUpdatePolicy.everyFrame` exists to catch a repaint *inside* the span —
+  a cursor, a spinner — and those move the face while the wall stands still.
+- **A page of body copy is refused, loudly.** A full paragraph at 15dp traces
+  into thousands of segments for an edge no reader at that size can see, so
+  past `RichText3d.maxWallSegments` the wall is dropped and reported. State
+  `glyphDepth: 0` on paragraphs that are there to be read rather than looked
+  at.
+
+And the thing that was tried first and does not work, so nobody tries it
+again: **extruding the box instead of the letters.** `RichText3d` takes a
+`depth`, and making that draw a slab — front face, four sides, back face —
+produces two different wrong pictures. A capture is mostly *transparent*, so
+with a back face you see through the letters to their mirrored copy and the
+type doubles; without one, the only side ever facing the viewer is the bottom,
+and it reads as a stray rule under the paragraph. **Extrusion reads as
+thickness only when the thing extruded is the ink**, which is why `depth`
+remains a reservation of space and `glyphDepth` is the figure that draws.
 
 ## Pointers
 

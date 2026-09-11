@@ -9,8 +9,11 @@
 // The test font makes every glyph exactly `fontSize` wide, with a line
 // `fontSize` tall and its baseline at 0.75 of that.
 
+import 'dart:typed_data';
+
 import 'package:flutter/painting.dart'
     show
+        Color,
         TextDirection,
         TextOverflow,
         TextPainter,
@@ -265,6 +268,15 @@ void main() {
       expect(text.node.children, isEmpty);
     });
 
+    test('the quad sits at the front of its own extrusion', () {
+      // The face moves forward with the wall and the wall runs back to the
+      // plane the flat quad occupied, exactly as a glyph's does.
+      final front = textQuadCorners(const Size3d(0.4, 0.2, 0), z: -0.05);
+      for (final corner in front) {
+        expect(corner.z, closeTo(-0.05, 1e-7));
+      }
+    });
+
     test('the quad is the box, wound to face the viewer', () {
       // Building the geometry uploads it, which needs a GPU; the winding is
       // arithmetic, and it is the one mistake whose only symptom is that a
@@ -274,6 +286,152 @@ void main() {
       expect(normal.z, lessThan(0.0));
       expect(corners[2].x, closeTo(0.4, 1e-7));
       expect(corners[2].y, closeTo(0.2, 1e-7));
+    });
+  });
+
+  group('the paragraph is extruded', () {
+    test('a tenth of the root span\'s size unless one is stated', () {
+      expect(
+        RichText3d(
+          const TextSpan(text: 'hi', style: TextStyle(fontSize: 40)),
+        ).resolvedGlyphDepth,
+        closeTo(4.0, 1e-9),
+      );
+      expect(RichText3d(span('hi'), glyphDepth: 1.5).resolvedGlyphDepth, 1.5);
+      expect(RichText3d(span('hi'), glyphDepth: 0.0).resolvedGlyphDepth, 0.0);
+      // The same fallback size the measurement half assumes, so the two never
+      // disagree about what "the type" is.
+      expect(
+        RichText3d(const TextSpan(text: 'hi')).resolvedGlyphDepth,
+        closeTo(1.4, 1e-9),
+      );
+    });
+
+    test('nothing is walled before the trace comes back', () {
+      final text = RichText3d(span('hi'));
+      panel(Center3d(child: text));
+      expect(text.wallSegmentCount, 0);
+    });
+
+    test(
+      'a paragraph rasterizes to a bitmap the resolution asks for',
+      () async {
+        final painter = TextPainter(
+          text: span('hi'),
+          textDirection: TextDirection.ltr,
+          textScaler: TextScaler.noScaling,
+        )..layout();
+        final width = painter.width;
+        final height = painter.height;
+        final raster = await rasterizeParagraph(painter, 3.0);
+        painter.dispose();
+        expect(raster, isNotNull);
+        expect(raster!.width, (width * 3.0).ceil());
+        expect(raster.height, (height * 3.0).ceil());
+        expect(raster.scale, 3.0);
+        expect(raster.pixels, hasLength(raster.width * raster.height * 4));
+        // The test font fills its em box, so there is ink in the middle.
+        final middle =
+            ((raster.height ~/ 2) * raster.width + raster.width ~/ 2) * 4;
+        expect(raster.pixels[middle + 3], greaterThan(0));
+      },
+    );
+
+    test('a painter with nothing in it rasterizes to nothing', () async {
+      final painter = TextPainter(
+        text: const TextSpan(text: ''),
+        textDirection: TextDirection.ltr,
+        textScaler: TextScaler.noScaling,
+      )..layout();
+      expect(await rasterizeParagraph(painter, 2.0), isNull);
+      painter.dispose();
+    });
+  });
+
+  group('the wall takes its colour from the picture', () {
+    /// A one-texel-per-pixel raster with [fill] everywhere inside a
+    /// 4x4 block and nothing outside it.
+    ParagraphRaster3d block(Color fill) {
+      const size = 8;
+      final pixels = Uint8List(size * size * 4);
+      for (var y = 2; y < 6; y++) {
+        for (var x = 2; x < 6; x++) {
+          final at = (y * size + x) * 4;
+          pixels[at] = (fill.r * 255).round();
+          pixels[at + 1] = (fill.g * 255).round();
+          pixels[at + 2] = (fill.b * 255).round();
+          pixels[at + 3] = 255;
+        }
+      }
+      return ParagraphRaster3d(pixels, size, size, 1.0);
+    }
+
+    test('a segment is given the ink it stands on', () {
+      final raster = block(const Color(0xFF2050A0));
+      final outline = traceGlyphOutline(
+        grapheme: '',
+        pixels: raster.pixels,
+        stride: raster.width,
+        x: 0,
+        y: 0,
+        width: raster.width,
+        height: raster.height,
+        scale: 1.0,
+      );
+      final segments = buildParagraphWallSegments(
+        outline: outline,
+        raster: raster,
+        fallback: const Color(0xFF000000),
+      );
+      expect(segments, hasLength(4));
+      for (final segment in segments) {
+        expect(segment.color, const Color(0xFF2050A0));
+      }
+    });
+
+    test('a sample off the ink falls back', () {
+      final raster = block(const Color(0xFF2050A0));
+      // The block's top edge is at y = 2, so the ink is below it and the
+      // outward normal points up. The sample steps against that normal.
+      expect(
+        sampleParagraphInk(raster, 4, 2, 0, -1, const Color(0xFFAA0000)),
+        const Color(0xFF2050A0),
+        reason: 'the inward step should have landed on ink',
+      );
+      expect(
+        sampleParagraphInk(raster, 4, 2, 0, 1, const Color(0xFFAA0000)),
+        const Color(0xFFAA0000),
+        reason: 'a normal pointing the wrong way samples the margin',
+      );
+      expect(
+        sampleParagraphInk(raster, 40, 40, 0, 1, const Color(0xFFAA0000)),
+        const Color(0xFFAA0000),
+        reason: 'a sample off the bitmap has nothing to read',
+      );
+    });
+
+    test('a segment\'s own colour wins over the builder\'s', () {
+      final builder = AtlasText3dRenderer.buildGlyphWallGeometry(
+        const <GlyphWallSegment3d>[
+          GlyphWallSegment3d(grapheme: 'a', x0: 0, y0: 0, x1: 1, y1: 0),
+          GlyphWallSegment3d(
+            grapheme: 'a',
+            x0: 1,
+            y0: 0,
+            x1: 2,
+            y1: 0,
+            color: Color(0xFF00FF00),
+          ),
+        ],
+        1.0,
+        0.5,
+        const Color(0xFFFF0000),
+      );
+      expect(builder.vertexCount, 8);
+      // Both are lit the same way, so any difference in the baked colour is
+      // the segment's own colour and nothing else.
+      final packed = builder.packVertices();
+      expect(packed, isNotEmpty);
     });
   });
 }

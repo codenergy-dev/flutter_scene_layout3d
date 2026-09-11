@@ -10,7 +10,7 @@ import 'package:flutter_scene/scene.dart'
         SphereGeometry;
 import 'package:flutter/material.dart' show Icons;
 import 'package:flutter/painting.dart'
-    show Color, TextAlign, TextSpan, TextStyle;
+    show Color, InlineSpan, TextAlign, TextSpan, TextStyle;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
 import 'package:flutter_scene_material3d/flutter_scene_material3d.dart';
 import 'package:vector_math/vector_math.dart'
@@ -2486,6 +2486,50 @@ final List<ProbeScene> kProbeScenes = <ProbeScene>[
       );
       surface.plane.rotation = Quaternion.axisAngle(Vector3(0, 1, 0), 0.55);
       return ProbeSceneContent(surfaces: [surface], probes: {'letter': letter});
+    }, minCoverage: 0.01),
+
+  // ── And the paragraph beside it ──────────────────────────────────────
+  //
+  // A `RichText3d` is the one thing here that is not assembled out of an
+  // atlas: it is a whole paragraph Flutter rasterized onto one quad, and its
+  // capture is a GPU texture with no readable copy. Its wall is therefore
+  // traced off a *second*, CPU rasterization of the same `TextPainter`, which
+  // is a different mechanism reaching the same picture — and a different
+  // mechanism is a different set of ways to be wrong.
+  //
+  // Same pairing as `glyph_extrusion`, same reason: a wall wound inside out is
+  // culled and leaves no symptom but a paragraph that looks flat.
+  for (final (id, thickness) in <(String, double?)>[
+    ('paragraph_extrusion', null),
+    ('paragraph_extrusion_flat', 0.0),
+  ])
+    ProbeScene(id, () {
+      final paragraph = RichText3d(
+        const TextSpan(
+          style: TextStyle(fontSize: 120, color: _panelBorder),
+          children: <InlineSpan>[
+            TextSpan(text: 'Ad'),
+            // A second colour, because the thing a paragraph's wall does that
+            // a label's cannot is take its colour from the ink it stands on.
+            TextSpan(
+              text: 'a',
+              style: TextStyle(color: Color(0xFF4FB286)),
+            ),
+          ],
+        ),
+        glyphDepth: thickness,
+        resolution: 3.0,
+        name: 'paragraph',
+      );
+      final surface = Layout3dSurface(
+        constraints: Constraints3d.tight(const Size3d(3.6, 2.4, 0.6)),
+        child: Center3d(child: paragraph),
+      );
+      surface.plane.rotation = Quaternion.axisAngle(Vector3(0, 1, 0), 0.55);
+      return ProbeSceneContent(
+        surfaces: [surface],
+        probes: {'paragraph': paragraph},
+      );
     }, minCoverage: 0.01),
 ];
 

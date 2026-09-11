@@ -338,7 +338,15 @@ export 'src/text/line_break.dart' show TextBreak3d;
 export 'src/text/prepared_text.dart'
     show PreparedText3d, SegmentGraphemes3d, TextSegment3d;
 export 'src/text/rich_text3d.dart'
-    show RichText3d, buildTextQuadGeometry, textQuadCorners;
+    show
+        ParagraphRaster3d,
+        RichText3d,
+        buildParagraphWallSegments,
+        buildTextQuadGeometry,
+        kParagraphWallSampleDepth,
+        rasterizeParagraph,
+        sampleParagraphInk,
+        textQuadCorners;
 export 'src/text/text3d.dart' show Text3d;
 export 'src/text/text_geometry.dart'
     show
