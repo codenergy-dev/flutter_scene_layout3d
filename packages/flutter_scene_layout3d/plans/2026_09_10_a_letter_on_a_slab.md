@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-09-10T21:27:20Z
-updated_at: 2026-09-11T00:00:00Z
+updated_at: 2026-09-11T01:30:00Z
 commit: b7ad02e7780b4f7906a63dccc23721aa9017b84a
 ---
 
@@ -233,3 +233,41 @@ given angle. `Material.depthBias` was tried and changes nothing at any yaw,
 which is what proved the sort rather than the depth test was the arbiter.
 
 Every claim in this plan is a picture, not an argument.
+
+## The one it caused, and the rule that closed it
+
+Reported the same evening, against the committed fix: the switch's track and
+the navigation bar's selection pill **striped**, in bands that came and went as
+the panel turned. Measured rather than guessed, and it was one line of a depth
+dump:
+
+| | front face |
+| --- | --- |
+| card | 0.0200 |
+| switch track on it | **0.0200** |
+| navigation bar | 0.0700 |
+| its selection pill | **0.0700** |
+
+`Material3d` aligns its child to its own front face — which is the rule this
+plan put there — and a child that is itself a `Material3d` therefore starts
+exactly *on* that face. Two surfaces on one plane, both writing depth, is a
+z-fight; it had been invisible for the same reason everything else here was,
+because the depth being written was the rear face's and the rear faces were a
+thickness apart. Correcting the winding did not cause the coplanarity. It
+revealed it.
+
+Neither `Thickness3d.stepOver` nor a component-side fix reaches this: the
+outermost slab of a component is flush with whatever the *application* put
+behind it, and a `Switch3d` cannot know it is on a card. So the surface takes
+responsibility for its own contact: `Material3d.contentLift`, a fifth of a
+logical pixel on the node tier, the same figure the glyphs are lifted by. A
+surface lifts what is drawn on it; nesting surfaces adds the lifts up; the
+boxes do not move, so layout, intrinsics and hit testing are untouched.
+
+`content_on_the_face_test.dart` grew the second half of its rule with it —
+**no two overlapping opaque panels share a front face** — asked of the switch,
+the navigation bar, and a card holding a slider, a checkbox and a chip, with a
+deliberately flush pair proving the check can fail. Transparent panels are
+exempt and that is not a fudge: the panel shader discards where its own alpha
+is zero, so a colourless surface writes no depth and has nothing to fight
+with.

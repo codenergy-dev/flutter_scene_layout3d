@@ -60,6 +60,28 @@ Offset3d offsetInSurface(Layout3d box) {
   return total;
 }
 
+/// The node-tier shifts a component built itself, in tree order.
+///
+/// Every `Material3d` puts one inside itself to lift its content clear of its
+/// own face (`Material3d.contentLift`), so "the shift" a component test means
+/// — a switch's thumb sliding, a slider's active track scaling — is whichever
+/// one the component named.
+List<NodeShift3d> componentShifts(Layout3dSurface surface) =>
+    boxesOf<NodeShift3d>(
+      surface,
+    ).where((shift) => shift.node.name != Material3d.contentLiftName).toList();
+
+/// The one shift a component built itself.
+NodeShift3d oneComponentShift(Layout3dSurface surface) {
+  final found = componentShifts(surface);
+  if (found.length != 1) {
+    throw StateError(
+      'expected one component NodeShift3d, found ${found.length}',
+    );
+  }
+  return found.single;
+}
+
 /// A pumped component and the handles a test wants on it.
 class PumpedSurface {
   PumpedSurface(this.controller, this.builds);

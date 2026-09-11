@@ -16,7 +16,8 @@ import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart'
         BorderRadius3d,
         BoxDecoration3d,
         DecoratedBox3d,
-        EdgeInsets3d;
+        EdgeInsets3d,
+        Offset3d;
 import 'package:flutter_scene_layout3d/widgets.dart'
     show Layout3dMetricsScope, SceneContainer3d, SingleChildLayout3dWidget;
 
@@ -24,6 +25,7 @@ import '../theme/theme.dart';
 import '../theme/theme_data.dart';
 import '../tokens/typography.dart';
 import 'ink.dart';
+import 'node_shift.dart';
 
 /// A Material surface: the one primitive every other component here is built
 /// out of.
@@ -180,8 +182,40 @@ class Material3d extends StatefulWidget {
   /// the surface, which is where a label on a card belongs.
   ///
   /// Null gives the child the surface's own constraints instead of aligning
-  /// it in them, the way a `Container3d` with no alignment does.
+  /// it in them, the way a `Container3d` with no alignment does. The content
+  /// still stands off the face by [contentLift] either way.
   final Alignment3d? alignment;
+
+  /// How far the content stands off this surface's own front face, in logical
+  /// pixels.
+  ///
+  /// On the face and *in* the face are different things. A label aligned to
+  /// the front face is exactly coplanar with the slab it is written on, and a
+  /// child that is itself a `Material3d` — a switch's track on a card, a
+  /// navigation pill on its bar — puts a whole second slab there. Two
+  /// coplanar surfaces that both write depth z-fight: the picture comes out
+  /// striped, in bands that crawl as the camera moves, and it is the same
+  /// failure `Divider3d` has always documented about a rule drawn on a card.
+  ///
+  /// So a surface lifts what is drawn on it, by a fifth of a logical pixel —
+  /// far too little to read as a gap and far more than the depth buffer needs
+  /// at any distance a panel is legible from. The lift is on the **node
+  /// tier**: the geometry moves, the boxes do not, so layout, intrinsics and
+  /// what a ray reaches are all untouched, and nesting surfaces simply adds
+  /// the lifts up.
+  ///
+  /// It is not a substitute for `Thickness3d.stepOver`, which is the figure
+  /// for a slab that has to clear another slab's *thickness* rather than its
+  /// face — a thumb on a track, a checkmark on a box. This is the contact
+  /// between a surface and its own content, and nothing else.
+  static const double contentLift = 0.2;
+
+  /// What the box carrying [contentLift] calls itself in a tree dump.
+  ///
+  /// Every surface has one, so anything walking a laid-out tree for a
+  /// component's *own* node-tier shift — a switch's thumb, a slider's track —
+  /// has to be able to tell them apart.
+  static const String contentLiftName = 'Material3d content lift';
 
   /// What is drawn on the surface.
   final Widget? child;
@@ -284,7 +318,14 @@ class _Material3dState extends State<Material3d>
             alignment: widget.alignment,
             padding: metrics.dpInsets(widget.padding),
             depth: metrics.dp(thickness),
-            child: widget.child,
+            // Toward the viewer is negative z, and this is the node tier, so
+            // the content's geometry stands off the face while its boxes stay
+            // exactly where layout put them. See [Material3d.contentLift].
+            child: SceneNodeShift3d(
+              shift: Offset3d(0.0, 0.0, -metrics.dp(Material3d.contentLift)),
+              name: Material3d.contentLiftName,
+              child: widget.child,
+            ),
           ),
         ),
       ),

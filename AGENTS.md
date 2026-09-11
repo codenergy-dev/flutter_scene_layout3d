@@ -142,7 +142,7 @@ it. And the glyph atlas was keyed by a style that still carried
 styles**. The first two had to land together: correcting the winding turns a
 buried label from a coin toss into a certainty.
 
-Twelve things worth knowing before building on any of it, all written up in
+Thirteen things worth knowing before building on any of it, all written up in
 `docs/traps.md`: handing every `BoxDecoration3d` the *same* material makes a
 screen of panels come out one colour; a `TapTarget3d` reaches past its own
 extent but **its parent does not**, so a target has to sit outside every box
@@ -173,12 +173,15 @@ a negative z in an offset is the bug; and **the depth axis is not symmetric
 with the other two**, because the viewer is on one side of it — a line's depth
 cross axis therefore *starts* at the front while its other one centres, an
 explicit `Center3d` still centres in depth and puts a label inside the slab it
-is on, and a `Material3d`'s content belongs on its face; and the last one,
-which is about the *picture* rather than the arrangement: **a glyph mesh has
+is on, and a `Material3d`'s content belongs on its face; and the last two,
+which are about the *picture* rather than the arrangement: **a glyph mesh has
 to write depth or the translucent sort erases it**, because that sort is one
 number per draw and turning a panel swings a label near its edge behind the
-panel's own centre. `initializeMaterial3d()` installs the material that does
-it.
+panel's own centre — `initializeMaterial3d()` installs the material that does
+it; and **a surface has to lift what is drawn on it off its own face**, because
+two surfaces sharing a plane both write depth there and come out striped rather
+than missing, which no component can fix for itself when the thing behind it
+belongs to the application (`Material3d.contentLift`).
 
 ## Running things
 
@@ -187,7 +190,7 @@ Everything below runs from the repository root unless stated otherwise.
 ```sh
 flutter pub get                                     # resolves the workspace
 cd packages/flutter_scene_layout3d && flutter test   # 953 today
-cd packages/flutter_scene_material3d && flutter test # 513 today
+cd packages/flutter_scene_material3d && flutter test # 517 today
 cd examples/layout3d_gallery && flutter test         # 3 today
 dart analyze                                        # must be clean, everywhere
 dart format .                                       # before every commit

@@ -409,6 +409,20 @@ headless test can check it, and `examples/render_probe`'s
 `slab_occludes_its_inside` is the picture. If you ever build a slab of your own
 for a `Decoration3dPainter`, this is the rule to build it to.
 
+**On a surface and *in* its face are different things, and a surface has to
+say which.** Once a panel writes the depth of the face you can see, resting
+anything on that face exactly — a label, and worse, another `Material3d` —
+puts two depth-writing surfaces on one plane. That is a z-fight, and it does
+not look like a missing thing: it looks like **stripes crawling across the
+painted area** as the camera moves, which is what the gallery's switch track
+and its navigation pill did the moment the winding was corrected.
+`Material3d.contentLift` is the answer and it is a fifth of a logical pixel:
+every surface lifts what is drawn on it off its own face, on the node tier, so
+the boxes do not move and nesting surfaces simply adds the lifts up. It is not
+`Thickness3d.stepOver`, which is the figure for clearing another slab's
+*thickness* — a thumb on a track, a checkmark on a box; this is the contact
+between a surface and its own content and nothing else.
+
 **Type on a panel needs a material that writes depth, and that is a shader
 this package ships.** The translucent pass is back-to-front by **one number per
 draw** — the distance to the centre of the object's world bounds — so a panel

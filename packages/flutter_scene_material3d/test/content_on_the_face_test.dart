@@ -1,7 +1,11 @@
 // Where a component's content sits in the depth of the slab it is drawn on.
 //
-// One rule, asked of every component that has both a surface and something
-// written on it: **nothing is behind the face of the slab it belongs to.**
+// Two rules, asked of every component that has both a surface and something
+// on it: **nothing is behind the face of the slab it belongs to**, and
+// **nothing is exactly on it either**. The first is a label that cannot be
+// seen; the second is two surfaces that both write depth at the same plane,
+// which comes out as stripes crawling across the painted area rather than as
+// anything missing.
 //
 // It is worth a file of its own because it is invisible to every other kind
 // of test here. A label half a thickness inside a card measures the same, lays
@@ -65,6 +69,73 @@ Future<void> expectContentOnTheFace(
 ) async {
   final pumped = await pumpComponent(tester, build);
   expectNothingBuried(pumped.surface);
+  expectNothingFlush(pumped.surface);
+}
+
+/// One opaque panel: where its front face is, and the rectangle it covers.
+typedef Panel3dFace = ({double face, double left, double top, Size3d size});
+
+/// Every panel in [surface] with ink in it.
+///
+/// The depth comes from the node — a lift on the node tier is exactly what
+/// keeps two surfaces apart — and the rectangle from the layout offsets,
+/// which is the frame a size is stated in.
+List<Panel3dFace> opaquePanels(Layout3dSurface surface) {
+  final found = <Panel3dFace>[];
+  void walk(Layout3d box) {
+    if (box is DecoratedBox3d) {
+      final decoration = box.decoration;
+      final ink = decoration is BoxDecoration3d ? decoration.color.a : 0.0;
+      if (ink > 0.01) {
+        final offset = offsetInSurface(box);
+        found.add((
+          face: box.node.globalTransform.getTranslation().z,
+          left: offset.x,
+          top: offset.y,
+          size: box.size,
+        ));
+      }
+    }
+    box.visitChildren(walk);
+  }
+
+  final child = surface.child;
+  if (child != null) walk(child);
+  return found;
+}
+
+/// Fails naming two panels that share a face and overlap on it.
+///
+/// A transparent panel is not asked about: the panel shader discards where
+/// its own alpha is zero, so it writes no depth and has nothing to fight
+/// with. That is [docs/traps.md]'s "a panel with no ink in it draws nothing
+/// *and writes no depth*", and it is why a navigation destination's own
+/// colourless surface may sit wherever it likes.
+void expectNothingFlush(Layout3dSurface surface) {
+  final panels = opaquePanels(surface);
+  for (var i = 0; i < panels.length; i++) {
+    for (var j = i + 1; j < panels.length; j++) {
+      final a = panels[i];
+      final b = panels[j];
+      if ((a.face - b.face).abs() > 1e-6) continue;
+      final apart =
+          a.left + a.size.width <= b.left ||
+          b.left + b.size.width <= a.left ||
+          a.top + a.size.height <= b.top ||
+          b.top + b.size.height <= a.top;
+      if (apart) continue;
+      fail(
+        'two panels share a front face at z=${a.face.toStringAsFixed(4)} and '
+        'overlap on it — ${a.size.width.toStringAsFixed(2)} by '
+        '${a.size.height.toStringAsFixed(2)} against '
+        '${b.size.width.toStringAsFixed(2)} by '
+        '${b.size.height.toStringAsFixed(2)}. Both write depth there, so the '
+        'picture comes out striped. A surface lifts its own content by '
+        'Material3d.contentLift; a slab that has to clear another slab\'s '
+        'thickness wants Thickness3d.stepOver.',
+      );
+    }
+  }
 }
 
 void main() {
@@ -165,6 +236,58 @@ void main() {
     });
   });
 
+  group('and nothing is flush with the surface under it', () {
+    // The switch and the navigation bar are the two the gallery showed as
+    // stripes crawling across the painted area, once the panel shader began
+    // writing the depth of the face a viewer can actually see.
+    testWidgets('a switch on a card', (tester) async {
+      final pumped = await pumpComponent(
+        tester,
+        () => FilledCard3d(child: Switch3d(value: true, onChanged: (_) {})),
+      );
+      expectNothingFlush(pumped.surface);
+    });
+
+    testWidgets('a navigation bar and its selection pill', (tester) async {
+      final pumped = await pumpComponent(
+        tester,
+        () => NavigationBar3d(
+          selectedIndex: 0,
+          onDestinationSelected: (_) {},
+          destinations: const <NavigationDestination3d>[
+            NavigationDestination3d(icon: Icon3d(Icons.inbox), label: 'Inbox'),
+            NavigationDestination3d(
+              icon: Icon3d(Icons.tune),
+              label: 'Settings',
+            ),
+          ],
+        ),
+      );
+      expectNothingFlush(pumped.surface);
+    });
+
+    testWidgets('a slider, a checkbox and a chip on a card', (tester) async {
+      final pumped = await pumpComponent(
+        tester,
+        () => ElevatedCard3d(
+          child: SceneColumn3d(
+            mainAxisSize: MainAxisSize3d.min,
+            children: <Widget>[
+              Slider3d(value: 0.5, onChanged: (_) {}),
+              Checkbox3d(value: true, onChanged: (_) {}),
+              FilterChip3d(
+                label: const SceneText3d('All'),
+                selected: true,
+                onSelected: (_) {},
+              ),
+            ],
+          ),
+        ),
+      );
+      expectNothingFlush(pumped.surface);
+    });
+  });
+
   group('the rule itself', () {
     testWidgets('is a rule this test can fail', (tester) async {
       // The guard on the guard: a label deliberately centred in the depth of
@@ -180,6 +303,28 @@ void main() {
       );
       expect(
         () => expectNothingBuried(pumped.surface),
+        throwsA(isA<TestFailure>()),
+      );
+    });
+
+    testWidgets('and so is the one about being flush', (tester) async {
+      // Two surfaces resting on each other with no lift between them, which
+      // is what every component did until a panel began writing the depth of
+      // its front face. The shift is `Material3d.contentLift` in world units
+      // *away* from the viewer, which cancels the lift the outer surface
+      // gives its content and puts the two faces back on one plane.
+      final pumped = await pumpComponent(
+        tester,
+        () => const Material3d(
+          thickness: 40,
+          child: SceneNodeShift3d(
+            shift: Offset3d(0, 0, 0.002),
+            child: Material3d(thickness: 10, child: SceneText3d('flush')),
+          ),
+        ),
+      );
+      expect(
+        () => expectNothingFlush(pumped.surface),
         throwsA(isA<TestFailure>()),
       );
     });

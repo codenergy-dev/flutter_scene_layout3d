@@ -341,14 +341,14 @@ void main() {
         tester,
         () => Switch3d(value: false, onChanged: (_) {}),
       );
-      final shiftOff = oneOf<NodeShift3d>(off.surface).shift;
+      final shiftOff = oneComponentShift(off.surface).shift;
       expect(shiftOff.x, closeTo(-dp(switchStyle.travel) / 2, 1e-9));
 
       final on = await pumpComponent(
         tester,
         () => Switch3d(value: true, onChanged: (_) {}),
       );
-      final shiftOn = oneOf<NodeShift3d>(on.surface).shift;
+      final shiftOn = oneComponentShift(on.surface).shift;
       expect(shiftOn.x, closeTo(dp(switchStyle.travel) / 2, 1e-9));
       expect(
         switchStyle.travel,
@@ -376,14 +376,14 @@ void main() {
       });
       final track = it.panels[0];
       final laidOut = layoutCountOf(it.surface);
-      expect(oneOf<NodeShift3d>(it.surface).shift.x, lessThan(0.0));
+      expect(oneComponentShift(it.surface).shift.x, lessThan(0.0));
 
       it.pointer.down(rayAt(it.surface, const Offset3d(2, 1.5, 0)));
       it.pointer.up();
       await tester.pump();
 
       expect(value, isTrue);
-      expect(oneOf<NodeShift3d>(it.surface).shift.x, greaterThan(0.0));
+      expect(oneComponentShift(it.surface).shift.x, greaterThan(0.0));
       expect(it.surface.needsFlush, isFalse, reason: 'nothing was laid out');
       expect(layoutCountOf(it.surface), laidOut);
       expect(identical(it.panels[0], track), isTrue, reason: 'the same boxes');
@@ -405,7 +405,7 @@ void main() {
         theme.colorScheme.surface,
       );
       expect(
-        oneOf<NodeShift3d>(it.surface).shift.x,
+        oneComponentShift(it.surface).shift.x,
         greaterThan(0.0),
         reason: 'a disabled switch still says which way it is set',
       );

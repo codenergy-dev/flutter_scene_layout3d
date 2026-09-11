@@ -264,12 +264,19 @@ below, through a `DefaultTextStyle` the surface installs. That is what makes
 `Icon3d(Icons.favorite)` inside a filled button come out `onPrimary` without
 the button mentioning icons at all.
 
-Two things about padding and depth that cost time once each. **An
+Three things about padding and depth that cost time once each. **An
 `EdgeInsets3d` has six faces**, so `EdgeInsets3d.all(16)` insets the front as
 well, pushing the child into the slab where the panel wins the depth test and
-hides it; state the two in-plane axes. And **alignment defaults to
+hides it; state the two in-plane axes. **Alignment defaults to
 `Alignment3d.frontCenter`**, not `center`, for the same reason: a label
-centred in depth sits inside a 4dp card rather than on it.
+centred in depth sits inside a 4dp card rather than on it. And a surface
+**lifts what is drawn on it off its own face** by `Material3d.contentLift`, a
+fifth of a logical pixel on the node tier — because *on* the face and *in* it
+are different things, and two surfaces that share a plane both write depth
+there and come out striped. A `Switch3d` on a card is the case that showed it:
+nothing the switch could do would help, since what is behind it belongs to the
+application. Content that has to clear another slab's *thickness* rather than
+its face still wants `Thickness3d.stepOver`.
 
 ### A hover must not rebuild anything
 

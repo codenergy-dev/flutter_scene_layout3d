@@ -83,6 +83,7 @@ class SceneNodeShift3d extends SingleChildLayout3dWidget {
     super.key,
     this.shift = Offset3d.zero,
     this.scaleX = 1.0,
+    this.name,
     super.child,
   });
 
@@ -92,9 +93,14 @@ class SceneNodeShift3d extends SingleChildLayout3dWidget {
   /// How far to stretch it along x, about its own left edge.
   final double scaleX;
 
+  /// What the box calls itself in a tree dump, and how a test tells one
+  /// shift from another: every `Material3d` puts one of these inside itself
+  /// to lift its own content, so a component's own shift is worth naming.
+  final String? name;
+
   @override
   NodeShift3d createLayout(BuildContext context) =>
-      NodeShift3d(shift: shift, scaleX: scaleX);
+      NodeShift3d(shift: shift, scaleX: scaleX, name: name ?? 'NodeShift3d');
 
   @override
   void updateLayout(BuildContext context, NodeShift3d layout) {

@@ -89,7 +89,7 @@ void main() {
           tester,
           () => Slider3d(value: value, onChanged: (_) {}),
         );
-        final shifts = boxesOf<NodeShift3d>(it.surface);
+        final shifts = componentShifts(it.surface);
         expect(shifts, hasLength(2), reason: 'the fill and the thumb');
         expect(shifts[0].scaleX, closeTo(value, 1e-9));
         expect(
@@ -112,7 +112,7 @@ void main() {
           tester,
           () => Slider3d(value: entry.key, onChanged: (_) {}),
         );
-        final thumb = boxesOf<NodeShift3d>(it.surface)[1];
+        final thumb = componentShifts(it.surface)[1];
         expect(
           thumb.shift.x,
           closeTo(entry.value * dp(144 - 20), 1e-9),
@@ -171,7 +171,7 @@ void main() {
         tester,
         () => Slider3d(value: 0.6, divisions: 4, onChanged: (_) {}),
       );
-      expect(boxesOf<NodeShift3d>(it.surface)[0].scaleX, closeTo(0.5, 1e-9));
+      expect(componentShifts(it.surface)[0].scaleX, closeTo(0.5, 1e-9));
     });
   });
 
@@ -270,7 +270,7 @@ void main() {
       // track: the finger stopped just short of the far end, which is the
       // arithmetic rather than a rounding.
       expect(value, closeTo(1.20 / 1.24, 1e-6));
-      expect(boxesOf<NodeShift3d>(it.surface)[0].scaleX, closeTo(value, 1e-9));
+      expect(componentShifts(it.surface)[0].scaleX, closeTo(value, 1e-9));
       expect(
         it.panels[2].size.width,
         closeTo(track.size.width, 1e-9),
