@@ -84,6 +84,13 @@ import 'glyph_material.dart' show GlyphMaterial3d;
 /// Pointer input is not forwarded into the subtree: this package dispatches
 /// its own pointers against the layout tree, and a hit on a `RichText3d`
 /// stops at the box, exactly as it stops at a [Text3d].
+///
+/// **It is flat, where a [Text3d] is not.** An [AtlasText3dRenderer] gives
+/// every glyph a thickness by tracing its silhouette off the atlas raster;
+/// there is no atlas here and no per-glyph mask to trace, only one quad
+/// carrying a picture of a whole paragraph. A `RichText3d` next to a `Text3d`
+/// on the same surface will read as a decal beside a slab, which is the other
+/// half of the trade above.
 class RichText3d extends Layout3d {
   /// Creates a box over [text].
   RichText3d(

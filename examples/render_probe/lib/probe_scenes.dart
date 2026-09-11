@@ -2444,6 +2444,49 @@ final List<ProbeScene> kProbeScenes = <ProbeScene>[
       probes: {'panel': panel, 'middle': middle, 'left': left, 'right': right},
     );
   }, preload: installPanelPainter),
+
+  // ── A letter with a side to it ───────────────────────────────────────
+  //
+  // A glyph here is not a quad any more: it is a slab, with a front face, a
+  // back face and a wall traced around its silhouette. Nothing headless can
+  // check that. The atlas's outlines are arithmetic over a bitmap and are
+  // tested where the rest of the text arithmetic is; whether the wall is
+  // *drawn* — whether it is wound the right way round, whether the opaque
+  // pass keeps it, whether it is culled to nothing — is a question about a
+  // frame.
+  //
+  // The claim is one no single capture can make, so it is a pair: the same
+  // letter, on the same turned surface, drawn once thick and once flat. A
+  // letter with a wall has to cover more of the frame than the same letter
+  // without one, and the extra has to be on the side the turn presents. A
+  // wall wound inside out is culled and the pair comes out equal; a wall
+  // wound outward but shaded to nothing still moves the coverage, which is
+  // why the assertion is about ink and not about colour.
+  //
+  // Turned hard, at 0.55 radians. A wall is the *thickness* of a letter, so
+  // face-on it is a rim a pixel or two wide and a probe comparing two
+  // captures of it would be measuring its own tolerance.
+  for (final (id, thickness) in <(String, double?)>[
+    ('glyph_extrusion', null),
+    ('glyph_extrusion_flat', 0.0),
+  ])
+    ProbeScene(id, () {
+      final letter = Text3d(
+        'H',
+        style: const TextStyle(fontSize: 200, color: _panelBorder),
+        // A tenth of the em by default, which at 200dp is a wall 20dp deep:
+        // the same figure every label in an application gets, at a size a
+        // capture can resolve.
+        renderer: AtlasText3dRenderer(depth: thickness),
+        name: 'letter',
+      );
+      final surface = Layout3dSurface(
+        constraints: Constraints3d.tight(const Size3d(3.6, 2.4, 0.6)),
+        child: Center3d(child: letter),
+      );
+      surface.plane.rotation = Quaternion.axisAngle(Vector3(0, 1, 0), 0.55);
+      return ProbeSceneContent(surfaces: [surface], probes: {'letter': letter});
+    }, minCoverage: 0.01),
 ];
 
 /// One letter, small enough that three of them fit across a slab and big

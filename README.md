@@ -323,7 +323,8 @@ scene](docs/material-screen.png)
 
 That is the upright panel of `examples/layout3d_gallery`, photographed from a
 frame of the app running on macOS. Every panel in it is a slab with a thickness,
-every label is a quad out of a shared glyph atlas, and every one of them can be
+every letter and every icon is a slab too — extruded off a silhouette traced
+out of a shared glyph atlas — and every one of them can be
 pressed — a press is a camera ray walked down the layout tree. The gallery puts
 the same screen on the ground plane beside it, where an elevation stops being a
 distance toward the viewer and becomes a **height**.

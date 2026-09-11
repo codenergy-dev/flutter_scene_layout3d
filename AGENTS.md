@@ -123,6 +123,20 @@ discards where its own alpha is zero. The obvious fix — turning `depth_write`
 off — was photographed doing something worse, and that judgement is in
 `docs/traps.md`.
 
+After all of that, one thing the same app was still doing wrong was not a
+defect at all but an absence: every letter and every icon was **one flat
+quad**, so a screen of Material sat on panels four millimetres thick with type
+on it that had no thickness whatever, and turning a panel made the type read as
+a decal stuck to it. [A letter with a side to it](packages/flutter_scene_layout3d/plans/2026_09_11_a_letter_with_a_side_to_it.md)
+gives a glyph a front face, a back face and a wall around its silhouette. The
+silhouette is the interesting part: `dart:ui` exposes no glyph outlines and
+there is no font parser here, so the outline is **traced out of the atlas
+raster**, which the atlas already reads back to the CPU on its way to the GPU.
+That makes it arithmetic over a bitmap, which is testable headless like the
+rest of the text layer — and it puts the wall on the atlas's asynchronous clock
+rather than on layout's, which is the trap it added. `Icon3d` is one glyph of a
+font, so icons came out thick for free.
+
 A third finding came out of the same app a day later, reported as *the gallery
 blinks*: type on the upright screen appearing and disappearing as the panel
 turned. [A letter on a slab](packages/flutter_scene_layout3d/plans/2026_09_10_a_letter_on_a_slab.md)
@@ -142,7 +156,7 @@ it. And the glyph atlas was keyed by a style that still carried
 styles**. The first two had to land together: correcting the winding turns a
 buried label from a coin toss into a certainty.
 
-Thirteen things worth knowing before building on any of it, all written up in
+Fourteen things worth knowing before building on any of it, all written up in
 `docs/traps.md`: handing every `BoxDecoration3d` the *same* material makes a
 screen of panels come out one colour; a `TapTarget3d` reaches past its own
 extent but **its parent does not**, so a target has to sit outside every box
@@ -181,7 +195,12 @@ panel's own centre — `initializeMaterial3d()` installs the material that does
 it; and **a surface has to lift what is drawn on it off its own face**, because
 two surfaces sharing a plane both write depth there and come out striped rather
 than missing, which no component can fix for itself when the thing behind it
-belongs to the application (`Material3d.contentLift`).
+belongs to the application (`Material3d.contentLift`); and **a glyph's wall
+arrives with the texture rather than with the layout**, because a letter's
+silhouette is traced off the atlas raster and there is no other description of
+its shape on this side of the GPU — a label is flat on the frame it is first
+laid out on and grows its thickness when the atlas listener fires, which is a
+third counter (`GlyphAtlas3d.outlineRevision`) answering a third question.
 
 ## Running things
 
@@ -189,7 +208,7 @@ Everything below runs from the repository root unless stated otherwise.
 
 ```sh
 flutter pub get                                     # resolves the workspace
-cd packages/flutter_scene_layout3d && flutter test   # 953 today
+cd packages/flutter_scene_layout3d && flutter test   # 983 today
 cd packages/flutter_scene_material3d && flutter test # 517 today
 cd examples/layout3d_gallery && flutter test         # 3 today
 dart analyze                                        # must be clean, everywhere

@@ -328,6 +328,12 @@ export 'src/text/glyph_atlas.dart'
         glyphAtlasScaleFor,
         glyphAtlasStyleOf,
         uploadGlyphAtlas;
+export 'src/text/glyph_outline.dart'
+    show
+        GlyphOutline3d,
+        kGlyphOutlineThreshold,
+        kGlyphOutlineTolerance,
+        traceGlyphOutline;
 export 'src/text/line_break.dart' show TextBreak3d;
 export 'src/text/prepared_text.dart'
     show PreparedText3d, SegmentGraphemes3d, TextSegment3d;
@@ -335,7 +341,13 @@ export 'src/text/rich_text3d.dart'
     show RichText3d, buildTextQuadGeometry, textQuadCorners;
 export 'src/text/text3d.dart' show Text3d;
 export 'src/text/text_geometry.dart'
-    show ShapedRun3d, TextGlyphQuad3d, TextRunShaper3d, buildTextGlyphQuads;
+    show
+        GlyphWallSegment3d,
+        ShapedRun3d,
+        TextGlyphQuad3d,
+        TextRunShaper3d,
+        buildGlyphWallSegments,
+        buildTextGlyphQuads;
 export 'src/text/text_layout.dart' show TextLayout3d, TextLine3d, TextRun3d;
 export 'src/text/text_measurement.dart'
     show

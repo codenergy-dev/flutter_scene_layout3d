@@ -1184,20 +1184,31 @@ scene has nothing to add to.
 `SceneText3d`, out of the same glyph atlas as every label. The catalogue plan
 guessed that would work; `examples/render_probe`'s `icon_glyph` scene proved
 it on a GPU, next to a control with no renderer that draws nothing. So an icon
-costs one quad, a screen of icons and labels is one texture, and everything
-the label path already has — measurement off the relayout path, the unit
-contract, the clip planes — applies unchanged.
+costs a handful of triangles, a screen of icons and labels is one texture, and
+everything the label path already has — measurement off the relayout path, the
+unit contract, the clip planes — applies unchanged.
 
 ```dart
 Icon3d(Icons.favorite, size: 24)          // colour from the surface it is on
 ```
 
-Two consequences of being text. It is drawn **unlit**, like every label, so it
-keeps its colour as a surface turns away from a light while the panel under it
-does not — which means contrast has to be chosen against the unlit glyph and
-the lit panel. And `IconData.matchTextDirection` is not honoured: a mirrored
-icon needs a negative scale on the glyph quad, which the atlas renderer does
-not express.
+Three consequences of being text. It **has a thickness**, because
+`AtlasText3dRenderer` extrudes a glyph off a silhouette it traces out of the
+atlas raster: a 24dp icon is about as deep as a `Card3d`, so it reads as the
+same material as the surface it is drawn on rather than as a sticker. The
+figure is the renderer's, not this widget's, which is the right coupling — an
+icon that stood proud of the label beside it would look like a mistake, and a
+screen that wants flatter icons wants a flatter `textRendererFactory` and gets
+flatter labels with it.
+
+It is drawn **unlit**, like every label, so it keeps its colour as a surface
+turns away from a light while the panel under it does not — which means
+contrast has to be chosen against the unlit glyph and the lit panel. The
+extrusion's wall does not change that: its shading is baked in, lit from the
+letter's own upper left, so it turns with the glyph instead of dimming.
+
+And `IconData.matchTextDirection` is not honoured: a mirrored icon needs a
+negative scale on the glyph quad, which the atlas renderer does not express.
 
 ## Naming a type style instead of building one
 

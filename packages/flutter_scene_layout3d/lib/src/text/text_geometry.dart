@@ -1,10 +1,12 @@
 import 'dart:collection';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:characters/characters.dart';
 import 'package:flutter/painting.dart' show TextStyle;
 
 import 'glyph_atlas.dart';
+import 'glyph_outline.dart';
 import 'text_layout.dart';
 import 'text_measurement.dart' show buildParagraph;
 
@@ -195,4 +197,94 @@ List<TextGlyphQuad3d> buildTextGlyphQuads({
     }
   }
   return quads;
+}
+
+/// One segment of the wall around an extruded glyph, placed in the block.
+///
+/// The wall's counterpart to [TextGlyphQuad3d], and deliberately as small:
+/// four numbers in **logical pixels from the block's top-left**, `y`
+/// downward, in the order the silhouette was traced. A renderer sweeps it
+/// through the extrusion depth and has two triangles.
+///
+/// The order matters. A segment's **outward normal is `(-dy, dx)`**, which
+/// with `y` downward points away from the ink — out of a stroke on an outer
+/// contour, into the gap on the inner contour of an `o`. That is the
+/// invariant [GlyphOutline3d] winds its loops to hold, and the only thing
+/// standing between a letter with sides and a letter turned inside out.
+class GlyphWallSegment3d {
+  /// Records a placed wall segment.
+  const GlyphWallSegment3d({
+    required this.grapheme,
+    required this.x0,
+    required this.y0,
+    required this.x1,
+    required this.y1,
+  });
+
+  /// The grapheme cluster this segment walls.
+  final String grapheme;
+
+  /// The segment's ends, in logical pixels from the block's top-left.
+  final double x0;
+  final double y0;
+  final double x1;
+  final double y1;
+
+  /// How far the segment runs across the face, in logical pixels.
+  double get length => math.sqrt((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0));
+
+  /// The unit vector pointing away from the ink, in the plane of the face.
+  ///
+  /// `(-dy, dx)` normalized. A zero-length segment has no direction to speak
+  /// of and reports `(0, 0)`; a renderer skips it rather than dividing by
+  /// nothing.
+  (double, double) get outwardNormal {
+    final run = length;
+    if (run == 0.0) return (0.0, 0.0);
+    return (-(y1 - y0) / run, (x1 - x0) / run);
+  }
+
+  @override
+  String toString() =>
+      'GlyphWallSegment3d("$grapheme" '
+      '${x0.toStringAsFixed(1)},${y0.toStringAsFixed(1)} -> '
+      '${x1.toStringAsFixed(1)},${y1.toStringAsFixed(1)})';
+}
+
+/// Places each glyph's traced silhouette at the quad that draws it.
+///
+/// The wall half of [buildTextGlyphQuads], and the same kind of thing: pure
+/// arithmetic over the quads the layout produced and the outlines the atlas
+/// traced, in logical pixels, with no GPU anywhere near it.
+///
+/// A quad whose glyph the atlas has not traced yet contributes nothing. That
+/// is the ordinary state on the frame a label is first laid out — an outline
+/// is read off the raster, and the raster is uploaded asynchronously — so a
+/// caller gets a flat label first and a walled one when
+/// [GlyphAtlas3d.outlineRevision] moves.
+List<GlyphWallSegment3d> buildGlyphWallSegments({
+  required List<TextGlyphQuad3d> quads,
+  required GlyphAtlas3d atlas,
+}) {
+  final segments = <GlyphWallSegment3d>[];
+  for (final quad in quads) {
+    final outline = atlas.outlineFor(quad.grapheme);
+    if (outline == null || outline.isEmpty) continue;
+    for (final contour in outline.contours) {
+      for (var i = 0; i < contour.length; i++) {
+        final from = contour[i];
+        final to = contour[(i + 1) % contour.length];
+        segments.add(
+          GlyphWallSegment3d(
+            grapheme: quad.grapheme,
+            x0: quad.left + from.dx,
+            y0: quad.top + from.dy,
+            x1: quad.left + to.dx,
+            y1: quad.top + to.dy,
+          ),
+        );
+      }
+    }
+  }
+  return segments;
 }

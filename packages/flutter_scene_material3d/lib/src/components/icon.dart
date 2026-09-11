@@ -36,9 +36,20 @@ import 'reading_direction.dart';
 /// planes — applies unchanged. The alternative, a mesh or a texture per
 /// icon, would have been a phase of its own.
 ///
-/// ## Three things it inherits from being text
+/// ## Four things it inherits from being text
 ///
-/// **It is drawn unlit.** `AtlasText3dRenderer` uses an `UnlitMaterial`, so an
+/// **It has a thickness.** `AtlasText3dRenderer` extrudes a glyph — a front
+/// face, a back face, and a wall around the silhouette it traced off the
+/// atlas raster — so an icon is a slab like everything else in the catalogue
+/// rather than a sticker on one. It is a tenth of [size] deep by default,
+/// which makes a 24dp icon about as thick as a `Card3d`, and it is the
+/// renderer's figure rather than this widget's: a screen that wants flatter
+/// icons wants a flatter `textRendererFactory`, and gets flatter labels with
+/// them, which is the right coupling — an icon that stood proud of the text
+/// beside it would not read as the same material.
+///
+/// **It is drawn unlit.** `AtlasText3dRenderer` draws the faces with an
+/// unlit material and bakes the wall's shading into its vertex colours, so an
 /// icon keeps its colour as the surface it sits on turns away from a light
 /// while the panel underneath does not. That is deliberate and matches
 /// Flutter — text that dims as a card rotates is unreadable — but it means

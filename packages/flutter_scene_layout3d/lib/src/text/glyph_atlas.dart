@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter/painting.dart' show Canvas, Color, Offset, TextStyle;
 import 'package:flutter_scene/scene.dart' show Texture2D, TextureSource;
 
+import 'glyph_outline.dart';
 import 'text_measurement.dart' show buildParagraph;
 
 /// One glyph's place in a [GlyphAtlas3d], and where it sits against the pen.
@@ -215,6 +216,8 @@ class GlyphAtlas3d extends ChangeNotifier {
 
   final Map<String, GlyphSlot3d> _slots = <String, GlyphSlot3d>{};
   final Map<String, _GlyphInk> _ink = <String, _GlyphInk>{};
+  final Map<String, GlyphOutline3d> _outlines = <String, GlyphOutline3d>{};
+  int _outlineRevision = 0;
 
   /// The atlas edge, in texels. Always a power of two times [initialSize].
   int get size => _size;
@@ -245,6 +248,26 @@ class GlyphAtlas3d extends ChangeNotifier {
 
   /// How many distinct glyphs the atlas holds.
   int get glyphCount => _slots.length;
+
+  /// Bumped every time a glyph's silhouette is traced.
+  ///
+  /// The third of the three counters, and it answers the third question. Two
+  /// renderers watching this atlas already ask *are my texture coordinates
+  /// still valid* ([generation]) and *is my picture of the atlas still
+  /// complete* ([revision]); a renderer that extrudes its glyphs also has to
+  /// ask *does the atlas know the shape of my letters yet*, because that
+  /// answer arrives with the pixels rather than with the packing. A label
+  /// laid out before the first flush has slots and no outlines, so it draws
+  /// flat and rebuilds when this moves.
+  int get outlineRevision => _outlineRevision;
+
+  /// [grapheme]'s silhouette, or null until the raster it is traced from has
+  /// been read back.
+  ///
+  /// In logical pixels from the top-left of the glyph's padded cell, which is
+  /// where its quad's top-left is too — see [GlyphOutline3d]. A blank glyph
+  /// never gets one, because there is nothing to trace.
+  GlyphOutline3d? outlineFor(String grapheme) => _outlines[grapheme];
 
   /// The style a glyph is rasterized at: [style] at [scale], white, with
   /// room around it.
@@ -314,6 +337,9 @@ class GlyphAtlas3d extends ChangeNotifier {
           continue;
         }
         _needsRaster = false;
+        // Before the upload, so a listener woken by the texture finds the
+        // silhouettes already there and rebuilds once rather than twice.
+        _traceOutlines(image);
         _texture = _upload(image);
         notifyListeners();
       }
@@ -362,6 +388,36 @@ class GlyphAtlas3d extends ChangeNotifier {
     } finally {
       image.dispose();
     }
+  }
+
+  /// Traces every glyph whose silhouette this atlas does not know yet.
+  ///
+  /// Called from [flush], with the image it just accepted, because that is
+  /// the only moment the ink exists as bytes on this side of the GPU. Each
+  /// glyph is traced once and kept: an outline is stated in logical pixels
+  /// from its own cell's corner, so a repack moves the cell without changing
+  /// the answer.
+  ///
+  /// The cost is one pass over each *new* glyph's cell, which is the same
+  /// order as rasterizing it and is paid on the frame the pixels arrive
+  /// rather than during layout.
+  void _traceOutlines(GlyphAtlasImage3d image) {
+    var traced = false;
+    for (final slot in _slots.values) {
+      if (slot.isBlank || _outlines.containsKey(slot.grapheme)) continue;
+      _outlines[slot.grapheme] = traceGlyphOutline(
+        grapheme: slot.grapheme,
+        pixels: image.pixels,
+        stride: image.size,
+        x: slot.x,
+        y: slot.y,
+        width: slot.width,
+        height: slot.height,
+        scale: scale,
+      );
+      traced = true;
+    }
+    if (traced) _outlineRevision++;
   }
 
   _GlyphInk _measureGlyph(String grapheme) {
@@ -506,6 +562,7 @@ class GlyphAtlas3d extends ChangeNotifier {
   void dispose() {
     _slots.clear();
     _ink.clear();
+    _outlines.clear();
     _texture = null;
     super.dispose();
   }

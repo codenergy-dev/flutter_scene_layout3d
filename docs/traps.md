@@ -592,6 +592,41 @@ still had it. The raster is white either way, underline included
 (`GlyphAtlas3d.rasterStyle` whitens the decoration too), so the key must not
 carry a colour the raster does not.
 
+### A glyph's wall arrives with the texture, not with the layout
+
+Type here has a thickness: a glyph is a slab with a front face, a back face and
+a wall traced around its silhouette, which is what stops a label on a turning
+panel from reading as a decal. The silhouette is traced off the **atlas
+raster** — `dart:ui` exposes no glyph outlines and there is no font parser here,
+so the ink's own bitmap is the only description of the letter's shape anything
+on this side of the GPU has.
+
+That puts the wall on the atlas's asynchronous clock rather than on layout's.
+`GlyphAtlas3d.slotFor` is packing arithmetic and answers immediately;
+`GlyphAtlas3d.outlineFor` returns null until a `flush` has read the pixels
+back. **A label is therefore flat on the frame it is first laid out on**, and
+what fills it in is `GlyphAtlas3d.outlineRevision` moving and the renderer's
+atlas listener firing — not a relayout. A renderer of your own that watches
+`generation` alone will draw flat type for ever, which is the same shape of
+mistake as watching `generation` when you meant `revision`: three counters, three
+questions, and conflating any two of them costs a picture.
+
+Two consequences worth stating:
+
+- **The trace threshold is `text_glyph3d.fmat`'s `alpha_cutoff`, and has to
+  be.** The wall meets the face exactly where the face's fragments stop being
+  discarded. Move one without the other and every stroke grows a rim of side
+  colour, or the face overhangs its own edge.
+- **The wall grows toward the viewer.** The back face stays on the plane the
+  flat quad used to occupy, so every `contentLift` and `depthOffset` figure
+  computed against that plane still clears the surface underneath. An extrusion
+  centred on the glyph plane would have buried half of every letter in the
+  panel it is written on.
+
+`RichText3d` has no wall. It draws a whole paragraph Flutter rasterized in
+colour onto one quad, so there is no per-glyph mask to trace and no atlas
+holding one.
+
 ## Pointers
 
 - **`TapTarget3d` grows the ray region but not the box.** The Material 48dp

@@ -2207,6 +2207,59 @@ void main() {
       );
     });
   });
+
+  group('the picture: type that is not a decal', () {
+    testWidgets('a glyph has a side to it', (tester) async {
+      // The pair. The same letter, on the same turned surface, drawn once
+      // with a wall around its silhouette and once without one.
+      final thick = await _draw(tester, kProbeScenes.byId('glyph_extrusion'));
+      final flat = await _draw(
+        tester,
+        kProbeScenes.byId('glyph_extrusion_flat'),
+      );
+
+      // Both drew a letter, so the comparison below is between two letters
+      // rather than between a letter and an empty frame.
+      expect(flat.frame.coverage, greaterThan(0.01));
+      expect(thick.frame.coverage, greaterThan(0.01));
+
+      // A letter with a wall covers more of the frame than the same letter
+      // without one. This is the whole claim, and it is the one that fails
+      // when the wall is wound inside out: back-face culling throws it away
+      // and the two captures come out the same.
+      expect(
+        thick.frame.coverage,
+        greaterThan(flat.frame.coverage * 1.1),
+        reason:
+            'the extruded letter covers no more of the frame than the flat '
+            'one (${thick.frame.coverage} against ${flat.frame.coverage}), '
+            'so no wall was drawn: check the winding, or whether the opaque '
+            'pass kept it',
+      );
+
+      // And the extra ink is on one side, because the extrusion runs toward
+      // the viewer and the surface is turned: a wall shows on the face the
+      // turn presents and not on the one it hides. A wall that came out
+      // symmetrical would be geometry centred on the letter's own plane
+      // rather than grown forward off it, which is what would break every
+      // `contentLift` a component computed against that plane.
+      final band = ui.Rect.fromCenter(
+        center: flat.centerOf('letter'),
+        width: 600,
+        height: 200,
+      );
+      final flatCentre = flat.frame.centroidXIn(band)!;
+      final thickCentre = thick.frame.centroidXIn(band)!;
+      expect(
+        (thickCentre - flatCentre).abs(),
+        greaterThan(2.0),
+        reason:
+            'the wall added ink evenly on both sides of the letter, so it is '
+            'centred on the glyph plane rather than grown toward the viewer: '
+            'flat at $flatCentre, thick at $thickCentre',
+      );
+    });
+  });
 }
 
 extension on List<ProbeScene> {

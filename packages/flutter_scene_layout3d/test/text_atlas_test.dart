@@ -14,6 +14,7 @@ import 'package:flutter/painting.dart'
     show Color, TextAlign, TextDecoration, TextStyle;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:vector_math/vector_math.dart' show Vector3;
 
 const TextStyle style = TextStyle(fontSize: 10);
 
@@ -265,6 +266,242 @@ void main() {
         expect(image.pixels, isA<Uint8List>());
       },
     );
+  });
+
+  group('the atlas traces', () {
+    test('a silhouette per glyph, with the pixels and not before', () async {
+      final recording = RecordingAtlas();
+      final atlas = recording.atlas;
+      atlas.slotFor('a');
+      // A slot is packing arithmetic and is available at once; an outline is
+      // read off the raster, and the raster is asynchronous.
+      expect(atlas.outlineFor('a'), isNull);
+      expect(atlas.outlineRevision, 0);
+      await atlas.flush();
+      final outline = atlas.outlineFor('a');
+      expect(outline, isNotNull);
+      expect(outline!.isEmpty, isFalse);
+      expect(atlas.outlineRevision, 1);
+    });
+
+    test('the test font\'s solid em box, as one rectangle', () async {
+      final recording = RecordingAtlas();
+      final atlas = recording.atlas;
+      final slot = atlas.slotFor('a');
+      await atlas.flush();
+      final outline = atlas.outlineFor('a')!;
+      expect(outline.contours, hasLength(1));
+      expect(outline.contours.single, hasLength(4));
+      // In logical pixels from the cell's top-left, which is where the quad's
+      // own top-left is, so an outline drops onto a placed quad with an add.
+      for (final point in outline.contours.single) {
+        expect(point.dx, inInclusiveRange(0.0, slot.width / atlas.scale));
+        expect(point.dy, inInclusiveRange(0.0, slot.height / atlas.scale));
+      }
+    });
+
+    test('a blank glyph gets nothing to trace', () async {
+      final recording = RecordingAtlas();
+      final atlas = recording.atlas;
+      atlas.slotFor('a');
+      atlas.slotFor(' ');
+      await atlas.flush();
+      expect(atlas.outlineFor(' '), isNull);
+    });
+
+    test('once per glyph, so the revision settles', () async {
+      final recording = RecordingAtlas();
+      final atlas = recording.atlas;
+      atlas.slotFor('a');
+      await atlas.flush();
+      expect(atlas.outlineRevision, 1);
+      atlas.slotFor('b');
+      await atlas.flush();
+      expect(atlas.outlineRevision, 2);
+      // Nothing new: nothing traced.
+      atlas.slotFor('a');
+      await atlas.flush();
+      expect(atlas.outlineRevision, 2);
+    });
+
+    test('an outline survives the repack that invalidates every UV', () async {
+      final recording = RecordingAtlas(initialSize: 32);
+      final atlas = recording.atlas;
+      final before = atlas.slotFor('a');
+      await atlas.flush();
+      final traced = atlas.outlineFor('a')!;
+      final generation = atlas.generation;
+      for (final grapheme in 'bcdefghijkl'.split('')) {
+        atlas.slotFor(grapheme);
+      }
+      await atlas.flush();
+      expect(
+        atlas.generation,
+        greaterThan(generation),
+        reason: 'the atlas did not repack, so there is nothing to survive',
+      );
+      expect(atlas.slotFor('a').u1, isNot(before.u1));
+      // The texture coordinates are gone and the outline is not: a repack
+      // moves a cell and resizes the atlas, and an outline is stated in
+      // logical pixels from the cell's own corner.
+      expect(atlas.outlineFor('a')!.contours, traced.contours);
+      expect(atlas.outlineRevision, 2);
+    });
+  });
+
+  group('the wall', () {
+    test('is one segment per side of a traced silhouette', () async {
+      final recording = RecordingAtlas();
+      final atlas = recording.atlas;
+      await atlas.flush();
+      final quads = buildTextGlyphQuads(layout: layoutOf('a'), atlas: atlas);
+      await atlas.flush();
+      final segments = buildGlyphWallSegments(quads: quads, atlas: atlas);
+      expect(segments, hasLength(4));
+      expect(segments.every((s) => s.grapheme == 'a'), isTrue);
+    });
+
+    test('is empty until the atlas has traced anything', () {
+      final atlas = RecordingAtlas().atlas;
+      final quads = buildTextGlyphQuads(layout: layoutOf('a'), atlas: atlas);
+      expect(buildGlyphWallSegments(quads: quads, atlas: atlas), isEmpty);
+    });
+
+    test('sits on the quad that draws the glyph', () async {
+      final recording = RecordingAtlas();
+      final atlas = recording.atlas;
+      final quads = buildTextGlyphQuads(layout: layoutOf('a'), atlas: atlas);
+      await atlas.flush();
+      final quad = quads.single;
+      final segments = buildGlyphWallSegments(quads: quads, atlas: atlas);
+      for (final segment in segments) {
+        expect(segment.x0, inInclusiveRange(quad.left, quad.right));
+        expect(segment.y0, inInclusiveRange(quad.top, quad.bottom));
+      }
+    });
+
+    test('carries a normal pointing away from the ink', () async {
+      final recording = RecordingAtlas();
+      final atlas = recording.atlas;
+      final quads = buildTextGlyphQuads(layout: layoutOf('a'), atlas: atlas);
+      await atlas.flush();
+      final segments = buildGlyphWallSegments(quads: quads, atlas: atlas);
+      final middleX =
+          segments.map((s) => s.x0).reduce((a, b) => a + b) / segments.length;
+      final middleY =
+          segments.map((s) => s.y0).reduce((a, b) => a + b) / segments.length;
+      for (final segment in segments) {
+        final (nx, ny) = segment.outwardNormal;
+        final towardX = (segment.x0 + segment.x1) / 2 - middleX;
+        final towardY = (segment.y0 + segment.y1) / 2 - middleY;
+        expect(
+          nx * towardX + ny * towardY,
+          greaterThan(0.0),
+          reason: '$segment faces into the letter',
+        );
+      }
+    });
+
+    test('is two triangles a segment, wound around that normal', () async {
+      final recording = RecordingAtlas();
+      final atlas = recording.atlas;
+      final quads = buildTextGlyphQuads(layout: layoutOf('a'), atlas: atlas);
+      await atlas.flush();
+      final segments = buildGlyphWallSegments(quads: quads, atlas: atlas);
+      final builder = AtlasText3dRenderer.buildGlyphWallGeometry(
+        segments,
+        0.01,
+        0.02,
+        const Color(0xFFFFFFFF),
+      );
+      expect(builder.vertexCount, segments.length * 4);
+      expect(builder.triangleCount, segments.length * 2);
+      for (final segment in segments) {
+        final corners = AtlasText3dRenderer.glyphWallCorners(
+          segment,
+          0.01,
+          0.02,
+        );
+        final normal = (corners[1] - corners[0]).cross(corners[2] - corners[0]);
+        final (nx, ny) = segment.outwardNormal;
+        expect(normal.dot(Vector3(nx, ny, 0.0)), greaterThan(0.0));
+      }
+    });
+
+    test('runs from the old plane forward to the viewer', () async {
+      final recording = RecordingAtlas();
+      final atlas = recording.atlas;
+      final quads = buildTextGlyphQuads(layout: layoutOf('a'), atlas: atlas);
+      await atlas.flush();
+      final segment = buildGlyphWallSegments(quads: quads, atlas: atlas).first;
+      final corners = AtlasText3dRenderer.glyphWallCorners(segment, 0.01, 0.02);
+      expect(corners[0].z, 0.0);
+      expect(corners[1].z, 0.0);
+      // Toward the viewer is negative z, and the back face is where the flat
+      // quad used to be, so nothing a component lifted has to move.
+      expect(corners[2].z, closeTo(-0.02, 1e-9));
+      expect(corners[3].z, closeTo(-0.02, 1e-9));
+    });
+
+    test('a zero thickness builds nothing', () {
+      expect(
+        AtlasText3dRenderer.buildGlyphWallGeometry(
+          const <GlyphWallSegment3d>[
+            GlyphWallSegment3d(grapheme: 'a', x0: 0, y0: 0, x1: 1, y1: 0),
+          ],
+          0.01,
+          0.0,
+          const Color(0xFFFFFFFF),
+        ).vertexCount,
+        0,
+      );
+    });
+
+    test('is shaded from the letter\'s own upper left', () {
+      // Up is -y here, so a wall facing up is the lit one and the wall facing
+      // down is the dark one. The floor is not zero: a wall that went to
+      // black would read as a hole beside the stroke.
+      final up = AtlasText3dRenderer.wallShade(0.0, -1.0);
+      final down = AtlasText3dRenderer.wallShade(0.0, 1.0);
+      final left = AtlasText3dRenderer.wallShade(-1.0, 0.0);
+      expect(up, greaterThan(down));
+      expect(left, greaterThan(AtlasText3dRenderer.wallShade(1.0, 0.0)));
+      expect(down, greaterThanOrEqualTo(AtlasText3dRenderer.wallShadeFloor));
+      expect(up, lessThanOrEqualTo(1.0));
+    });
+  });
+
+  group('the depth of a glyph', () {
+    test('is a tenth of the font size unless one is stated', () {
+      final renderer = AtlasText3dRenderer();
+      expect(renderer.resolveDepth(const TextStyle(fontSize: 20)), 2.0);
+      expect(
+        renderer.resolveDepth(const TextStyle(fontSize: 57)),
+        closeTo(5.7, 1e-9),
+      );
+      // Icons are text, so a 24dp icon is thicker than the label beside it,
+      // which is what keeps both looking like the same material.
+      expect(
+        renderer.resolveDepth(const TextStyle(fontSize: 24)),
+        closeTo(2.4, 1e-9),
+      );
+    });
+
+    test('is what was stated, when one was', () {
+      final renderer = AtlasText3dRenderer(depth: 1.5);
+      expect(renderer.resolveDepth(const TextStyle(fontSize: 20)), 1.5);
+      expect(
+        AtlasText3dRenderer(depth: 0.0).resolveDepth(const TextStyle()),
+        0.0,
+      );
+    });
+
+    test('falls back to the measurement half\'s own default size', () {
+      expect(
+        AtlasText3dRenderer(depthFactor: 0.5).resolveDepth(const TextStyle()),
+        7.0,
+      );
+    });
   });
 
   group('the cache', () {

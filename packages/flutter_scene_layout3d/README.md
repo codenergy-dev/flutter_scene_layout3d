@@ -340,8 +340,10 @@ measurement layer has to build a `ui.Paragraph` out of them anyway. Font sizes
 are logical pixels, as everywhere in Flutter, and the unit contract above is
 what turns them into world units: a 14sp label is `metrics.sp(14)` tall
 whether the surface is bound to a camera or drawn at an authored scale. The
-box has **no thickness** by default — glyphs are flat, and the slab behind a
-label belongs to whatever draws the label's background.
+*box* has no thickness by default — the slab behind a label belongs to
+whatever draws the label's background — but the **glyphs do**: a letter drawn
+by the atlas renderer is extruded, and the section on drawing says by how
+much.
 
 ### Prepare once, lay out often
 
@@ -454,6 +456,58 @@ glyphs toward the viewer, because text drawn exactly on the plane of the panel
 behind it is text at the same depth as that panel, and the depth test does not
 break ties.
 
+### A letter with a side to it
+
+A glyph is a slab rather than a quad: a front face, a back face, and a wall
+around the letter's silhouette. Turn a panel and the type on it shows an edge,
+which is the difference between something *in* the scene and a decal stuck to
+it, and it costs a card next to it looking four millimetres thick while its
+own title looked like nothing.
+
+The silhouette has to come from somewhere, and `dart:ui` exposes no glyph
+outlines — there is no font parser here, and extruding one is the textbook
+answer this package cannot reach for. What it has instead is the raster: the
+atlas already reads its own pixels back on the way to the GPU, so the shape of
+the ink is sitting in a byte buffer. `traceGlyphOutline` walks that buffer's
+boundary, links it into closed loops, and simplifies each one; the result is a
+`GlyphOutline3d` in logical pixels from the glyph's own cell, cached per
+grapheme and therefore untouched by a repack.
+
+The consequence to know is the timing. **A wall arrives with the texture, not
+with the layout.** A slot is packing arithmetic and is available the moment a
+label lays out; an outline exists only once a `flush` has read the pixels, so
+a label is flat on its first frame and grows its wall when the atlas says it
+has one. The renderer is already listening to the atlas for exactly this class
+of news, so nothing needs to lay out again.
+
+```dart
+// A tenth of the font size, which is what an unadorned renderer does: a 24dp
+// icon comes out about as thick as a Card3d, a 12dp caption barely there.
+AtlasText3dRenderer()
+
+// Or state it outright, in logical pixels, when the type has to agree with a
+// component's own thickness scale.
+AtlasText3dRenderer(depth: 2.0)
+
+// Or turn it off, and get the single flat quad this renderer used to draw.
+AtlasText3dRenderer(depth: 0.0)
+```
+
+What it costs, measured rather than estimated: about **18 wall segments a
+glyph** at UI sizes and 28 for a 24dp icon, so a 35-character line is roughly
+640 quads of wall against 35 of face. That is a large multiple of what a flat
+label cost and a small number in absolute terms — the tolerance is what holds
+it there, and it is stated in logical pixels so that turning `resolution` up
+sharpens the face without multiplying the wall.
+
+The extrusion grows **toward the viewer**: the back face stays on the plane
+the flat quad occupied, so every lift already computed to clear the surface
+underneath still clears it. The wall is opaque and its shading is baked into
+its vertex colours — lit from the letter's own upper left, whichever way the
+panel is turned — because a wall that answered to the scene's lighting would
+go dark exactly where a turn makes it most visible, and type here is drawn
+unlit for that reason.
+
 ### Type on a panel wants one more call
 
 A glyph mesh blends, so it is drawn in the engine's translucent pass, and that
@@ -492,7 +546,10 @@ serves every colour, and the colour is applied by the material.
 
 ### RichText3d, the escape hatch
 
-When the atlas is the wrong tool, hand the whole problem back to Flutter:
+When the atlas is the wrong tool, hand the whole problem back to Flutter.
+Note what you give up along with the atlas: a `RichText3d` is one quad
+carrying a picture of a paragraph, so it has no per-glyph mask and no wall,
+and it will read as flat beside a `Text3d` on the same surface.
 
 ```dart
 RichText3d(
