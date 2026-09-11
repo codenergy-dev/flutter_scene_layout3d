@@ -1,0 +1,737 @@
+---
+status: pending
+created_at: 2026-09-11T21:20:18Z
+updated_at: 2026-09-11T21:20:18Z
+commit: abc2469ce5c4ec4c41e2738fc5acf55bcf40640a
+---
+
+# What a real application still needs
+
+A map, not a work item — the second one this repository has. The first,
+[what a component library needs from this package](2026_08_25_material3d_readiness_overview.md),
+asked whether the layout protocol could carry a Material catalogue and then
+built the ten plans that made it true. This one asks the question after that:
+**can a person build an application people use on top of both packages**, and
+it is drawn from an audit of the whole stack at `abc2469`.
+
+Each item below becomes a plan of its own, in the package it belongs to,
+written to be handed to an implementer who has read only that plan and this
+document's entry for it. They are not written yet, deliberately: a plan
+written six items ahead of the work reasons against a codebase that will have
+moved, and this repository has already learned that
+[closing a plan can invalidate another one](../../../AGENTS.md). **The plan is
+written when the item is picked up.** What this document owes each of them is
+the boundary, the design question, and the evidence the audit turned up — so
+that writing it is an afternoon and not a re-investigation.
+
+## What the audit found, and what it did not
+
+The baseline is genuinely sound, and that is the finding that shapes
+everything below. At `abc2469`: **991** headless tests green in the layout
+package, **517** in the Material package, **75** render probes, `dart analyze`
+clean across the workspace, a clean working tree, and — the number worth
+dwelling on — **eight** matches in the two packages for
+`TODO|FIXME|XXX|HACK|unimplemented`, every one of them an explanatory comment
+rather than a marker. CI runs the formatter, the analyzer, both suites and the
+render probes on a runner with a real GPU.
+
+So **what stands between this and a production application is not debt and not
+architecture. It is surface** — the layer the application author's hands
+actually touch. The layout algebra, the node tiers, the unit contract, the
+semantics tree, the clip contract and ray dispatch are all in place and
+faithful, and every item on this map lands on them without reopening a
+decision. That is the good news and it is load-bearing: it means this map is
+additive, and it means the items can be taken in almost any order without one
+of them invalidating another's design.
+
+The bad news is the shape of what is missing. It is not exotic. It is the
+mouse wheel, a photograph on a panel, a row that reads right to left, a
+keyboard, and a widget that spares every application ninety lines of ray
+plumbing. **The promise is "the Flutter everyone knows, in three dimensions",
+and the gaps are concentrated exactly where a person's expectations are
+strongest**, which is the worst place for them to be: a developer forgives a
+missing `Stepper3d` and does not forgive a `ListView3d` that ignores the
+trackpad.
+
+## How this is measured, and what is deliberately downstream
+
+The test of this map is not that every row is ticked. It is that
+**the packages, consumed by path from this machine, can carry screens from
+applications that already exist** — real ones, already shipped in two
+dimensions, re-laid on this stack to find out where it bends. That is the
+acceptance criterion, it is a better oracle than any checklist, and it is the
+reason for the exclusion below.
+
+**Publishing to pub.dev is out of scope here, and on purpose.** The question
+"is this worth publishing" is answered by the exercise above, not before it,
+so the packaging work it would need — a hosted dependency in place of
+`flutter_scene_material3d`'s `path:` reference to this package, version
+numbers, and a decision about the `web` platform the two `pubspec.yaml` files
+declare but no lane has ever verified — belongs to a plan written *after*
+those ports have been done and have said yes. Nothing on this map depends on
+it, and one thing on it ([the record of what shipped](#the-record-of-what-shipped))
+is the part of that work worth doing now anyway, because it is already wrong
+rather than merely absent.
+
+Two things outside this map's scope for the older reason — they are genuine
+design questions rather than absences, and the Material catalogue plan
+[says so in its own words](../../flutter_scene_material3d/plans/2026_09_01_flutter_scene_material3d.md):
+what a **window size class** means for a surface floating in a room, and what
+**"off the edge"** means for a menu on a panel that may be at any angle. Both
+are touched by items here — the first by
+[a screen that knows how big it is](#a-screen-that-knows-how-big-it-is) — and
+neither is settled by them.
+
+## The plans
+
+Seventeen, in five lanes. The package column matters: a change to the protocol
+that the catalogue needs gets its plan **here**, not a line item in a Material
+plan, which is the rule phase 0 established and every phase since has obeyed.
+
+| Plan | Package | What it unblocks |
+| --- | --- | --- |
+| [An application that does not wire its own rays](#an-application-that-does-not-wire-its-own-rays) | layout3d | every application, ninety lines each |
+| [A wheel, a trackpad and a key that reach a box](#a-wheel-a-trackpad-and-a-key-that-reach-a-box) | layout3d | scrolling on desktop and web; activating a control without a pointer |
+| [A row that reads right to left](#a-row-that-reads-right-to-left) | layout3d | every non-LTR locale |
+| [A picture on a panel](#a-picture-on-a-panel) | layout3d | avatars, photographs, gradients, logos |
+| [A box that fades](#a-box-that-fades) | layout3d | `Opacity3d`, and every fade in the motion lane |
+| [A letter someone can type](#a-letter-someone-can-type) | layout3d | text fields, forms, search, pickers |
+| [An item that keeps its state](#an-item-that-keeps-its-state) | layout3d | forms in lists; the declarative forms still missing |
+| [A screen that knows how big it is](#a-screen-that-knows-how-big-it-is) | layout3d | accessibility text scale, insets, responsive screens |
+| [A route that arrives instead of appearing](#a-route-that-arrives-instead-of-appearing) | layout3d | transitions, fades, `Hero3d` |
+| [An application with more than one screen](#an-application-with-more-than-one-screen) | layout3d | named routes, deep links, the system back button |
+| [A way to test a screen someone else built](#a-way-to-test-a-screen-someone-else-built) | layout3d | anyone building on this, including us |
+| [The motion tokens](#the-motion-tokens) | material3d | every animating component |
+| [The components a screen still needs](#the-components-a-screen-still-needs) | material3d | the two thirds of M3 not yet here |
+| [A scheme from one colour](#a-scheme-from-one-colour) | material3d | any application with a brand |
+| [The controls that wait on a keyboard](#the-controls-that-wait-on-a-keyboard) | material3d | search, dropdowns, date and time entry |
+| [A catalogue that speaks more than one language](#a-catalogue-that-speaks-more-than-one-language) | material3d | every locale, and the strings the catalogue invents |
+| [The record of what shipped](#the-record-of-what-shipped) | both | the next reader trusting what they read |
+
+## The order, and why
+
+**[An application that does not wire its own rays](#an-application-that-does-not-wire-its-own-rays)
+leads**, for the same reason camera-bound surfaces led the first map: it is
+the item every other item is consumed through. Porting a real screen is how
+this map is measured, and today that port begins by copying ninety lines out
+of `examples/layout3d_gallery` and getting the z-orders right. Fix that and
+every subsequent item is evaluated in a real application instead of in a
+scene.
+
+**[The wheel and the key](#a-wheel-a-trackpad-and-a-key-that-reach-a-box)
+immediately after**, and possibly in the same breath — the first ported screen
+will meet it in the first minute on a desktop, and the controller side is
+already built (`Scroll3dController.jumpBy`, `applyUserOffset` and `fling` all
+exist), so what is missing is routing rather than mechanism.
+
+**[A way to test a screen someone else built](#a-way-to-test-a-screen-someone-else-built)
+early, out of order.** The audit's sharpest evidence is that ten of this
+repository's worst defects — a screen nothing could press, a screen one
+logical pixel deep, every panel drawn from its back face, a label sunk into
+its own slab, a hole punched through a navigation bar — were invisible to the
+suites and the probes alike, and were found by a person looking at a window.
+A wave of real-application ports is about to generate that class of defect in
+quantity, and there is currently **no committed instrument** for it: the
+captures that settled those findings came from throwaway files, and the
+package exports no test helper an application author could use at all. Build
+the instrument before the wave, not after.
+
+**[The record of what shipped](#the-record-of-what-shipped) whenever there is
+an hour**, because it is the cheapest item here and the only one that is
+actively misleading rather than merely missing.
+
+Then the four the first real port will demand, in whatever order the ported
+screens demand them:
+[right to left](#a-row-that-reads-right-to-left),
+[a picture](#a-picture-on-a-panel),
+[an item that keeps its state](#an-item-that-keeps-its-state), and
+[a screen that knows how big it is](#a-screen-that-knows-how-big-it-is).
+
+Then motion, as a pair:
+[a route that arrives](#a-route-that-arrives-instead-of-appearing) here and
+[the motion tokens](#the-motion-tokens) in the catalogue.
+[A box that fades](#a-box-that-fades) belongs with them and may not be
+takeable — see its entry.
+
+Then [the catalogue batch](#the-components-a-screen-still-needs), which is
+broad and shallow, and
+[a scheme from one colour](#a-scheme-from-one-colour), which is narrow and
+deep and independent of everything.
+
+**[A letter someone can type](#a-letter-someone-can-type) last of the large
+items, and it is much larger than anything above it.** It gates
+[the controls that wait on a keyboard](#the-controls-that-wait-on-a-keyboard),
+and it is the one item on this map that is a research project rather than an
+afternoon's reasoning plus a week's work.
+[An application with more than one screen](#an-application-with-more-than-one-screen)
+and
+[more than one language](#a-catalogue-that-speaks-more-than-one-language)
+can be taken any time after their gates.
+
+## The seams to keep an eye on
+
+The couplings between these plans, named here so that both ends know. These
+are where a first implementer's decision becomes someone else's constraint.
+
+- **Whoever builds the application widget owns the input contract**, and three
+  other plans consume it: the wheel and the key route through it, navigation
+  hangs off it, and the test library has to be able to drive it without a real
+  window. Design it as the seam it is, not as a convenience wrapper around
+  the gallery's code.
+- **Two plans want an asynchronous texture, and one already has the trap.** A
+  glyph's wall arrives with the atlas rather than with the layout, which is
+  `GlyphAtlas3d.outlineRevision` and is written up in
+  [docs/traps.md](../../../docs/traps.md). An image on a panel arrives the same
+  way. Whoever builds [a picture on a panel](#a-picture-on-a-panel) should read
+  that trap first and generalize the counter rather than invent a fourth one.
+- **Motion and the relayout path.** The animation tiers exist and are the whole
+  reason a ripple is affordable: repaint-only, node-only, and implicit for when
+  a size really changed. Every item in the motion lane must land on the first
+  two. The specific hazard is documented and has already cost time: **an
+  animation that has stopped changing must stop asking for frames**, or
+  `pumpAndSettle` spins forever, and a `Ticker` restarted after a stop begins
+  its clock at zero.
+- **`Decoration3dPainterCache` is what makes a screen of panels affordable**,
+  and it keys on `Decoration3d.cacheKey`. Two plans here compute colours that
+  did not exist before — [a scheme from one colour](#a-scheme-from-one-colour)
+  and the motion lane, which interpolates them per frame. A decoration built
+  with a freshly computed colour every frame defeats the cache silently: the
+  frame rate falls and nothing says why.
+- **A rounded clip still does not exist.** `Clip3dRegion` is an intersection of
+  planes, so it is convex, and a corner radius is carved by the panel shader
+  rather than clipped. Anything on this map that wants to cut a child to a
+  rounded container — a card's `clipBehavior`, an image filling a rounded
+  panel, a tab indicator inside a rounded bar — meets that wall. The first
+  plan that genuinely needs it owns carrying a *shape* into the clip contract,
+  and it is a real piece of work rather than a parameter.
+- **A target reaches past its own extent and its parent does not.** Every new
+  interactive component in the catalogue lane obeys the placement rule from
+  [a tap target that delivers a press](2026_09_02_a_tap_target_that_delivers_a_press.md):
+  the target sits outside every box the size of the control, the panel and the
+  semantics box included.
+- **The depth axis is not symmetric with the other two**, and two of the
+  gallery's four visual defects came from forgetting it. A lift written into a
+  child's *position* takes that child out of reach of a ray; depth separation
+  belongs on the node tier. A line's depth cross axis starts at the front while
+  its other one centres. A surface has to lift what is drawn on it off its own
+  face. All three are in [docs/traps.md](../../../docs/traps.md), and every
+  new component in this map's catalogue lane can reproduce all three.
+
+---
+
+## An application that does not wire its own rays
+
+**Package:** `flutter_scene_layout3d`.
+**Slug:** `an_application_that_does_not_wire_its_own_rays`.
+
+The gap, in one sentence: **there is no application layer.** Read
+`examples/layout3d_gallery/lib/gallery.dart` and count what an author must
+write before a single press lands — a `Listener` for five pointer callbacks,
+`camera.screenPointToRay` against a `LayoutBuilder`'s size, a
+`Layout3dPointerGroup` fed `down`/`move`/`up`/`cancel`/`hover`, and a
+`_syncPointers()` called from `onTick` on **every frame** because a
+`SceneLayout3d`'s surface does not exist until the widget is mounted — which
+in turn calls `addSurface` with hand-authored `zOrder` values and
+`syncDetachedEntries` for the overlay. That is roughly ninety lines, per
+application, with several silent failure modes: a z-order in the wrong
+relative order routes a press to the panel behind, a surface added before it
+exists is skipped forever, a detached entry never synced is unpressable.
+
+The design question this plan must settle is **who owns the ray**. The
+candidate answer is a widget that wraps `SceneView` and owns the group, with a
+surface announcing itself on mount rather than being registered from a tick —
+which is a lifecycle change in `Layout3dController`/`SceneLayout3d`, not just
+a wrapper. The z-order question is the harder half: geometry cannot answer
+"what is in front" for a surface turned away from the camera, which is
+*why* the gallery states it by hand, so the plan has to decide whether the
+ordering is declared (a property on `SceneLayout3d`) or derived (and from
+what).
+
+Boundary: this plan owns wiring and ownership. The *events that exist* are the
+next plan's, and named routes are
+[a later one's](#an-application-with-more-than-one-screen). It should not
+become a `MaterialApp3d` — theming, localization and navigation each have
+their own item — but it should be the thing those items hang from, so name
+that seam.
+
+## A wheel, a trackpad and a key that reach a box
+
+**Package:** `flutter_scene_layout3d`.
+**Slug:** `a_wheel_a_trackpad_and_a_key_that_reach_a_box`.
+
+Two absences that are one plan, because both are "an input Flutter has and
+this stack does not route".
+
+**The wheel and the trackpad.** `PointerScrollEvent`, `PointerPanZoomEvent`
+and `onPointerSignal` appear **nowhere** in either package. A `ListView3d`
+scrolls by drag alone, which means scrolling does not work by the usual
+gesture on macOS, Windows, Linux and web — four of the six platforms both
+`pubspec.yaml` files declare. The mechanism is already there:
+`Scroll3dController` has `jumpBy`, `applyUserOffset` and `fling`. What is
+missing is the routing, and the design question is *which* scrollable receives
+a signal that has no drag to own it — the one under the ray, found by the same
+hit test a press uses, which also answers what happens when two surfaces
+overlap under the cursor. Trackpad pan-zoom carries a scale as well, and a
+scene where the surface can be moved has an obvious temptation there; resist
+it or decide it deliberately, because a pinch that zooms the *camera* and a
+pinch that zooms the *layout* are different products.
+
+**The key.** Today the only keyboard contact in the stack is
+`Focus3d(onKeyEvent:)`. `Focus3dTraversal` moves focus correctly and then
+nothing happens when it arrives: no Space or Enter activating a focused
+control, no Escape dismissing a modal, no `Shortcuts`/`Actions`/`Intent`
+layer. The ripple work already anticipated this and left the landing pad —
+its plan notes that a press with no noted point ripples from the middle of the
+surface, "which is what a space-bar activation would get if anything in this
+stack activated a control from the keyboard. Nothing does yet." This plan is
+what makes that sentence false.
+
+Boundary: this is activation and dismissal, not text entry.
+[A letter someone can type](#a-letter-someone-can-type) owns anything that
+composes characters.
+
+## A row that reads right to left
+
+**Package:** `flutter_scene_layout3d`.
+**Slug:** `a_row_that_reads_right_to_left`.
+
+**Reading direction reaches the text and stops there.** `Text3d`,
+`RichText3d` and the catalogue's `readingDirection3d` all handle it properly.
+But `Flex3d` takes **no `textDirection` and no `verticalDirection`**, and
+there is no `EdgeInsetsDirectional3d` and no `AlignmentDirectional3d`. The
+consequence in an Arabic or Hebrew locale is a `Row3d` that arranges left to
+right around text that runs right to left, with no `start`/`end` padding
+available to fix it by hand. This is not a missing feature so much as a
+**divergence from Flutter's own contract** — the strongest kind of gap for a
+package whose promise is that the protocol is the one people know — and it
+blocks localization entirely. The missing `verticalDirection` is the same
+absence on the other axis: there is no reversed `Column3d`.
+
+The plan's genuine design question, and it is a good one: **what does `start`
+mean on a plane the viewer can walk behind?** A mirrored or back-facing
+surface has a leading edge that is on the other side of the screen from the
+one layout computed. Flutter never has to answer this. The likely answer is
+that direction is a property of the layout and not of the view — a row reads
+the same way whichever side you stand on, exactly as printed text does — but
+it should be *decided* and written down rather than inherited by accident,
+because a reader will ask.
+
+Consumed by
+[a catalogue that speaks more than one language](#a-catalogue-that-speaks-more-than-one-language).
+
+## A picture on a panel
+
+**Package:** `flutter_scene_layout3d`.
+**Slug:** `a_picture_on_a_panel`.
+
+**There is no way to put an image in a layout.** No `Image3d`, no
+`ImageProvider` path anywhere, and `BoxDecoration3d` carries `color`,
+`borderRadius`, `bevel`, `border`, `elevation` and `surfaceTint` and nothing
+else — no `image`, no `gradient`, no `boxShadow`, no per-side border. Every
+application has a photograph, an avatar, a logo or a gradient in it, and today
+the only route is dropping out of the layout into a hand-built `NodeBox3d`
+with a textured material of one's own.
+
+Three decisions the plan owns:
+
+- **Is an image a decoration or a box?** Flutter has both
+  (`DecorationImage` and `Image`), and here they are different mechanisms: a
+  decoration is one shader with a parameter block, so an image in it means a
+  sampler on the panel material and a second texture bound per box; a
+  `NodeBox3d`-shaped answer is a textured quad that is told its size. `BoxFit`
+  semantics have to work in either.
+- **The asynchronous clock.** An `ImageProvider` resolves late, like the glyph
+  atlas does, and the trap is already documented for glyph walls: the thing
+  arrives with the texture rather than with the layout, and needs a revision
+  counter the frame can compare against. Generalize
+  `GlyphAtlas3d.outlineRevision`'s answer rather than inventing another.
+- **What a gradient and a shadow cost.** A gradient is cheap in the panel
+  shader and probably belongs there. A shadow is not available at all: the
+  render probes established that `box_decoration3d.fmat` declares
+  `blending: alpha` and `ShadowEncoder` drops every non-opaque material before
+  the shadow map, so a decorated panel is not a caster. Do not re-litigate
+  that; `examples/render_probe`'s `panel_shadow` scene demonstrates it and
+  fails if the engine changes.
+
+## A box that fades
+
+**Package:** `flutter_scene_layout3d`.
+**Slug:** `a_box_that_fades`.
+
+**There is no `Opacity3d`, and it may not be buildable here.** This is the one
+item on the map with an upstream gate, and it was already investigated once:
+the readiness overview records that subtree opacity needs a per-node opacity in
+`flutter_scene` that the materials honour, and that there is none. That still
+holds at the version resolved in `pubspec.lock` — `flutter_scene 0.23.0`,
+whose `Node` carries `visible`, a selection-outline `highlightColor`, layer
+and light masks and shadow flags, and no opacity or tint of any kind.
+
+So **this plan's first step is not code, it is checking whether the engine has
+moved**, and if it has not, choosing between the two answers `AGENTS.md`
+allows: work around it on this side, or open an issue upstream — and write
+down which. The working-around options are all partial and one of them is
+explicitly forbidden by the earlier plan: shipping an `Opacity3d` that faded
+only `BoxDecoration3d` is the thing that plan told its implementer not to do,
+because a box whose panel fades and whose label does not is worse than no
+opacity at all.
+
+Why it matters enough to be on the map: the whole motion lane wants it. A
+dialog that fades in, a snack bar that fades out, an `AnimatedOpacity3d`, a
+`FadeTransition3d`, `Hero3d`, and Material's own disabled treatment — which
+this catalogue substitutes a colour for precisely *because* there is no
+opacity, a re-derivation the catalogue plan documents and defends. If the
+engine gains node opacity, revisit that decision too.
+
+## A letter someone can type
+
+**Package:** `flutter_scene_layout3d`.
+**Slug:** `a_letter_someone_can_type`.
+
+**The largest item on this map by a wide margin**, and the Material catalogue
+plan already declares it out of its own scope in as many words: there is no
+`EditableText3d`, no text selection, no cursor, no clipboard and no keyboard
+plumbing anywhere in the stack. What it gates: `TextField3d`, and through it
+`SearchBar3d`, `DropdownMenu3d`'s editable form, `DatePicker3d`'s text entry,
+`Autocomplete3d` — and `Form3d`/`FormField3d`/validation, which do not exist
+in any form and which nearly every real application has.
+
+This entry deliberately does not sketch a design; a plan this size earns its
+own investigation. What it should carry in from the audit is where the stack
+already helps and where it does not:
+
+- **Measurement is not the problem.** `PreparedText3d`, the two measurement
+  policies and `TextLayout3d`/`TextLine3d`/`TextRun3d` already give
+  per-run and per-line geometry, and the prepare/layout split exists precisely
+  so that re-fitting a string does not re-consult the font.
+  `debugTextParagraphCount` is the guard that catches measurement getting back
+  onto the layout path, and a caret that moves on every keystroke is exactly
+  the customer that would put it there.
+- **A caret is a slab, not a line**, for the same reason a 1dp divider is: a
+  zero-depth rectangle is coplanar with the surface it is drawn on and
+  z-fights it. And it blinks, which makes it the second thing in the stack
+  that animates forever — read the `Ticker` trap before writing it.
+- **Selection is a set of rectangles over runs**, and highlighting them is a
+  decoration problem the panel shader can probably serve, but a selection that
+  spans a wrapped line is several boxes and the anchor/extent arithmetic is in
+  world space on a plane that may be turned.
+- **`TextInputClient` assumes a 2D window.** The platform wants a caret rect
+  and a composing region in logical pixels to place the IME candidate window;
+  `Layout3dScreenProjection` is the existing arithmetic for projecting a box
+  to the screen, and it is the likely bridge.
+
+## An item that keeps its state
+
+**Package:** `flutter_scene_layout3d`.
+**Slug:** `an_item_that_keeps_its_state`.
+
+Two gaps that are one plan because they are the same seam.
+
+**Keep-alive does not exist.** `cacheExtent` does, throughout the lazily built
+children lane, but nothing keeps a scrolled-away item alive, so a stateful item
+loses its state when it leaves the window. The Material catalogue plan flags
+this and then says the thing that makes it belong on *this* map: "Fine for a
+catalogue, and worth knowing before someone builds a form on it." A form is
+what a real application is.
+
+**And the declarative layer is missing forms the imperative layer has** — the
+audit found six: `SceneRichText3d`, `SceneVisibility3d`, `SceneOffstage3d`,
+`SceneReorderableList3d`, `SceneSliverReorderableList3d` and
+`SceneIntrinsicExtent3d`. Four are mechanical. The reorderable pair is not,
+and it is why the two halves share a plan: the readiness overview records that
+there cannot be a `SceneReorderableList3d` until
+`Layout3dBuiltChildrenMixin` grows a seam that lets a view adopt what the
+child manager built, because the list wraps every item in a `Draggable3d` of
+its own while the declarative contract is that `removeChild` is handed back
+the very layout `createChild` returned. **That is the same seam keep-alive
+needs**, for the same reason — both are a view wanting a say in the lifetime
+of a built child.
+
+`SceneRichText3d`'s absence is worth calling out separately as the cheapest
+inconsistency on the whole map: `RichText3d` has just absorbed two phases of
+work — a paragraph with a side to it, its own CPU rasterization, per-span
+wall colours — and **a `build` method cannot reach any of it.**
+
+## A screen that knows how big it is
+
+**Package:** `flutter_scene_layout3d`.
+**Slug:** `a_screen_that_knows_how_big_it_is`.
+
+There is no `MediaQuery3d` and no `SafeArea3d`, and the piece of `MediaQuery`
+that does exist is wired the wrong way round. `Layout3dMetrics.textScaleFactor`
+is a **`double`**, set by hand on a `Layout3dCameraBinding`, where Flutter has
+moved to `TextScaler` precisely because accessibility scaling is not linear —
+and because nothing reads `MediaQuery.textScalerOf`, **the reader's own font
+setting never reaches a 3D screen at all.** For a stack whose semantics layer
+is as carefully built as this one's, that is an odd hole: the screen reader
+finds the control and the large-text setting does not.
+
+What the plan owns: the `TextScaler` migration and where the ambient value is
+read (remembering that writing `metrics` relayouts the subtree, so it is a
+settings change and never a per-frame one); what an inset *is* for a surface
+that is not the window; and how much of a size class is answerable without
+settling the design question the catalogue plan deferred. It is legitimate for
+this plan to stop short of adaptive breakpoints and say so — but a real
+application ported onto this stack will have a phone layout and a tablet
+layout, so it has to leave something behind for an author to branch on.
+
+## A route that arrives instead of appearing
+
+**Package:** `flutter_scene_layout3d`.
+**Slug:** `a_route_that_arrives_instead_of_appearing`.
+
+**Nothing in either package animates except the press ripple.**
+`Route3dTransition.none` is the only implementation that ships, so a dialog, a
+menu, a bottom sheet and a snack bar each appear and disappear between two
+frames. There is no `Hero3d`, and the implicit lane covers exactly four
+widgets — `SceneAnimatedContainer3d`, `SceneAnimatedAlign3d`,
+`SceneAnimatedPositioned3d`, `SceneAnimatedSizedBox3d`. For a product this
+reads as broken rather than as plain, and the third dimension makes it worse
+rather than better: **movement is most of what a scene has to offer over a
+picture**, and a catalogue that does not move is spending the cost of 3D
+without collecting the benefit.
+
+The good news is that the seam was left on purpose and is one hook wide:
+`Navigator3d.transition` already exists, takes a `Route3dTransition` with
+`forward` and `reverse`, and the catalogue plan calls the deferral out as
+phase 6's. And the tier that should carry it is the cheap one — an entry
+sliding, turning or scaling toward the viewer is `nodeOffset`/`nodeTransform`
+and `NodeShift3d`, one matrix a frame, nothing laid out again.
+
+What the plan owns: the transitions themselves; the fades, which are gated on
+[a box that fades](#a-box-that-fades) and may have to ship without them; a
+`Hero3d`, which is `Layout3d.anchorOffsetTo` plus a route's clock and is
+genuinely interesting in three dimensions because the flight can go *through*
+the scene; and above all the `Ticker` discipline — an animation that has
+stopped changing must stop asking for frames or `pumpAndSettle` spins forever,
+and one restarted after a stop begins its clock at zero, so a driver that
+pauses carries its own baseline.
+
+## An application with more than one screen
+
+**Package:** `flutter_scene_layout3d`.
+**Slug:** `an_application_with_more_than_one_screen`.
+
+`Navigator3d` does what it was built for — it pushes and pops routes over an
+overlay, and `showDialog3d`, `showMenu3d` and the sheets all ride on it
+correctly. What it is not yet is the Navigator people know: no named routes or
+route table, no `RouteObserver`, no `PopScope`/`WillPopScope`, **no
+integration with the Android system back button or predictive back**, no deep
+links, and no seam a `Router`/`go_router`-shaped package could plug into.
+
+An application with three screens and a back button is the most ordinary thing
+there is, and today the author writes the stack themselves. Gated on
+[the application widget](#an-application-that-does-not-wire-its-own-rays),
+because that is what would own the `WidgetsBindingObserver` a back button
+arrives through. Pairs naturally with
+[route transitions](#a-route-that-arrives-instead-of-appearing) but does not
+depend on them.
+
+## A way to test a screen someone else built
+
+**Package:** `flutter_scene_layout3d`.
+**Slug:** `a_way_to_test_a_screen_someone_else_built`.
+
+Two audiences, one plan.
+
+**An application author has nothing.** The packages export no test library at
+all — no `pumpLayout3d`, no finders over the layout tree, no matchers for a
+size, a position or a hit. The 991 tests in this package are written against
+private infrastructure. A team that adopts this stack can test its business
+logic and cannot test its screens, which for a UI toolkit is close to
+disqualifying.
+
+**And the most productive verification lane in this repository's history is
+not reproducible.** The audit's headline finding bears repeating: ten of the
+worst defects ever found here were invisible to the headless suites and the
+render probes alike, and every one was found by starting the gallery and
+looking at the window. There is no committed way to photograph a frame — the
+captures that settled the atlas and slab findings came from a throwaway
+`integration_test` that was deliberately not committed (adding one turns the
+example into a CocoaPods project and breaks the plain `flutter create` path
+the example documents), and the scratch probe files that produced the panel
+findings are untracked. The cheaper route is already known and written down:
+`examples/render_probe` has all of that wiring committed, so a scene there
+that builds a real Material screen and writes `boundary.toImage()` to
+`Directory.systemTemp` photographs one with no CocoaPods work at all.
+
+Smaller, and worth folding in: **the gallery's three tests do not run in CI** —
+no job enters `examples/layout3d_gallery`.
+
+## The motion tokens
+
+**Package:** `flutter_scene_material3d`.
+**Slug:** `the_motion_tokens`.
+
+M3's easing and duration sets, as a seventh token family beside
+`ColorScheme3d`, `Typography3d`, `ShapeScale3d`, `Elevation3d`,
+`Thickness3d` and `StateLayerOpacity3d` — with `lerp`, with the drift tests
+against Flutter's own figures that the other four transcribed families have,
+and carried on `Theme3dData` so both layers read it.
+
+The catalogue plan has been careful about this and the plan should honour the
+reasoning: the family stays closed until enough components animate to know
+which tokens are actually used, which is why the ripple shipped with
+`InkRipple3dStyle` — a component style like `ButtonStyle3d`, replaceable per
+controller, holding Flutter's own `InkRipple` figures — rather than opening a
+family for one animation. **[A route that arrives](#a-route-that-arrives-instead-of-appearing)
+is the event that makes this plan ripe**, because it is the first time several
+components need the same curve.
+
+Its first customers, all currently deferred for want of it: the switch thumb
+that should grow from 16dp to 24dp as it crosses, the chip that lifts under a
+press, and every overlay that should arrive rather than appear.
+
+## The components a screen still needs
+
+**Package:** `flutter_scene_material3d`.
+**Slug:** `the_components_a_screen_still_needs`.
+
+The catalogue is broad and it is not the catalogue. Missing entirely, from the
+audit: `ProgressIndicator3d` in both forms, `TabBar3d`/`TabBarView3d`,
+`SegmentedButton3d`, `Badge3d`, `NavigationDrawer3d`, `BottomAppBar3d`,
+`ExpansionTile3d`, `MaterialBanner3d`, `CircleAvatar3d`, `Stepper3d`,
+`AlertDialog3d`, `RangeSlider3d`, `DataTable3d`, `Carousel3d`,
+`RefreshIndicator3d`, `Scrollbar3d`, the `CheckboxListTile3d` family and
+`RadioGroup3d`. Missing in part, each for a reason its phase wrote down: the
+checkbox's tristate, the slider's tick marks and value indicator, the filter
+chip's checkmark, the card's `clipBehavior`, a tooltip on long press, a snack
+bar's second line and its swipe, a draggable sheet.
+
+**Phase it, the way the catalogue plan phased ten.** Most of this list is
+composition over `Material3d` plus a public token set resolved by state, which
+is the one mechanism the whole catalogue uses and the reason this work is
+broad rather than deep. The ones that are *not* mere composition, and which
+should be grouped by what they actually need:
+
+- `ProgressIndicator3d` and `RefreshIndicator3d` want the motion lane.
+- `TabBar3d` wants an indicator that slides (node tier, free) and a rounded
+  clip it cannot have (see the seams).
+- `Scrollbar3d` wants
+  [the wheel plan](#a-wheel-a-trackpad-and-a-key-that-reach-a-box) and, more
+  interestingly, a design answer: what *is* a scrollbar beside a surface in a
+  room, when the thing it measures is a plane the viewer may be looking at
+  edge-on.
+- `CircleAvatar3d` and `DataTable3d` want
+  [a picture on a panel](#a-picture-on-a-panel).
+- `RangeSlider3d` is a second arena problem rather than a second thumb — two
+  thumbs competing for one pointer — and phase 7 said so.
+- `AlertDialog3d` is a column and a row inside `Dialog3d` and phase 6
+  deliberately refused it as the first component that exists only to save a
+  caller writing a `SceneColumn3d`. **Revisit that judgement with an
+  application's eyes rather than a catalogue's**: the calculus changes when
+  the caller is porting fifty dialogs rather than demonstrating one.
+
+## A scheme from one colour
+
+**Package:** `flutter_scene_material3d`.
+**Slug:** `a_scheme_from_one_colour`.
+
+`ColorScheme3d` carries all of M3's roles, complete and pinned against
+Flutter's defaults, in exactly two instances: a hand-written `light` and a
+hand-written `dark`. There is no `fromSeed`, and **no real application uses
+the Material baseline** — every one of them starts from a brand colour. The
+catalogue plan puts this out of its own scope with a good reason attached
+("a package's worth of work… a generator can be added later without changing
+a single component"), and the second half of that sentence is why this is a
+narrow, self-contained, low-risk item that can be taken at any time by anyone.
+
+The work is M3's tonal palettes: HCT, the tone stops, and the role-to-tone
+mapping for light and dark. The existing hand-written schemes become the
+test oracle — a generator seeded with Material's own baseline primary should
+reproduce them within tolerance, and if it does not, one of the two is wrong.
+
+## The controls that wait on a keyboard
+
+**Package:** `flutter_scene_material3d`.
+**Slug:** `the_controls_that_wait_on_a_keyboard`.
+
+`TextField3d` and everything downstream of it: `SearchBar3d`/`SearchAnchor3d`,
+`DropdownMenu3d` in its editable form, `DatePicker3d` and `TimePicker3d` with
+text entry, `Autocomplete3d`, and the `Form3d` composition an application
+actually writes. **Entirely gated on
+[a letter someone can type](#a-letter-someone-can-type)** and listed
+separately from it so the boundary is clear: that plan builds the mechanism in
+the layout package, this one builds the M3 components over it — the filled and
+outlined field variants, the label that floats, the supporting and error text,
+the character counter, and the token sets for each.
+
+One thing it can do before its gate opens: the **non-editable** halves. A
+`DropdownMenu3d` that is a `Menu3d` on a button, a date picker that is a
+calendar grid of `TapTarget3d`s, a time picker that is a dial — all three are
+buildable today, and Flutter's own pickers are usable without ever typing.
+Taking those first is a real option and would shrink this plan considerably.
+
+## A catalogue that speaks more than one language
+
+**Package:** `flutter_scene_material3d`.
+**Slug:** `a_catalogue_that_speaks_more_than_one_language`.
+
+There is no equivalent of `MaterialLocalizations`. The catalogue does invent
+user-visible strings — an overlay's dismiss affordances, the labels a
+component publishes to a screen reader through its own `Semantics3d` — and
+they exist in one language. An application cannot translate them, and an
+application in a locale it cannot translate is not shippable in that locale.
+
+Depends on [a row that reads right to left](#a-row-that-reads-right-to-left)
+for the arrangement half; a translated string in a row that does not mirror is
+half a feature. The plan should also decide how much of Flutter's delegate
+machinery to adopt versus a simpler table, given that this package deliberately
+avoids a second vocabulary for anything the platform already spells — the
+`Semantics3d` precedent, where a component author writes Flutter's own
+`SemanticsProperties` unchanged, is the pattern to follow if it can be.
+
+## The record of what shipped
+
+**Package:** both.
+**Slug:** `the_record_of_what_shipped`.
+
+The cheapest item on this map, and the only one that is actively wrong rather
+than absent — which by this repository's own rule makes it worse than the
+others, because the next reader trusts it.
+
+- **[docs/README.md](../../../docs/README.md) describes a state that has not
+  existed for a week.** Its *Know what is being built next* row and its
+  closing paragraph both name
+  [a label that survives a repack](2026_09_10_a_label_that_survives_a_repack.md)
+  and
+  [a transparent slab that does not erase](2026_09_10_a_transparent_slab_that_does_not_erase.md)
+  as "the only plans in either package that are not finished" — **both are
+  `completed`** — and the three newest plans
+  ([a letter with a side to it](2026_09_11_a_letter_with_a_side_to_it.md),
+  [a paragraph with a side to it](2026_09_11_a_paragraph_with_a_side_to_it.md),
+  [a letter on a slab](2026_09_10_a_letter_on_a_slab.md)) are absent from the
+  map altogether.
+- **Both `CHANGELOG.md` files are silent about most of what exists.** This
+  package's `## Unreleased` stops at the metrics work of 2026-09-02: it records
+  nothing of the clip tier reaching the shader, the overlay and anchoring
+  additions, `Layout3d.localPointFrom`, the glyph walls, the shipped
+  `assets/text_glyph3d.fmat`, or the atlas reservation fix — a grep for
+  `ripple|glyph wall|outlineRevision|localPointFrom|anchorOffsetTo` in it
+  returns nothing. The Material package's is 88 lines that end by calling the
+  buttons, cards and bars "the next phase", with nine phases shipped since; a
+  grep for `Scaffold3d|Dialog3d|Checkbox3d|Ripple3d|NavigationBar3d` returns
+  nothing.
+
+Both are backlog created by commits that did not carry their documentation,
+against a convention that says documentation is part of the change. Clearing
+it is an hour or two. **Doing it also front-loads the only part of the
+publication work worth doing before the real-application ports**, since a
+changelog is what a consumer of these packages reads first.
+
+## Keeping this document true
+
+This is a living index and it has two obligations beyond the usual ones.
+
+**Each entry above becomes a real plan when it is picked up**, named
+`YYYY_MM_DD_<slug>.md` in the package its row names, dated the day it is
+written and carrying the `commit:` it was reasoned against. When it lands, come
+back here: strike the row, link the plan, and say in a line what its reasoning
+got wrong — the same shape the
+[readiness overview](2026_08_25_material3d_readiness_overview.md) uses, whose
+*How the seams resolved* and *What is still missing* sections are the most
+re-read parts of it.
+
+**And reread the seams whenever one closes.** This map's items touch each
+other in seven places, all named above, and this repository has already been
+bitten by the failure mode: closing a plan made three statements in other
+plans false, and nothing warned anyone.

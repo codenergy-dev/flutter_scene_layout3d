@@ -21,7 +21,7 @@ several files, guidance for using the engine underneath.
 | See it running, or write a demo | [examples/layout3d_gallery](../examples/layout3d_gallery/README.md) |
 | Verify something actually draws | [examples/render_probe](../examples/render_probe/README.md) |
 | Know what is planned, in progress, or was decided and why | the plans directories of [the layout package](../packages/flutter_scene_layout3d/plans/) and [the Material package](../packages/flutter_scene_material3d/plans/) |
-| Know what is being built next | the two open plans, both from the gallery: [a label that survives a repack](../packages/flutter_scene_layout3d/plans/2026_09_10_a_label_that_survives_a_repack.md) and [a transparent slab that does not erase](../packages/flutter_scene_layout3d/plans/2026_09_10_a_transparent_slab_that_does_not_erase.md) |
+| Know what is being built next | [what a real application still needs](../packages/flutter_scene_layout3d/plans/2026_09_11_what_a_real_application_still_needs.md) — the index of the plans between here and an application people use, with the order and the seams between them |
 
 ## The pages here
 
