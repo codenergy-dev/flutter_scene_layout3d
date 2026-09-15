@@ -226,6 +226,84 @@ void main() {
       );
     });
 
+    group('a centred title', () {
+      const button = 48.0;
+      const long = 'A title long enough to run under the controls';
+
+      Future<PumpedSurface> centred(
+        WidgetTester tester, {
+        required String title,
+        bool leading = true,
+        int actions = 0,
+      }) => pumpComponent(
+        tester,
+        () => screenWith(
+          AppBar3d.text(
+            title: title,
+            centerTitle: true,
+            leading: leading
+                ? const SceneSizedBox3d(width: button * _dp)
+                : null,
+            actions: <Widget>[
+              for (var i = 0; i < actions; i++)
+                const SceneSizedBox3d(width: button * _dp),
+            ],
+          ),
+        ),
+        centred: false,
+      );
+
+      testWidgets('is centred in the whole bar when it fits', (tester) async {
+        // One action: at the test font's figures, 'Inbox' is 110dp, and
+        // centred it would end 3dp inside a row of three.
+        final pumped = await centred(tester, title: 'Inbox', actions: 1);
+        final at = measure(pumped);
+
+        expect(
+          (at.titleStart + at.titleEnd) / 2,
+          closeTo(at.barWidth / 2, 1e-4),
+          reason: 'the bar, not what is left between its controls',
+        );
+      });
+
+      // Flutter's `NavigationToolbar` centres the middle and then pulls it
+      // back inside the room between the slots: never closer than
+      // `middleSpacing` to the leading slot, and never running under the
+      // trailing one. A title centred in the whole bar used to be drawn over
+      // the actions when it was long, because nothing measured it against
+      // them.
+      testWidgets('stops titleSpacing short of the actions when it does not', (
+        tester,
+      ) async {
+        final pumped = await centred(tester, title: long, actions: 3);
+        final at = measure(pumped);
+        final style = AppBarStyle3d.of(_theme, AppBarVariant3d.small);
+
+        final actionsStart = at.barWidth - style.padding.right - 3 * button;
+        expect(
+          at.titleEnd,
+          lessThanOrEqualTo(actionsStart - style.titleSpacing + 1e-4),
+        );
+        expect(
+          at.titleStart,
+          greaterThanOrEqualTo(style.leadingWidth + style.titleSpacing - 1e-4),
+        );
+      });
+
+      testWidgets('starts no closer than titleSpacing past the leading slot', (
+        tester,
+      ) async {
+        final pumped = await centred(tester, title: long);
+        final at = measure(pumped);
+        final style = AppBarStyle3d.of(_theme, AppBarVariant3d.small);
+
+        expect(
+          at.titleStart,
+          greaterThanOrEqualTo(style.leadingWidth + style.titleSpacing - 1e-4),
+        );
+      });
+    });
+
     testWidgets('a medium bar keeps its headline off the edge too', (
       tester,
     ) async {

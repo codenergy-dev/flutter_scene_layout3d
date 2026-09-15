@@ -14,6 +14,17 @@ component has no thickness in Flutter and must have one here, which is the
 token Material does not publish at all. The plan's middle section is where
 that reasoning lives.
 
+- **A centred app bar title stays clear of the leading widget and the actions,
+  and the controls keep their places.** The centred toolbar was a stack, which
+  shrink-wraps its largest child: the title. So the row holding the leading
+  widget and the actions was squeezed into the title's width and overflowed it,
+  drawing the controls bunched around the title, and a long title was drawn
+  straight over them. It is Flutter's `NavigationToolbar` arithmetic now — the
+  controls at the bar's two ends, the title centred in the whole bar and pulled
+  back so that it never comes closer than `titleSpacing` to the leading slot
+  and never runs into the actions. A centred bar with no controls, which is the
+  only kind the gallery has, looks as it did.
+
 - **An app bar's title starts where Flutter's does behind a leading widget.**
   Flutter gives the leading widget a slot `kToolbarHeight` wide, 56dp, and
   starts the title 16dp past the end of the *slot*; `AppBar3d` started it 16dp

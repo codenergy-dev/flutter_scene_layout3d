@@ -12,21 +12,24 @@ import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart'
         EdgeInsets3d,
         Layout3dMetrics,
         MainAxisAlignment3d,
-        MainAxisSize3d;
+        MainAxisSize3d,
+        MultiChildLayout3dDelegate,
+        Offset3d,
+        Size3d;
 import 'package:flutter_scene_layout3d/widgets.dart'
     show
         Layout3dMetricsScope,
         SceneAlign3d,
         SceneConstrainedBox3d,
+        SceneCustomMultiChildLayout3d,
         SceneExpanded3d,
+        SceneLayoutId3d,
         ScenePadding3d,
-        ScenePositioned3d,
         SceneRow3d,
         SceneSemantics3d,
         SceneSizedBox3d,
         SceneSliverPersistentHeader3d,
         SceneSpacer3d,
-        SceneStack3d,
         SceneText3d;
 
 import '../theme/theme.dart';
@@ -147,6 +150,10 @@ class AppBar3d extends StatelessWidget {
   final double? thickness;
 
   /// Whether the title is centred, or null for the style's.
+  ///
+  /// Centred in the whole bar, not in the room between the leading widget and
+  /// the actions — and, as Flutter's is, pulled back inside that room when
+  /// centring would put it under one of them.
   final bool? centerTitle;
 
   /// What a screen reader announces this bar as.
@@ -206,29 +213,30 @@ class AppBar3d extends StatelessWidget {
     // upward and the controls stay where the hand is.
     Widget toolbar;
     if (centred && titled != null) {
-      // A stack rather than a row, because centring a title in the bar is not
-      // the same as centring it in what is left over between the leading
-      // widget and the actions. The two children never overlap in the plane
-      // — the title is in the middle and the controls are at the edges — so
-      // they can share a plane without a depth step and without z-fighting.
-      toolbar = SceneStack3d(
-        alignment: Alignment3d.frontCenter,
+      // Not a row, because centring a title in the bar is not the same as
+      // centring it in what is left over between the leading widget and the
+      // actions; and not a stack, because a stack shrink-wraps its title and
+      // squeezes the controls into the title's width. The arithmetic is
+      // Flutter's `NavigationToolbar`'s, and it needs every width measured
+      // before the title is placed.
+      toolbar = SceneCustomMultiChildLayout3d(
+        delegate: _CentredToolbar3dLayout(spacing: spacing),
         children: <Widget>[
-          ScenePositioned3d(
-            left: 0,
-            right: 0,
-            top: 0,
-            bottom: 0,
-            child: SceneRow3d(
-              crossAxisAlignment: CrossAxisAlignment3d.center,
-              children: <Widget>[
-                if (leading != null) _leadingSlot(metrics, style, leading!),
-                const SceneSpacer3d(),
-                ...actions,
-              ],
+          if (leading != null)
+            SceneLayoutId3d(
+              id: _ToolbarSlot3d.leading,
+              child: _leadingSlot(metrics, style, leading!),
             ),
-          ),
-          titled,
+          SceneLayoutId3d(id: _ToolbarSlot3d.middle, child: titled),
+          if (actions.isNotEmpty)
+            SceneLayoutId3d(
+              id: _ToolbarSlot3d.trailing,
+              child: SceneRow3d(
+                mainAxisSize: MainAxisSize3d.min,
+                crossAxisAlignment: CrossAxisAlignment3d.center,
+                children: actions,
+              ),
+            ),
         ],
       );
     } else {
@@ -480,6 +488,10 @@ class SliverAppBar3d extends StatelessWidget {
   final double? thickness;
 
   /// Whether the title is centred, or null for the style's.
+  ///
+  /// Centred in the whole bar, not in the room between the leading widget and
+  /// the actions — and, as Flutter's is, pulled back inside that room when
+  /// centring would put it under one of them.
   final bool? centerTitle;
 
   /// How far toward the viewer the bar's geometry is pulled while it is
@@ -560,4 +572,73 @@ class SliverAppBar3d extends StatelessWidget {
       child: bar.announce(context, filling),
     );
   }
+}
+
+/// The three children of a toolbar whose title is centred.
+enum _ToolbarSlot3d { leading, middle, trailing }
+
+/// Flutter's `NavigationToolbar` layout, for a centred title.
+///
+/// The leading widget goes against the start of the bar and the actions
+/// against its end. The title is given the width between them less
+/// [spacing] on each side, centred in the **whole** bar, and then pulled back
+/// inside that room when centring would put it under a control: never closer
+/// than [spacing] to the leading slot, and never running into the actions.
+/// Everything is centred in the toolbar's height and sits on its front face.
+///
+/// Left and right rather than start and end, like the rest of the bar: the
+/// toolbar does not mirror in a right-to-left locale yet.
+class _CentredToolbar3dLayout extends MultiChildLayout3dDelegate {
+  _CentredToolbar3dLayout({required this.spacing});
+
+  /// The space around the title, in world units.
+  final double spacing;
+
+  @override
+  void performLayout(Size3d size) {
+    final loose = Constraints3d(
+      maxWidth: size.width,
+      maxHeight: size.height,
+      maxDepth: size.depth,
+    );
+    double middleY(Size3d child) => (size.height - child.height) / 2;
+
+    var leadingWidth = 0.0;
+    if (hasChild(_ToolbarSlot3d.leading)) {
+      final leading = layoutChild(_ToolbarSlot3d.leading, loose);
+      leadingWidth = leading.width;
+      positionChild(_ToolbarSlot3d.leading, Offset3d(0, middleY(leading), 0));
+    }
+
+    var trailingWidth = 0.0;
+    if (hasChild(_ToolbarSlot3d.trailing)) {
+      final trailing = layoutChild(_ToolbarSlot3d.trailing, loose);
+      trailingWidth = trailing.width;
+      positionChild(
+        _ToolbarSlot3d.trailing,
+        Offset3d(size.width - trailing.width, middleY(trailing), 0),
+      );
+    }
+
+    final room = math.max(
+      0.0,
+      size.width - leadingWidth - trailingWidth - spacing * 2,
+    );
+    final middle = layoutChild(
+      _ToolbarSlot3d.middle,
+      loose.copyWith(maxWidth: room),
+    );
+    final earliest = leadingWidth + spacing;
+    var start = (size.width - middle.width) / 2;
+    if (start + middle.width > size.width - trailingWidth) {
+      start = size.width - trailingWidth - middle.width - spacing;
+    } else if (start < earliest) {
+      start = earliest;
+    }
+    positionChild(_ToolbarSlot3d.middle, Offset3d(start, middleY(middle), 0));
+  }
+
+  @override
+  bool shouldRelayout(_CentredToolbar3dLayout oldDelegate) =>
+      oldDelegate.spacing != spacing;
 }

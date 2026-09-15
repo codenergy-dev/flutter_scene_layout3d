@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-09-15T16:23:05Z
-updated_at: 2026-09-15T17:39:24Z
+updated_at: 2026-09-15T17:45:46Z
 commit: 2a7c4dc3bece8cd29c02efe5603457feafa5f84a
 ---
 
@@ -331,9 +331,20 @@ where this bar's 4dp padding and a 48dp button put it at 68dp — fixed with
 turned up while checking that one against Flutter and is **not** fixed:
 Flutter's M3 bar has no padding before its actions (`actionsPadding` is zero),
 so its last action is flush with the bar's trailing edge, and this bar's 4dp
-`padding` holds its actions 4dp in. Nor is a centred title clamped
-clear of the leading widget and the actions, as Flutter's is: it is centred in
-the whole bar, and a long one can run under them.
+`padding` holds its actions 4dp in.
+
+**Nor was a centred title clamped** clear of the leading widget and the
+actions, as Flutter's is — fixed in a commit of its own, and the test written
+for it found the larger half. The centred toolbar was a stack, a stack
+shrink-wraps its largest child, and its largest child was the title: the row of
+controls positioned edge to edge was squeezed into the title's width and
+overflowed, so any centred bar *with* controls drew them bunched around its
+title. The gallery's only centred bar has none, which is why no photograph
+showed it. The toolbar is Flutter's `NavigationToolbar` arithmetic now, in a
+layout delegate. One of the new tests was wrong on its first run in a way
+worth remembering: it called 'Inbox' short enough to centre beside three
+actions, and at the test font's 22dp a letter it ends 3dp inside them, so the
+clamp was right and the claim was not.
 
 ## What the library found once its helpers replaced the old ones
 
