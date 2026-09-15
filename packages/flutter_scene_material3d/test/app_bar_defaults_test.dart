@@ -8,6 +8,8 @@
 // discrepancy here rather than against a ruler.
 
 import 'package:flutter/material.dart' as m;
+import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart'
+    show EdgeInsets3d;
 import 'package:flutter_scene_material3d/flutter_scene_material3d.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -57,6 +59,15 @@ void main() {
       // sibling, both private. Transcribed.
       expect(AppBarStyle3d.mediumExpandedHeight, 112.0);
       expect(AppBarStyle3d.largeExpandedHeight, 152.0);
+    });
+
+    test('no padding along the bar, before the actions or anywhere else', () {
+      // `_AppBarDefaultsM3.actionsPadding` is `EdgeInsets.zero`, private, and
+      // the toolbar has no padding of its own: the leading widget's place is
+      // its 56dp slot and the actions run to the bar's edge. Transcribed.
+      for (final variant in AppBarVariant3d.values) {
+        expect(AppBarStyle3d.of(_theme, variant).padding, EdgeInsets3d.zero);
+      }
     });
 
     test('the scrolled-under elevation', () {

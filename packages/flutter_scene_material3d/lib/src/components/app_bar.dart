@@ -278,25 +278,23 @@ class AppBar3d extends StatelessWidget {
   }
 
   /// [leading] in its slot: [AppBarStyle3d.leadingWidth] from the bar's edge,
-  /// the bar's padding counted toward it, with the widget at the slot's
-  /// leading edge.
+  /// the bar's padding counted toward it, with the widget centred in it.
   ///
   /// Flutter gives a leading widget a slot `kToolbarHeight` wide and measures
   /// the title from the end of the slot, so the title lands in the same place
   /// whatever the leading widget's own width. Without the slot the title
   /// followed the widget: 68dp in behind a 48dp icon button, where Flutter's
-  /// is 72dp. Aligned to the front in depth, as the rest of the toolbar is, so
-  /// the widget stays on the bar's face.
+  /// is 72dp. Centred, because Flutter lays a leading widget out in a tight
+  /// slot, and both the icon button it centres and an icon forced to the
+  /// slot's width draw in its middle. Aligned to the front in depth, as the
+  /// rest of the toolbar is, so the widget stays on the bar's face.
   static Widget _leadingSlot(
     Layout3dMetrics metrics,
     AppBarStyle3d style,
     Widget leading,
   ) => SceneSizedBox3d(
     width: metrics.dp(math.max(0.0, style.leadingWidth - style.padding.left)),
-    child: SceneAlign3d(
-      alignment: const Alignment3d(-1, 0, -1),
-      child: leading,
-    ),
+    child: SceneAlign3d(alignment: const Alignment3d(0, 0, -1), child: leading),
   );
 
   /// [title], kept [AppBarStyle3d.titleSpacing] off each edge of the bar that

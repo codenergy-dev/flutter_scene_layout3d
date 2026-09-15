@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-09-15T16:23:05Z
-updated_at: 2026-09-15T17:45:46Z
+updated_at: 2026-09-15T19:37:04Z
 commit: 2a7c4dc3bece8cd29c02efe5603457feafa5f84a
 ---
 
@@ -328,10 +328,13 @@ differences from Flutter were left for commits of their own. **With a leading
 widget**, Flutter's leading slot is 56dp wide and the title starts at 72dp,
 where this bar's 4dp padding and a 48dp button put it at 68dp — fixed with
 `AppBarStyle3d.leadingWidth`, a slot measured from the bar's edge. A third
-turned up while checking that one against Flutter and is **not** fixed:
+turned up while checking that one against Flutter, and was fixed after it:
 Flutter's M3 bar has no padding before its actions (`actionsPadding` is zero),
 so its last action is flush with the bar's trailing edge, and this bar's 4dp
-`padding` holds its actions 4dp in.
+`padding` held its actions 4dp in. The 4dp had only ever been standing in for
+Flutter centring a leading button in its slot, so the padding defaults to zero
+now and the leading widget is centred in its slot — the button and the title
+did not move, and the actions did.
 
 **Nor was a centred title clamped** clear of the leading widget and the
 actions, as Flutter's is — fixed in a commit of its own, and the test written

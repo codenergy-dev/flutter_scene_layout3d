@@ -14,6 +14,17 @@ component has no thickness in Flutter and must have one here, which is the
 token Material does not publish at all. The plan's middle section is where
 that reasoning lives.
 
+- **An app bar's last action reaches the bar's edge, as Flutter's does.**
+  `AppBarStyle3d.padding` defaulted to 4dp on both sides, which stood in for
+  Flutter centring a 48dp leading button in its 56dp slot — and also held the
+  actions 4dp in from the trailing edge, where Flutter's M3 bar has no padding
+  at all (`actionsPadding` is zero). The padding is **zero** by default now,
+  and the leading widget is centred in its `leadingWidth` slot instead, so a
+  leading button and the title stay exactly where they were and the actions
+  move out to the edge. A leading widget narrower than a button is centred in
+  the slot too, as Flutter's is. A style that states its own padding keeps it,
+  counted toward the leading slot and the title's spacing at the edges.
+
 - **A centred app bar title stays clear of the leading widget and the actions,
   and the controls keep their places.** The centred toolbar was a stack, which
   shrink-wraps its largest child: the title. So the row holding the leading

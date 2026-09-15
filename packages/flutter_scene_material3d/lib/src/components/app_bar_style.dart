@@ -136,7 +136,7 @@ class AppBarStyle3d {
       centerTitle: centerTitle,
       titleSpacing: defaultTitleSpacing,
       leadingWidth: defaultLeadingWidth,
-      padding: const EdgeInsets3d.symmetric(horizontal: 4.0),
+      padding: EdgeInsets3d.zero,
     );
 
     return switch (variant) {
@@ -219,12 +219,18 @@ class AppBarStyle3d {
   ///
   /// The title starts [titleSpacing] past the end of the slot, not past the
   /// widget in it — which is why a 48dp icon button and a 24dp icon put the
-  /// title in the same place. The widget sits at the slot's leading edge, just
-  /// inside the padding, and at the default figures that puts a 48dp icon
-  /// button's middle 28dp in, where Flutter centres its own.
+  /// title in the same place. The widget is centred in what the padding leaves
+  /// of the slot, which at the default figures puts a 48dp icon button's
+  /// middle 28dp in, where Flutter centres its own.
   final double leadingWidth;
 
   /// Space between the bar's faces and its content, in logical pixels.
+  ///
+  /// None by default, which is Flutter's: its M3 bar has no padding along the
+  /// toolbar and none before the actions (`actionsPadding` is zero), so the
+  /// last action runs to the bar's trailing edge and a leading widget's place
+  /// is its [leadingWidth] slot. A padding counts toward [leadingWidth] and
+  /// [titleSpacing] at an edge rather than being added to them.
   ///
   /// **In-plane only.** A front inset pushes the toolbar into the slab, where
   /// the surface it is drawn on wins the depth test and the title vanishes.

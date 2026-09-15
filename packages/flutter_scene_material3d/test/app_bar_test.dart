@@ -220,10 +220,50 @@ void main() {
         closeTo(style.leadingWidth + style.titleSpacing, 1e-4),
       );
       expect(at.titleStart, closeTo(72, 1e-4));
+
+      // And the last action against the bar's trailing edge, with nothing
+      // between them: Flutter's M3 bar has no padding there
+      // (`actionsPadding` is zero), so the title stops one action and
+      // titleSpacing short of the edge.
+      final actionEnd =
+          (buttons.last.drawnOffsetInSurface.x - bar.drawnOffsetInSurface.x) /
+              _dp +
+          button;
+      expect(actionEnd, closeTo(at.barWidth, 1e-4));
       expect(
         at.barWidth - at.titleEnd,
-        closeTo(style.padding.right + button + style.titleSpacing, 1e-4),
+        closeTo(button + style.titleSpacing, 1e-4),
       );
+    });
+
+    testWidgets('centres a leading widget narrower than a button in its slot', (
+      tester,
+    ) async {
+      // Flutter lays a leading widget out in a tight 56dp box, and an icon in
+      // one draws its glyph in the middle of it. A 24dp leading widget is
+      // centred in the slot here too, rather than pushed to one side of it.
+      const icon = 24.0;
+      final pumped = await pumpComponent(
+        tester,
+        () => screenWith(
+          AppBar3d.text(
+            title: 'Inbox',
+            leading: const SceneSizedBox3d(width: icon * _dp),
+          ),
+        ),
+        centred: false,
+      );
+      final style = AppBarStyle3d.of(_theme, AppBarVariant3d.small);
+      final bar = outermostOf<DecoratedBox3d>(pumped.surface);
+      final leading = boxesOf<SizedBox3d>(
+        pumped.surface,
+      ).firstWhere((box) => (box.size.width / _dp - icon).abs() < 1e-4);
+      final middle =
+          (leading.drawnOffsetInSurface.x - bar.drawnOffsetInSurface.x) / _dp +
+          icon / 2;
+
+      expect(middle, closeTo(style.leadingWidth / 2, 1e-4));
+      expect(measure(pumped).titleStart, closeTo(72, 1e-4));
     });
 
     group('a centred title', () {
@@ -279,7 +319,7 @@ void main() {
         final at = measure(pumped);
         final style = AppBarStyle3d.of(_theme, AppBarVariant3d.small);
 
-        final actionsStart = at.barWidth - style.padding.right - 3 * button;
+        final actionsStart = at.barWidth - 3 * button;
         expect(
           at.titleEnd,
           lessThanOrEqualTo(actionsStart - style.titleSpacing + 1e-4),
