@@ -69,8 +69,10 @@ class AppBarStyle3d {
     required this.thickness,
     required this.centerTitle,
     required this.titleSpacing,
+    required this.leadingWidth,
     required this.padding,
   }) : assert(toolbarHeight >= 0.0),
+       assert(leadingWidth >= 0.0),
        assert(expandedHeight >= toolbarHeight),
        assert(elevation >= 0.0),
        assert(scrolledUnderElevation >= 0.0),
@@ -101,6 +103,11 @@ class AppBarStyle3d {
   /// `NavigationToolbar.kMiddleSpacing`.
   static const double defaultTitleSpacing = 16.0;
 
+  /// Material's leading slot, in logical pixels: Flutter's `AppBar` declares
+  /// its private `_kLeadingWidth` as `kToolbarHeight`, 56, "so the leading
+  /// button is square".
+  static const double defaultLeadingWidth = 56.0;
+
   /// The elevation a bar takes on once content has scrolled under it, in
   /// logical pixels: Flutter's `_AppBarDefaultsM3.scrolledUnderElevation`.
   static const double defaultScrolledUnderElevation = 3.0;
@@ -128,6 +135,7 @@ class AppBarStyle3d {
       thickness: theme.thickness.structural,
       centerTitle: centerTitle,
       titleSpacing: defaultTitleSpacing,
+      leadingWidth: defaultLeadingWidth,
       padding: const EdgeInsets3d.symmetric(horizontal: 4.0),
     );
 
@@ -206,6 +214,16 @@ class AppBarStyle3d {
   /// title. A centred title is not inset by it.
   final double titleSpacing;
 
+  /// How wide the slot a leading widget stands in is, measured from the bar's
+  /// edge with the bar's [padding] included, in logical pixels.
+  ///
+  /// The title starts [titleSpacing] past the end of the slot, not past the
+  /// widget in it — which is why a 48dp icon button and a 24dp icon put the
+  /// title in the same place. The widget sits at the slot's leading edge, just
+  /// inside the padding, and at the default figures that puts a 48dp icon
+  /// button's middle 28dp in, where Flutter centres its own.
+  final double leadingWidth;
+
   /// Space between the bar's faces and its content, in logical pixels.
   ///
   /// **In-plane only.** A front inset pushes the toolbar into the slab, where
@@ -226,6 +244,7 @@ class AppBarStyle3d {
     double? thickness,
     bool? centerTitle,
     double? titleSpacing,
+    double? leadingWidth,
     EdgeInsets3d? padding,
   }) => AppBarStyle3d(
     container: container ?? this.container,
@@ -241,6 +260,7 @@ class AppBarStyle3d {
     thickness: thickness ?? this.thickness,
     centerTitle: centerTitle ?? this.centerTitle,
     titleSpacing: titleSpacing ?? this.titleSpacing,
+    leadingWidth: leadingWidth ?? this.leadingWidth,
     padding: padding ?? this.padding,
   );
 
@@ -259,6 +279,7 @@ class AppBarStyle3d {
       other.thickness == thickness &&
       other.centerTitle == centerTitle &&
       other.titleSpacing == titleSpacing &&
+      other.leadingWidth == leadingWidth &&
       other.padding == padding;
 
   @override
@@ -275,6 +296,7 @@ class AppBarStyle3d {
     thickness,
     centerTitle,
     titleSpacing,
+    leadingWidth,
     padding,
   );
 

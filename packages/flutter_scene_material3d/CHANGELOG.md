@@ -14,6 +14,16 @@ component has no thickness in Flutter and must have one here, which is the
 token Material does not publish at all. The plan's middle section is where
 that reasoning lives.
 
+- **An app bar's title starts where Flutter's does behind a leading widget.**
+  Flutter gives the leading widget a slot `kToolbarHeight` wide, 56dp, and
+  starts the title 16dp past the end of the *slot*; `AppBar3d` started it 16dp
+  past the widget, so behind a 48dp icon button the title sat at 68dp instead
+  of 72. **`AppBarStyle3d.leadingWidth`**, 56 by default and checked against
+  `kToolbarHeight`, is the slot, measured from the bar's edge with its padding
+  included. The widget sits at the slot's leading edge, which puts a 48dp icon
+  button's middle 28dp in — where Flutter centres its own, and where this
+  bar's already was. `AppBarStyle3d`'s constructor takes the new field.
+
 - **A menu item is pressed where it is drawn.** `Follower3d` puts a menu at its
   button with a node offset, and a hit test moves a ray into a box by its
   layout offset alone — so every item of a `PopupMenuButton3d` answered in the

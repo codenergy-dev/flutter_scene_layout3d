@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-09-15T16:23:05Z
-updated_at: 2026-09-15T17:34:57Z
+updated_at: 2026-09-15T17:39:24Z
 commit: 2a7c4dc3bece8cd29c02efe5603457feafa5f84a
 ---
 
@@ -323,10 +323,15 @@ the title `titleSpacing` off each edge that has nothing on it, measured from
 the edge with the bar's padding counted toward it, for the small bar and the
 headline of a medium or large `SliverAppBar3d`. Three tests in
 `app_bar_test.dart` pin it — the two edges with nothing on them failed at 4dp
-before the change — and a second photograph shows the title inset. One
-difference from Flutter is left as it was: with a leading widget, Flutter's
-leading slot is 56dp wide and the title starts at 72dp, where this bar's 4dp
-padding and a 48dp button put it at 68dp. Nor is a centred title clamped
+before the change — and a second photograph shows the title inset. Two
+differences from Flutter were left for commits of their own. **With a leading
+widget**, Flutter's leading slot is 56dp wide and the title starts at 72dp,
+where this bar's 4dp padding and a 48dp button put it at 68dp — fixed with
+`AppBarStyle3d.leadingWidth`, a slot measured from the bar's edge. A third
+turned up while checking that one against Flutter and is **not** fixed:
+Flutter's M3 bar has no padding before its actions (`actionsPadding` is zero),
+so its last action is flush with the bar's trailing edge, and this bar's 4dp
+`padding` holds its actions 4dp in. Nor is a centred title clamped
 clear of the leading widget and the actions, as Flutter's is: it is centred in
 the whole bar, and a long one can run under them.
 

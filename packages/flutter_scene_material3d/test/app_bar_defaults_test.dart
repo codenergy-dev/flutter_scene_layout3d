@@ -66,6 +66,16 @@ void main() {
   });
 
   group('the figures Flutter publishes', () {
+    test('the leading slot is kToolbarHeight wide', () {
+      // `AppBar`'s private `_kLeadingWidth` is declared as `kToolbarHeight`,
+      // "so the leading button is square", and `kToolbarHeight` is public.
+      expect(AppBarStyle3d.defaultLeadingWidth, m.kToolbarHeight);
+      expect(
+        AppBarStyle3d.of(_theme, AppBarVariant3d.small).leadingWidth,
+        AppBarStyle3d.defaultLeadingWidth,
+      );
+    });
+
     test('the title spacing is NavigationToolbar.kMiddleSpacing', () {
       // Public, and read rather than transcribed: the one figure in this
       // component that is a genuine drift alarm.

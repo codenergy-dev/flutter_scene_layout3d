@@ -180,8 +180,12 @@ void main() {
       );
     });
 
-    testWidgets('keeps the title titleSpacing from a leading widget and from '
-        'the actions, and no further', (tester) async {
+    testWidgets('puts a leading button where Flutter does, and the title a '
+        'leading slot and titleSpacing in', (tester) async {
+      // Flutter gives the leading widget a slot `kToolbarHeight` wide — 56dp —
+      // and centres an icon button in it, so the button's middle is 28dp in
+      // and the title starts at 56 + 16 = 72dp. The slot is what the title is
+      // measured from, not the button.
       const button = 48.0;
       final pumped = await pumpComponent(
         tester,
@@ -195,21 +199,30 @@ void main() {
         centred: false,
       );
       final at = measure(pumped);
-      final padding = AppBarStyle3d.of(_theme, AppBarVariant3d.small).padding;
+      final style = AppBarStyle3d.of(_theme, AppBarVariant3d.small);
+      final bar = outermostOf<DecoratedBox3d>(pumped.surface);
+      final buttons =
+          boxesOf<SizedBox3d>(pumped.surface)
+              .where((box) => (box.size.width / _dp - button).abs() < 1e-4)
+              .toList()
+            ..sort(
+              (a, b) =>
+                  a.drawnOffsetInSurface.x.compareTo(b.drawnOffsetInSurface.x),
+            );
+      final leadingMiddle =
+          (buttons.first.drawnOffsetInSurface.x - bar.drawnOffsetInSurface.x) /
+              _dp +
+          button / 2;
 
+      expect(leadingMiddle, closeTo(style.leadingWidth / 2, 1e-4));
       expect(
         at.titleStart,
-        closeTo(
-          padding.left + button + AppBarStyle3d.defaultTitleSpacing,
-          1e-4,
-        ),
+        closeTo(style.leadingWidth + style.titleSpacing, 1e-4),
       );
+      expect(at.titleStart, closeTo(72, 1e-4));
       expect(
         at.barWidth - at.titleEnd,
-        closeTo(
-          padding.right + button + AppBarStyle3d.defaultTitleSpacing,
-          1e-4,
-        ),
+        closeTo(style.padding.right + button + style.titleSpacing, 1e-4),
       );
     });
 
