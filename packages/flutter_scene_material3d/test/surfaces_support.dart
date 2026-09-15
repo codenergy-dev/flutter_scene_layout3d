@@ -43,23 +43,6 @@ T oneOf<T extends Layout3d>(Layout3dSurface surface) {
 T outermostOf<T extends Layout3d>(Layout3dSurface surface) =>
     boxesOf<T>(surface).first;
 
-/// Where [box] sits in the surface's own frame, summing the offsets its
-/// parents gave it.
-///
-/// A box's `offset` is relative to its own parent, so two boxes at different
-/// depths in the tree cannot be compared by it — both a tile's panel and a
-/// divider's are at zero inside their own containers. This is what "which one
-/// is above the other" actually means.
-Offset3d offsetInSurface(Layout3d box) {
-  var total = Offset3d.zero;
-  Layout3d? node = box;
-  while (node != null && node is! Layout3dSurface) {
-    total += node.offset;
-    node = node.parent;
-  }
-  return total;
-}
-
 /// The node-tier shifts a component built itself, in tree order.
 ///
 /// Every `Material3d` puts one inside itself to lift its content clear of its

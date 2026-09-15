@@ -10,6 +10,7 @@ import 'package:flutter/widgets.dart'
     show BuildContext, FocusManager, State, StatefulWidget, Widget;
 import 'package:flutter_scene/scene.dart' show Node;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
+import 'package:flutter_scene_layout3d/testing.dart';
 import 'package:flutter_scene_layout3d/widgets.dart';
 import 'package:flutter_scene_material3d/flutter_scene_material3d.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -21,7 +22,7 @@ import 'surfaces_support.dart';
 double dp(double logical) => logical / 100.0;
 
 /// The centre of [box], in the surface's own frame.
-Offset3d centreOf(Layout3d box) => offsetInSurface(box) + box.size.center;
+Offset3d centreOf(Layout3d box) => box.drawnOffsetInSurface + box.size.center;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -282,7 +283,7 @@ void main() {
       );
       final gesture = oneOf<SliderGesture3d>(it.surface);
       final left =
-          offsetInSurface(gesture) +
+          gesture.drawnOffsetInSurface +
           Offset3d(gesture.padding, gesture.size.height / 2.0, 0.0);
 
       it.pointer.down(rayAt(it.surface, left));
@@ -344,7 +345,7 @@ void main() {
       );
       final gesture = oneOf<SliderGesture3d>(it.surface);
       final left =
-          offsetInSurface(gesture) +
+          gesture.drawnOffsetInSurface +
           Offset3d(gesture.padding, gesture.size.height / 2.0, 0.0);
       final track = it.panels[1];
 

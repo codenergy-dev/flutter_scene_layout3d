@@ -1,5 +1,13 @@
 ## Unreleased
 
+- **`Layout3dTestGeometry.drawnOffsetInSurface` says where a box is drawn.** One
+  answer to "where is this box", in `testing.dart`: its corner in the
+  surface's layout frame, every offset and node nudge above and on it counted.
+  The Material package's tests carried two helpers named `offsetInSurface`,
+  one that counted a `Stack3d`'s depth step and one that did not, and neither
+  counted a node offset; both are gone in favour of this. Moving to it is what
+  showed that a menu was being pressed where nothing was drawn.
+
 - **`Layout3dPointerGroup.hitTest` answers with the front-most surface, as its
   documentation always said.** Past a surface added with `absorbs: false` it
   used to hand back the path of the *last* surface that answered — a HUD in

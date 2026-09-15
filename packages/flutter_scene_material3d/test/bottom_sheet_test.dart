@@ -1,4 +1,5 @@
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
+import 'package:flutter_scene_layout3d/testing.dart';
 import 'package:flutter_scene_layout3d/widgets.dart';
 import 'package:flutter_scene_material3d/flutter_scene_material3d.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -103,9 +104,9 @@ void main() {
 
       // Against the bottom of the six-unit-tall panel, and entirely in front
       // of its own scrim.
-      final at = offsetInSurface(sheet);
+      final at = sheet.drawnOffsetInSurface;
       expect(at.y + sheet.size.height, closeTo(6.0, 1e-6));
-      expect(at.z + sheet.size.depth, lessThan(offsetInSurface(scrim).z));
+      expect(at.z + sheet.size.depth, lessThan(scrim.drawnOffsetInSurface.z));
 
       Navigator3d.of(pumped.overlay)!.pop('picked');
       await tester.pump();
@@ -145,7 +146,7 @@ void main() {
       final sheet = boxesOf<DecoratedBox3d>(
         pumped.surface,
       ).firstWhere((box) => (box.decoration as BoxDecoration3d).color.a == 1.0);
-      final at = offsetInSurface(sheet);
+      final at = sheet.drawnOffsetInSurface;
       // Against the right edge of the eight-unit-wide panel, and full height.
       expect(at.x + sheet.size.width, closeTo(8.0, 1e-6));
       expect(sheet.size.height, closeTo(6.0, 1e-6));

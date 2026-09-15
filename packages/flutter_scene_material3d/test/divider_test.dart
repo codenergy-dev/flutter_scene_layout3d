@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart' as material;
 import 'package:flutter/widgets.dart' show Widget;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
+import 'package:flutter_scene_layout3d/testing.dart';
 import 'package:flutter_scene_layout3d/widgets.dart';
 import 'package:flutter_scene_material3d/flutter_scene_material3d.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -204,7 +205,7 @@ void main() {
       expect(panels[1].size.height, closeTo(0.01, 1e-9));
       // Summed up the parent chain: a box's own `offset` is relative to its
       // parent, and these three sit at different depths in the tree.
-      final ys = <double>[for (final p in panels) offsetInSurface(p).y];
+      final ys = <double>[for (final p in panels) p.drawnOffsetInSurface.y];
       expect(
         ys[0],
         lessThan(ys[1]),

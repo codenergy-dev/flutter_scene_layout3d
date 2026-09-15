@@ -2741,6 +2741,16 @@ there too. They are `flutter_test` finders — `findsOne`, `findsNothing`,
 `.first` and `.at` all work — and `tester.layout3d<T>(finder)` is
 `tester.widget` for a box.
 
+**Where a box is** has one answer here, and its name says which:
+`box.drawnOffsetInSurface` is its front, top, left corner where the geometry is
+drawn, in the surface's layout frame, with every offset and nudge above it and
+on it counted. It is the frame to compare two boxes' depths in. Summing the
+`offset`s up the tree gives a different answer — where layout put the slot —
+whenever something was nudged, and this repository's own tests once had two
+helpers under the same name that disagreed with each other and ignored node
+offsets alike — which is how a menu's test came to press the place nothing was
+drawn.
+
 ### A tap is a tap on the screen
 
 `tap3d` projects the box's centre through the camera and taps that point of the

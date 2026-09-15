@@ -1,5 +1,6 @@
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
+import 'package:flutter_scene_layout3d/testing.dart';
 import 'package:flutter_scene_layout3d/widgets.dart';
 import 'package:flutter_scene_material3d/flutter_scene_material3d.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -131,8 +132,8 @@ void main() {
       // the scrim — its back face clears the scrim's front one — which is the
       // claim that matters: two slabs that merely have different centres can
       // still overlap and z-fight where they do.
-      final scrimZ = offsetInSurface(scrim).z;
-      final dialogZ = offsetInSurface(dialog).z;
+      final scrimZ = scrim.drawnOffsetInSurface.z;
+      final dialogZ = dialog.drawnOffsetInSurface.z;
       expect(dialogZ, lessThan(scrimZ));
       expect(dialogZ + dialog.size.depth, lessThan(scrimZ));
       // And the gap is at least the theme's own step, not a number this

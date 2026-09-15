@@ -577,6 +577,74 @@ void main() {
     });
   });
 
+  group('where a box is drawn', () {
+    testWidgets('with nothing nudged, it is the sum of the layout offsets', (
+      tester,
+    ) async {
+      await tester.pumpSurface3d(
+        ScenePadding3d(
+          padding: const EdgeInsets3d.only(left: 1, top: 0.5),
+          child: SceneColumn3d(
+            children: <Widget>[
+              const SceneSizedBox3d(height: 0.25),
+              control('below', <String>[]),
+            ],
+          ),
+        ),
+      );
+      final box = tester.layout3d<Semantics3d>(
+        find3d.bySemanticsLabel('below'),
+      );
+
+      var summed = Offset3d.zero;
+      for (Layout3d? node = box; node != null; node = node.parent) {
+        summed += node.offset;
+      }
+      expect(box.drawnOffsetInSurface.x, closeTo(summed.x, 1e-6));
+      expect(box.drawnOffsetInSurface.y, closeTo(summed.y, 1e-6));
+      expect(box.drawnOffsetInSurface.z, closeTo(summed.z, 1e-6));
+    });
+
+    testWidgets('a stack\'s depth step and a node offset above the box both '
+        'count, because that is where the geometry is', (tester) async {
+      await tester.pumpSurface3d(
+        SceneStack3d(
+          depthStep: 0.1,
+          children: <Widget>[
+            const SceneSizedBox3d.cube(1),
+            SceneCenter3d(child: control('front', <String>[])),
+          ],
+        ),
+      );
+      final box = tester.layout3d<Semantics3d>(
+        find3d.bySemanticsLabel('front'),
+      );
+      final before = box.drawnOffsetInSurface;
+      final laidOut = box.parent!.offset.z + box.offset.z;
+      // The second child is stepped a tenth of a unit toward the viewer, and
+      // layout's z runs away from the viewer. The transforms are single
+      // precision, so the tolerance is too.
+      expect(before.z, closeTo(laidOut - 0.1, 1e-6));
+
+      box.parent!.nodeOffset = const Offset3d(0.2, 0, 0);
+      await tester.pump();
+      expect(box.drawnOffsetInSurface.x, closeTo(before.x + 0.2, 1e-6));
+    });
+
+    testWidgets('a box that is not under a surface says so', (tester) async {
+      expect(
+        () => SizedBox3d(width: 1).drawnOffsetInSurface,
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            contains('not under a surface'),
+          ),
+        ),
+      );
+    });
+  });
+
   group('matchers', () {
     testWidgets('hasSizeDp measures in logical pixels, hasSize3d in units', (
       tester,

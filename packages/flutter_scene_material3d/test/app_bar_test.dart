@@ -5,6 +5,7 @@ import 'dart:ui' show Color;
 
 import 'package:flutter/widgets.dart' show ValueKey, Widget;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
+import 'package:flutter_scene_layout3d/testing.dart';
 import 'package:flutter_scene_layout3d/widgets.dart';
 import 'package:flutter_scene_material3d/flutter_scene_material3d.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -140,13 +141,15 @@ void main() {
 
   group('where the title sits', () {
     /// The title's edges, and the bar's, in logical pixels from the bar's
-    /// leading edge.
+    /// leading edge. Measured through the nodes' single-precision transforms,
+    /// so the figures are good to a ten-thousandth of a logical pixel.
     ({double titleStart, double titleEnd, double barWidth}) measure(
       PumpedSurface pumped,
     ) {
       final bar = outermostOf<DecoratedBox3d>(pumped.surface);
       final title = oneOf<Text3d>(pumped.surface);
-      final start = (offsetInSurface(title).x - offsetInSurface(bar).x) / _dp;
+      final start =
+          (title.drawnOffsetInSurface.x - bar.drawnOffsetInSurface.x) / _dp;
       return (
         titleStart: start,
         titleEnd: start + title.size.width / _dp,
@@ -170,10 +173,10 @@ void main() {
       );
       final at = measure(pumped);
 
-      expect(at.titleStart, closeTo(AppBarStyle3d.defaultTitleSpacing, 1e-6));
+      expect(at.titleStart, closeTo(AppBarStyle3d.defaultTitleSpacing, 1e-4));
       expect(
         at.barWidth - at.titleEnd,
-        closeTo(AppBarStyle3d.defaultTitleSpacing, 1e-6),
+        closeTo(AppBarStyle3d.defaultTitleSpacing, 1e-4),
       );
     });
 
@@ -198,14 +201,14 @@ void main() {
         at.titleStart,
         closeTo(
           padding.left + button + AppBarStyle3d.defaultTitleSpacing,
-          1e-6,
+          1e-4,
         ),
       );
       expect(
         at.barWidth - at.titleEnd,
         closeTo(
           padding.right + button + AppBarStyle3d.defaultTitleSpacing,
-          1e-6,
+          1e-4,
         ),
       );
     });
@@ -228,8 +231,8 @@ void main() {
       final at = measure(pumped);
 
       // Flutter's medium bar pads its expanded title 16dp at both ends.
-      expect(at.titleStart, closeTo(16, 1e-6));
-      expect(at.barWidth - at.titleEnd, closeTo(16, 1e-6));
+      expect(at.titleStart, closeTo(16, 1e-4));
+      expect(at.barWidth - at.titleEnd, closeTo(16, 1e-4));
     });
   });
 

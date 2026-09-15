@@ -20,6 +20,7 @@
 import 'package:flutter/material.dart' show Icons;
 import 'package:flutter/widgets.dart' show Widget;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
+import 'package:flutter_scene_layout3d/testing.dart';
 import 'package:flutter_scene_layout3d/widgets.dart';
 import 'package:flutter_scene_material3d/flutter_scene_material3d.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -87,7 +88,7 @@ List<Panel3dFace> opaquePanels(Layout3dSurface surface) {
       final decoration = box.decoration;
       final ink = decoration is BoxDecoration3d ? decoration.color.a : 0.0;
       if (ink > 0.01) {
-        final offset = offsetInSurface(box);
+        final offset = box.drawnOffsetInSurface;
         found.add((
           face: box.node.globalTransform.getTranslation().z,
           left: offset.x,

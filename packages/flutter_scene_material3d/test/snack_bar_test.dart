@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart' show Builder;
 import 'package:flutter_scene/scene.dart' show Node;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
+import 'package:flutter_scene_layout3d/testing.dart';
 import 'package:flutter_scene_layout3d/widgets.dart';
 import 'package:flutter_scene_material3d/flutter_scene_material3d.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -229,7 +230,7 @@ void main() {
       final action = boxesOf<Semantics3d>(
         pumped.surface,
       ).firstWhere((box) => box.properties.label == 'Undo');
-      final at = offsetInSurface(action);
+      final at = action.drawnOffsetInSurface;
       final pointer = Layout3dPointer(pumped.surface);
       pointer.down(
         rayAt(

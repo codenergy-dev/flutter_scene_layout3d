@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-09-15T16:23:05Z
-updated_at: 2026-09-15T17:31:56Z
+updated_at: 2026-09-15T17:34:57Z
 commit: 2a7c4dc3bece8cd29c02efe5603457feafa5f84a
 ---
 
@@ -345,6 +345,17 @@ met on the first menu they opened. `Follower3d` now shifts its hit test by its
 node offset, the anchoring recipe in the layout README and `docs/traps.md` say
 so, and the test presses through the camera. Fixed in a commit of its own,
 before the helpers were replaced.
+
+**The helpers themselves were replaced in the commit after it.** `testing.dart`
+exports `drawnOffsetInSurface`, whose name says which frame it answers in, and
+the Material suite's two copies of `offsetInSurface` are gone; the gallery's
+copy had already gone when its test moved onto the library. Two things that
+move taught. A handful of assertions compared the old sums with a tolerance of `1e-9`,
+which a sum of doubles meets and a point carried through the nodes'
+single-precision transforms does not; they compare to `1e-6` or `1e-4` now,
+with the reason beside them. And the internal suites keep aiming rays straight
+down the depth axis with `rayAt` — that is the right tool below the host, and
+this plan's boundary still holds for it.
 
 ## What the reasoning got wrong
 

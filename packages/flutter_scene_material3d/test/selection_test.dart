@@ -9,6 +9,7 @@
 import 'package:flutter/widgets.dart'
     show BuildContext, State, StatefulWidget, Widget;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
+import 'package:flutter_scene_layout3d/testing.dart';
 import 'package:flutter_scene_layout3d/widgets.dart';
 import 'package:flutter_scene_material3d/flutter_scene_material3d.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -146,10 +147,11 @@ void main() {
       );
       expect(box.size.width, closeTo(dp(18), 1e-9));
       expect(box.size.height, closeTo(dp(18), 1e-9));
-      final inkAt = offsetInSurface(box) + box.size.center;
-      final washAt = offsetInSurface(wash) + wash.size.center;
-      expect(inkAt.x, closeTo(washAt.x, 1e-9), reason: 'centred in the wash');
-      expect(inkAt.y, closeTo(washAt.y, 1e-9), reason: 'centred in the wash');
+      final inkAt = box.drawnOffsetInSurface + box.size.center;
+      final washAt = wash.drawnOffsetInSurface + wash.size.center;
+      // Through the nodes' single-precision transforms, hence the tolerance.
+      expect(inkAt.x, closeTo(washAt.x, 1e-6), reason: 'centred in the wash');
+      expect(inkAt.y, closeTo(washAt.y, 1e-6), reason: 'centred in the wash');
     });
 
     testWidgets('and the mark stands clear of the box it is drawn on', (

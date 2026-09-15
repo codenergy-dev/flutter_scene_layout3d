@@ -6,6 +6,7 @@ import 'dart:ui' show Color;
 import 'package:flutter/material.dart' show Icons;
 import 'package:flutter/widgets.dart' show Widget;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
+import 'package:flutter_scene_layout3d/testing.dart';
 import 'package:flutter_scene_layout3d/widgets.dart';
 import 'package:flutter_scene_material3d/flutter_scene_material3d.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -199,7 +200,7 @@ void main() {
       final targets = boxesOf<TapTarget3d>(pumped.surface)
           .where((t) => t.effectiveMinimumSize.width > 0.0)
           .toList(growable: false);
-      final middle = offsetInSurface(targets[1]) + targets[1].size.center;
+      final middle = targets[1].drawnOffsetInSurface + targets[1].size.center;
       pumped.pointer.down(rayAt(pumped.surface, middle));
       pumped.pointer.up();
       await tester.pump();
@@ -223,7 +224,7 @@ void main() {
       final target = boxesOf<TapTarget3d>(
         pumped.surface,
       ).firstWhere((t) => t.effectiveMinimumSize.width > 0.0);
-      final middle = offsetInSurface(target) + target.size.center;
+      final middle = target.drawnOffsetInSurface + target.size.center;
       final builds = pumped.builds[0];
 
       pumped.pointer.hover(rayAt(pumped.surface, middle));

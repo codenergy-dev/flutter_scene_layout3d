@@ -36,19 +36,6 @@ T oneOf<T extends Layout3d>(Layout3dSurface surface) {
   return found.single;
 }
 
-/// Where [box] sits in the surface's own frame, summing the offsets its
-/// parents gave it — the scene offsets included, since a `Stack3d`'s depth
-/// step is written there and depth is the whole subject here.
-Offset3d offsetInSurface(Layout3d box) {
-  var total = Offset3d.zero;
-  Layout3d? node = box;
-  while (node != null && node is! Layout3dSurface) {
-    total += node.offset + node.sceneOffset;
-    node = node.parent;
-  }
-  return total;
-}
-
 /// A surface with a themed overlay in it, and the handles a test wants.
 class PumpedOverlay {
   PumpedOverlay(this.controller, this.overlayController, this.context);

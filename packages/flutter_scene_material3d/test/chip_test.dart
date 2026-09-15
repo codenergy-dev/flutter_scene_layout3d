@@ -4,6 +4,7 @@
 
 import 'package:flutter/widgets.dart' show Widget;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
+import 'package:flutter_scene_layout3d/testing.dart';
 import 'package:flutter_scene_layout3d/widgets.dart';
 import 'package:flutter_scene_material3d/flutter_scene_material3d.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -335,14 +336,15 @@ void main() {
       // where it is rather than guessing a coordinate.
       final glyphs = boxesOf<Text3d>(it.surface);
       expect(glyphs.length, 2, reason: 'the label and the delete glyph');
-      final at = offsetInSurface(glyphs.last) + glyphs.last.size.center;
+      final at = glyphs.last.drawnOffsetInSurface + glyphs.last.size.center;
       it.pointer.down(rayAt(it.surface, at));
       it.pointer.up();
       expect(deleted, 1);
       expect(pressed, 0, reason: 'the inner recognizer won the arena');
 
       // And a press on the label reaches the chip itself.
-      final label = offsetInSurface(glyphs.first) + glyphs.first.size.center;
+      final label =
+          glyphs.first.drawnOffsetInSurface + glyphs.first.size.center;
       it.pointer.down(rayAt(it.surface, label));
       it.pointer.up();
       expect(pressed, 1);
