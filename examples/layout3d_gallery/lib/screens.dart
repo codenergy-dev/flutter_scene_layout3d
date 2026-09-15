@@ -209,7 +209,15 @@ class _MaterialScreenState extends State<MaterialScreen> {
           ),
           OutlinedCard3d(
             child: ScenePadding3d(
-              padding: _insets(context, const EdgeInsets3d.all(12)),
+              // The four edges and not the six faces. `EdgeInsets3d.all` insets
+              // the front as well, and a card's depth is only its thickness,
+              // so a front inset of 12dp put the label and the slider 12dp
+              // *behind* the card's face, where the face hid them both. See
+              // `docs/traps.md`, *A padded box has six faces*.
+              padding: _insets(
+                context,
+                const EdgeInsets3d.symmetric(horizontal: 12, vertical: 12),
+              ),
               child: SceneColumn3d(
                 crossAxisAlignment: CrossAxisAlignment3d.stretch,
                 depthAxisAlignment: CrossAxisAlignment3d.start,

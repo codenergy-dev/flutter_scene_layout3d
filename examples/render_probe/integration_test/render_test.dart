@@ -2088,6 +2088,62 @@ void main() {
             '$atThumb at the thumb, $awayFromThumb away from it',
       );
     });
+
+    testWidgets('a slider in a card is drawn when the padding insets the '
+        "card's edges, and hidden when it insets its faces", (tester) async {
+      // Two cards holding the same slider, differing only in their padding:
+      // `symmetric` on top, `all` below, which is the line the gallery's
+      // settings screen shipped. The claim is a difference — ink at the one
+      // thumb and bare card at the other — so neither half means anything
+      // without its partner.
+      final capture = await _draw(
+        tester,
+        kProbeScenes.byId('slider_in_a_padded_card'),
+      );
+
+      // The thumb sits at the value along the body, 0.65 of the travel: in
+      // the body's frame that is (10 + 0.65 * 180) / 200 = 0.635 across. The
+      // body is the oracle rather than the thumb, because the thumb is moved
+      // on the node tier and `screenPointOf` undoes it.
+      ui.Color at(String probe, Offset3d fraction) {
+        final color = capture.frame.meanColorAt(
+          capture.pointOf(probe, fraction),
+          radius: 5,
+        );
+        expect(color, isNotNull, reason: 'nothing drew on $probe at $fraction');
+        return color!;
+      }
+
+      const thumbInBody = Offset3d(0.635, 0.5, 0.0);
+      // A patch of card inside the top padding band, clear of the slider's
+      // 48dp body: 12dp of a 72dp card is a sixth, and this is half of that.
+      const bareCard = Offset3d(0.5, 0.08, 0.0);
+
+      final faceThumb = at('faceBody', thumbInBody);
+      final faceBare = at('faceCard', bareCard);
+      // `primary` on `surface`: a purple thumb on a near-white card, so the
+      // thumb is the darker of the two by something lighting cannot reorder.
+      expect(
+        luma(faceThumb),
+        lessThan(luma(faceBare)),
+        reason:
+            'the thumb of the slider in the edge-padded card did not draw, '
+            'so this scene cannot say anything about the other card: read '
+            '$faceThumb at the thumb, $faceBare on the card',
+      );
+
+      final sunkThumb = at('sunkBody', thumbInBody);
+      final sunkBare = at('sunkCard', bareCard);
+      expect(
+        FrameProbe.colorDistance(sunkBare, sunkThumb),
+        lessThan(0.02),
+        reason:
+            'the slider behind a front inset shows through the card it is '
+            "in, so the card is not occluding what is inside it — see "
+            '`slab_occludes_its_inside`: read $sunkThumb at the thumb, '
+            '$sunkBare on the card',
+      );
+    });
   });
 
   group('the press ripple', () {

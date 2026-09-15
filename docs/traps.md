@@ -293,6 +293,16 @@ State the two in-plane axes and align to the face:
 `Alignment3d.frontCenter`. `Material3d` defaults to the latter for exactly
 this reason.
 
+Nothing downstream rescues a front inset. The gallery's settings screen padded
+an outlined card with `EdgeInsets3d.all(12)` around a column already set to
+`depthAxisAlignment: start` and a slider already aligned `frontCenter`, and the
+slider and its label still sat 12dp behind a 4dp card: both of those align
+inside the box the padding has already pushed back. It read as an empty card,
+and nothing failed, because the slider was laid out, labelled and reachable.
+`examples/render_probe`'s `slider_in_a_padded_card` is the picture, and the
+gallery's `screens_test.dart` checks that no control on that screen is laid
+out behind its card's face.
+
 ### Making geometry fill its box
 
 `NodeBox3d` defaults to `BoxFit3d.none`: the content keeps its own size inside

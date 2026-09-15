@@ -2279,6 +2279,191 @@ final List<ProbeScene> kProbeScenes = <ProbeScene>[
     preload: installPanelPainter,
   ),
 
+  ProbeScene(
+    'slider_in_a_padded_card',
+    () {
+      // **A slider inside a card is drawn when the card's padding insets its
+      // edges, and hidden when it insets its faces.**
+      //
+      // The gallery's settings screen shipped the second one: an outlined
+      // card around a "Volume" slider, padded with `EdgeInsets3d.all(12)`.
+      // That insets the front as well, and a card is only as deep as its
+      // thickness, so the slider was laid out 12dp *behind* a 4dp card and
+      // the card's face hid it. A person saw an empty card. Every headless
+      // test passed, because the slider was there, labelled and reachable —
+      // it just could not be seen.
+      //
+      // So two identical cards, one above the other, holding the same slider
+      // at the same value, and differing in one thing: the top card's padding
+      // is `symmetric` and the bottom card's is `all`. Each is built the way
+      // the widgets build it, box for box — `Material3d`'s decorated box, its
+      // container with a tight depth of the card's thickness and its content
+      // lift; the gallery's padding, its column with the depth axis at the
+      // front and its front-centre align; and `Slider3d`'s stack, with the
+      // 48dp body where the ink goes. Nothing in the arrangement is chosen to
+      // make the claim easier than the screen made it, which is also why
+      // `depthAxisAlignment: start` and `Alignment3d.frontCenter` are both
+      // here: neither of them rescues a front inset, and a scene without them
+      // would be blaming the wrong line.
+      //
+      // The two cards are each other's control. "The thumb drew" is asked of
+      // the top one and "nothing shows where the thumb is" of the bottom one,
+      // and no exposure or lighting change can satisfy both by accident.
+      const theme = Theme3dData.light;
+      const rate = 0.04;
+      const value = 0.65;
+      final cardStyle = CardStyle3d.of(theme, CardVariant3d.outlined);
+      final sliderStyle = SliderStyle3d.of(theme);
+      // The gallery's own figures: a 200dp slider in 12dp of padding.
+      const sliderWidth = 200.0;
+      const inset = 12.0;
+      final travel = (sliderWidth - sliderStyle.thumbSize) * rate;
+
+      DecoratedBox3d slab(
+        Color color,
+        BorderRadius3d shape,
+        double thickness,
+        String name,
+      ) => DecoratedBox3d(
+        decoration: Material3d.decorationFor(
+          theme,
+          color: color,
+          shape: shape,
+          thickness: thickness,
+          surfaceTint: const Color(0x00000000),
+        ),
+        name: name,
+      );
+
+      final probes = <String, Layout3d>{};
+
+      Layout3d paddedCard(String prefix, EdgeInsets3d padding) {
+        final body = SizedBox3d(
+          width: sliderWidth * rate,
+          height: sliderStyle.stateLayerSize * rate,
+          name: '${prefix}Body',
+        );
+        final thumb = slab(
+          sliderStyle.thumb,
+          theme.shape.full,
+          sliderStyle.thumbThickness,
+          '${prefix}Thumb',
+        );
+        final slider = Stack3d(
+          alignment: Alignment3d.frontCenter,
+          depthStep: sliderStyle.depthStep * rate,
+          children: <Layout3d>[
+            body,
+            SizedBox3d(
+              width: travel,
+              height: sliderStyle.trackHeight * rate,
+              depth: sliderStyle.trackThickness * rate,
+              child: slab(
+                sliderStyle.inactiveTrack,
+                sliderStyle.trackShape,
+                sliderStyle.trackThickness,
+                '${prefix}Inactive',
+              ),
+            ),
+            NodeShift3d(scaleX: value)
+              ..child = SizedBox3d(
+                width: travel,
+                height: sliderStyle.trackHeight * rate,
+                depth: sliderStyle.trackThickness * rate,
+                child: slab(
+                  sliderStyle.activeTrack,
+                  sliderStyle.trackShape,
+                  sliderStyle.trackThickness,
+                  '${prefix}Active',
+                ),
+              ),
+            NodeShift3d(shift: Offset3d(travel * (value - 0.5), 0.0, 0.0))
+              ..child = SizedBox3d(
+                width: sliderStyle.thumbSize * rate,
+                height: sliderStyle.thumbSize * rate,
+                depth: sliderStyle.thumbThickness * rate,
+                child: thumb,
+              ),
+          ],
+        );
+
+        final card = DecoratedBox3d(
+          decoration: Material3d.decorationFor(
+            theme,
+            color: cardStyle.container,
+            shape: cardStyle.shape,
+            elevation: cardStyle.elevation,
+            thickness: cardStyle.thickness,
+            border: cardStyle.border,
+            surfaceTint: const Color(0x00000000),
+          ),
+          name: '${prefix}Card',
+          child: Container3d(
+            alignment: Alignment3d.frontCenter,
+            depth: cardStyle.thickness * rate,
+            child:
+                NodeShift3d(
+                    shift: const Offset3d(
+                      0.0,
+                      0.0,
+                      -Material3d.contentLift * rate,
+                    ),
+                  )
+                  ..child = Padding3d(
+                    padding: padding * rate,
+                    child: Column3d(
+                      crossAxisAlignment: CrossAxisAlignment3d.stretch,
+                      depthAxisAlignment: CrossAxisAlignment3d.start,
+                      mainAxisSize: MainAxisSize3d.min,
+                      children: <Layout3d>[
+                        Align3d(
+                          alignment: Alignment3d.frontCenter,
+                          child: slider,
+                        ),
+                      ],
+                    ),
+                  ),
+          ),
+        );
+        probes['${prefix}Card'] = card;
+        probes['${prefix}Body'] = body;
+        probes['${prefix}Thumb'] = thumb;
+        return SizedBox3d(
+          width: (sliderWidth + inset * 2.0) * rate,
+          child: card,
+        );
+      }
+
+      return ProbeSceneContent(
+        surfaces: [
+          Layout3dSurface(
+            metrics: const Layout3dMetrics(unitsPerLogicalPixel: rate),
+            constraints: Constraints3d.tight(const Size3d(10.0, 7.0, 0.6)),
+            child: Center3d(
+              child: Column3d(
+                mainAxisSize: MainAxisSize3d.min,
+                spacing: 0.6,
+                children: <Layout3d>[
+                  paddedCard(
+                    'face',
+                    const EdgeInsets3d.symmetric(
+                      horizontal: inset,
+                      vertical: inset,
+                    ),
+                  ),
+                  paddedCard('sunk', const EdgeInsets3d.all(inset)),
+                ],
+              ),
+            ),
+          ),
+        ],
+        probes: probes,
+      );
+    },
+    camera: _wideCamera(),
+    preload: installPanelPainter,
+  ),
+
   // ── The press ripple ─────────────────────────────────────────────────
   //
   // Phase 8's one claim, and it is a claim about a picture and nothing else:

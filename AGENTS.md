@@ -80,7 +80,7 @@ Everything below runs from the repository root unless stated otherwise.
 flutter pub get                                      # resolves the workspace
 cd packages/flutter_scene_layout3d && flutter test   # 1050 today
 cd packages/flutter_scene_material3d && flutter test # 521 today
-cd examples/layout3d_gallery && flutter test         # 3 today
+cd examples/layout3d_gallery && flutter test         # 4 today
 dart analyze                                         # must be clean, everywhere
 dart format .                                        # before every commit
 ```

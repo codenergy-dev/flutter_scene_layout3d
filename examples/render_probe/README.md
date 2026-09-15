@@ -201,6 +201,19 @@ drag scenes: it drives a real `Layout3dPointer` through the component's own
 `SliderGesture3d` three quarters of the way across, then asks whether the
 active track stops where the thumb is.
 
+`slider_in_a_padded_card` is the slider again, in the place the gallery put
+it, and it is a scene about a padding rather than about a control. Two outlined
+cards hold the same slider, built box for box the way `Material3d`, the
+gallery's settings screen and `Slider3d` build it; the top card's padding is
+`EdgeInsets3d.symmetric` and the bottom one's is `EdgeInsets3d.all`, which is
+the line the gallery shipped. `all` insets the front face too, a card is only
+as deep as its thickness, and the slider ends up 12dp behind a 4dp face that
+hides it — a person saw an empty card while every headless test passed. The
+test asks for the thumb's colour on the top card and for bare card where the
+thumb should be on the bottom one, so each half is the other's control. The
+gallery's own `screens_test.dart` asks the same question of the layout, which
+is the check that runs without a GPU.
+
 `switch_thumb` is also where the *"a difference is not a direction"* rule below
 earned a corollary. Its first version asserted that the thumb was lighter than
 the track by more than 0.2 — which reads like a direction and is a magnitude

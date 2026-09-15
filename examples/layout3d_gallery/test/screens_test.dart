@@ -144,6 +144,56 @@ void main() {
     pointer.dispose();
   });
 
+  testWidgets('every control on the settings screen stands on the face of '
+      'the card it is in', (tester) async {
+    // The slider in the settings screen's second card was laid out, labelled
+    // and reachable, and nobody could see it: the card's padding was
+    // `EdgeInsets3d.all`, which insets the *front* too, so the slider and its
+    // label sat 12dp behind a card 4dp thick and the card's face hid them.
+    // The test above passed the whole time, because a label that is there
+    // and a label you can see are different claims. This is the second one,
+    // asked of the layout: no control is further from the viewer than the
+    // front face of the surface it is written on.
+    final controller = await pump(tester, const MaterialScreen());
+    final surface = controller.surface!;
+    final destination = boxesOf<Semantics3d>(
+      surface,
+    ).firstWhere((box) => box.properties.label == 'Settings');
+    // Torn down rather than disposed at the end, so a failing expectation
+    // below does not leave a live pointer to break the next test.
+    final pointer = Layout3dPointer(surface);
+    addTearDown(pointer.dispose);
+    pointer
+      ..down(
+        rayAt(surface, offsetInSurface(destination) + destination.size.center),
+      )
+      ..up();
+    await tester.pump();
+
+    const controls = <String>['Notifications', 'Compact rows', 'Volume'];
+    for (final label in controls) {
+      final control = boxesOf<Semantics3d>(
+        surface,
+      ).firstWhere((box) => box.properties.label == label);
+      // The nearest surface above the control is the card it belongs to.
+      Layout3d? card = control.parent;
+      while (card != null && card is! DecoratedBox3d) {
+        card = card.parent;
+      }
+      expect(card, isNotNull, reason: '"$label" is on no surface at all');
+
+      // Layout's z runs away from the viewer, so "behind the face" is a
+      // larger z than the card's own.
+      expect(
+        offsetInSurface(control).z,
+        lessThanOrEqualTo(offsetInSurface(card!).z + 1e-9),
+        reason:
+            '"$label" is laid out behind the front face of its card, which '
+            'hides it: is something between them insetting the front?',
+      );
+    }
+  });
+
   testWidgets('the table screen lays out on the ground plane', (tester) async {
     final controller = await pump(
       tester,
