@@ -1,5 +1,47 @@
 ## Unreleased
 
+- **An application no longer wires its own rays.** `SceneInput3d` wraps the
+  `SceneView` and owns the input: the listener, the camera arithmetic that
+  turns a pointer position into a world ray, the `Layout3dPointerGroup`, and
+  which surfaces are in it. It saves an application about ninety lines — the
+  gallery lost 107 of them — and closes three failure modes that said nothing
+  when they happened: a z-order in the wrong relative order routing a press to
+  the panel behind, a surface registered before it existed and skipped
+  forever, and a dialog never synced into the group and so unpressable.
+  - **A surface announces itself on mount.** `SceneLayout3d` registers with
+    the host above it in `didChangeDependencies` and takes itself out when it
+    goes, so there is nothing to re-assert from a per-frame tick and no window
+    in which a mounted panel cannot be pressed.
+  - **`SceneLayout3d.zOrder` and `absorbsPointer`** state what is in front of
+    what where the rest of a surface is configured. Stated rather than
+    derived, because geometry cannot answer it for a panel turned away from
+    the camera: it is in front for some pixels and behind for others, while a
+    pointer needs one answer for the whole surface.
+  - **A `SceneOverlay3d`'s detached entries are synced immediately before each
+    dispatch** rather than once a frame. A per-frame sync is both too often —
+    entries change when a dialog opens, not when a frame is drawn — and not
+    often enough, since an entry inserted from a pointer callback was
+    unpressable until the next one. An entry lands one whole z-order step in
+    front of the surface whose overlay opened it, so nothing restates that.
+  - **The camera is ambient.** `SceneLayout3d` and `SceneOverlay3d` fall back
+    to the host's camera, so an application states it once at the top instead
+    of on every panel; an explicit one still wins.
+  - **`Input3dHost`, `Input3dController`, `Input3dHit`** are the seam: the
+    group and the camera in force, reachable with `SceneInput3d.of(context)`
+    from inside the scene or through a controller from the widget that built
+    it. `onHit` reports what a press or a hover found, and whether the press
+    took hold of a scrolling view.
+  - **A pointer that leaves the view is taken off every surface**, so a box
+    lit by a hover no longer keeps its state layer when the cursor leaves the
+    window — nothing else would ever have told it otherwise.
+  - Not routed yet, and deliberately left visible rather than quietly dropped:
+    a wheel, a trackpad gesture and a key.
+- **`Layout3dPointerGroup` keeps its detached-entry bookkeeping per overlay.**
+  It was one flat set shared across every overlay it was called for, so with
+  two overlays each `syncDetachedEntries` took out the other's entries — a
+  defect only one overlay had ever been tried against.
+  **`forgetDetachedEntries`** is the counterpart an overlay going away needs.
+
 - **A paragraph has a side to it.** `RichText3d` was the one label left flat by
   the glyph work, and its capture is a `gpu.Texture` with no readable copy, so
   the atlas trick does not transfer. The silhouette comes from a **second, CPU

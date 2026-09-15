@@ -27,6 +27,7 @@ import '../metrics.dart';
 import '../slot.dart';
 import '../surface.dart';
 import 'framework.dart';
+import 'input.dart';
 
 /// Imperative access to the [Layout3dSurface] a [SceneLayout3d] owns.
 ///
@@ -88,6 +89,8 @@ class SceneLayout3d extends StatefulWidget {
     this.scale,
     this.transform,
     this.controller,
+    this.zOrder = 0.0,
+    this.absorbsPointer = true,
     this.slots = const <Layout3dSlot<Object>, Object>{},
     this.child,
   }) : assert(
@@ -191,6 +194,28 @@ class SceneLayout3d extends StatefulWidget {
   /// Imperative access to the surface this widget owns.
   final Layout3dController? controller;
 
+  /// Where this surface stands among the others a [SceneInput3d] routes to,
+  /// highest first.
+  ///
+  /// **Stated rather than derived, because geometry cannot state it.** A
+  /// panel turned away from the camera is in front of another panel for some
+  /// pixels and behind it for others, while a pointer needs one answer for
+  /// the whole surface — so a scene of panels says which one a press belongs
+  /// to, in the same place the rest of the surface is configured. Ties go to
+  /// the surface nearest the camera.
+  ///
+  /// Ignored when there is no [SceneInput3d] above: a surface pointed at by
+  /// hand is ordered by whatever the caller passed to
+  /// [Layout3dPointerGroup.addSurface].
+  final double zOrder;
+
+  /// Whether a hit on this surface ends the walk, leaving the surfaces
+  /// behind it untouched.
+  ///
+  /// True is what a panel wants. False is for a surface that must not block
+  /// the world behind it — a readout floating over the scene, say.
+  final bool absorbsPointer;
+
   /// Tree-wide state every box on this surface can read as [Layout3d.slot].
   ///
   /// The declarative form of [Layout3dSurface.setSlot], for an application
@@ -255,8 +280,38 @@ class _SceneLayout3dState extends State<SceneLayout3d> {
     widget.controller?._surface = _surface;
     _surface.metricsListenable.addListener(_handleMetricsChanged);
     _syncSlots(const <Layout3dSlot<Object>, Object>{});
-    assert(_debugCheckBinding());
     _scheduleBindingUpdate();
+  }
+
+  /// The input host this surface is registered with, when there is one.
+  Input3dHost? _input;
+
+  /// The camera this surface reads: its own, or the one the enclosing
+  /// [SceneInput3d] casts its rays from.
+  ///
+  /// Falling back is the whole point. A binding needs the same camera the
+  /// view renders with, which is the camera the input host already has, so an
+  /// application that states it once at the top does not restate it on every
+  /// panel.
+  Camera? get _camera => widget.camera ?? _input?.camera;
+
+  /// Announces the surface to the host above, and takes it off an old one.
+  ///
+  /// Called from [didChangeDependencies], so the surface is reachable by a
+  /// ray from the moment the widget is mounted. That is the whole lifecycle
+  /// change: nothing has to re-assert the registration from a per-frame tick,
+  /// and nothing can be skipped forever for having been asked too early.
+  void _syncInputHost() {
+    final host = SceneInput3d.maybeOf(context);
+    if (!identical(host, _input)) {
+      _input?.unregisterSurface(_surface);
+      _input = host;
+    }
+    host?.registerSurface(
+      _surface,
+      zOrder: widget.zOrder,
+      absorbs: widget.absorbsPointer,
+    );
   }
 
   /// Whether the metrics being written is this state's own doing, and so is
@@ -317,6 +372,11 @@ class _SceneLayout3dState extends State<SceneLayout3d> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _syncInputHost();
+    assert(_debugCheckBinding());
+    // The ambient camera may have changed with the host, and a binding reads
+    // it, so ask for a run whether or not the scene's clock moved.
+    _scheduleBindingUpdate();
     final frames = SceneScope.maybeOf(context)?.elapsed;
     if (identical(frames, _frames)) return;
     _frames?.removeListener(_applyBinding);
@@ -337,6 +397,14 @@ class _SceneLayout3dState extends State<SceneLayout3d> {
     }
     if (!identical(widget.slots, oldWidget.slots)) {
       _syncSlots(oldWidget.slots);
+    }
+    if (widget.zOrder != oldWidget.zOrder ||
+        widget.absorbsPointer != oldWidget.absorbsPointer) {
+      _input?.registerSurface(
+        _surface,
+        zOrder: widget.zOrder,
+        absorbs: widget.absorbsPointer,
+      );
     }
     final binding = widget.binding;
     final oldBinding = oldWidget.binding;
@@ -363,6 +431,7 @@ class _SceneLayout3dState extends State<SceneLayout3d> {
 
   @override
   void dispose() {
+    _input?.unregisterSurface(_surface);
     _frames?.removeListener(_applyBinding);
     _surface.metricsListenable.removeListener(_handleMetricsChanged);
     if (identical(widget.controller?._surface, _surface)) {
@@ -385,10 +454,11 @@ class _SceneLayout3dState extends State<SceneLayout3d> {
     final binding = widget.binding;
     if (binding == null) return true;
     assert(
-      !binding.needsCamera || widget.camera != null,
+      !binding.needsCamera || _camera != null,
       'This Layout3dCameraBinding derives the surface from a camera, so '
       'SceneLayout3d needs one. Pass the camera the enclosing SceneView '
-      'renders with.',
+      'renders with, or wrap the view in a SceneInput3d that states it once '
+      'for every surface below it.',
     );
     assert(
       !binding.derivesConstraints ||
@@ -426,7 +496,7 @@ class _SceneLayout3dState extends State<SceneLayout3d> {
     if (!mounted) return;
     final binding = widget.binding;
     if (binding == null) return;
-    final camera = widget.camera;
+    final camera = _camera;
     if (binding.needsCamera && camera == null) return;
     Size? viewSize;
     if (binding.needsViewSize) {

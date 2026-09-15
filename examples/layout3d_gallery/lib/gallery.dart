@@ -1,7 +1,5 @@
 import 'dart:math' as math;
 
-import 'package:flutter/gestures.dart'
-    show PointerDownEvent, PointerEvent, PointerHoverEvent, PointerMoveEvent;
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart' show SemanticsProperties;
 import 'package:flutter_scene/scene.dart'
@@ -20,9 +18,8 @@ import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
 import 'package:flutter_scene_layout3d/widgets.dart'
     show
         AtlasText3dRenderer,
-        Layout3dController,
-        Layout3dPointerGroup,
-        Overlay3dController,
+        Input3dHit,
+        SceneInput3d,
         SceneLayout3d,
         SceneListView3d,
         SceneNodeBox3d,
@@ -83,22 +80,6 @@ class _Layout3dGalleryState extends State<Layout3dGallery> {
 
   final Scroll3dController _scroll = Scroll3dController();
 
-  /// Handles on the three surfaces the widget layer owns.
-  final Layout3dController _screen = Layout3dController();
-  final Layout3dController _table = Layout3dController();
-  final Layout3dController _pieces = Layout3dController();
-
-  /// The overlay the upright screen's snack bars go into. Any detached entry
-  /// in it is a surface of its own and has to be in the pointer group, which
-  /// is what [_syncPointers] keeps true.
-  final Overlay3dController _screenOverlay = Overlay3dController();
-
-  /// One pointer over all three surfaces, so a press on the screen in front
-  /// does not also reach whatever is behind it.
-  late final Layout3dPointerGroup _pointers = Layout3dPointerGroup(
-    camera: camera,
-  );
-
   /// What the cursor is over, by semantic label or layout name.
   String? _under;
 
@@ -135,58 +116,17 @@ class _Layout3dGalleryState extends State<Layout3dGallery> {
 
   // --- input -------------------------------------------------------------
 
-  /// Keeps the pointer group in step with the surfaces the widget layer has
-  /// actually built.
+  /// Reports what a press or a hover found.
   ///
-  /// A `SceneLayout3d`'s surface does not exist until the widget is mounted,
-  /// so the group is filled in on the first frame rather than in `initState`.
-  /// The z-orders say what is in front of what, which is a statement geometry
-  /// cannot make for a screen turned away from the camera: the upright
-  /// screen, then the table, then the meshes.
-  void _syncPointers() {
-    final screen = _screen.surface;
-    if (screen != null) _pointers.addSurface(screen, zOrder: 0.2);
-    final table = _table.surface;
-    if (table != null) _pointers.addSurface(table, zOrder: 0.1);
-    final pieces = _pieces.surface;
-    if (pieces != null) _pointers.addSurface(pieces);
-    final overlay = _screenOverlay.overlay;
-    if (overlay != null) _pointers.syncDetachedEntries(overlay);
-  }
-
-  vm.Ray _rayAt(Offset position, Size viewSize) =>
-      camera.screenPointToRay(position, viewSize);
-
-  void _handleDown(PointerDownEvent event, Size viewSize) {
-    final grabbed = _pointers.down(
-      _rayAt(event.localPosition, viewSize),
-      pointer: event.pointer,
-      kind: event.kind,
-    );
-    if (grabbed) _scrolledByHand = true;
-    _report(_pointers.lastHit);
-  }
-
-  void _handleMove(PointerMoveEvent event, Size viewSize) {
-    _pointers.move(
-      _rayAt(event.localPosition, viewSize),
-      pointer: event.pointer,
-    );
-  }
-
-  void _handleUp(PointerEvent event, Size viewSize) {
-    _pointers.up(
-      worldRay: _rayAt(event.localPosition, viewSize),
-      pointer: event.pointer,
-    );
-  }
-
-  void _handleHover(PointerHoverEvent event, Size viewSize) {
-    _pointers.hover(
-      _rayAt(event.localPosition, viewSize),
-      pointer: event.pointer,
-    );
-    _report(_pointers.lastHit);
+  /// The whole of this gallery's input wiring. There is no `Listener`, no
+  /// `camera.screenPointToRay`, no pointer group filled in from a tick and no
+  /// z-orders restated every frame: `SceneInput3d` owns all of that, and each
+  /// surface states where it stands on its own widget.
+  void _handleHit(Input3dHit hit) {
+    // A press that took hold of the mesh list retires the clock that scrolls
+    // it for show, and hands the position to the drag for good.
+    if (hit.grabbedScrollable) _scrolledByHand = true;
+    _report(hit.result);
   }
 
   /// Names the thing under the cursor.
@@ -215,33 +155,28 @@ class _Layout3dGalleryState extends State<Layout3dGallery> {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final viewSize = constraints.biggest;
-        return Listener(
-          onPointerDown: (event) => _handleDown(event, viewSize),
-          onPointerMove: (event) => _handleMove(event, viewSize),
-          onPointerUp: (event) => _handleUp(event, viewSize),
-          onPointerCancel: (event) => _pointers.cancel(pointer: event.pointer),
-          onPointerHover: (event) => _handleHover(event, viewSize),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              _buildScene(),
-              Positioned(
-                left: 16,
-                bottom: 16,
-                child: Text(
-                  _under == null
-                      ? 'Tap the screen, throw a switch, drag the slider'
-                      : 'Pointing at: $_under',
-                  style: const TextStyle(color: Colors.white70, fontSize: 13),
-                ),
-              ),
-            ],
+    // Everything the pointers need, said once: the camera the rays are cast
+    // from, and where to report what they found. Each surface below says
+    // where it stands and nothing here repeats it.
+    return SceneInput3d(
+      camera: camera,
+      onHit: _handleHit,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          _buildScene(),
+          Positioned(
+            left: 16,
+            bottom: 16,
+            child: Text(
+              _under == null
+                  ? 'Tap the screen, throw a switch, drag the slider'
+                  : 'Pointing at: $_under',
+              style: const TextStyle(color: Colors.white70, fontSize: 13),
+            ),
           ),
-        );
-      },
+        ],
+      ),
     );
   }
 
@@ -254,21 +189,21 @@ class _Layout3dGalleryState extends State<Layout3dGallery> {
         // turns, so the surface widget declares no rotation of its own: the
         // ownership rule is that whatever the widget declares, the next build
         // writes back over.
+        //
+        // The z-orders below say what is in front of what, which is a
+        // statement geometry cannot make for a screen turned away from the
+        // camera: the upright screen, then the table, then the meshes. The
+        // snack bars this screen opens are detached surfaces of their own and
+        // land a whole step in front of it, with nothing said here.
         SceneLayout3d(
           parent: _panelPivot,
-          controller: _screen,
+          zOrder: 0.2,
           size: const Size3d(3.5, 4.8, 0.6),
-          child: _themed(
-            SceneOverlay3d(
-              controller: _screenOverlay,
-              camera: camera,
-              child: const MaterialScreen(),
-            ),
-          ),
+          child: _themed(SceneOverlay3d(child: const MaterialScreen())),
         ),
         // The same catalogue on the ground. Only the basis changes.
         SceneLayout3d(
-          controller: _table,
+          zOrder: 0.1,
           basis: LayoutBasis3d.xz,
           size: const Size3d(4.6, 2.6, 0.6),
           // A screen on a table is a *smaller* screen, and the unit contract
@@ -284,7 +219,6 @@ class _Layout3dGalleryState extends State<Layout3dGallery> {
         // Not Material at all: the same protocol arranging an application's
         // own meshes, scrolling, on a surface of its own.
         SceneLayout3d(
-          controller: _pieces,
           size: const Size3d(1.2, 3.2, 0.4),
           position: vm.Vector3(-3.0, 2.4, 0),
           child: SceneListView3d(
@@ -325,7 +259,6 @@ class _Layout3dGalleryState extends State<Layout3dGallery> {
       ],
       onTick: (elapsed, deltaSeconds) {
         _time = elapsed.inMicroseconds / 1e6;
-        _syncPointers();
 
         // Turning the pivot carries the whole screen laid out on it, and
         // relayouts nothing.

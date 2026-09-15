@@ -23,6 +23,7 @@ import '../overlay/modal_barrier.dart';
 import '../overlay/navigator.dart';
 import '../overlay/overlay.dart';
 import 'framework.dart';
+import 'input.dart';
 
 /// Imperative access to the [Overlay3d] a [SceneOverlay3d] owns.
 ///
@@ -197,11 +198,35 @@ class _SceneOverlay3dState extends State<SceneOverlay3d> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _syncInputHost();
     final frames = SceneScope.maybeOf(context)?.elapsed;
     if (identical(frames, _frames)) return;
     _frames?.removeListener(_applyBindings);
     _frames = frames;
     frames?.addListener(_applyBindings);
+  }
+
+  /// The input host this overlay's detached entries are routed through.
+  Input3dHost? _input;
+
+  /// The camera this overlay reads: its own, or the enclosing
+  /// [SceneInput3d]'s.
+  Camera? get _camera => widget.camera ?? _input?.camera;
+
+  /// Tells the host above that this overlay's entries are surfaces of their
+  /// own.
+  ///
+  /// Only the overlay is registered, not the entries: what an overlay holds
+  /// changes when a dialog opens, and the host syncs the entries themselves
+  /// immediately before it dispatches an event — so a dialog opened from a
+  /// press is pressable in the very same frame rather than after the next
+  /// tick.
+  void _syncInputHost() {
+    final host = SceneInput3d.maybeOf(context);
+    if (identical(host, _input)) return;
+    _input?.unregisterOverlay(_overlay);
+    _input = host;
+    host?.registerOverlay(_overlay);
   }
 
   @override
@@ -217,6 +242,7 @@ class _SceneOverlay3dState extends State<SceneOverlay3d> {
 
   @override
   void dispose() {
+    _input?.unregisterOverlay(_overlay);
     _frames?.removeListener(_applyBindings);
     // Before clearEntries, which notifies: a listener that called setState
     // from inside dispose would throw, and there is nothing left to rebuild.
@@ -234,7 +260,7 @@ class _SceneOverlay3dState extends State<SceneOverlay3d> {
 
   void _applyBindings() {
     if (!mounted) return;
-    final camera = widget.camera;
+    final camera = _camera;
     if (camera == null) return;
     _overlay.updateCameraBindings(camera: camera, viewSize: _resolveViewSize());
   }

@@ -211,7 +211,9 @@ class Layout3dPointerGroup {
     for (final captured in _captured.values) {
       captured.remove(member);
     }
-    _entrySurfaces.remove(surface);
+    for (final held in _entrySurfaces.values) {
+      held.remove(surface);
+    }
     // Handed back the way it came: a pointer the caller owns goes back to
     // resolving its own drags, since nothing else is going to.
     member.pointer.resolvesDrags = true;
@@ -239,24 +241,46 @@ class Layout3dPointerGroup {
   /// is given `zOrder + its index`, so a later entry is in front of an
   /// earlier one; keep the base surface's own z-order below [zOrder].
   ///
-  /// Cheap enough to call every frame: an entry already here has its z-order
-  /// rewritten and nothing else.
+  /// Cheap enough to call on every event: an entry already here has its
+  /// z-order rewritten and nothing else.
+  ///
+  /// **What each call is responsible for is scoped to its own [overlay].** A
+  /// group may hold the entries of several overlays at once — one per panel
+  /// in a scene of panels — and a sync of one must not take out the entries
+  /// of another. A surface added by hand is nobody's responsibility here and
+  /// stays whatever the overlays do.
   void syncDetachedEntries(Overlay3d overlay, {double zOrder = 1.0}) {
     final wanted = overlay.detachedSurfaces;
-    // Only the surfaces this call is responsible for are taken out: one added
-    // by hand stays, whether or not the overlay knows about it.
-    for (final surface in _entrySurfaces.toList()) {
+    final held = _entrySurfaces[overlay] ??= <Layout3dSurface>{};
+    for (final surface in held.toList()) {
       if (wanted.contains(surface)) continue;
+      held.remove(surface);
       removeSurface(surface);
     }
     for (var index = 0; index < wanted.length; index++) {
       final surface = wanted[index];
-      _entrySurfaces.add(surface);
+      held.add(surface);
       addSurface(surface, zOrder: zOrder + index);
     }
   }
 
-  final Set<Layout3dSurface> _entrySurfaces = <Layout3dSurface>{};
+  /// Takes every entry [overlay] put here out of the group.
+  ///
+  /// What an overlay going away owes the group, and the counterpart of
+  /// [syncDetachedEntries]: without it a dismissed panel's dialogs would keep
+  /// answering rays from a tree nothing is laying out any more.
+  void forgetDetachedEntries(Overlay3d overlay) {
+    final held = _entrySurfaces.remove(overlay);
+    if (held == null) return;
+    for (final surface in held) {
+      removeSurface(surface);
+    }
+  }
+
+  /// The surfaces each overlay has put here, so that one overlay's sync
+  /// leaves another's entries alone.
+  final Map<Overlay3d, Set<Layout3dSurface>> _entrySurfaces =
+      <Overlay3d, Set<Layout3dSurface>>{};
 
   /// What [worldRay] reaches on the front-most surface that answers, without
   /// touching any sequence state.

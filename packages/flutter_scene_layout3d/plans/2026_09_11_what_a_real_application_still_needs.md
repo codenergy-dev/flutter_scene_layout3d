@@ -1,8 +1,8 @@
 ---
 status: in progress
-reason: sixteen of the seventeen items are open; the record of what shipped is closed
+reason: fifteen of the seventeen items are open; the record of what shipped and the application widget are closed
 created_at: 2026-09-11T21:20:18Z
-updated_at: 2026-09-11T22:40:00Z
+updated_at: 2026-09-11T23:58:00Z
 commit: abc2469ce5c4ec4c41e2738fc5acf55bcf40640a
 ---
 
@@ -91,7 +91,7 @@ plan, which is the rule phase 0 established and every phase since has obeyed.
 
 | Plan | Package | What it unblocks |
 | --- | --- | --- |
-| [An application that does not wire its own rays](#an-application-that-does-not-wire-its-own-rays) | layout3d | every application, ninety lines each |
+| ~~[An application that does not wire its own rays](#an-application-that-does-not-wire-its-own-rays)~~ | layout3d | **done** — every application, ninety lines each |
 | [A wheel, a trackpad and a key that reach a box](#a-wheel-a-trackpad-and-a-key-that-reach-a-box) | layout3d | scrolling on desktop and web; activating a control without a pointer |
 | [A row that reads right to left](#a-row-that-reads-right-to-left) | layout3d | every non-LTR locale |
 | [A picture on a panel](#a-picture-on-a-panel) | layout3d | avatars, photographs, gradients, logos |
@@ -111,13 +111,14 @@ plan, which is the rule phase 0 established and every phase since has obeyed.
 
 ## The order, and why
 
-**[An application that does not wire its own rays](#an-application-that-does-not-wire-its-own-rays)
-leads**, for the same reason camera-bound surfaces led the first map: it is
-the item every other item is consumed through. Porting a real screen is how
-this map is measured, and today that port begins by copying ninety lines out
-of `examples/layout3d_gallery` and getting the z-orders right. Fix that and
-every subsequent item is evaluated in a real application instead of in a
-scene.
+~~**[An application that does not wire its own rays](#an-application-that-does-not-wire-its-own-rays)
+leads**~~ — **done, and it led** for the same reason camera-bound surfaces led
+the first map: it is the item every other item is consumed through. Porting a
+real screen no longer begins by copying ninety lines out of
+`examples/layout3d_gallery` and getting the z-orders right; it begins with a
+`SceneInput3d` around the view. Every subsequent item is now evaluated in a
+real application instead of in a scene. See
+[its plan](2026_09_11_an_application_that_does_not_wire_its_own_rays.md).
 
 **[The wheel and the key](#a-wheel-a-trackpad-and-a-key-that-reach-a-box)
 immediately after**, and possibly in the same breath — the first ported screen
@@ -179,7 +180,12 @@ are where a first implementer's decision becomes someone else's constraint.
   other plans consume it: the wheel and the key route through it, navigation
   hangs off it, and the test library has to be able to drive it without a real
   window. Design it as the seam it is, not as a convenience wrapper around
-  the gallery's code.
+  the gallery's code. **Settled:** the seam is `Input3dHost`, reached with
+  `SceneInput3d.of(context)` or through an `Input3dController`, and it carries
+  the group and the camera. `SceneInput3d` takes a `child` rather than
+  building the `SceneView`, which is what makes it drivable from a widget test
+  with no window — the test library's half of this is already possible, and
+  `test/input_test.dart` is the worked example.
 - **Two plans want an asynchronous texture, and one already has the trap.** A
   glyph's wall arrives with the atlas rather than with the layout, which is
   `GlyphAtlas3d.outlineRevision` and is written up in
@@ -225,6 +231,13 @@ are where a first implementer's decision becomes someone else's constraint.
 
 **Package:** `flutter_scene_layout3d`.
 **Slug:** `an_application_that_does_not_wire_its_own_rays`.
+**Closed** by
+[its own plan](2026_09_11_an_application_that_does_not_wire_its_own_rays.md).
+The entry below is what it was reasoned from; what the reasoning got wrong is
+recorded there, and the short version is that the design question this entry
+called the harder half — who owns the z-order — was the easy half, while the
+overlay's entries, which this entry mentions in a clause, held the only actual
+defect in the existing machinery.
 
 The gap, in one sentence: **there is no application layer.** Read
 `examples/layout3d_gallery/lib/gallery.dart` and count what an author must

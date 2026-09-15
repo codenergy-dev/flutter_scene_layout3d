@@ -970,6 +970,7 @@ than none.
 | `WidgetOverlay3dEntry`, `WidgetPageRoute3d` | an entry and a route whose content is a widget subtree |
 | `Layout3d.anchorOffsetTo` | `CompositedTransformTarget` and `CompositedTransformFollower`, as one call on the node tier |
 | `Layout3dPointerGroup` | routing a ray across surfaces, which a screen does not need |
+| `SceneInput3d`, `Input3dHost` | the `Listener` an application would otherwise write, with the rays and the surfaces owned for it |
 | `NodeBox3d` | the leaf that holds content |
 | `Text3d`, `TextMeasurement3d` | `Text`, and the `TextPainter` behind it |
 | `AtlasText3dRenderer`, `RichText3d` | the two halves of `RenderParagraph.paint`: glyphs from an atlas, or Flutter's own raster |
@@ -1727,6 +1728,63 @@ measured in world units would put the slop most of a panel away. Measured in
 dp on the plane, the constants mean what they say, and the recognizers can be
 used exactly as they are.
 
+### Letting the widget layer wire it
+
+Everything above is the mechanism, and an application should not have to
+assemble it. `SceneInput3d` wraps the `SceneView` and owns the whole of it —
+the listener, the rays, the group, and which surfaces are in it:
+
+```dart
+SceneInput3d(
+  camera: camera,
+  onHit: (hit) => setState(() => _under = hit.result.target?.name),
+  child: SceneView(
+    scene,
+    camera: camera,
+    children: [
+      SceneLayout3d(zOrder: 0.2, size: const Size3d(3.5, 4.8, 0.6), child: screen),
+      SceneLayout3d(basis: LayoutBasis3d.xz, size: const Size3d(4.6, 2.6, 0.6), child: table),
+    ],
+  ),
+)
+```
+
+That is the whole of it. **A surface announces itself when it mounts** and
+takes itself out when it goes, so there is nothing to register from a tick and
+no window in which a freshly built panel is unpressable. A `SceneOverlay3d`
+below announces its overlay the same way, and the entries themselves are
+brought up to date immediately before each event rather than once a frame — so
+a dialog opened from a press is pressable straight away, and one that closes
+stops answering at once.
+
+**`zOrder` is what is in front of what, and it is stated rather than derived.**
+Geometry cannot answer it: a panel turned away from the camera is in front of
+another panel for some pixels and behind it for others, while a pointer needs
+one answer for the whole surface. Ties go to the surface nearest the camera. A
+dialog is put one whole step in front of the surface whose overlay opened it,
+so that relationship is never restated either. `absorbsPointer: false` is the
+other half — a surface that is dispatched to and does not end the walk, which
+is what a readout floating over the scene wants.
+
+The camera is published to everything below, so a `SceneLayout3d` with a
+camera binding and a `SceneOverlay3d` with a billboarded dialog need not be
+handed one of their own. `onHit` reports what a press or a hover found — and
+whether the press took hold of a scrolling view, which is the one piece of
+news the path does not carry. It is not called for a move, because a move goes
+to the surfaces that captured the press and never asks what is under the ray.
+
+It wraps the view rather than replacing it, deliberately: a `SceneView` has
+more than twenty parameters, and a widget that forwarded them would be a list
+that rots every time the engine grows one. Keep the view you know — its
+`onTick`, its loading gate, its camera builder — and let this own the input.
+
+**A wheel, a trackpad gesture and a key are not routed yet.** They belong
+here, and they are left visibly absent rather than quietly dropped: scrolling
+by the usual gesture on a desktop, and activating a focused control from the
+keyboard, are the next piece of work. Reach the host from inside the subtree
+with `SceneInput3d.of(context)`, or from the widget that built it with an
+`Input3dController`.
+
 ### Claiming the target
 
 By default a box that merely arranges others is not a target, so the padding
@@ -1922,7 +1980,9 @@ surface added with `absorbs: false` is dispatched to and the walk carries on,
 which is what a HUD that must not block the world wants. A press captures the
 surfaces that answered it, so sliding a drag off the dialog and onto the panel
 behind does not hand the drag over. `group.syncDetachedEntries(overlay)`
-keeps the group in step as dialogs open and close.
+keeps the group in step as dialogs open and close — and under a
+`SceneInput3d` nothing calls it by hand: a `SceneOverlay3d` registers its
+overlay and the host syncs it before each event.
 
 The barrier is `ModalBarrier3d`: it fills what it is given, answers every ray
 itself — which is what stops one reaching the content behind — and calls

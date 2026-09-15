@@ -200,6 +200,15 @@ export 'src/widgets/framework.dart'
         Layout3dWidget,
         SingleChildLayout3dWidget,
         debugCheckNoInterposedRenderObject;
+export 'src/widgets/input.dart'
+    show
+        Input3dController,
+        Input3dHit,
+        Input3dHitCallback,
+        Input3dHitPhase,
+        Input3dHost,
+        Input3dScope,
+        SceneInput3d;
 export 'src/widgets/layouts.dart'
     show
         Layout3dWidgetBuilder,

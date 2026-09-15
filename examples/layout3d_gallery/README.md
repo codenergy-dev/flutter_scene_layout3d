@@ -71,12 +71,23 @@ something to draw, and it looked exactly like you would expect.
 `lib/gallery.dart` mounts them: the surfaces, the camera, the pivot node the
 upright screen turns on, and the input.
 
-Input is a `Layout3dPointerGroup` rather than three separate pointers. A
-pointer here is a ray, and a group is what decides which surface a ray reaches
-first — z-order, then distance from the camera — so a press on the screen in
-front does not also land on whatever is behind it. That question cannot be
-answered by geometry alone once a panel is turned away from the viewer, which
-is why the ordering is stated rather than derived.
+Input is one `SceneInput3d` around the `SceneView`, and that is the whole of
+it: no listener, no `screenPointToRay`, no pointer group filled in from the
+tick. Each surface states its own `zOrder` and announces itself when it
+mounts. A pointer here is a ray, and what the host decides is which surface a
+ray reaches first — z-order, then distance from the camera — so a press on the
+screen in front does not also land on whatever is behind it. That question
+cannot be answered by geometry alone once a panel is turned away from the
+viewer, which is why the ordering is stated rather than derived. The upright
+screen's snack bars are detached surfaces of their own and land a step in
+front of it without the gallery saying anything.
+
+The gallery used to wire all of that by hand, and it is worth knowing what it
+cost, because it is the argument for the widget: about ninety lines, three of
+them with silent failure modes — a z-order in the wrong relative order routed
+a press to the panel behind, a surface registered before it existed was
+skipped forever, and a dialog never synced into the group could not be
+pressed at all.
 
 There is a headless test, `test/screens_test.dart`, that builds both screens
 and checks the arrangement. It draws nothing — that needs a GPU — but it is

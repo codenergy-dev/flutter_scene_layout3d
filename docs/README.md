@@ -135,9 +135,15 @@ Two entry points:
 - **What is being built next** is
   [what a real application still needs](../packages/flutter_scene_layout3d/plans/2026_09_11_what_a_real_application_still_needs.md),
   the index of the seventeen plans between a finished catalogue and an
-  application people use. It is the only plan in either package that is not
-  finished, and it is a map rather than a work item: each row becomes a plan
-  of its own when it is picked up.
+  application people use. It is a map rather than a work item: each row
+  becomes a plan of its own when it is picked up.
+  [An application that does not wire its own rays](../packages/flutter_scene_layout3d/plans/2026_09_11_an_application_that_does_not_wire_its_own_rays.md)
+  is the first of them, and it led for the reason the map gave: it is the item
+  every other item is consumed through. `SceneInput3d` wraps the `SceneView`
+  and owns the listener, the rays and the group, a surface announces itself
+  when it mounts, and what is in front of what is stated on the surface rather
+  than restated from a tick — because geometry cannot answer that question for
+  a panel turned away from the camera.
 
 ## Keeping this true
 
