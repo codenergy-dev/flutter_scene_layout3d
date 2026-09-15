@@ -2678,6 +2678,107 @@ is smaller than the touch target around it. Put the minimum size in the layout
 (a `ConstrainedBox3d`, a `SizedBox3d`) as well when the target has to be
 announced at its full size.
 
+## Testing a screen
+
+`package:flutter_scene_layout3d/testing.dart` is how an application tests the
+screens it builds on this package. It is `flutter_test`'s vocabulary — a
+finder, a tap, a matcher — pointed at the layout tree, and it presses things
+the way a person does: through the camera.
+
+```dart
+import 'package:flutter_scene_layout3d/testing.dart';
+
+testWidgets('the settings destination opens the settings', (tester) async {
+  await tester.pumpSurface3d(
+    SceneTheme3d(
+      data: Theme3dData.light,
+      child: SceneOverlay3d(child: const MailScreen()),
+    ),
+    size: const Size3d(3.6, 8, 0.6),
+  );
+
+  await tester.tap3d(find3d.bySemanticsLabel('Settings'));
+  await tester.pump();
+
+  expect(find3d.bySemanticsLabel('Volume'), findsOne);
+  expect(find3d.bySemanticsLabel('Volume'), isReachable3d);
+  expect(find3d.bySubtype<Text3d>(), standsOnItsPanel3d);
+});
+```
+
+`pumpSurface3d` mounts the screen on one surface under a `SceneInput3d`, with a
+camera looking straight at the surface's front face — from above, for a
+surface on the ground. Nothing draws; a `SceneView` needs a GPU `flutter test`
+does not have, and its place is taken by a box the size of the view, which is
+all the input host reads. `pumpScene3d` does the same for several surfaces,
+and takes the camera the application uses when the question is about a panel
+turned the way the application turns it. A screen that builds its own
+`SceneInput3d` is pumped with `pumpWidget` as usual; everything else finds the
+host above it.
+
+`find3d` searches every box on every surface in the widget tree, including a
+dialog on a surface of its own. **Find by semantic label first**: it is what a
+component publishes and what a person reads, so a test written that way
+survives a change to how the component is built. By text, type, subtype, node
+name, predicate, the box holding the focus, and descendant and ancestor are
+there too. They are `flutter_test` finders — `findsOne`, `findsNothing`,
+`.first` and `.at` all work — and `tester.layout3d<T>(finder)` is
+`tester.widget` for a box.
+
+### A tap is a tap on the screen
+
+`tap3d` projects the box's centre through the camera and taps that point of the
+view with Flutter's own `tapAt`. Everything between the platform and the box
+runs: the ray, the order of the surfaces, absorption, the overlay's entries,
+the arena. That matters because a ray aimed straight down one surface's depth
+axis — which is how this package's own suites test — skips all of it, and the
+worst input defect this stack has shipped lived exactly there: every slot of a
+`Scaffold3d` was laid out, labelled and reachable by such a ray, and a person
+pressing the window reached the scaffold's backing instead.
+
+So `tap3d` **fails the test when a press would not reach the box**, and says
+what it would reach instead:
+
+```
+tap3d() cannot press the box with semantics label "Settings": a press at
+(500.7, 541.2) reaches DecoratedBox3d#72ad6 first, on the same surface, and the
+press never gets to the box.
+```
+
+Flutter's own `tap` only warns about that. This one is stricter on purpose: a
+warning in a green run is read by nobody. Pass `checkReachable: false` to press
+whatever is there. `drag3d` and `scroll3d` aim the same way, for a finger and a
+wheel. There is no `hover3d`, because Flutter has no `hover`: move a mouse
+gesture to `getCenter3d`.
+
+```dart
+final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+addTearDown(mouse.removePointer);
+await mouse.moveTo(tester.getCenter3d(find3d.bySemanticsLabel('Compose')));
+```
+
+### What the matchers can see, and what they cannot
+
+Three matchers, each for a defect that is visible to the layout. Every one
+applies to *every* box the finder found, so over a whole screen it is a lint.
+
+- **`isReachable3d`** — a press at the box's centre reaches it: the question
+  `tap3d` asks, without pressing.
+- **`hasSizeDp`** and **`hasSize3d`** — the size in logical pixels, through the
+  box's own metrics, or in world units. A figure is a number or a matcher:
+  `hasSizeDp(depth: greaterThan(1))` is "not a screen one logical pixel deep",
+  which one was.
+- **`standsOnItsPanel3d`** — the box is not laid out behind the front face of
+  the nearest `DecoratedBox3d` above it, measured where both are drawn. A slab
+  is opaque, and content inside one is hidden however right its layout is;
+  that is what an `EdgeInsets3d.all` inside a card does, and a slider shipped
+  hidden that way while every test that asked whether it was *there* passed.
+
+What a matcher cannot see is anything only a frame shows: a slab wound inside
+out, a transparent panel that erases what is behind it, a glyph lost in an
+atlas repack. None of those is wrong in the layout. `examples/render_probe`
+photographs the gallery on a GPU for exactly that reason — see its README.
+
 ## How it differs from Flutter
 
 * **Two cross axes, and they do not default alike.** A flex has one main axis
@@ -2782,8 +2883,9 @@ and clear space in the gaps:
 expect(frame.coverageAt(capture.centerOf('left'), radius: 10), greaterThan(0.8));
 ```
 
-Sixteen scenes, over cuboids and spheres arranged by `Row3d`, `Column3d`,
-`Stack3d`, `Padding3d`, `ListView3d`, `ClipBox3d` and the `xz` basis, plus two
+Forty-four scenes. The first of them are cuboids and spheres arranged by
+`Row3d`, `Column3d`, `Stack3d`, `Padding3d`, `ListView3d`, `ClipBox3d` and the
+`xz` basis, plus two
 that hold a drag in flight while the frame is captured — the only way to check
 that a lifted card really does win the depth test, and that a detached feedback
 entry really does draw outside the panel it came from. It is also the only
@@ -2799,8 +2901,17 @@ flutter drive --driver=test_driver/integration_test.dart \
   --target=integration_test/render_test.dart -d macos --enable-flutter-gpu
 ```
 
+The same app photographs the gallery, with nothing asserted beyond "a frame
+came out", and CI keeps the pictures from every run:
+
+```sh
+flutter drive --driver=test_driver/photograph.dart \
+  --target=integration_test/photograph_test.dart -d macos --enable-flutter-gpu
+```
+
 The package's own `flutter test` suite remains arithmetic only, by necessity:
-it has no Flutter GPU context.
+it has no Flutter GPU context. An application's tests are too, and
+[Testing a screen](#testing-a-screen) is what they are written with.
 
 ## Roadmap
 

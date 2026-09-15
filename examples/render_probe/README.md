@@ -135,6 +135,49 @@ to the laid-out one and an assertion built on the difference compares a number
 with itself. An earlier version of the detached scene did exactly that and
 failed with a distance of 0.0.
 
+## Photographing the gallery
+
+The probes answer *is this one claim true*. The other question a frame can
+answer — *is anything obviously wrong* — is a person's, and ten of the worst
+defects in this repository's history were found by someone asking it of the
+gallery's window after every suite and every probe had passed. So this app
+also photographs the gallery:
+
+```sh
+flutter drive --driver=test_driver/photograph.dart \
+  --target=integration_test/photograph_test.dart \
+  -d macos --enable-flutter-gpu
+```
+
+The PNGs land in `build/photographs/` — `gallery.png`, and `gallery_later.png`
+a few seconds on, because the upright screen turns and a turned panel is a
+question of its own. CI uploads both from every run, as the `photographs`
+artifact. The test asserts only the floor a probe asserts, that a frame came
+out; nothing in it is a golden.
+
+`integration_test/photograph.dart` is the recipe, and it is written to be
+reused for any other screen. Three things in it cost time before it was
+committed, and each is built in rather than left to be remembered:
+
+- **Real delays between frames.** The engine's resources and the glyph
+  atlas's rasterization are asynchronous work that finishes on the platform's
+  clock, not the test's, so the frames are pumped with wall-clock time between
+  them for that work to land.
+- **An opaque backdrop inside the boundary.** `RepaintBoundary.toImage`
+  captures what is under the boundary, and a scene draws nothing where it has
+  no geometry.
+- **The file is written by the driver, not the app.** The app runs in the
+  macOS sandbox, where its own temporary directory is a container nobody looks
+  in; the bytes go back through `integration_test`'s screenshot channel and
+  `test_driver/photograph.dart` writes them on the host.
+
+This app depends on the gallery by path to do it. A copy of the gallery's
+screens here would photograph the copy.
+
+**It found something on its first run**: the app bar's title sits flush
+against the bar's leading edge when there is no leading widget, where Flutter
+insets it by 16dp. No suite or probe asks that question.
+
 ## The catalogue scenes
 
 A growing share of the scenes belong to `flutter_scene_material3d` rather than

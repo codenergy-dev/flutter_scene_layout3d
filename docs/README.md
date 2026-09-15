@@ -19,7 +19,8 @@ several files, guidance for using the engine underneath.
 | Avoid the sharp edges of this package | [traps.md](traps.md) |
 | Use `flutter_scene` correctly | [engine-rules.md](engine-rules.md) |
 | See it running, or write a demo | [examples/layout3d_gallery](../examples/layout3d_gallery/README.md) |
-| Verify something actually draws | [examples/render_probe](../examples/render_probe/README.md) |
+| Test a screen you built: find a box, press it through the camera, ask whether it is hidden | *Testing a screen* in the [layout package README](../packages/flutter_scene_layout3d/README.md#testing-a-screen), with the gallery's `test/screens_test.dart` as the worked example |
+| Verify something actually draws, or look at a photograph of the gallery | [examples/render_probe](../examples/render_probe/README.md) |
 | Know what is planned, in progress, or was decided and why | the plans directories of [the layout package](../packages/flutter_scene_layout3d/plans/) and [the Material package](../packages/flutter_scene_material3d/plans/) |
 | Know what is being built next | [what a real application still needs](../packages/flutter_scene_layout3d/plans/2026_09_11_what_a_real_application_still_needs.md) — the index of the plans between here and an application people use, with the order and the seams between them |
 
@@ -151,6 +152,15 @@ Two entry points:
   node on a plane has no context for Flutter's widgets to look them up
   through. Tab walks from surface to surface and out of the scene through the
   same host, because only the host knows which surfaces exist.
+  [A way to test a screen someone else built](../packages/flutter_scene_layout3d/plans/2026_09_15_a_way_to_test_a_screen_someone_else_built.md)
+  is the third, taken early because the real-application ports will produce
+  the class of defect only a person looking at a window used to find. Its
+  opening table is the reason to read it: of the ten defects found that way,
+  about half are visible to the layout and a headless test library now catches
+  them — `tap3d` presses through the camera and fails when a press would land
+  elsewhere — and the rest exist only in a frame, so the render probe app now
+  photographs the gallery on every CI run. The photograph found a defect on
+  its first run.
 
 ## Keeping this true
 

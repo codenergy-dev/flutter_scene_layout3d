@@ -141,6 +141,22 @@ abstract class Input3dHost {
   /// Arriving by Tab is different, and lands on the first box of the scene
   /// instead; see [SceneInput3d]'s *A key*.
   bool requestSceneFocus();
+
+  /// Every path a press at [position] would be dispatched to, front to back,
+  /// with nothing dispatched.
+  ///
+  /// [position] is in this host's own coordinates — a pointer event's
+  /// `localPosition`. The answer is the one a press there would get: the ray
+  /// the camera casts through that point, the overlays' entries synced first,
+  /// the front-most surface that answers and those behind it for as long as
+  /// the surfaces answering do not absorb. Empty when nothing answers, and
+  /// when there is no camera or the view has no extent yet.
+  ///
+  /// The question a tooltip, an editor's pick or a debugging readout asks,
+  /// and the one a test asks before it presses something: "would a person
+  /// pressing here reach this box?" See
+  /// [Layout3dPointerGroup.hitTestAll].
+  List<HitTestResult3d> hitTestAt(Offset position);
 }
 
 /// Imperative access to the [Input3dHost] a [SceneInput3d] owns.
@@ -469,6 +485,15 @@ class _SceneInput3dState extends State<SceneInput3d> implements Input3dHost {
       }
     }
     return false;
+  }
+
+  @override
+  List<HitTestResult3d> hitTestAt(Offset position) {
+    final camera = widget.camera;
+    final size = _viewSize;
+    if (camera == null || size == null) return <HitTestResult3d>[];
+    _syncOverlays();
+    return _group.hitTestAll(camera.screenPointToRay(position, size));
   }
 
   /// Passes the focus straight through to the scene when Flutter gives it to

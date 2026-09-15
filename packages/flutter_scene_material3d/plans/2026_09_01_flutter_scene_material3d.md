@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-09-01T19:15:00Z
-updated_at: 2026-09-10T14:05:00Z
+updated_at: 2026-09-15T16:45:54Z
 commit: 52a2ca7b6a176cf70b5bef6b6b92ff7e7cbf82bd
 ---
 
@@ -1648,7 +1648,12 @@ whole thing on a plane that turns.
 and nothing in the catalogue moves yet, which is phase 6's deferral rather than
 this one's.
 
-**There is no committed way to photograph it.** The captures that produced the
+~~**There is no committed way to photograph it.**~~ **There is now**: the
+render probe app photographs the gallery on every CI run, through
+`integration_test/photograph_test.dart`, and hands the file to the driver
+rather than to the sandbox — see
+[a way to test a screen someone else built](../../flutter_scene_layout3d/plans/2026_09_15_a_way_to_test_a_screen_someone_else_built.md).
+What follows is what was true when this phase closed. The captures that produced the
 findings above came from a throwaway `integration_test` in the example, and it
 is deliberately not committed: adding `integration_test` makes the app a
 CocoaPods project, and `flutter create` does not finish wiring one, which would

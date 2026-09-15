@@ -10,192 +10,105 @@
 // and expensive to find by starting a GPU.
 
 import 'package:flutter/widgets.dart';
-import 'package:flutter_scene/scene.dart' show Node;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
+import 'package:flutter_scene_layout3d/testing.dart';
 import 'package:flutter_scene_layout3d/widgets.dart';
 import 'package:flutter_scene_material3d/flutter_scene_material3d.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:layout3d_gallery/screens.dart';
-import 'package:vector_math/vector_math.dart' show Ray, Vector3;
 
-/// Every box of type [T] in [surface], outermost first.
-List<T> boxesOf<T extends Layout3d>(Layout3dSurface surface) {
-  final found = <T>[];
-  void walk(Layout3d box) {
-    if (box is T) found.add(box);
-    box.visitChildren(walk);
-  }
-
-  final child = surface.child;
-  if (child != null) walk(child);
-  return found;
-}
-
-/// Where [box] sits in the surface's own frame, summing what its parents
-/// gave it.
-Offset3d offsetInSurface(Layout3d box) {
-  var total = Offset3d.zero;
-  Layout3d? node = box;
-  while (node != null && node is! Layout3dSurface) {
-    total += node.offset;
-    node = node.parent;
-  }
-  return total;
-}
-
-/// Every semantic label published anywhere in [surface].
-Set<String> labelsIn(Layout3dSurface surface) => <String>{
-  for (final box in boxesOf<Semantics3d>(surface))
-    if (box.properties.label case final String label) label,
-};
-
-/// Mounts [screen] on a surface the size the gallery gives it.
+/// Mounts [screen] on a surface the size the gallery gives it, under a
+/// camera that looks straight at it.
 ///
 /// No `textRendererFactory`: a `Text3d` with no renderer measures and lays out
 /// fine, and rasterizing a glyph wants a GPU that `flutter test` does not
 /// have. The gallery installs one; this asks the arithmetic questions.
-Future<Layout3dController> pump(
+Future<Layout3dSurface> pumpScreen(
   WidgetTester tester,
   Widget screen, {
   Size3d size = const Size3d(3.5, 4.8, 0.6),
   LayoutBasis3d? basis,
-  Layout3dMetrics metrics = Layout3dMetrics.standard,
-}) async {
-  final controller = Layout3dController();
-  await tester.pumpWidget(
-    SceneLayout3d(
-      parent: Node(),
-      controller: controller,
-      size: size,
-      basis: basis,
-      metrics: metrics,
-      child: SceneTheme3d(
-        data: Theme3dData.dark,
-        child: SceneOverlay3d(child: screen),
-      ),
-    ),
-  );
-  return controller;
-}
-
-/// A ray aimed straight at [point] on [surface]'s plane, from in front of it.
-Ray rayAt(Layout3dSurface surface, Offset3d point) {
-  final toWorld = surface.node.globalTransform;
-  final origin = toWorld.transformed3(
-    Vector3(point.x, point.y, point.z - 10.0),
-  );
-  final direction = toWorld.rotated3(Vector3(0, 0, 1));
-  return Ray.originDirection(origin, direction);
-}
+  Layout3dMetrics? metrics,
+}) => tester.pumpSurface3d(
+  SceneTheme3d(
+    data: Theme3dData.dark,
+    child: SceneOverlay3d(child: screen),
+  ),
+  size: size,
+  basis: basis,
+  metrics: metrics,
+);
 
 void main() {
   testWidgets('the upright screen fills the panel it is given', (tester) async {
-    final controller = await pump(tester, const MaterialScreen());
-    final surface = controller.surface!;
+    final surface = await pumpScreen(tester, const MaterialScreen());
 
     expect(surface.child!.size, const Size3d(3.5, 4.8, 0.6));
     // A screen is a stack of panels: the scaffold's backing, the bar, the
     // navigation bar, the button, the chips, the cards and the tiles. If the
     // decoration ever stops reaching a component, this says so long before
     // anyone starts a GPU.
-    expect(boxesOf<DecoratedBox3d>(surface).length, greaterThan(10));
-    expect(
-      labelsIn(surface),
-      containsAll(<String>['Inbox', 'Settings', 'Compose', 'Ada Lovelace']),
-    );
+    expect(find3d.bySubtype<DecoratedBox3d>(), findsAtLeast(11));
+    for (final label in <String>['Inbox', 'Settings', 'Compose']) {
+      expect(find3d.bySemanticsLabel(label), findsAny);
+    }
+    expect(find3d.bySemanticsLabel('Ada Lovelace'), isReachable3d);
   });
 
   testWidgets('the inbox scrolls, and the destination swaps it for the '
       'controls', (tester) async {
-    final controller = await pump(tester, const MaterialScreen());
-    final surface = controller.surface!;
+    await pumpScreen(tester, const MaterialScreen());
 
     expect(
-      boxesOf<ListView3d>(surface),
-      isNotEmpty,
+      find3d.bySubtype<ListView3d>(),
+      findsAny,
       reason: 'the inbox is a list taller than the body it sits in',
     );
-    expect(labelsIn(surface), isNot(contains('Volume')));
+    expect(find3d.bySemanticsLabel('Volume'), findsNothing);
 
-    // A press on a 3D surface is a ray, not a widget tap: aim one at the
-    // middle of the second destination's touch target. Aiming by *target*
-    // rather than by a guessed fraction of the panel is what makes this a
-    // test of the screen rather than of arithmetic done twice.
-    final destination = boxesOf<Semantics3d>(
-      surface,
-    ).firstWhere((box) => box.properties.label == 'Settings');
-    final pointer = Layout3dPointer(surface);
-    final ray = rayAt(
-      surface,
-      offsetInSurface(destination) + destination.size.center,
-    );
-    expect(
-      surface.hitTestRay(ray).firstOf<Semantics3d>(),
-      same(destination),
-      reason: 'a lifted scaffold slot has to stay reachable by a ray',
-    );
-    pointer
-      ..down(ray)
-      ..up();
+    // A regression as much as a check: every slot of every `Scaffold3d` used
+    // to be unreachable by a ray. `tap3d` presses the destination through the
+    // camera and the host, and fails — naming what it hit instead — if a
+    // press there would not reach it.
+    await tester.tap3d(find3d.bySemanticsLabel('Settings'));
     await tester.pump();
 
-    expect(labelsIn(surface), contains('Volume'));
-    expect(boxesOf<ListView3d>(surface), isEmpty);
-    pointer.dispose();
+    expect(find3d.bySemanticsLabel('Volume'), findsOne);
+    expect(find3d.bySubtype<ListView3d>(), findsNothing);
   });
 
   testWidgets('every control on the settings screen stands on the face of '
-      'the card it is in', (tester) async {
+      'the card it is in, and can be pressed', (tester) async {
     // The slider in the settings screen's second card was laid out, labelled
     // and reachable, and nobody could see it: the card's padding was
     // `EdgeInsets3d.all`, which insets the *front* too, so the slider and its
     // label sat 12dp behind a card 4dp thick and the card's face hid them.
     // The test above passed the whole time, because a label that is there
     // and a label you can see are different claims. This is the second one,
-    // asked of the layout: no control is further from the viewer than the
-    // front face of the surface it is written on.
-    final controller = await pump(tester, const MaterialScreen());
-    final surface = controller.surface!;
-    final destination = boxesOf<Semantics3d>(
-      surface,
-    ).firstWhere((box) => box.properties.label == 'Settings');
-    // Torn down rather than disposed at the end, so a failing expectation
-    // below does not leave a live pointer to break the next test.
-    final pointer = Layout3dPointer(surface);
-    addTearDown(pointer.dispose);
-    pointer
-      ..down(
-        rayAt(surface, offsetInSurface(destination) + destination.size.center),
-      )
-      ..up();
+    // asked of the layout.
+    await pumpScreen(tester, const MaterialScreen());
+    await tester.tap3d(find3d.bySemanticsLabel('Settings'));
     await tester.pump();
 
-    const controls = <String>['Notifications', 'Compact rows', 'Volume'];
-    for (final label in controls) {
-      final control = boxesOf<Semantics3d>(
-        surface,
-      ).firstWhere((box) => box.properties.label == label);
-      // The nearest surface above the control is the card it belongs to.
-      Layout3d? card = control.parent;
-      while (card != null && card is! DecoratedBox3d) {
-        card = card.parent;
-      }
-      expect(card, isNotNull, reason: '"$label" is on no surface at all');
-
-      // Layout's z runs away from the viewer, so "behind the face" is a
-      // larger z than the card's own.
+    for (final label in <String>['Notifications', 'Compact rows', 'Volume']) {
+      final control = find3d.bySemanticsLabel(label);
       expect(
-        offsetInSurface(control).z,
-        lessThanOrEqualTo(offsetInSurface(card!).z + 1e-9),
-        reason:
-            '"$label" is laid out behind the front face of its card, which '
-            'hides it: is something between them insetting the front?',
+        find3d.ancestor(
+          of: control,
+          matching: find3d.bySubtype<DecoratedBox3d>(),
+        ),
+        findsAny,
+        reason: '"$label" is on no surface at all',
       );
+      expect(control, standsOnItsPanel3d);
+      expect(control, isReachable3d);
     }
+    // And the same question of every label on the screen at once.
+    expect(find3d.bySubtype<Text3d>(), standsOnItsPanel3d);
   });
 
   testWidgets('the table screen lays out on the ground plane', (tester) async {
-    final controller = await pump(
+    final surface = await pumpScreen(
       tester,
       const TableScreen(),
       size: const Size3d(4.6, 2.6, 0.6),
@@ -206,16 +119,16 @@ void main() {
       // never draws.
       metrics: const Layout3dMetrics(unitsPerLogicalPixel: 0.012),
     );
-    final surface = controller.surface!;
 
     expect(surface.child!.size, const Size3d(4.6, 2.6, 0.6));
-    expect(
-      labelsIn(surface),
-      containsAll(<String>['Card 1', 'Card 2', 'Card 3']),
-    );
+    for (final label in <String>['Card 1', 'Card 2', 'Card 3']) {
+      // Looked at from above, the way the gallery's camera sees the table.
+      expect(find3d.bySemanticsLabel(label), isReachable3d);
+    }
     // The basis is the only difference between this screen and the upright
     // one, and it is a property of the plane rather than of the layout: the
     // boxes below it never hear about it.
     expect(surface.basis, LayoutBasis3d.xz);
+    expect(find3d.bySubtype<Text3d>(), standsOnItsPanel3d);
   });
 }

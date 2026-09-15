@@ -41,6 +41,13 @@ jobs:
         run: flutter test
         working-directory: packages/flutter_scene_material3d
 
+      # The one application a person runs, built headlessly on the test
+      # library. Two of its four tests are regressions for defects found by
+      # looking at its window, which is why it runs here and not only locally.
+      - name: Test the gallery
+        run: flutter test
+        working-directory: examples/layout3d_gallery
+
   render:
     name: Render tests
     # macos-14 and later are Apple silicon with a real GPU, which Flutter GPU
@@ -70,3 +77,22 @@ jobs:
             --target=integration_test/render_test.dart \
             -d macos --enable-flutter-gpu
         working-directory: examples/render_probe
+
+      # Not a probe: two photographs of the gallery, asserting only that a
+      # frame came out. The question they exist for is whether anything is
+      # obviously wrong, which is a person's, so the pictures are kept.
+      - name: Photograph the gallery
+        run: |
+          flutter drive \
+            --driver=test_driver/photograph.dart \
+            --target=integration_test/photograph_test.dart \
+            -d macos --enable-flutter-gpu
+        working-directory: examples/render_probe
+
+      - name: Keep the photographs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: photographs
+          path: examples/render_probe/build/photographs/
+          if-no-files-found: warn

@@ -1,5 +1,44 @@
 ## Unreleased
 
+- **A test library for the screens an application builds.**
+  `package:flutter_scene_layout3d/testing.dart` is `flutter_test`'s vocabulary
+  pointed at the layout tree. Until now the package exported nothing a test
+  could use, and every suite here reached its boxes through helpers private
+  to its own `test/` directory — written four times over, with two copies of
+  "where is this box" that disagreed.
+  - **`find3d`** finds boxes on every surface in the widget tree, a dialog on
+    a surface of its own included: by semantic label, by text, by type and
+    subtype, by node name, by predicate, the box holding the focus, and
+    descendant and ancestor. The finders are built on `flutter_test`'s own
+    `FinderBase`, so `findsOne` and `findsNothing` work unchanged.
+  - **`tester.pumpSurface3d`** and **`tester.pumpScene3d`** mount a screen
+    under a `SceneInput3d` whose camera looks straight at it, or through the
+    camera the test gives. **`cameraFacing3d`** is that framing on its own.
+  - **`tester.tap3d`**, **`drag3d`** and **`scroll3d`** press a box through
+    the screen: its centre is projected through the host's camera and tapped
+    with Flutter's own `tapAt`, so the ray, the order of the surfaces,
+    absorption and the arena all run. **A press that would not reach the box
+    fails the test**, naming what it would reach instead — stricter than
+    Flutter's `tap`, which only warns, because a control nobody could press is
+    the defect this stack has actually shipped. `getCenter3d`, `hitTest3d`,
+    `layout3d` and `layouts3d` are the counterparts of the widget tester's.
+  - **`isReachable3d`**, **`hasSizeDp`**, **`hasSize3d`** and
+    **`standsOnItsPanel3d`** match every box a finder found. The last is the
+    check for content inset behind the front face of the card it is on, which
+    is how a slider once shipped invisible.
+  - **`flutter_test` is now a regular dependency** rather than a dev one,
+    because a library under `lib/` imports it. Every Flutter application
+    already resolves it, and nothing that does not import `testing.dart`
+    compiles any of it.
+
+- **`Input3dHost.hitTestAt` says what a press would reach, without pressing.**
+  Every path a press at a point of the view would be dispatched to, front to
+  back, with the overlays' entries synced first — the question a tooltip, an
+  editor's pick or a test asks. **`Layout3dPointerGroup.hitTestAll`** is the
+  same walk given a ray. The group's existing `hitTest` was not enough for it:
+  where a surface in front does not absorb, it reports the path *behind*, so a
+  box on a HUD would read as unreachable.
+
 - **Tab walks from one surface to the next, and out of the scene.** Traversal
   used to cycle inside whichever surface held the focus, so a keyboard that got
   into a scene could neither reach a second panel nor leave. Tab off the end of

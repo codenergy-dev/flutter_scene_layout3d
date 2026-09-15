@@ -56,10 +56,10 @@ goes in the changelog and the plans. This file stays a contract.**
 
 | Package | What it is |
 | --- | --- |
-| `packages/flutter_scene_layout3d` | The layout protocol. Constraints, intrinsics, baselines, flex, stack, wrap, slivers, scrolling, text measurement and geometry, decoration, clipping, pointer dispatch, wheel and trackpad scrolling, focus and key bindings, overlays, animation, diagnostics. |
+| `packages/flutter_scene_layout3d` | The layout protocol. Constraints, intrinsics, baselines, flex, stack, wrap, slivers, scrolling, text measurement and geometry, decoration, clipping, pointer dispatch, wheel and trackpad scrolling, focus and key bindings, overlays, animation, diagnostics — and `testing.dart`, the library an application tests its screens with. |
 | `packages/flutter_scene_material3d` | Material Design 3 on that protocol: six token families, a theme both layers read, and the catalogue over one `Material3d` primitive — buttons, cards, rows, chips, the structure, the overlays, the selection controls and the press ripple. |
 | `examples/layout3d_gallery` | The example app, and the only place a person sees any of this drawn. A Material screen on an upright panel that turns, the same catalogue flat on the ground, and a scrolling list of raw meshes beside them — all hit-testable, through one `SceneInput3d` around the view. |
-| `examples/render_probe` | Render tests. Draws the layout on a GPU and probes the frame at the pixels layout says to check. Commits its platform scaffolding, unlike the gallery. |
+| `examples/render_probe` | Render tests. Draws the layout on a GPU and probes the frame at the pixels layout says to check, and photographs the gallery. Commits its platform scaffolding, unlike the gallery. |
 
 `flutter_scene_material3d` is the reason the layout package exists: a Material
 catalogue built as real geometry rather than as a picture of it. It is
@@ -78,14 +78,15 @@ Everything below runs from the repository root unless stated otherwise.
 
 ```sh
 flutter pub get                                      # resolves the workspace
-cd packages/flutter_scene_layout3d && flutter test   # 1054 today
+cd packages/flutter_scene_layout3d && flutter test   # 1079 today
 cd packages/flutter_scene_material3d && flutter test # 525 today
 cd examples/layout3d_gallery && flutter test         # 4 today
 dart analyze                                         # must be clean, everywhere
 dart format .                                        # before every commit
 ```
 
-All three suites are headless, and all three must be green. The Material
+All three suites are headless, all three must be green, and CI runs all
+three. The Material
 package's is arithmetic and state — tokens, `lerp`, and the theme reaching a
 box's `performLayout` — so nothing in it needs a GPU. The counts are there as
 a drift alarm: a green suite that is suddenly four hundred tests shorter is a
@@ -128,8 +129,24 @@ panel drawn from its back face, a label sunk into the slab it belongs to. A
 probe answers *is this one claim true*; running the app answers *is anything
 obviously wrong*, and in this stack those are different questions. **Turning
 something is a question of its own**, and nothing here had asked it until a
-person watched a panel rotate. The gallery's own README has the recipe for
-photographing a frame when the window itself cannot be captured.
+person watched a panel rotate.
+
+When the window itself cannot be looked at — from a shell, from CI — the
+render probe app photographs the gallery, twice, a few seconds apart so the
+panel has turned:
+
+```sh
+cd examples/render_probe
+flutter drive --driver=test_driver/photograph.dart \
+  --target=integration_test/photograph_test.dart -d macos --enable-flutter-gpu
+```
+
+The PNGs are in `build/photographs/`. **Open them.** The test asserts that a
+frame came out and nothing else; the looking is the lane, and CI keeps the
+pictures from every run for that reason. Headless tests of a *screen* — can
+this be pressed, is this label hidden inside its card — are written with
+`package:flutter_scene_layout3d/testing.dart`, and the gallery's
+`test/screens_test.dart` is the example.
 
 ## What you need to know before writing code
 

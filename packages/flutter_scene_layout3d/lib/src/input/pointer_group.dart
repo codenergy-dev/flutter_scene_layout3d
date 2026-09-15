@@ -302,6 +302,28 @@ class Layout3dPointerGroup {
     return _lastHit;
   }
 
+  /// Every path a press along [worldRay] would be dispatched to, front to
+  /// back, without touching any sequence state or [lastHit].
+  ///
+  /// The front-most surface that answers comes first, followed by those
+  /// behind it for as long as the surfaces answering do not absorb — the same
+  /// walk [down] makes, so a box is on one of these paths exactly when a press
+  /// there would reach it. [hitTest] answers a narrower question, and in a
+  /// walk that carries on past a surface that does not absorb it reports the
+  /// last path rather than the first. Empty when nothing answers.
+  List<HitTestResult3d> hitTestAll(Ray worldRay) {
+    final paths = <HitTestResult3d>[];
+    for (final member in _ordered()) {
+      // Asked of the surface rather than of its pointer, which remembers the
+      // last ray it tested and hands that answer to a drag in flight.
+      final hit = member.pointer.surface.hitTestRay(worldRay);
+      if (hit.isEmpty) continue;
+      paths.add(hit);
+      if (member.absorbs) break;
+    }
+    return paths;
+  }
+
   /// Starts a press along [worldRay], capturing the surfaces that answer.
   ///
   /// Returns true when a scrolling view was grabbed, the same thing

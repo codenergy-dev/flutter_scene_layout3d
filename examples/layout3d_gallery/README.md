@@ -98,9 +98,9 @@ pressed at all.
 There is a headless test, `test/screens_test.dart`, that builds both screens
 and checks the arrangement. It draws nothing — that needs a GPU — but it is
 what stops a refactor of the catalogue silently breaking the one app a person
-runs. One of its cases is a regression rather than a check: it presses a
-navigation destination with a ray, because every slot of every `Scaffold3d`
-used to be unreachable by one.
+runs, and CI runs it. One of its cases is a regression rather than a check: it
+presses a navigation destination through the camera, because every slot of
+every `Scaffold3d` used to be unreachable by a press.
 
 ## Looking at it when you cannot see the window
 
@@ -108,14 +108,31 @@ used to be unreachable by one.
 the terminal has been granted Screen Recording, which is a thing you cannot
 give yourself from inside a shell. The way round it, and the way every finding
 in this app's history was actually made, is to photograph the frame from
-*inside*: a throwaway `integration_test` that pumps `Layout3dGallery` inside a
-`RepaintBoundary`, settles for a hundred frames with real delays between them,
-and writes `boundary.toImage()` to disk.
+*inside* the process.
 
-It is deliberately not committed, because adding `integration_test` makes this
-a CocoaPods project and `flutter create` does not finish wiring one — which
-would break the two commands at the top of this file. The recipe, with the
-three things that cost time (an opaque backdrop *inside* the boundary, the app
-sandbox making `/tmp` unwritable, and the `Pods-Runner` xcconfig include the
-generated project is missing), is written down in
-[a label that survives a repack](../../packages/flutter_scene_layout3d/plans/2026_09_10_a_label_that_survives_a_repack.md).
+That used to be a throwaway `integration_test` rebuilt from a recipe each time,
+because adding `integration_test` here makes this a CocoaPods project and
+`flutter create` does not finish wiring one. It is committed now, in
+`examples/render_probe`, which already carries that wiring and depends on this
+app to photograph it:
+
+```sh
+cd ../render_probe
+flutter drive --driver=test_driver/photograph.dart \
+  --target=integration_test/photograph_test.dart \
+  -d macos --enable-flutter-gpu
+```
+
+Two PNGs land in `render_probe/build/photographs/`, a few seconds apart so the
+turning panel is seen from two angles, and CI keeps them from every run. See
+[its README](../render_probe/README.md#photographing-the-gallery).
+
+## Testing a screen of your own
+
+`test/screens_test.dart` is the worked example of
+`package:flutter_scene_layout3d/testing.dart`: it pumps each screen, presses a
+navigation destination through the camera with `tester.tap3d`, and asks every
+label whether it is hidden inside the card it is written on with
+`standsOnItsPanel3d`. Both of those are regressions for defects a person found
+by looking at this window, and both fail when the defect is put back. The
+layout package's README explains the library under *Testing a screen*.

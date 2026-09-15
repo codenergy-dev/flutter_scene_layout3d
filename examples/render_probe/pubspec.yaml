@@ -19,6 +19,10 @@ dependencies:
     path: ../../packages/flutter_scene_layout3d
   flutter_scene_material3d:
     path: ../../packages/flutter_scene_material3d
+  # Photographed by integration_test/photograph_test.dart. A copy of its
+  # screens here would photograph the copy.
+  layout3d_gallery:
+    path: ../layout3d_gallery
   vector_math: ^2.1.4
 
 dev_dependencies:

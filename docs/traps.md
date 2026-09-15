@@ -914,6 +914,18 @@ a raised card inside a scrolling list stands proud of it.
 
 Things that cost time, in phase 5 and since, and are invisible from the code.
 
+- **A ray aimed down one surface's depth axis is not a press.** It is how this
+  repository's own suites test, with a `rayAt` helper, and it is blind to
+  everything between the platform and the surface: the camera, the order of
+  the surfaces, the host. Every slot of a `Scaffold3d` was reachable by such a
+  ray and by nothing a person could do. A test about a *screen* presses with
+  `tester.tap3d` from `package:flutter_scene_layout3d/testing.dart`, which goes
+  through the camera and fails when the press would land somewhere else.
+- **`find3d` finds boxes, and a widget does not always build the box its name
+  says.** `SceneColumn3d` and `SceneRow3d` both build a `Flex3d`, so
+  `find3d.byType(Column3d)` finds nothing on a declarative screen. Find by
+  semantic label where there is one; it is also what survives a component
+  being rebuilt differently.
 - **A surface's constraints are tight, and `SceneSizedBox3d` enforces its
   parent's.** A bar pumped straight onto a `SceneLayout3d(size: …)` comes out
   the height of the whole surface, because `Constraints3d.enforce` clamps a

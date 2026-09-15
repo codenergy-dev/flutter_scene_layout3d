@@ -29,14 +29,16 @@ dependencies:
   flutter:
     sdk: flutter
   flutter_scene: ^0.23.0
+  # For lib/testing.dart alone, which nothing outside a test imports. See that
+  # library for why it is not a package of its own.
+  flutter_test:
+    sdk: flutter
   # Build-time only: hook/build.dart compiles this package's shaders.
   hooks: ^2.0.0
   vector_math: ^2.1.4
 
 dev_dependencies:
   flutter_lints: ^5.0.0
-  flutter_test:
-    sdk: flutter
 
 flutter:
   assets:

@@ -1,8 +1,8 @@
 ---
 status: in progress
-reason: fourteen of the seventeen items are open; the record of what shipped, the application widget, and the wheel and the key are closed
+reason: thirteen of the seventeen items are open; the record of what shipped, the application widget, the wheel and the key, and the test library are closed
 created_at: 2026-09-11T21:20:18Z
-updated_at: 2026-09-15T14:18:23Z
+updated_at: 2026-09-15T16:48:11Z
 commit: abc2469ce5c4ec4c41e2738fc5acf55bcf40640a
 ---
 
@@ -101,7 +101,7 @@ plan, which is the rule phase 0 established and every phase since has obeyed.
 | [A screen that knows how big it is](#a-screen-that-knows-how-big-it-is) | layout3d | accessibility text scale, insets, responsive screens |
 | [A route that arrives instead of appearing](#a-route-that-arrives-instead-of-appearing) | layout3d | transitions, fades, `Hero3d` |
 | [An application with more than one screen](#an-application-with-more-than-one-screen) | layout3d | named routes, deep links, the system back button |
-| [A way to test a screen someone else built](#a-way-to-test-a-screen-someone-else-built) | layout3d | anyone building on this, including us |
+| ~~[A way to test a screen someone else built](#a-way-to-test-a-screen-someone-else-built)~~ | layout3d | **done** — anyone building on this, including us |
 | [The motion tokens](#the-motion-tokens) | material3d | every animating component |
 | [The components a screen still needs](#the-components-a-screen-still-needs) | material3d | the two thirds of M3 not yet here |
 | [A scheme from one colour](#a-scheme-from-one-colour) | material3d | any application with a brand |
@@ -129,8 +129,12 @@ controller side was built and only routing was missing; a wheel turned out to
 want an operation of its own, and the key turned out not to route through the
 host at all.
 
-**[A way to test a screen someone else built](#a-way-to-test-a-screen-someone-else-built)
-early, out of order.** The audit's sharpest evidence is that ten of this
+~~**[A way to test a screen someone else built](#a-way-to-test-a-screen-someone-else-built)
+early, out of order.**~~ **Done**, third, see
+[its plan](2026_09_15_a_way_to_test_a_screen_someone_else_built.md): a test
+library in the package, a photograph of the gallery on every CI run, and the
+gallery's tests in CI. It found a defect on its first run. The audit's
+sharpest evidence is that ten of this
 repository's worst defects — a screen nothing could press, a screen one
 logical pixel deep, every panel drawn from its back face, a label sunk into
 its own slab, a hole punched through a navigation bar — were invisible to the
@@ -187,8 +191,10 @@ are where a first implementer's decision becomes someone else's constraint.
   `SceneInput3d.of(context)` or through an `Input3dController`, and it carries
   the group and the camera. `SceneInput3d` takes a `child` rather than
   building the `SceneView`, which is what makes it drivable from a widget test
-  with no window — the test library's half of this is already possible, and
-  `test/input_test.dart` is the worked example. **Corrected by the wheel and
+  with no window. **Confirmed by the test library, with one addition:** a test
+  asking whether a press *would* reach a box needs the host to answer without
+  dispatching, which is `Input3dHost.hitTestAt` — the group's own `hitTest`
+  reports the path behind a surface that does not absorb. **Corrected by the wheel and
   the key:** the wheel and the trackpad do route through it, and the key does
   not — a key goes to the focus, and the focus manager never consults the
   widget that owns the rays. What the host owns for the keyboard is the way
@@ -244,7 +250,11 @@ are where a first implementer's decision becomes someone else's constraint.
   belongs on the node tier. A line's depth cross axis starts at the front while
   its other one centres. A surface has to lift what is drawn on it off its own
   face. All three are in [docs/traps.md](../../../docs/traps.md), and every
-  new component in this map's catalogue lane can reproduce all three.
+  new component in this map's catalogue lane can reproduce all three. Two of
+  them now fail a headless test, through `testing.dart`: a child lifted out of
+  reach fails `tap3d` and `isReachable3d`, and content sunk *behind* its
+  surface's face fails `standsOnItsPanel3d`. Content left coplanar with the
+  face does not — that one z-fights, and only a frame shows it.
 
 ---
 
@@ -576,6 +586,14 @@ depend on them.
 
 **Package:** `flutter_scene_layout3d`.
 **Slug:** `a_way_to_test_a_screen_someone_else_built`.
+**Closed** by
+[its own plan](2026_09_15_a_way_to_test_a_screen_someone_else_built.md). The
+entry below is what it was reasoned from. What that reasoning got wrong, in
+short: it treated the ten defects as one class wanting one instrument, and
+they are two — about half are visible to the layout, and a headless library
+catches those; the rest exist only in a frame. The route it gave for the
+photograph would have written the file into the app sandbox's container, and
+the gallery had four tests, not three.
 
 Two audiences, one plan.
 
