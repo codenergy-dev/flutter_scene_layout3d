@@ -7,7 +7,7 @@
 // helpers the token tests use.
 
 import 'package:flutter/widgets.dart'
-    show BuildContext, StatelessWidget, Widget;
+    show BuildContext, Directionality, StatelessWidget, TextDirection, Widget;
 import 'package:flutter_scene/scene.dart' show Node;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
 import 'package:flutter_scene_layout3d/widgets.dart';
@@ -100,26 +100,31 @@ class PumpedSurface {
 }
 
 /// Pumps [build] centred on a 4 x 3 surface at a hundred logical pixels to
-/// the unit, under [theme].
+/// the unit, under [theme] — and under a `Directionality` when [textDirection]
+/// is given, which is how a right-to-left application reaches a component.
 Future<PumpedSurface> pumpComponent(
   WidgetTester tester,
   Widget Function() build, {
   Theme3dData theme = Theme3dData.light,
   Size3d size = const Size3d(4, 3, 0.5),
   bool centred = true,
+  TextDirection? textDirection,
 }) async {
   final controller = Layout3dController();
   final builds = <int>[0];
-  await tester.pumpWidget(
-    SceneLayout3d(
-      parent: Node(),
-      size: size,
-      controller: controller,
-      child: SceneTheme3d(
-        data: theme,
-        child: _Counting(builds, build, centred: centred),
-      ),
+  final Widget surface = SceneLayout3d(
+    parent: Node(),
+    size: size,
+    controller: controller,
+    child: SceneTheme3d(
+      data: theme,
+      child: _Counting(builds, build, centred: centred),
     ),
+  );
+  await tester.pumpWidget(
+    textDirection == null
+        ? surface
+        : Directionality(textDirection: textDirection, child: surface),
   );
   return PumpedSurface(controller, builds);
 }

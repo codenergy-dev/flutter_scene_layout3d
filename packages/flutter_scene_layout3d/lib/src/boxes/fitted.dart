@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart'
     show DiagnosticPropertiesBuilder, DiagnosticsProperty, EnumProperty;
+import 'package:flutter/painting.dart' show TextDirection;
 import 'package:vector_math/vector_math.dart' show Matrix4, Vector3;
 
 import '../geometry/alignment3d.dart';
@@ -57,11 +58,13 @@ class FittedBox3d extends SingleChildLayout3d
   /// Creates a box that scales its child into the room available.
   FittedBox3d({
     BoxFit3d fit = BoxFit3d.contain,
-    Alignment3d alignment = Alignment3d.center,
+    AlignmentGeometry3d alignment = Alignment3d.center,
+    TextDirection? textDirection,
     super.child,
     super.name,
   }) : _fit = fit,
-       _alignment = alignment;
+       _alignment = alignment,
+       _textDirection = textDirection;
 
   BoxFit3d _fit;
 
@@ -74,14 +77,30 @@ class FittedBox3d extends SingleChildLayout3d
     markNeedsLayout();
   }
 
-  Alignment3d _alignment;
+  AlignmentGeometry3d _alignment;
 
   /// Where the scaled child sits inside this box.
-  Alignment3d get alignment => _alignment;
+  ///
+  /// A directional alignment is read in [textDirection].
+  AlignmentGeometry3d get alignment => _alignment;
 
-  set alignment(Alignment3d value) {
+  set alignment(AlignmentGeometry3d value) {
     if (_alignment == value) return;
     _alignment = value;
+    markNeedsLayout();
+  }
+
+  TextDirection? _textDirection;
+
+  /// The reading direction [alignment] is resolved in; null reads left to
+  /// right.
+  TextDirection? get textDirection => _textDirection;
+
+  set textDirection(TextDirection? value) {
+    if (_textDirection == value) return;
+    _textDirection = value;
+    // A physical alignment reads the same in either direction.
+    if (_alignment is Alignment3d) return;
     markNeedsLayout();
   }
 
@@ -165,7 +184,7 @@ class FittedBox3d extends SingleChildLayout3d
       natural.height * _scale.y,
       natural.depth * _scale.z,
     );
-    _childOrigin = _alignment.inscribe(scaled, size);
+    _childOrigin = _alignment.resolve(_textDirection).inscribe(scaled, size);
     child.place(Offset3d.zero);
     // The child's own offset is zero; everything about where it ends up is in
     // this box's localTransform, which the place() above has already folded
@@ -201,7 +220,16 @@ class FittedBox3d extends SingleChildLayout3d
   void debugFillProperties(DiagnosticPropertiesBuilder properties) {
     super.debugFillProperties(properties);
     properties.add(EnumProperty<BoxFit3d>('fit', fit));
-    properties.add(DiagnosticsProperty<Alignment3d>('alignment', alignment));
+    properties.add(
+      DiagnosticsProperty<AlignmentGeometry3d>('alignment', alignment),
+    );
+    properties.add(
+      EnumProperty<TextDirection>(
+        'textDirection',
+        textDirection,
+        defaultValue: null,
+      ),
+    );
     properties.add(
       DiagnosticsProperty<Vector3>(
         'scale',

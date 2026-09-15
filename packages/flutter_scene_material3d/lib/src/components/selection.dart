@@ -5,6 +5,7 @@ import 'package:flutter/semantics.dart' show SemanticsProperties;
 import 'package:flutter/widgets.dart'
     show
         BuildContext,
+        Directionality,
         FocusNode,
         IconData,
         StatelessWidget,
@@ -455,8 +456,13 @@ class Switch3d extends StatelessWidget {
 
     // Half the travel either way from the middle, which is where layout puts
     // it. A `nodeOffset`: no relayout, and nothing under it is measured
-    // again.
-    final shift = metrics.dp(tokens.travel) / 2.0 * (value ? 1.0 : -1.0);
+    // again. On is toward the end of the reading direction, so in right to
+    // left it is the left, as Flutter's switch has it.
+    final towardEnd = Directionality.maybeOf(context) == TextDirection.rtl
+        ? -1.0
+        : 1.0;
+    final shift =
+        metrics.dp(tokens.travel) / 2.0 * (value ? towardEnd : -towardEnd);
     final thumb = SceneIgnorePointer3d(
       child: SceneNodeShift3d(
         shift: Offset3d(shift, 0.0, 0.0),

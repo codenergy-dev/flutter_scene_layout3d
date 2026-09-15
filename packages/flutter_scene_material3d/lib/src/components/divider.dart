@@ -4,7 +4,7 @@ import 'package:flutter/semantics.dart' show SemanticsProperties;
 import 'package:flutter/widgets.dart'
     show BuildContext, StatelessWidget, TextDirection, Widget;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart'
-    show Alignment3d, EdgeInsets3d;
+    show Alignment3d, EdgeInsets3d, EdgeInsetsDirectional3d;
 import 'package:flutter_scene_layout3d/widgets.dart'
     show
         Layout3dMetricsScope,
@@ -172,7 +172,7 @@ class Divider3d extends StatelessWidget {
     if (indent != 0.0 || endIndent != 0.0) {
       line = ScenePadding3d(
         padding: metrics.dpInsets(
-          EdgeInsets3d.only(left: indent, right: endIndent),
+          EdgeInsetsDirectional3d.only(start: indent, end: endIndent),
         ),
         child: line,
       );

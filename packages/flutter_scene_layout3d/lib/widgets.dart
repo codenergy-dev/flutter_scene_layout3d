@@ -49,10 +49,12 @@ export 'src/animation/node_widgets.dart'
 export 'src/animation/tweens.dart'
     show
         Alignment3dTween,
+        AlignmentGeometry3dTween,
         BorderRadius3dTween,
         BoxDecoration3dTween,
         Constraints3dTween,
         EdgeInsets3dTween,
+        EdgeInsetsGeometry3dTween,
         Offset3dTween,
         Size3dTween,
         StateLayer3dTween;
@@ -94,11 +96,13 @@ export 'src/debug/wireframe.dart'
         debugLayout3dWireframeFactory,
         debugPaintLayout3dBaselines,
         debugPaintLayout3dSize;
-export 'src/geometry/alignment3d.dart' show Alignment3d;
+export 'src/geometry/alignment3d.dart'
+    show Alignment3d, AlignmentDirectional3d, AlignmentGeometry3d;
 export 'src/geometry/border_radius3d.dart' show BorderRadius3d;
 export 'src/geometry/basis3d.dart' show LayoutBasis3d;
 export 'src/geometry/constraints3d.dart' show Constraints3d;
-export 'src/geometry/edge_insets3d.dart' show EdgeInsets3d;
+export 'src/geometry/edge_insets3d.dart'
+    show EdgeInsets3d, EdgeInsetsDirectional3d, EdgeInsetsGeometry3d;
 export 'src/geometry/offset3d.dart' show Axis3d, Offset3d;
 export 'src/geometry/size3d.dart' show Size3d;
 export 'src/hit_test.dart' show HitTestEntry3d, HitTestResult3d, Ray3d;
@@ -252,6 +256,7 @@ export 'src/widgets/layouts.dart'
         ScenePageView3d,
         ScenePadding3d,
         ScenePositioned3d,
+        ScenePositionedDirectional3d,
         SceneRow3d,
         SceneSemantics3d,
         SceneShortcuts3d,

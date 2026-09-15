@@ -155,13 +155,19 @@ void main() {
       await tester.pumpWidget(frame(0.01));
       expect(sizedOf(controller).size.width, closeTo(1.2, 1e-9));
       expect(sizedOf(controller).size.height, closeTo(0.4, 1e-9));
-      expect(paddingOf(controller).padding.left, closeTo(0.08, 1e-9));
+      expect(
+        (paddingOf(controller).padding as EdgeInsets3d).left,
+        closeTo(0.08, 1e-9),
+      );
 
       // Two hundred to the unit: the same sentence, half the world.
       await tester.pumpWidget(frame(0.005));
       expect(sizedOf(controller).size.width, closeTo(0.6, 1e-9));
       expect(sizedOf(controller).size.height, closeTo(0.2, 1e-9));
-      expect(paddingOf(controller).padding.left, closeTo(0.04, 1e-9));
+      expect(
+        (paddingOf(controller).padding as EdgeInsets3d).left,
+        closeTo(0.04, 1e-9),
+      );
     });
 
     testWidgets('and follows a contract written on the surface itself', (
@@ -185,7 +191,10 @@ void main() {
       );
       await tester.pump();
       expect(sizedOf(controller).size.width, closeTo(2.4, 1e-9));
-      expect(paddingOf(controller).padding.left, closeTo(0.16, 1e-9));
+      expect(
+        (paddingOf(controller).padding as EdgeInsets3d).left,
+        closeTo(0.16, 1e-9),
+      );
     });
 
     testWidgets('an equal contract rebuilds nothing', (tester) async {
@@ -306,7 +315,10 @@ void main() {
       // And what `build` computed is the new rate's figure. A screen-filling
       // surface is tight, so the padding is the honest witness: a SizedBox3d
       // under it is stretched to the panel whatever it asked for.
-      expect(paddingOf(controller).padding.left, closeTo(8 * second, 1e-9));
+      expect(
+        (paddingOf(controller).padding as EdgeInsets3d).left,
+        closeTo(8 * second, 1e-9),
+      );
     });
 
     testWidgets('a write from inside a layout pass defers to the next frame', (
@@ -381,7 +393,10 @@ void main() {
       );
       await tester.pump();
       expect(controller.surface!.metrics.unitsPerLogicalPixel, 0.004);
-      expect(paddingOf(controller).padding.left, closeTo(0.032, 1e-9));
+      expect(
+        (paddingOf(controller).padding as EdgeInsets3d).left,
+        closeTo(0.032, 1e-9),
+      );
     });
 
     testWidgets('dropping the property puts the standard contract back', (

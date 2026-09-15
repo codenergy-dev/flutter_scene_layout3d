@@ -1,5 +1,40 @@
 ## Unreleased
 
+- **A row reads right to left.** Reading direction used to reach the text and
+  stop there: a `Row3d` arranged left to right around Arabic, no padding could
+  say *start*, and there was no reversed `Column3d`. It is Flutter's contract
+  now, flip for flip.
+  - **`Flex3d`, `Row3d`, `Column3d` and `Depth3d` take `textDirection` and
+    `verticalDirection`**, and so does `Wrap3d`; `Table3d` takes
+    `textDirection` and puts its first column at the right. Each flips
+    whichever of its axes is horizontal or vertical, with Flutter's own walk —
+    an overflowing right-to-left row keeps its last child at the left edge,
+    not a mirror image of the left-to-right overflow. Depth never flips.
+  - **`EdgeInsetsDirectional3d` and `AlignmentDirectional3d`**, over new
+    `EdgeInsetsGeometry3d` and `AlignmentGeometry3d` bases that `EdgeInsets3d`
+    and `Alignment3d` now extend. A physical and a directional value add and
+    interpolate into a kind that holds both until it is resolved;
+    `EdgeInsetsGeometry3dTween` and `AlignmentGeometry3dTween` animate across
+    kinds, and `Layout3dMetrics.dpInsets` converts any kind to the same kind.
+  - **Every box that takes a padding or an alignment takes the geometry and a
+    `textDirection` to resolve it in**: `Padding3d`, `Align3d`, `Container3d`,
+    `Stack3d`, `IndexedStack3d`, `FittedBox3d`, `Transform3d`, `NodeBox3d`,
+    `UnconstrainedBox3d`, `OverflowBox3d`, `FractionallySizedBox3d` and
+    `SliverPadding3d`. A physical value does not relayout when only the
+    direction changes. **This is a breaking change for code that reads
+    `.left` off one of those getters**, which is now a geometry;
+    `padding.resolve(box.textDirection)` is the physical value the box used.
+  - **`Positioned3d.directional`** resolves `start` and `end` against a
+    direction it is handed, and **`ScenePositionedDirectional3d`** against the
+    ambient one.
+  - **The widget forms read the ambient `Directionality`** when no direction
+    is stated, as Flutter's do, so an application under a right-to-left
+    `MaterialApp` mirrors without a line of code.
+  - **A null direction reads left to right** on the imperative layer, where
+    Flutter's render objects assert — the fallback `Text3d` already had.
+  - **Direction belongs to the layout, not the viewer**: a panel seen from
+    behind keeps its start on the side it was laid out on.
+
 - **`Layout3dTestGeometry.drawnOffsetInSurface` says where a box is drawn.** One
   answer to "where is this box", in `testing.dart`: its corner in the
   surface's layout frame, every offset and node nudge above and on it counted.

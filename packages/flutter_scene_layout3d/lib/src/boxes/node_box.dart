@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart'
         EnumProperty,
         protected,
         StringProperty;
+import 'package:flutter/painting.dart' show TextDirection;
 import 'package:flutter_scene/scene.dart' show Node;
 import 'package:vector_math/vector_math.dart' show Aabb3, Matrix4;
 
@@ -53,13 +54,15 @@ class NodeBox3d extends Layout3d {
   NodeBox3d({
     required Node content,
     BoxFit3d fit = BoxFit3d.none,
-    Alignment3d alignment = Alignment3d.center,
+    AlignmentGeometry3d alignment = Alignment3d.center,
+    TextDirection? textDirection,
     Size3d? explicitSize,
     Size3d fallbackSize = Size3d.zero,
     super.name,
   }) : _content = content,
        _fit = fit,
        _alignment = alignment,
+       _textDirection = textDirection,
        _explicitSize = explicitSize,
        _fallbackSize = fallbackSize {
     node.add(_content);
@@ -89,14 +92,30 @@ class NodeBox3d extends Layout3d {
     markParentNeedsLayout();
   }
 
-  Alignment3d _alignment;
+  AlignmentGeometry3d _alignment;
 
   /// Where the content sits inside this box.
-  Alignment3d get alignment => _alignment;
+  ///
+  /// A directional alignment is read in [textDirection].
+  AlignmentGeometry3d get alignment => _alignment;
 
-  set alignment(Alignment3d value) {
+  set alignment(AlignmentGeometry3d value) {
     if (_alignment == value) return;
     _alignment = value;
+    markNeedsLayout();
+  }
+
+  TextDirection? _textDirection;
+
+  /// The reading direction [alignment] is resolved in; null reads left to
+  /// right.
+  TextDirection? get textDirection => _textDirection;
+
+  set textDirection(TextDirection? value) {
+    if (_textDirection == value) return;
+    _textDirection = value;
+    // A physical alignment reads the same in either direction.
+    if (_alignment is Alignment3d) return;
     markNeedsLayout();
   }
 
@@ -204,7 +223,7 @@ class NodeBox3d extends Layout3d {
 
     // Place the content inside the box, then undo the surface basis so the
     // model keeps the orientation it was authored with.
-    final origin = _alignment.inscribe(scaled, size);
+    final origin = _alignment.resolve(_textDirection).inscribe(scaled, size);
     final target = origin + scaled.center;
     _content.localTransform =
         Matrix4.translationValues(target.x, target.y, target.z)
@@ -277,7 +296,16 @@ class NodeBox3d extends Layout3d {
   void debugFillProperties(DiagnosticPropertiesBuilder properties) {
     super.debugFillProperties(properties);
     properties.add(EnumProperty<BoxFit3d>('fit', fit));
-    properties.add(DiagnosticsProperty<Alignment3d>('alignment', alignment));
+    properties.add(
+      DiagnosticsProperty<AlignmentGeometry3d>('alignment', alignment),
+    );
+    properties.add(
+      EnumProperty<TextDirection>(
+        'textDirection',
+        textDirection,
+        defaultValue: null,
+      ),
+    );
     properties.add(
       DiagnosticsProperty<Size3d>(
         'explicitSize',

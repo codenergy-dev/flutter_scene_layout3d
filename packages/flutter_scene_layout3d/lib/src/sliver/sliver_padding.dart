@@ -1,7 +1,8 @@
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart'
-    show DiagnosticPropertiesBuilder, DiagnosticsProperty;
+    show DiagnosticPropertiesBuilder, DiagnosticsProperty, EnumProperty;
+import 'package:flutter/painting.dart' show TextDirection;
 
 import '../geometry/edge_insets3d.dart';
 import '../geometry/offset3d.dart';
@@ -44,23 +45,41 @@ import 'sliver_constraints.dart';
 class SliverPadding3d extends Sliver3d with Layout3dWithChildMixin {
   /// Creates a sliver that insets [sliver].
   SliverPadding3d({
-    EdgeInsets3d padding = EdgeInsets3d.zero,
+    EdgeInsetsGeometry3d padding = EdgeInsets3d.zero,
+    TextDirection? textDirection,
     Sliver3d? sliver,
     super.name,
   }) : _padding = padding,
+       _textDirection = textDirection,
        assert(padding.isNonNegative, 'SliverPadding3d.padding is an inset.') {
     child = sliver;
   }
 
-  EdgeInsets3d _padding;
+  EdgeInsetsGeometry3d _padding;
 
   /// The inset on each of the six faces.
-  EdgeInsets3d get padding => _padding;
+  ///
+  /// A directional padding is read in [textDirection].
+  EdgeInsetsGeometry3d get padding => _padding;
 
-  set padding(EdgeInsets3d value) {
+  set padding(EdgeInsetsGeometry3d value) {
     if (_padding == value) return;
     assert(value.isNonNegative, 'SliverPadding3d.padding is an inset.');
     _padding = value;
+    markNeedsLayout();
+  }
+
+  TextDirection? _textDirection;
+
+  /// The reading direction [padding] is resolved in; null reads left to
+  /// right.
+  TextDirection? get textDirection => _textDirection;
+
+  set textDirection(TextDirection? value) {
+    if (_textDirection == value) return;
+    _textDirection = value;
+    // A physical padding reads the same in either direction.
+    if (_padding is EdgeInsets3d) return;
     markNeedsLayout();
   }
 
@@ -86,10 +105,11 @@ class SliverPadding3d extends Sliver3d with Layout3dWithChildMixin {
     final constraints = sliverConstraints;
     final axis = constraints.axis;
     final (crossAxis, depthAxis) = constraints.crossAxes;
-    final before = _padding.lowAlong(axis);
-    final mainAxisPadding = _padding.alongAxis(axis);
-    final crossAxisPadding = _padding.alongAxis(crossAxis);
-    final depthPadding = _padding.alongAxis(depthAxis);
+    final padding = _padding.resolve(_textDirection);
+    final before = padding.lowAlong(axis);
+    final mainAxisPadding = padding.alongAxis(axis);
+    final crossAxisPadding = padding.alongAxis(crossAxis);
+    final depthPadding = padding.alongAxis(depthAxis);
 
     final child = sliver;
     if (child == null) {
@@ -186,8 +206,8 @@ class SliverPadding3d extends Sliver3d with Layout3dWithChildMixin {
     child.place(
       Offset3d.zero
           .withAxis(axis, beforePaintExtent)
-          .withAxis(crossAxis, _padding.lowAlong(crossAxis))
-          .withAxis(depthAxis, _padding.lowAlong(depthAxis)),
+          .withAxis(crossAxis, padding.lowAlong(crossAxis))
+          .withAxis(depthAxis, padding.lowAlong(depthAxis)),
     );
     child.node.visible = childGeometry.visible;
   }
@@ -195,6 +215,15 @@ class SliverPadding3d extends Sliver3d with Layout3dWithChildMixin {
   @override
   void debugFillProperties(DiagnosticPropertiesBuilder properties) {
     super.debugFillProperties(properties);
-    properties.add(DiagnosticsProperty<EdgeInsets3d>('padding', padding));
+    properties.add(
+      DiagnosticsProperty<EdgeInsetsGeometry3d>('padding', padding),
+    );
+    properties.add(
+      EnumProperty<TextDirection>(
+        'textDirection',
+        textDirection,
+        defaultValue: null,
+      ),
+    );
   }
 }

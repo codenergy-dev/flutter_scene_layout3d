@@ -9,7 +9,8 @@ import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart'
     show
         Constraints3d,
         CrossAxisAlignment3d,
-        EdgeInsets3d,
+        EdgeInsetsDirectional3d,
+        EdgeInsetsGeometry3d,
         MainAxisAlignment3d,
         MainAxisSize3d,
         Size3d;
@@ -165,15 +166,19 @@ class ListTile3d extends StatelessWidget {
   /// room than a leading icon does. The 8dp top and bottom are its
   /// `minVerticalPadding`.
   ///
+  /// Directional, as Flutter's is: in a right-to-left application the leading
+  /// edge is the right one, and the row inside the tile mirrors with it.
+  ///
   /// **In-plane only**, like every Material inset here: a front inset would
   /// push the row into the slab it is drawn on, where the surface wins the
   /// depth test.
-  static const EdgeInsets3d defaultContentPadding = EdgeInsets3d.only(
-    left: 16.0,
-    right: 24.0,
-    top: 8.0,
-    bottom: 8.0,
-  );
+  static const EdgeInsetsDirectional3d defaultContentPadding =
+      EdgeInsetsDirectional3d.only(
+        start: 16.0,
+        end: 24.0,
+        top: 8.0,
+        bottom: 8.0,
+      );
 
   /// The gap between the leading or trailing slot and the text, in logical
   /// pixels. Material's 16dp.
@@ -235,7 +240,7 @@ class ListTile3d extends StatelessWidget {
 
   /// Space between the tile's faces and its content, or null for
   /// [defaultContentPadding].
-  final EdgeInsets3d? contentPadding;
+  final EdgeInsetsGeometry3d? contentPadding;
 
   /// An explicit minimum height in logical pixels, overriding the line-count
   /// scale.

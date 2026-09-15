@@ -250,16 +250,17 @@ void main() {
     ) async {
       final it = await pumpComponent(tester, () => ListTile3d.text(title: 'x'));
       final container = oneOf<Container3d>(it.surface);
-      expect(container.padding.left, closeTo(0.16, 1e-9));
-      expect(container.padding.right, closeTo(0.24, 1e-9));
+      final padding = container.padding.resolve(container.textDirection);
+      expect(padding.left, closeTo(0.16, 1e-9));
+      expect(padding.right, closeTo(0.24, 1e-9));
       expect(
-        container.padding.front,
+        padding.front,
         0.0,
         reason:
             'a front inset would push the row into the slab it is drawn '
             'on, where the surface wins the depth test and hides it',
       );
-      expect(container.padding.back, 0.0);
+      expect(padding.back, 0.0);
     });
 
     testWidgets('selection substitutes the content colour', (tester) async {

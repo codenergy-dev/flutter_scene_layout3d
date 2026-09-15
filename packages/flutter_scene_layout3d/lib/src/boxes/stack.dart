@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart'
         DiagnosticsProperty,
         DoubleProperty,
         EnumProperty;
+import 'package:flutter/painting.dart' show TextDirection;
 
 import '../geometry/alignment3d.dart';
 import '../geometry/constraints3d.dart';
@@ -68,6 +69,44 @@ class Positioned3d extends ProxyLayout3d {
          front == null || back == null || depth == null,
          'Give at most two of front, back, and depth.',
        );
+
+  /// A positioned child whose horizontal insets follow [textDirection], the
+  /// 3D analogue of `Positioned.directional`.
+  ///
+  /// [start] and [end] become [left] and [right] — or [right] and [left] in
+  /// right-to-left — when this is built. As in Flutter, the direction is
+  /// handed in rather than read from the stack, so changing it means building
+  /// the child again; the widget form reads it from the ambient
+  /// `Directionality`.
+  factory Positioned3d.directional({
+    required TextDirection textDirection,
+    double? start,
+    double? top,
+    double? end,
+    double? bottom,
+    double? front,
+    double? back,
+    double? width,
+    double? height,
+    double? depth,
+    Layout3d? child,
+    String? name,
+  }) {
+    final rtl = textDirection == TextDirection.rtl;
+    return Positioned3d(
+      left: rtl ? end : start,
+      top: top,
+      right: rtl ? start : end,
+      bottom: bottom,
+      front: front,
+      back: back,
+      width: width,
+      height: height,
+      depth: depth,
+      child: child,
+      name: name,
+    );
+  }
 
   double? _left;
 
@@ -230,24 +269,42 @@ class Positioned3d extends ProxyLayout3d {
 class Stack3d extends MultiChildLayout3d<ParentData3d> {
   /// Creates a stack of overlaid children.
   Stack3d({
-    Alignment3d alignment = Alignment3d.topLeftFront,
+    AlignmentGeometry3d alignment = Alignment3d.topLeftFront,
+    TextDirection? textDirection,
     StackFit3d fit = StackFit3d.loose,
     double depthStep = 0.0,
     super.children,
     super.name,
   }) : _alignment = alignment,
+       _textDirection = textDirection,
        _fit = fit,
        _depthStep = depthStep;
 
-  Alignment3d _alignment;
+  AlignmentGeometry3d _alignment;
 
   /// Where non-positioned children sit, and how partly-positioned children
   /// resolve the axes they left open.
-  Alignment3d get alignment => _alignment;
+  ///
+  /// A directional alignment is read in [textDirection].
+  AlignmentGeometry3d get alignment => _alignment;
 
-  set alignment(Alignment3d value) {
+  set alignment(AlignmentGeometry3d value) {
     if (_alignment == value) return;
     _alignment = value;
+    markNeedsLayout();
+  }
+
+  TextDirection? _textDirection;
+
+  /// The reading direction [alignment] is resolved in; null reads left to
+  /// right.
+  TextDirection? get textDirection => _textDirection;
+
+  set textDirection(TextDirection? value) {
+    if (_textDirection == value) return;
+    _textDirection = value;
+    // A physical alignment reads the same in either direction.
+    if (_alignment is Alignment3d) return;
     markNeedsLayout();
   }
 
@@ -349,7 +406,9 @@ class Stack3d extends MultiChildLayout3d<ParentData3d> {
           : null;
       final Offset3d anchor;
       if (positioned == null) {
-        anchor = _alignment.inscribe(child.size, stackSize);
+        anchor = _alignment
+            .resolve(_textDirection)
+            .inscribe(child.size, stackSize);
       } else {
         child.layout(
           _positionedConstraints(positioned, stackSize),
@@ -409,7 +468,9 @@ class Stack3d extends MultiChildLayout3d<ParentData3d> {
     Size3d stackSize,
   ) {
     var result = Offset3d.zero;
-    final aligned = _alignment.inscribe(childSize, stackSize);
+    final aligned = _alignment
+        .resolve(_textDirection)
+        .inscribe(childSize, stackSize);
     for (final axis in Axis3d.values) {
       final low = child._lowOf(axis);
       final high = child._highOf(axis);
@@ -429,7 +490,16 @@ class Stack3d extends MultiChildLayout3d<ParentData3d> {
   @override
   void debugFillProperties(DiagnosticPropertiesBuilder properties) {
     super.debugFillProperties(properties);
-    properties.add(DiagnosticsProperty<Alignment3d>('alignment', alignment));
+    properties.add(
+      DiagnosticsProperty<AlignmentGeometry3d>('alignment', alignment),
+    );
+    properties.add(
+      EnumProperty<TextDirection>(
+        'textDirection',
+        textDirection,
+        defaultValue: null,
+      ),
+    );
     properties.add(EnumProperty<StackFit3d>('fit', fit));
     properties.add(DoubleProperty('depthStep', depthStep, defaultValue: 0.0));
   }

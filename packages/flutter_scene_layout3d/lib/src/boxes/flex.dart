@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart'
         DoubleProperty,
         EnumProperty,
         IntProperty;
+import 'package:flutter/painting.dart' show TextDirection, VerticalDirection;
 
 import '../debug/overflow.dart';
 import '../geometry/constraints3d.dart';
@@ -17,10 +18,11 @@ import '../layout3d.dart';
 /// How a [Flex3d] distributes leftover room along its main axis, the 3D
 /// analogue of [MainAxisAlignment].
 enum MainAxisAlignment3d {
-  /// Children packed at the low end (left, top, or front).
+  /// Children packed at the start: the left, or the right in right-to-left;
+  /// the top, or the bottom when the vertical direction is up; the front.
   start,
 
-  /// Children packed at the high end (right, bottom, or back).
+  /// Children packed at the end, the opposite of [start].
   end,
 
   /// Children packed toward the middle.
@@ -39,10 +41,12 @@ enum MainAxisAlignment3d {
 /// How a [Flex3d] positions children on a cross axis, the 3D analogue of
 /// [CrossAxisAlignment].
 enum CrossAxisAlignment3d {
-  /// Children at the low end of the cross axis.
+  /// Children at the start of the cross axis, which follows the line's
+  /// reading direction on the horizontal and vertical axes, and is the front
+  /// on the depth axis.
   start,
 
-  /// Children at the high end of the cross axis.
+  /// Children at the end of the cross axis, the opposite of [start].
   end,
 
   /// Children centered on the cross axis.
@@ -183,6 +187,23 @@ class _EmptyBox3d extends Layout3d {
 /// wants a child suspended in the middle of a line's depth still says so.
 /// See [defaultDepthAxisAlignmentFor], and
 /// `plans/2026_09_10_a_letter_on_a_slab.md` for what the old default cost.
+///
+/// ## Reading direction
+///
+/// [textDirection] decides which end of the line's *horizontal* axis is the
+/// start — the main axis of a [Row3d], the first cross axis of a [Column3d]
+/// and of a [Depth3d] — and [verticalDirection] does the same for the
+/// vertical one. Depth never flips: front is where the viewer is in every
+/// language. The placement is Flutter's: a flipped line is walked in visual
+/// order from its top-left child, so an overflowing right-to-left row keeps
+/// its *last* child at the left edge and pushes its first out past the right,
+/// exactly as a Flutter row does. Baseline alignment ignores the cross flip,
+/// also as in Flutter.
+///
+/// A null [textDirection] reads left to right. Flutter's `RenderFlex` asserts
+/// instead; a line here has always been allowed to say nothing, and the
+/// widget forms fill the direction in from the ambient `Directionality`, the
+/// way Flutter's `Flex` widget does.
 class Flex3d extends MultiChildLayout3d<ParentData3d>
     with Layout3dOverflowReportingMixin {
   /// Creates a flex line along [direction].
@@ -193,9 +214,13 @@ class Flex3d extends MultiChildLayout3d<ParentData3d>
     CrossAxisAlignment3d crossAxisAlignment = CrossAxisAlignment3d.center,
     CrossAxisAlignment3d? depthAxisAlignment,
     double spacing = 0.0,
+    TextDirection? textDirection,
+    VerticalDirection verticalDirection = VerticalDirection.down,
     super.children,
     super.name,
   }) : _direction = direction,
+       _textDirection = textDirection,
+       _verticalDirection = verticalDirection,
        _mainAxisAlignment = mainAxisAlignment,
        _mainAxisSize = mainAxisSize,
        _crossAxisAlignment = crossAxisAlignment,
@@ -287,6 +312,44 @@ class Flex3d extends MultiChildLayout3d<ParentData3d>
     _spacing = value;
     markNeedsLayout();
   }
+
+  TextDirection? _textDirection;
+
+  /// Which end of the horizontal axis is the start.
+  ///
+  /// Null reads left to right. It flips the main axis of a horizontal line
+  /// and the first cross axis of the other two, and changes nothing about
+  /// their sizes.
+  TextDirection? get textDirection => _textDirection;
+
+  set textDirection(TextDirection? value) {
+    if (_textDirection == value) return;
+    _textDirection = value;
+    markNeedsLayout();
+  }
+
+  VerticalDirection _verticalDirection;
+
+  /// Which end of the vertical axis is the start.
+  ///
+  /// [VerticalDirection.up] is a [Column3d] whose first child is at the
+  /// bottom, and a [Row3d] whose `start` cross alignment is the bottom edge.
+  VerticalDirection get verticalDirection => _verticalDirection;
+
+  set verticalDirection(VerticalDirection value) {
+    if (_verticalDirection == value) return;
+    _verticalDirection = value;
+    markNeedsLayout();
+  }
+
+  /// Whether [axis] runs from its high face in this line: the horizontal axis
+  /// in right-to-left, the vertical axis when [verticalDirection] is up, and
+  /// the depth axis never.
+  bool _isFlipped(Axis3d axis) => switch (axis) {
+    Axis3d.horizontal => _textDirection == TextDirection.rtl,
+    Axis3d.vertical => _verticalDirection == VerticalDirection.up,
+    Axis3d.depth => false,
+  };
 
   /// The two axes that are not [direction], in canonical order.
   (Axis3d, Axis3d) get crossAxes => _direction.others;
@@ -556,14 +619,19 @@ class Flex3d extends MultiChildLayout3d<ParentData3d>
           'what is left over.',
     );
     final gaps = math.max(0, childCount - 1);
+    final flipMain = _isFlipped(mainAxis);
+    // Flutter's rule: a flipped line is walked from its top-left child, which
+    // is its last, so start and end trade the free space between them.
     final (leadingSpace, betweenSpace) = switch (_mainAxisAlignment) {
-      MainAxisAlignment3d.start => (0.0, 0.0),
-      MainAxisAlignment3d.end => (remainingSpace, 0.0),
+      MainAxisAlignment3d.start => (flipMain ? remainingSpace : 0.0, 0.0),
+      MainAxisAlignment3d.end => (flipMain ? 0.0 : remainingSpace, 0.0),
       MainAxisAlignment3d.center => (remainingSpace / 2.0, 0.0),
-      MainAxisAlignment3d.spaceBetween => (
-        0.0,
-        gaps > 0 ? remainingSpace / gaps : 0.0,
-      ),
+      // A lone child has no gap to share the space with, so it starts, and a
+      // flipped line starts at the other end — Flutter's rule.
+      MainAxisAlignment3d.spaceBetween =>
+        gaps > 0
+            ? (0.0, remainingSpace / gaps)
+            : (flipMain ? remainingSpace : 0.0, 0.0),
       MainAxisAlignment3d.spaceAround => () {
         final between = childCount > 0 ? remainingSpace / childCount : 0.0;
         return (between / 2.0, between);
@@ -586,11 +654,16 @@ class Flex3d extends MultiChildLayout3d<ParentData3d>
         if (deepest == null || distance == null) return 0.0;
         return deepest - distance;
       }
-      return _crossOffset(alignment, extent, child.size.alongAxis(axis));
+      return _crossOffset(
+        alignment,
+        extent,
+        child.size.alongAxis(axis),
+        flipped: _isFlipped(axis),
+      );
     }
 
     var mainPosition = leadingSpace;
-    for (final child in children) {
+    for (final child in flipMain ? children.toList().reversed : children) {
       final childSize = child.size;
       final firstCrossOffset = crossOffsetFor(
         child,
@@ -615,12 +688,12 @@ class Flex3d extends MultiChildLayout3d<ParentData3d>
   static double _crossOffset(
     CrossAxisAlignment3d alignment,
     double extent,
-    double childExtent,
-  ) => switch (alignment) {
-    CrossAxisAlignment3d.start ||
-    CrossAxisAlignment3d.stretch ||
-    CrossAxisAlignment3d.baseline => 0.0,
-    CrossAxisAlignment3d.end => extent - childExtent,
+    double childExtent, {
+    required bool flipped,
+  }) => switch (alignment) {
+    CrossAxisAlignment3d.stretch || CrossAxisAlignment3d.baseline => 0.0,
+    CrossAxisAlignment3d.start => flipped ? extent - childExtent : 0.0,
+    CrossAxisAlignment3d.end => flipped ? 0.0 : extent - childExtent,
     CrossAxisAlignment3d.center => (extent - childExtent) / 2.0,
   };
 
@@ -649,6 +722,20 @@ class Flex3d extends MultiChildLayout3d<ParentData3d>
     );
     properties.add(DoubleProperty('spacing', spacing, defaultValue: 0.0));
     properties.add(
+      EnumProperty<TextDirection>(
+        'textDirection',
+        textDirection,
+        defaultValue: null,
+      ),
+    );
+    properties.add(
+      EnumProperty<VerticalDirection>(
+        'verticalDirection',
+        verticalDirection,
+        defaultValue: VerticalDirection.down,
+      ),
+    );
+    properties.add(
       DiagnosticsProperty<Size3d>(
         'overflow',
         debugOverflow,
@@ -659,6 +746,9 @@ class Flex3d extends MultiChildLayout3d<ParentData3d>
 }
 
 /// A [Flex3d] running left to right, the 3D analogue of [Row].
+///
+/// Left to right unless [textDirection] says otherwise: in right-to-left the
+/// first child is at the right.
 class Row3d extends Flex3d {
   /// Creates a horizontal line of children.
   Row3d({
@@ -667,6 +757,8 @@ class Row3d extends Flex3d {
     super.crossAxisAlignment,
     super.depthAxisAlignment,
     super.spacing,
+    super.textDirection,
+    super.verticalDirection,
     super.children,
     super.name,
   }) : super(direction: Axis3d.horizontal);
@@ -676,7 +768,8 @@ class Row3d extends Flex3d {
 ///
 /// Top to bottom means toward `-y` in the scene under the default
 /// [LayoutBasis3d.xy]: the first child is the highest one on the plane, the
-/// way the first child of a Flutter `Column` is the topmost.
+/// way the first child of a Flutter `Column` is the topmost — unless
+/// [verticalDirection] is up, which puts it at the bottom.
 class Column3d extends Flex3d {
   /// Creates a vertical line of children.
   Column3d({
@@ -685,6 +778,8 @@ class Column3d extends Flex3d {
     super.crossAxisAlignment,
     super.depthAxisAlignment,
     super.spacing,
+    super.textDirection,
+    super.verticalDirection,
     super.children,
     super.name,
   }) : super(direction: Axis3d.vertical);
@@ -701,6 +796,8 @@ class Depth3d extends Flex3d {
     super.crossAxisAlignment,
     super.depthAxisAlignment,
     super.spacing,
+    super.textDirection,
+    super.verticalDirection,
     super.children,
     super.name,
   }) : super(direction: Axis3d.depth);

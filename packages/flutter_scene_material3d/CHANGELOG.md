@@ -14,6 +14,32 @@ component has no thickness in Flutter and must have one here, which is the
 token Material does not publish at all. The plan's middle section is where
 that reasoning lives.
 
+- **The catalogue mirrors in a right-to-left application.** Its rows follow
+  the ambient `Directionality` on their own now that the layout package's do,
+  so what changed here is everything that would otherwise have been left on
+  the wrong side:
+  - **`ListTile3d.defaultContentPadding` is directional** — 16dp at the start
+    and 24dp at the end, Flutter's `EdgeInsetsDirectional` — and
+    `contentPadding` and `Material3d.padding` take any `EdgeInsetsGeometry3d`.
+    `Material3d.alignment` takes any `AlignmentGeometry3d`.
+  - **`Divider3d` indents from its leading edge**, as Flutter's does.
+  - **An app bar puts its leading widget at the start**, and keeps its title
+    `titleSpacing` off whichever edge is empty; the centred toolbar mirrors
+    its `NavigationToolbar` arithmetic. `AppBarStyle3d.padding` stays
+    physical, and the side counted toward the leading slot is the side the
+    leading widget is on.
+  - **A slider's minimum is at the right**, its fill grows from there, a press
+    reads its fraction from the right, and left and right on the keyboard move
+    the thumb the way the arrow points — Flutter's slider, which the arrow-key
+    entry below had to diverge from until now. `SliderGesture3d` takes a
+    `textDirection`.
+  - **A switch that is on has its thumb at the left**, as Flutter's has.
+  - **A menu hangs from its button's start corner.** `Follower3dWidget`'s
+    `self` and `target` are `AlignmentGeometry3d`, defaulting to
+    `AlignmentDirectional3d.topStart` and `bottomStart`, which is Flutter's
+    `MenuAnchor`; `showMenu3d`'s `menuCorner` and `anchorCorner` follow, and a
+    `Follower3d`'s corners can be changed after it is built.
+
 - **An app bar's last action reaches the bar's edge, as Flutter's does.**
   `AppBarStyle3d.padding` defaulted to 4dp on both sides, which stood in for
   Flutter centring a 48dp leading button in its 56dp slot — and also held the
@@ -73,9 +99,8 @@ that reasoning lives.
   and right raise it, down and left lower it, by one division, or by Flutter's
   platform unit for a continuous slider — a tenth on Apple platforms and a
   twentieth elsewhere. Each press is a whole gesture, bracketed by
-  `onChangeStart` and `onChangeEnd`. Left and right follow the track rather
-  than the reading direction, because the track does not mirror for a
-  right-to-left locale yet.
+  `onChangeStart` and `onChangeEnd`. Left and right follow the track, which
+  mirrors in a right-to-left application — see the entry above.
 
 - **Enter and Space activate a focused control, and Escape closes an overlay.**
   **`InkWell3d` binds `ActivateIntent`**, the way Flutter's `InkWell` does, so

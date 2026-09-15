@@ -12,11 +12,13 @@ import 'package:flutter/widgets.dart'
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart'
     show
         Alignment3d,
+        AlignmentGeometry3d,
         Border3d,
         BorderRadius3d,
         BoxDecoration3d,
         DecoratedBox3d,
         EdgeInsets3d,
+        EdgeInsetsGeometry3d,
         Offset3d;
 import 'package:flutter_scene_layout3d/widgets.dart'
     show Layout3dMetricsScope, SceneContainer3d, SingleChildLayout3dWidget;
@@ -172,7 +174,11 @@ class Material3d extends StatefulWidget {
   /// correct — the padding is a real inset on a real box — and it means
   /// `EdgeInsets3d.all(16)` is rarely what a component wants. State the two
   /// in-plane axes: `EdgeInsets3d.symmetric(horizontal: 24, vertical: 10)`.
-  final EdgeInsets3d padding;
+  ///
+  /// An `EdgeInsetsDirectional3d` puts its start on the side the ambient
+  /// `Directionality` reads from, which is how a list tile keeps its 16dp
+  /// before the leading icon in a right-to-left application.
+  final EdgeInsetsGeometry3d padding;
 
   /// Where the child sits inside the padded surface.
   ///
@@ -184,7 +190,7 @@ class Material3d extends StatefulWidget {
   /// Null gives the child the surface's own constraints instead of aligning
   /// it in them, the way a `Container3d` with no alignment does. The content
   /// still stands off the face by [contentLift] either way.
-  final Alignment3d? alignment;
+  final AlignmentGeometry3d? alignment;
 
   /// How far the content stands off this surface's own front face, in logical
   /// pixels.

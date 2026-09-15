@@ -13,6 +13,8 @@ import 'package:flutter/widgets.dart'
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart'
     show
         Alignment3d,
+        AlignmentDirectional3d,
+        AlignmentGeometry3d,
         Constraints3d,
         CrossAxisAlignment3d,
         MainAxisSize3d,
@@ -461,8 +463,8 @@ Future<T?> showMenu3d<T>({
   required List<Widget> children,
   MenuStyle3d? style,
   String? semanticLabel,
-  Alignment3d menuCorner = Alignment3d.topLeft,
-  Alignment3d anchorCorner = Alignment3d.bottomLeft,
+  AlignmentGeometry3d menuCorner = AlignmentDirectional3d.topStart,
+  AlignmentGeometry3d anchorCorner = AlignmentDirectional3d.bottomStart,
   String? debugLabel,
 }) {
   final theme = Theme3d.of(context);

@@ -5,7 +5,9 @@ import 'package:flutter/foundation.dart'
         DiagnosticPropertiesBuilder,
         DiagnosticsProperty,
         DoubleProperty,
+        EnumProperty,
         IntProperty;
+import 'package:flutter/painting.dart' show TextDirection;
 
 import '../geometry/constraints3d.dart';
 import '../geometry/offset3d.dart';
@@ -228,9 +230,11 @@ class Table3d extends MultiChildLayout3d<ParentData3d> {
     CrossAxisAlignment3d depthAxisAlignment = CrossAxisAlignment3d.start,
     double columnSpacing = 0.0,
     double rowSpacing = 0.0,
+    TextDirection? textDirection,
     super.children,
     super.name,
   }) : _columnCount = columnCount,
+       _textDirection = textDirection,
        _columnWidths = Map<int, TableColumnWidth3d>.unmodifiable(columnWidths),
        _defaultColumnWidth = defaultColumnWidth,
        _defaultVerticalAlignment = defaultVerticalAlignment,
@@ -240,6 +244,21 @@ class Table3d extends MultiChildLayout3d<ParentData3d> {
        assert(columnCount > 0, 'A Table3d needs at least one column.'),
        assert(columnSpacing >= 0.0),
        assert(rowSpacing >= 0.0);
+
+  TextDirection? _textDirection;
+
+  /// Which side the first column is on: the left, or the right in
+  /// right-to-left, where Flutter's `Table` puts it too.
+  ///
+  /// Null reads left to right. Column indices, [columnWidths] and the order
+  /// of the children do not change; only where each column lands does.
+  TextDirection? get textDirection => _textDirection;
+
+  set textDirection(TextDirection? value) {
+    if (_textDirection == value) return;
+    _textDirection = value;
+    markNeedsLayout();
+  }
 
   int _columnCount;
 
@@ -585,7 +604,9 @@ class Table3d extends MultiChildLayout3d<ParentData3d> {
         }
         cell.place(
           Offset3d(
-            x,
+            _textDirection == TextDirection.rtl
+                ? contentWidth - x - widths[column]
+                : x,
             y + _verticalOffset(cell, rowHeights[row], rowBaselines[row]),
             _depthOffset(cell, tableDepth),
           ),
@@ -632,6 +653,13 @@ class Table3d extends MultiChildLayout3d<ParentData3d> {
     super.debugFillProperties(properties);
     properties.add(IntProperty('columnCount', columnCount));
     properties.add(IntProperty('rowCount', rowCount));
+    properties.add(
+      EnumProperty<TextDirection>(
+        'textDirection',
+        textDirection,
+        defaultValue: null,
+      ),
+    );
     properties.add(
       DiagnosticsProperty<TableColumnWidth3d>(
         'defaultColumnWidth',

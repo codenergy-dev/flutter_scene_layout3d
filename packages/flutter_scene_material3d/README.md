@@ -525,6 +525,16 @@ explicitly only when a particular string reads the other way. A `Semantics3d`
 you write **yourself**, in the imperative layer, has no `BuildContext` and must
 state its own.
 
+**That `textDirection` is what a component announces in, not how it is laid
+out.** The layout follows the ambient `Directionality`, as Flutter's components
+do: under a right-to-left `MaterialApp` every row in the catalogue runs from
+the right, a list tile keeps its 16dp before the leading icon on the right, a
+bar puts its leading widget at the right edge, a menu hangs from its button's
+right corner, a switch that is on has its thumb at the left, and a slider's
+minimum is at the right. None of it needs an argument. The words themselves
+are still English; translating what the catalogue invents is a separate piece
+of work.
+
 ## Surfaces and rows: cards, tiles, dividers and chips
 
 Everything above is a control. This is what a screen is made of.
@@ -1180,10 +1190,9 @@ raise it, down and left lower it, by one division, or for a continuous slider
 by Flutter's platform unit — a tenth on Apple platforms and a twentieth
 elsewhere. Each press is a whole gesture, so `onChangeStart` and `onChangeEnd`
 bracket it. The arrows therefore do not move the focus off a slider, which is
-Flutter's trade too; Tab does. Left and right follow the **track** rather than
-the reading direction, because the track does not mirror for a right-to-left
-locale yet, and arrows that disagreed with the thumb they move would be worse
-than arrows that ignore the locale.
+Flutter's trade too; Tab does. Left and right follow the **track**: under a
+right-to-left `Directionality` the minimum is at the right, the fill grows from
+there, and right moves the thumb toward it, as Flutter's slider does.
 
 ### What the tables say
 

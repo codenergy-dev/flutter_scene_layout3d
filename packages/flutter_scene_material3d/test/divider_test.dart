@@ -274,9 +274,9 @@ void main() {
         () => const VerticalDivider3d(indent: 8, endIndent: 16),
       );
       final padding = oneOf<Padding3d>(it.surface);
-      expect(padding.padding.top, closeTo(0.08, 1e-9));
-      expect(padding.padding.bottom, closeTo(0.16, 1e-9));
-      expect(padding.padding.left, 0.0);
+      expect((padding.padding as EdgeInsets3d).top, closeTo(0.08, 1e-9));
+      expect((padding.padding as EdgeInsets3d).bottom, closeTo(0.16, 1e-9));
+      expect((padding.padding as EdgeInsets3d).left, 0.0);
     });
   });
 }

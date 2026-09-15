@@ -5,7 +5,9 @@ import 'package:flutter/foundation.dart'
         DiagnosticPropertiesBuilder,
         DiagnosticsProperty,
         DoubleProperty,
+        EnumProperty,
         IterableProperty;
+import 'package:flutter/painting.dart' show TextDirection;
 
 import '../debug/overflow.dart';
 import '../geometry/alignment3d.dart';
@@ -175,21 +177,39 @@ class UnconstrainedBox3d extends SingleChildLayout3d
     with Layout3dChildIntrinsicsMixin, Layout3dOverflowReportingMixin {
   /// Creates a box that frees its child's constraints.
   UnconstrainedBox3d({
-    Alignment3d alignment = Alignment3d.center,
+    AlignmentGeometry3d alignment = Alignment3d.center,
+    TextDirection? textDirection,
     Set<Axis3d> constrainedAxes = const <Axis3d>{},
     super.child,
     super.name,
   }) : _alignment = alignment,
+       _textDirection = textDirection,
        _constrainedAxes = Set<Axis3d>.unmodifiable(constrainedAxes);
 
-  Alignment3d _alignment;
+  AlignmentGeometry3d _alignment;
 
   /// Where the child sits inside the room this box was given.
-  Alignment3d get alignment => _alignment;
+  ///
+  /// A directional alignment is read in [textDirection].
+  AlignmentGeometry3d get alignment => _alignment;
 
-  set alignment(Alignment3d value) {
+  set alignment(AlignmentGeometry3d value) {
     if (_alignment == value) return;
     _alignment = value;
+    markNeedsLayout();
+  }
+
+  TextDirection? _textDirection;
+
+  /// The reading direction [alignment] is resolved in; null reads left to
+  /// right.
+  TextDirection? get textDirection => _textDirection;
+
+  set textDirection(TextDirection? value) {
+    if (_textDirection == value) return;
+    _textDirection = value;
+    // A physical alignment reads the same in either direction.
+    if (_alignment is Alignment3d) return;
     markNeedsLayout();
   }
 
@@ -226,7 +246,7 @@ class UnconstrainedBox3d extends SingleChildLayout3d
     }
     child.layout(childConstraints, parentUsesSize: true);
     size = constraints.constrain(child.size);
-    child.place(_alignment.inscribe(child.size, size));
+    child.place(_alignment.resolve(_textDirection).inscribe(child.size, size));
     // The child was measured without limits and the box was not, so the two
     // disagreeing is the whole failure mode of this box: it reports a size
     // that fits and holds a child that does not. Flutter's
@@ -247,7 +267,16 @@ class UnconstrainedBox3d extends SingleChildLayout3d
   @override
   void debugFillProperties(DiagnosticPropertiesBuilder properties) {
     super.debugFillProperties(properties);
-    properties.add(DiagnosticsProperty<Alignment3d>('alignment', alignment));
+    properties.add(
+      DiagnosticsProperty<AlignmentGeometry3d>('alignment', alignment),
+    );
+    properties.add(
+      EnumProperty<TextDirection>(
+        'textDirection',
+        textDirection,
+        defaultValue: null,
+      ),
+    );
     properties.add(
       IterableProperty<Axis3d>(
         'constrainedAxes',
@@ -294,7 +323,8 @@ class OverflowBox3d extends SingleChildLayout3d
     double? maxHeight,
     double? minDepth,
     double? maxDepth,
-    Alignment3d alignment = Alignment3d.center,
+    AlignmentGeometry3d alignment = Alignment3d.center,
+    TextDirection? textDirection,
     super.child,
     super.name,
   }) : _minWidth = minWidth,
@@ -303,7 +333,8 @@ class OverflowBox3d extends SingleChildLayout3d
        _maxHeight = maxHeight,
        _minDepth = minDepth,
        _maxDepth = maxDepth,
-       _alignment = alignment;
+       _alignment = alignment,
+       _textDirection = textDirection;
 
   double? _minWidth;
 
@@ -371,14 +402,30 @@ class OverflowBox3d extends SingleChildLayout3d
     markNeedsLayout();
   }
 
-  Alignment3d _alignment;
+  AlignmentGeometry3d _alignment;
 
   /// Where the child sits inside the room this box reports.
-  Alignment3d get alignment => _alignment;
+  ///
+  /// A directional alignment is read in [textDirection].
+  AlignmentGeometry3d get alignment => _alignment;
 
-  set alignment(Alignment3d value) {
+  set alignment(AlignmentGeometry3d value) {
     if (_alignment == value) return;
     _alignment = value;
+    markNeedsLayout();
+  }
+
+  TextDirection? _textDirection;
+
+  /// The reading direction [alignment] is resolved in; null reads left to
+  /// right.
+  TextDirection? get textDirection => _textDirection;
+
+  set textDirection(TextDirection? value) {
+    if (_textDirection == value) return;
+    _textDirection = value;
+    // A physical alignment reads the same in either direction.
+    if (_alignment is Alignment3d) return;
     markNeedsLayout();
   }
 
@@ -413,7 +460,7 @@ class OverflowBox3d extends SingleChildLayout3d
       );
     }
     size = chosen;
-    child.place(_alignment.inscribe(child.size, size));
+    child.place(_alignment.resolve(_textDirection).inscribe(child.size, size));
   }
 
   @override
@@ -425,7 +472,16 @@ class OverflowBox3d extends SingleChildLayout3d
     properties.add(DoubleProperty('maxHeight', maxHeight, defaultValue: null));
     properties.add(DoubleProperty('minDepth', minDepth, defaultValue: null));
     properties.add(DoubleProperty('maxDepth', maxDepth, defaultValue: null));
-    properties.add(DiagnosticsProperty<Alignment3d>('alignment', alignment));
+    properties.add(
+      DiagnosticsProperty<AlignmentGeometry3d>('alignment', alignment),
+    );
+    properties.add(
+      EnumProperty<TextDirection>(
+        'textDirection',
+        textDirection,
+        defaultValue: null,
+      ),
+    );
   }
 }
 
@@ -449,13 +505,15 @@ class FractionallySizedBox3d extends SingleChildLayout3d
     double? widthFactor,
     double? heightFactor,
     double? depthFactor,
-    Alignment3d alignment = Alignment3d.center,
+    AlignmentGeometry3d alignment = Alignment3d.center,
+    TextDirection? textDirection,
     super.child,
     super.name,
   }) : _widthFactor = widthFactor,
        _heightFactor = heightFactor,
        _depthFactor = depthFactor,
        _alignment = alignment,
+       _textDirection = textDirection,
        assert(widthFactor == null || widthFactor >= 0.0),
        assert(heightFactor == null || heightFactor >= 0.0),
        assert(depthFactor == null || depthFactor >= 0.0);
@@ -496,14 +554,30 @@ class FractionallySizedBox3d extends SingleChildLayout3d
     markNeedsLayout();
   }
 
-  Alignment3d _alignment;
+  AlignmentGeometry3d _alignment;
 
   /// Where the child sits inside this box.
-  Alignment3d get alignment => _alignment;
+  ///
+  /// A directional alignment is read in [textDirection].
+  AlignmentGeometry3d get alignment => _alignment;
 
-  set alignment(Alignment3d value) {
+  set alignment(AlignmentGeometry3d value) {
     if (_alignment == value) return;
     _alignment = value;
+    markNeedsLayout();
+  }
+
+  TextDirection? _textDirection;
+
+  /// The reading direction [alignment] is resolved in; null reads left to
+  /// right.
+  TextDirection? get textDirection => _textDirection;
+
+  set textDirection(TextDirection? value) {
+    if (_textDirection == value) return;
+    _textDirection = value;
+    // A physical alignment reads the same in either direction.
+    if (_alignment is Alignment3d) return;
     markNeedsLayout();
   }
 
@@ -556,7 +630,7 @@ class FractionallySizedBox3d extends SingleChildLayout3d
       );
     }
     size = chosen;
-    child.place(_alignment.inscribe(child.size, size));
+    child.place(_alignment.resolve(_textDirection).inscribe(child.size, size));
   }
 
   @override
@@ -571,6 +645,15 @@ class FractionallySizedBox3d extends SingleChildLayout3d
     properties.add(
       DoubleProperty('depthFactor', depthFactor, defaultValue: null),
     );
-    properties.add(DiagnosticsProperty<Alignment3d>('alignment', alignment));
+    properties.add(
+      DiagnosticsProperty<AlignmentGeometry3d>('alignment', alignment),
+    );
+    properties.add(
+      EnumProperty<TextDirection>(
+        'textDirection',
+        textDirection,
+        defaultValue: null,
+      ),
+    );
   }
 }

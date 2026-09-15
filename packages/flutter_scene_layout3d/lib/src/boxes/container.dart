@@ -1,7 +1,8 @@
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart'
-    show DiagnosticPropertiesBuilder, DiagnosticsProperty;
+    show DiagnosticPropertiesBuilder, DiagnosticsProperty, EnumProperty;
+import 'package:flutter/painting.dart' show TextDirection;
 import 'package:vector_math/vector_math.dart' show Matrix4;
 
 import '../geometry/alignment3d.dart';
@@ -44,18 +45,20 @@ class Container3d extends SingleChildLayout3d
     with Layout3dChildIntrinsicsMixin {
   /// Creates a container.
   Container3d({
-    Alignment3d? alignment,
-    EdgeInsets3d padding = EdgeInsets3d.zero,
-    EdgeInsets3d margin = EdgeInsets3d.zero,
+    AlignmentGeometry3d? alignment,
+    EdgeInsetsGeometry3d padding = EdgeInsets3d.zero,
+    EdgeInsetsGeometry3d margin = EdgeInsets3d.zero,
     Constraints3d? constraints,
     double? width,
     double? height,
     double? depth,
     Matrix4? transform,
-    Alignment3d transformAlignment = Alignment3d.center,
+    AlignmentGeometry3d transformAlignment = Alignment3d.center,
+    TextDirection? textDirection,
     super.child,
     super.name,
   }) : _alignment = alignment,
+       _textDirection = textDirection,
        _padding = padding,
        _margin = margin,
        _transform = transform == null ? null : Matrix4.copy(transform),
@@ -89,42 +92,55 @@ class Container3d extends SingleChildLayout3d
     return constraints.tighten(width: width, height: height, depth: depth);
   }
 
-  Alignment3d? _alignment;
+  AlignmentGeometry3d? _alignment;
 
   /// Where the child sits inside the padded content box.
   ///
   /// Null means the container shrink-wraps the child, exactly as a Flutter
   /// `Container` without an alignment does.
-  Alignment3d? get alignment => _alignment;
+  AlignmentGeometry3d? get alignment => _alignment;
 
-  set alignment(Alignment3d? value) {
+  set alignment(AlignmentGeometry3d? value) {
     if (_alignment == value) return;
     _alignment = value;
     markNeedsLayout();
   }
 
-  EdgeInsets3d _padding;
+  EdgeInsetsGeometry3d _padding;
 
   /// Space between the container's faces and its child.
-  EdgeInsets3d get padding => _padding;
+  EdgeInsetsGeometry3d get padding => _padding;
 
-  set padding(EdgeInsets3d value) {
+  set padding(EdgeInsetsGeometry3d value) {
     if (_padding == value) return;
     assert(value.isNonNegative);
     _padding = value;
     markNeedsLayout();
   }
 
-  EdgeInsets3d _margin;
+  EdgeInsetsGeometry3d _margin;
 
   /// Space around the container, inside the box it was given.
-  EdgeInsets3d get margin => _margin;
+  EdgeInsetsGeometry3d get margin => _margin;
 
-  set margin(EdgeInsets3d value) {
+  set margin(EdgeInsetsGeometry3d value) {
     if (_margin == value) return;
     assert(value.isNonNegative);
     _margin = value;
     markNeedsLayout();
+  }
+
+  TextDirection? _textDirection;
+
+  /// The reading direction [alignment], [padding], [margin] and
+  /// [transformAlignment] are resolved in; null reads left to right.
+  TextDirection? get textDirection => _textDirection;
+
+  set textDirection(TextDirection? value) {
+    if (_textDirection == value) return;
+    _textDirection = value;
+    markNeedsLayout();
+    if (hasSize) applyNodeTransform();
   }
 
   Constraints3d? _additionalConstraints;
@@ -152,12 +168,12 @@ class Container3d extends SingleChildLayout3d
     if (hasSize) applyNodeTransform();
   }
 
-  Alignment3d _transformAlignment;
+  AlignmentGeometry3d _transformAlignment;
 
   /// The point [transform] pivots around.
-  Alignment3d get transformAlignment => _transformAlignment;
+  AlignmentGeometry3d get transformAlignment => _transformAlignment;
 
-  set transformAlignment(Alignment3d value) {
+  set transformAlignment(AlignmentGeometry3d value) {
     if (_transformAlignment == value) return;
     _transformAlignment = value;
     if (hasSize) applyNodeTransform();
@@ -168,7 +184,7 @@ class Container3d extends SingleChildLayout3d
     final transform = _transform;
     if (transform == null) return null;
     if (!hasSize) return Matrix4.copy(transform);
-    final origin = _transformAlignment.alongSize(size);
+    final origin = _transformAlignment.resolve(_textDirection).alongSize(size);
     return Matrix4.translationValues(origin.x, origin.y, origin.z)
         .multiplied(transform)
         .multiplied(Matrix4.translationValues(-origin.x, -origin.y, -origin.z));
@@ -182,7 +198,7 @@ class Container3d extends SingleChildLayout3d
   /// room it is given, and an intrinsic query is asking what it would do
   /// without being given any.
   double _containerIntrinsic(Axis3d axis, Size3d limits, {required bool min}) {
-    final insets = _margin + _padding;
+    final insets = _margin.add(_padding);
     var content = _padding.alongAxis(axis);
     final child = this.child;
     if (child != null) {
@@ -216,7 +232,9 @@ class Container3d extends SingleChildLayout3d
   @override
   void performLayout() {
     final incoming = constraints;
-    final afterMargin = incoming.deflate(_margin);
+    final margin = _margin.resolve(_textDirection);
+    final padding = _padding.resolve(_textDirection);
+    final afterMargin = incoming.deflate(margin);
     final inner = _additionalConstraints == null
         ? afterMargin
         : _additionalConstraints!.enforce(afterMargin);
@@ -226,17 +244,17 @@ class Container3d extends SingleChildLayout3d
       // Like a Flutter Container with no child: as big as it is allowed to
       // be, and no bigger than the padding when that is unbounded.
       final content = Size3d(
-        inner.hasBoundedWidth ? inner.maxWidth : _padding.horizontal,
-        inner.hasBoundedHeight ? inner.maxHeight : _padding.vertical,
-        inner.hasBoundedDepth ? inner.maxDepth : _padding.depth,
+        inner.hasBoundedWidth ? inner.maxWidth : padding.horizontal,
+        inner.hasBoundedHeight ? inner.maxHeight : padding.vertical,
+        inner.hasBoundedDepth ? inner.maxDepth : padding.depth,
       );
-      size = incoming.constrain(_margin.inflateSize(inner.constrain(content)));
+      size = incoming.constrain(margin.inflateSize(inner.constrain(content)));
       applyNodeTransform();
       return;
     }
 
-    final contentConstraints = inner.deflate(_padding);
-    final alignment = _alignment;
+    final contentConstraints = inner.deflate(padding);
+    final alignment = _alignment?.resolve(_textDirection);
     child.layout(
       alignment == null ? contentConstraints : contentConstraints.loosen(),
       parentUsesSize: true,
@@ -264,13 +282,13 @@ class Container3d extends SingleChildLayout3d
       );
     }
 
-    final innerSize = inner.constrain(_padding.inflateSize(contentSize));
-    size = incoming.constrain(_margin.inflateSize(innerSize));
+    final innerSize = inner.constrain(padding.inflateSize(contentSize));
+    size = incoming.constrain(margin.inflateSize(innerSize));
 
-    final contentBox = _padding.deflateSize(innerSize);
+    final contentBox = padding.deflateSize(innerSize);
     final childOffset =
-        _margin.topLeftFront +
-        _padding.topLeftFront +
+        margin.topLeftFront +
+        padding.topLeftFront +
         (alignment == null
             ? Offset3d.zero
             : alignment.inscribe(childSize, contentBox));
@@ -282,24 +300,31 @@ class Container3d extends SingleChildLayout3d
   void debugFillProperties(DiagnosticPropertiesBuilder properties) {
     super.debugFillProperties(properties);
     properties.add(
-      DiagnosticsProperty<Alignment3d>(
+      DiagnosticsProperty<AlignmentGeometry3d>(
         'alignment',
         alignment,
         defaultValue: null,
       ),
     );
     properties.add(
-      DiagnosticsProperty<EdgeInsets3d>(
+      DiagnosticsProperty<EdgeInsetsGeometry3d>(
         'padding',
         padding,
         defaultValue: EdgeInsets3d.zero,
       ),
     );
     properties.add(
-      DiagnosticsProperty<EdgeInsets3d>(
+      DiagnosticsProperty<EdgeInsetsGeometry3d>(
         'margin',
         margin,
         defaultValue: EdgeInsets3d.zero,
+      ),
+    );
+    properties.add(
+      EnumProperty<TextDirection>(
+        'textDirection',
+        textDirection,
+        defaultValue: null,
       ),
     );
     properties.add(

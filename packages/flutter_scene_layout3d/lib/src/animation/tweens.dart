@@ -51,6 +51,21 @@ class EdgeInsets3dTween extends Tween<EdgeInsets3d> {
   EdgeInsets3d lerp(double t) => EdgeInsets3d.lerp(begin!, end!, t);
 }
 
+/// Interpolates between two insets of any kind, the 3D analogue of
+/// [EdgeInsetsGeometryTween].
+///
+/// A physical and a directional inset interpolate through the private kind
+/// that holds both, so the box resolves the in-between value in its own
+/// reading direction.
+class EdgeInsetsGeometry3dTween extends Tween<EdgeInsetsGeometry3d> {
+  /// Creates a tween between two insets.
+  EdgeInsetsGeometry3dTween({super.begin, super.end});
+
+  @override
+  EdgeInsetsGeometry3d lerp(double t) =>
+      EdgeInsetsGeometry3d.lerp(begin, end, t)!;
+}
+
 /// Interpolates between two [Alignment3d]s.
 class Alignment3dTween extends Tween<Alignment3d> {
   /// Creates a tween between two alignments.
@@ -58,6 +73,17 @@ class Alignment3dTween extends Tween<Alignment3d> {
 
   @override
   Alignment3d lerp(double t) => Alignment3d.lerp(begin!, end!, t);
+}
+
+/// Interpolates between two alignments of any kind, the 3D analogue of
+/// [AlignmentGeometryTween].
+class AlignmentGeometry3dTween extends Tween<AlignmentGeometry3d> {
+  /// Creates a tween between two alignments.
+  AlignmentGeometry3dTween({super.begin, super.end});
+
+  @override
+  AlignmentGeometry3d lerp(double t) =>
+      AlignmentGeometry3d.lerp(begin, end, t)!;
 }
 
 /// Interpolates between two [Constraints3d].

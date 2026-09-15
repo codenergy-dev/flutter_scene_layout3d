@@ -929,10 +929,11 @@ than none.
 | `Layout3dSurface` | the root, plus `RenderView`'s job of starting layout |
 | `Layout3d`, `SingleChildLayout3d`, `MultiChildLayout3d`, `ProxyLayout3d` | `RenderBox` and friends |
 | `Constraints3d`, `Size3d`, `Offset3d`, `Alignment3d`, `EdgeInsets3d` | `BoxConstraints`, `Size`, `Offset`, `Alignment`, `EdgeInsets` |
+| `AlignmentDirectional3d`, `EdgeInsetsDirectional3d`, and the `…Geometry3d` bases | `AlignmentDirectional`, `EdgeInsetsDirectional`, `AlignmentGeometry`, `EdgeInsetsGeometry` |
 | `Container3d`, `Padding3d`, `Align3d`, `Center3d` | `Container`, `Padding`, `Align`, `Center` |
 | `SizedBox3d`, `ConstrainedBox3d`, `Transform3d` | `SizedBox`, `ConstrainedBox`, `Transform` |
 | `Row3d`, `Column3d`, `Depth3d`, `Flexible3d`, `Expanded3d`, `Spacer3d` | `Row`, `Column`, `Flexible`, `Expanded`, `Spacer` |
-| `Stack3d`, `Positioned3d` | `Stack`, `Positioned` |
+| `Stack3d`, `Positioned3d`, `Positioned3d.directional` | `Stack`, `Positioned`, `Positioned.directional` |
 | `Wrap3d` | `Wrap` |
 | `LimitedBox3d`, `UnconstrainedBox3d`, `OverflowBox3d`, `FractionallySizedBox3d` | `LimitedBox`, `UnconstrainedBox`, `OverflowBox`, `FractionallySizedBox` |
 | `AspectRatio3d`, `FittedBox3d`, `IndexedStack3d` | `AspectRatio`, `FittedBox`, `IndexedStack` |
@@ -1148,6 +1149,60 @@ Wrap3d(
   children: [for (final model in models) SizedBox3d.cube(0.4, child: ...)],
 )
 ```
+
+## Reading direction
+
+A row in Arabic starts at the right. Everything that arranges children along
+the plane's horizontal axis takes Flutter's `textDirection`, and everything
+along its vertical axis Flutter's `verticalDirection`: `Row3d`, `Column3d` and
+`Depth3d`, `Wrap3d`, `Table3d`, and every box that places a child with an
+alignment or insets it with a padding. The rules are Flutter's, flip for flip —
+including the one that surprises people, that an overflowing right-to-left row
+keeps its *last* child at the left edge and pushes its first out past the
+right, because Flutter walks a flipped line from its top-left child rather than
+mirroring the left-to-right result.
+
+What is new is saying *start* rather than *left*. `EdgeInsetsDirectional3d`
+and `AlignmentDirectional3d` are the directional kinds, and a box resolves them
+when it lays out:
+
+```dart
+Padding3d(
+  // 16 before the icon and 24 after it, whichever side "before" is on.
+  padding: const EdgeInsetsDirectional3d.only(start: 0.16, end: 0.24),
+  textDirection: TextDirection.rtl,
+  child: Row3d(textDirection: TextDirection.rtl, children: [icon, label]),
+)
+```
+
+**From a `build` method you do not pass it at all.** The widget forms read the
+ambient `Directionality`, as Flutter's do, so a scene under a right-to-left
+`MaterialApp` mirrors every row, padding and alignment without a line of code —
+and `SceneRow3d(textDirection: ...)` still overrides it where a row must not
+follow the language, a media player's transport controls, say.
+`ScenePositionedDirectional3d` is the ambient form of
+`Positioned3d.directional`.
+
+Three things about it that are this package's own:
+
+- **Depth never flips.** `EdgeInsetsDirectional3d` has a physical `front` and
+  `back`, and `AlignmentDirectional3d` a physical `z`. Front is where the
+  viewer is, in every language.
+- **Direction belongs to the layout, not to the viewer.** A person who walks
+  round behind a right-to-left panel sees its first child on their left, the
+  way they would see the first word of a sign printed on glass. Nothing
+  re-lays out when the camera moves, and a row that followed the viewer while
+  its words did not would disagree with itself. This is the position the wheel
+  took first: a wheel over a panel seen from behind still scrolls further into
+  the list.
+- **No direction means left to right.** Flutter asserts when a flex needs a
+  direction and has none; a layout here has always been allowed to say
+  nothing, so the imperative layer resolves null as left to right, which is
+  also what `Text3d` falls back to.
+
+A horizontal `ListView3d` does not start at the right in right to left, which
+Flutter's does. That is not a direction nobody threaded: no scroll view here
+has `reverse` at all, and it will come with that.
 
 ## Building from the room you got
 

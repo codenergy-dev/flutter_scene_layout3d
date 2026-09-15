@@ -3,13 +3,13 @@ import 'dart:ui' show Color;
 
 import 'package:flutter/semantics.dart' show SemanticsProperties;
 import 'package:flutter/widgets.dart'
-    show BuildContext, StatelessWidget, TextDirection, Widget;
+    show BuildContext, Directionality, StatelessWidget, TextDirection, Widget;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart'
     show
         Alignment3d,
         Constraints3d,
         CrossAxisAlignment3d,
-        EdgeInsets3d,
+        EdgeInsetsDirectional3d,
         Layout3dMetrics,
         MainAxisAlignment3d,
         MainAxisSize3d,
@@ -207,6 +207,10 @@ class AppBar3d extends StatelessWidget {
         : SceneTextStyle3d(style: titleStyle, color: content, child: title!);
 
     final centred = centerTitle ?? style.centerTitle;
+    // The toolbar's own order follows the application, as Flutter's
+    // `NavigationToolbar` does: the leading widget at the start, the actions
+    // at the end. The row below reads the same direction on its own.
+    final direction = Directionality.maybeOf(context) ?? TextDirection.ltr;
 
     // The toolbar row: one fixed-height line at the *bottom* of the bar.
     // Material puts it there so that an expanded medium or large bar grows
@@ -220,12 +224,15 @@ class AppBar3d extends StatelessWidget {
       // Flutter's `NavigationToolbar`'s, and it needs every width measured
       // before the title is placed.
       toolbar = SceneCustomMultiChildLayout3d(
-        delegate: _CentredToolbar3dLayout(spacing: spacing),
+        delegate: _CentredToolbar3dLayout(
+          spacing: spacing,
+          textDirection: direction,
+        ),
         children: <Widget>[
           if (leading != null)
             SceneLayoutId3d(
               id: _ToolbarSlot3d.leading,
-              child: _leadingSlot(metrics, style, leading!),
+              child: _leadingSlot(metrics, style, direction, leading!),
             ),
           SceneLayoutId3d(id: _ToolbarSlot3d.middle, child: titled),
           if (actions.isNotEmpty)
@@ -246,9 +253,12 @@ class AppBar3d extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment3d.center,
         spacing: spacing,
         children: <Widget>[
-          if (leading != null) _leadingSlot(metrics, style, leading!),
+          if (leading != null)
+            _leadingSlot(metrics, style, direction, leading!),
           if (titled != null)
-            SceneExpanded3d(child: _clearOfEmptyEdges(metrics, style, titled))
+            SceneExpanded3d(
+              child: _clearOfEmptyEdges(metrics, style, direction, titled),
+            )
           else
             const SceneSpacer3d(),
           ...actions,
@@ -277,8 +287,9 @@ class AppBar3d extends StatelessWidget {
     );
   }
 
-  /// [leading] in its slot: [AppBarStyle3d.leadingWidth] from the bar's edge,
-  /// the bar's padding counted toward it, with the widget centred in it.
+  /// [leading] in its slot: [AppBarStyle3d.leadingWidth] from the bar's
+  /// leading edge, the bar's padding on that edge counted toward it, with the
+  /// widget centred in it.
   ///
   /// Flutter gives a leading widget a slot `kToolbarHeight` wide and measures
   /// the title from the end of the slot, so the title lands in the same place
@@ -291,9 +302,12 @@ class AppBar3d extends StatelessWidget {
   static Widget _leadingSlot(
     Layout3dMetrics metrics,
     AppBarStyle3d style,
+    TextDirection direction,
     Widget leading,
   ) => SceneSizedBox3d(
-    width: metrics.dp(math.max(0.0, style.leadingWidth - style.padding.left)),
+    width: metrics.dp(
+      math.max(0.0, style.leadingWidth - _startPadding(style, direction)),
+    ),
     child: SceneAlign3d(alignment: const Alignment3d(0, 0, -1), child: leading),
   );
 
@@ -308,27 +322,37 @@ class AppBar3d extends StatelessWidget {
   /// is where the spacing is measured from here — the bar's own padding counts
   /// toward it rather than being added to it.
   ///
-  /// Left and right rather than start and end: the row does not mirror in a
-  /// right-to-left locale yet, and a title inset on the wrong side would be
-  /// worse than one that matches the row it is in.
+  /// Start and end rather than left and right, because the row mirrors in a
+  /// right-to-left application: the edge with no leading widget on it is the
+  /// right one there. [AppBarStyle3d.padding] is physical, so the padding
+  /// that counts toward each inset is whichever side that edge is on.
   Widget _clearOfEmptyEdges(
     Layout3dMetrics metrics,
     AppBarStyle3d style,
+    TextDirection direction,
     Widget title,
   ) {
     double inset(bool empty, double padding) =>
         empty ? math.max(0.0, style.titleSpacing - padding) : 0.0;
-    final left = inset(leading == null, style.padding.left);
-    final right = inset(actions.isEmpty, style.padding.right);
-    if (left == 0.0 && right == 0.0) return title;
+    final start = inset(leading == null, _startPadding(style, direction));
+    final end = inset(actions.isEmpty, _endPadding(style, direction));
+    if (start == 0.0 && end == 0.0) return title;
     return ScenePadding3d(
-      padding: EdgeInsets3d.only(
-        left: metrics.dp(left),
-        right: metrics.dp(right),
+      padding: EdgeInsetsDirectional3d.only(
+        start: metrics.dp(start),
+        end: metrics.dp(end),
       ),
       child: title,
     );
   }
+
+  /// The bar's padding on the edge the leading widget is on.
+  static double _startPadding(AppBarStyle3d style, TextDirection direction) =>
+      direction == TextDirection.rtl ? style.padding.right : style.padding.left;
+
+  /// The bar's padding on the edge the actions are on.
+  static double _endPadding(AppBarStyle3d style, TextDirection direction) =>
+      direction == TextDirection.rtl ? style.padding.left : style.padding.right;
 
   /// The semantics wrapper both constructors' bars get.
   ///
@@ -582,15 +606,18 @@ enum _ToolbarSlot3d { leading, middle, trailing }
 /// [spacing] on each side, centred in the **whole** bar, and then pulled back
 /// inside that room when centring would put it under a control: never closer
 /// than [spacing] to the leading slot, and never running into the actions.
-/// Everything is centred in the toolbar's height and sits on its front face.
-///
-/// Left and right rather than start and end, like the rest of the bar: the
-/// toolbar does not mirror in a right-to-left locale yet.
+/// Everything is centred in the toolbar's height and sits on its front face,
+/// and in right to left the whole arrangement is mirrored, as
+/// `NavigationToolbar`'s is.
 class _CentredToolbar3dLayout extends MultiChildLayout3dDelegate {
-  _CentredToolbar3dLayout({required this.spacing});
+  _CentredToolbar3dLayout({required this.spacing, required this.textDirection});
 
   /// The space around the title, in world units.
   final double spacing;
+
+  /// Which edge the leading widget is on. Everything is worked out left to
+  /// right and mirrored at the end, which is what `NavigationToolbar` does.
+  final TextDirection textDirection;
 
   @override
   void performLayout(Size3d size) {
@@ -600,12 +627,17 @@ class _CentredToolbar3dLayout extends MultiChildLayout3dDelegate {
       maxDepth: size.depth,
     );
     double middleY(Size3d child) => (size.height - child.height) / 2;
+    Offset3d at(double x, Size3d child) => Offset3d(
+      textDirection == TextDirection.rtl ? size.width - x - child.width : x,
+      middleY(child),
+      0,
+    );
 
     var leadingWidth = 0.0;
     if (hasChild(_ToolbarSlot3d.leading)) {
       final leading = layoutChild(_ToolbarSlot3d.leading, loose);
       leadingWidth = leading.width;
-      positionChild(_ToolbarSlot3d.leading, Offset3d(0, middleY(leading), 0));
+      positionChild(_ToolbarSlot3d.leading, at(0, leading));
     }
 
     var trailingWidth = 0.0;
@@ -614,7 +646,7 @@ class _CentredToolbar3dLayout extends MultiChildLayout3dDelegate {
       trailingWidth = trailing.width;
       positionChild(
         _ToolbarSlot3d.trailing,
-        Offset3d(size.width - trailing.width, middleY(trailing), 0),
+        at(size.width - trailing.width, trailing),
       );
     }
 
@@ -633,10 +665,11 @@ class _CentredToolbar3dLayout extends MultiChildLayout3dDelegate {
     } else if (start < earliest) {
       start = earliest;
     }
-    positionChild(_ToolbarSlot3d.middle, Offset3d(start, middleY(middle), 0));
+    positionChild(_ToolbarSlot3d.middle, at(start, middle));
   }
 
   @override
   bool shouldRelayout(_CentredToolbar3dLayout oldDelegate) =>
-      oldDelegate.spacing != spacing;
+      oldDelegate.spacing != spacing ||
+      oldDelegate.textDirection != textDirection;
 }

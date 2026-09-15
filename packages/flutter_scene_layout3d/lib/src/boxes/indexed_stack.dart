@@ -31,6 +31,7 @@ class IndexedStack3d extends Stack3d {
   IndexedStack3d({
     int? index = 0,
     super.alignment,
+    super.textDirection,
     super.fit,
     super.depthStep,
     super.children,

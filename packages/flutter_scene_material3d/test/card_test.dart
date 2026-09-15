@@ -169,7 +169,7 @@ void main() {
       walk(it.surface.child!);
       expect(panelIsInside, isTrue);
       expect(
-        padding.padding.left,
+        (padding.padding as EdgeInsets3d).left,
         closeTo(0.04, 1e-9),
         reason: "Material's 4dp, through the surface's metrics",
       );

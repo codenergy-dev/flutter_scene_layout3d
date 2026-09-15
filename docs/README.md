@@ -28,8 +28,8 @@ several files, guidance for using the engine underneath.
 
 - **[traps.md](traps.md)** — what costs real time and is not obvious from the
   code. The unit contract, staying off the relayout path, the four transform
-  channels, why nothing draws by default, depth ordering, and the pointer,
-  drag and clipping edges.
+  channels, why nothing draws by default, depth ordering, the pointer, drag
+  and clipping edges, and what does and does not mirror in right to left.
   If you are about to write a component, read this first.
 - **[engine-rules.md](engine-rules.md)** — `flutter_scene` diverges from
   three.js, Godot and Unity in specific ways, and most first-attempt failures
@@ -161,6 +161,16 @@ Two entry points:
   elsewhere — and the rest exist only in a frame, so the render probe app now
   photographs the gallery on every CI run. The photograph found a defect on
   its first run.
+  [A row that reads right to left](../packages/flutter_scene_layout3d/plans/2026_09_15_a_row_that_reads_right_to_left.md)
+  is the fourth, and the first of the four a real port was expected to ask
+  for. It ports Flutter's direction rules flip for flip — `textDirection` and
+  `verticalDirection` on every line, `EdgeInsetsDirectional3d` and
+  `AlignmentDirectional3d` on every box — and decides the question Flutter
+  never has to: a row seen from behind its plane keeps its start on the side
+  it was laid out on, because direction belongs to the layout and not to the
+  viewer. Its most useful finding is about the catalogue: once the rows read
+  the ambient direction, every physical padding and every hand-computed
+  position in it was suddenly on the wrong side.
 
 ## Keeping this true
 

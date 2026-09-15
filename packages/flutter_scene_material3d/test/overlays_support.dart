@@ -6,7 +6,8 @@
 // inserted into the overlay and their content is reconciled by the widget
 // layer one frame later.
 
-import 'package:flutter/widgets.dart' show BuildContext, Builder, Widget;
+import 'package:flutter/widgets.dart'
+    show BuildContext, Builder, Directionality, TextDirection, Widget;
 import 'package:flutter_scene/scene.dart' show Node;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
 import 'package:flutter_scene_layout3d/widgets.dart';
@@ -67,25 +68,31 @@ Future<PumpedOverlay> pumpOverlay(
   Theme3dData theme = Theme3dData.light,
   Size3d size = const Size3d(8, 6, 1),
   Layout3dMetrics metrics = Layout3dMetrics.standard,
+  TextDirection? textDirection,
 }) async {
   final controller = Layout3dController();
   final overlayController = Overlay3dController();
   late BuildContext captured;
+  Widget directed(Widget child) => textDirection == null
+      ? child
+      : Directionality(textDirection: textDirection, child: child);
   await tester.pumpWidget(
-    SceneLayout3d(
-      parent: Node(),
-      size: size,
-      metrics: metrics,
-      controller: controller,
-      child: SceneTheme3d(
-        data: theme,
-        child: SceneOverlay3d(
-          controller: overlayController,
-          child: Builder(
-            builder: (context) {
-              captured = context;
-              return child ?? const SceneSizedBox3d.cube(1);
-            },
+    directed(
+      SceneLayout3d(
+        parent: Node(),
+        size: size,
+        metrics: metrics,
+        controller: controller,
+        child: SceneTheme3d(
+          data: theme,
+          child: SceneOverlay3d(
+            controller: overlayController,
+            child: Builder(
+              builder: (context) {
+                captured = context;
+                return child ?? const SceneSizedBox3d.cube(1);
+              },
+            ),
           ),
         ),
       ),

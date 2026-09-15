@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart'
-    show DiagnosticPropertiesBuilder, DiagnosticsProperty;
+    show DiagnosticPropertiesBuilder, DiagnosticsProperty, EnumProperty;
+import 'package:flutter/painting.dart' show TextDirection;
 import 'package:vector_math/vector_math.dart' show Matrix4, Quaternion, Vector3;
 
 import '../geometry/alignment3d.dart';
@@ -189,17 +190,20 @@ class Transform3d extends SingleChildLayout3d
   /// Creates a transformed box.
   Transform3d({
     required Matrix4 transform,
-    Alignment3d alignment = Alignment3d.center,
+    AlignmentGeometry3d alignment = Alignment3d.center,
+    TextDirection? textDirection,
     super.child,
     super.name,
   }) : _transform = Matrix4.copy(transform),
-       _alignment = alignment;
+       _alignment = alignment,
+       _textDirection = textDirection;
 
   /// A box that rotates its child [angle] radians about [axis].
   Transform3d.rotate({
     required Vector3 axis,
     required double angle,
-    Alignment3d alignment = Alignment3d.center,
+    AlignmentGeometry3d alignment = Alignment3d.center,
+    TextDirection? textDirection,
     Layout3d? child,
     String? name,
   }) : this(
@@ -209,6 +213,7 @@ class Transform3d extends SingleChildLayout3d
            Vector3.all(1),
          ),
          alignment: alignment,
+         textDirection: textDirection,
          child: child,
          name: name,
        );
@@ -216,12 +221,14 @@ class Transform3d extends SingleChildLayout3d
   /// A box that scales its child.
   Transform3d.scale({
     required Vector3 scale,
-    Alignment3d alignment = Alignment3d.center,
+    AlignmentGeometry3d alignment = Alignment3d.center,
+    TextDirection? textDirection,
     Layout3d? child,
     String? name,
   }) : this(
          transform: Matrix4.diagonal3(scale),
          alignment: alignment,
+         textDirection: textDirection,
          child: child,
          name: name,
        );
@@ -251,21 +258,37 @@ class Transform3d extends SingleChildLayout3d
     if (hasSize) applyNodeTransform();
   }
 
-  Alignment3d _alignment;
+  AlignmentGeometry3d _alignment;
 
   /// The point in this box the transform pivots around.
-  Alignment3d get alignment => _alignment;
+  ///
+  /// A directional alignment is read in [textDirection].
+  AlignmentGeometry3d get alignment => _alignment;
 
-  set alignment(Alignment3d value) {
+  set alignment(AlignmentGeometry3d value) {
     if (_alignment == value) return;
     _alignment = value;
+    if (hasSize) applyNodeTransform();
+  }
+
+  TextDirection? _textDirection;
+
+  /// The reading direction [alignment] is resolved in; null reads left to
+  /// right.
+  TextDirection? get textDirection => _textDirection;
+
+  set textDirection(TextDirection? value) {
+    if (_textDirection == value) return;
+    _textDirection = value;
+    // A physical alignment reads the same in either direction.
+    if (_alignment is Alignment3d) return;
     if (hasSize) applyNodeTransform();
   }
 
   @override
   Matrix4? get localTransform {
     if (!hasSize) return Matrix4.copy(_transform);
-    final origin = _alignment.alongSize(size);
+    final origin = _alignment.resolve(_textDirection).alongSize(size);
     return Matrix4.translationValues(origin.x, origin.y, origin.z)
         .multiplied(_transform)
         .multiplied(Matrix4.translationValues(-origin.x, -origin.y, -origin.z));
@@ -289,6 +312,15 @@ class Transform3d extends SingleChildLayout3d
   void debugFillProperties(DiagnosticPropertiesBuilder properties) {
     super.debugFillProperties(properties);
     properties.add(DiagnosticsProperty<Matrix4>('transform', transform));
-    properties.add(DiagnosticsProperty<Alignment3d>('alignment', alignment));
+    properties.add(
+      DiagnosticsProperty<AlignmentGeometry3d>('alignment', alignment),
+    );
+    properties.add(
+      EnumProperty<TextDirection>(
+        'textDirection',
+        textDirection,
+        defaultValue: null,
+      ),
+    );
   }
 }

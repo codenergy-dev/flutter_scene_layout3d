@@ -1,7 +1,12 @@
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart'
-    show DiagnosticPropertiesBuilder, DiagnosticsProperty, DoubleProperty;
+    show
+        DiagnosticPropertiesBuilder,
+        DiagnosticsProperty,
+        DoubleProperty,
+        EnumProperty;
+import 'package:flutter/painting.dart' show TextDirection;
 
 import '../geometry/alignment3d.dart';
 import '../geometry/edge_insets3d.dart';
@@ -24,18 +29,39 @@ abstract class ShiftedLayout3d extends SingleChildLayout3d
 /// With no child, the padding collapses to a box of its own thickness.
 class Padding3d extends ShiftedLayout3d {
   /// Creates a padded box.
-  Padding3d({EdgeInsets3d padding = EdgeInsets3d.zero, super.child, super.name})
-    : _padding = padding;
+  Padding3d({
+    EdgeInsetsGeometry3d padding = EdgeInsets3d.zero,
+    TextDirection? textDirection,
+    super.child,
+    super.name,
+  }) : _padding = padding,
+       _textDirection = textDirection;
 
-  EdgeInsets3d _padding;
+  EdgeInsetsGeometry3d _padding;
 
   /// The inset on each of the six faces.
-  EdgeInsets3d get padding => _padding;
+  ///
+  /// A directional padding is read in [textDirection].
+  EdgeInsetsGeometry3d get padding => _padding;
 
-  set padding(EdgeInsets3d value) {
+  set padding(EdgeInsetsGeometry3d value) {
     if (_padding == value) return;
     assert(value.isNonNegative, 'Padding3d.padding must be non-negative.');
     _padding = value;
+    markNeedsLayout();
+  }
+
+  TextDirection? _textDirection;
+
+  /// The reading direction [padding] is resolved in; null reads left to
+  /// right.
+  TextDirection? get textDirection => _textDirection;
+
+  set textDirection(TextDirection? value) {
+    if (_textDirection == value) return;
+    _textDirection = value;
+    // A physical padding reads the same in either direction.
+    if (_padding is EdgeInsets3d) return;
     markNeedsLayout();
   }
 
@@ -74,15 +100,25 @@ class Padding3d extends ShiftedLayout3d {
       size = constraints.constrain(_padding.collapsedSize);
       return;
     }
-    child.layout(constraints.deflate(_padding), parentUsesSize: true);
-    size = constraints.constrain(_padding.inflateSize(child.size));
-    child.place(_padding.topLeftFront);
+    final padding = _padding.resolve(_textDirection);
+    child.layout(constraints.deflate(padding), parentUsesSize: true);
+    size = constraints.constrain(padding.inflateSize(child.size));
+    child.place(padding.topLeftFront);
   }
 
   @override
   void debugFillProperties(DiagnosticPropertiesBuilder properties) {
     super.debugFillProperties(properties);
-    properties.add(DiagnosticsProperty<EdgeInsets3d>('padding', padding));
+    properties.add(
+      DiagnosticsProperty<EdgeInsetsGeometry3d>('padding', padding),
+    );
+    properties.add(
+      EnumProperty<TextDirection>(
+        'textDirection',
+        textDirection,
+        defaultValue: null,
+      ),
+    );
   }
 }
 
@@ -96,13 +132,15 @@ class Padding3d extends ShiftedLayout3d {
 class Align3d extends ShiftedLayout3d {
   /// Creates an aligning box.
   Align3d({
-    Alignment3d alignment = Alignment3d.center,
+    AlignmentGeometry3d alignment = Alignment3d.center,
+    TextDirection? textDirection,
     double? widthFactor,
     double? heightFactor,
     double? depthFactor,
     super.child,
     super.name,
   }) : _alignment = alignment,
+       _textDirection = textDirection,
        _widthFactor = widthFactor,
        _heightFactor = heightFactor,
        _depthFactor = depthFactor,
@@ -110,14 +148,30 @@ class Align3d extends ShiftedLayout3d {
        assert(heightFactor == null || heightFactor >= 0.0),
        assert(depthFactor == null || depthFactor >= 0.0);
 
-  Alignment3d _alignment;
+  AlignmentGeometry3d _alignment;
 
   /// Where the child sits inside this box.
-  Alignment3d get alignment => _alignment;
+  ///
+  /// A directional alignment is read in [textDirection].
+  AlignmentGeometry3d get alignment => _alignment;
 
-  set alignment(Alignment3d value) {
+  set alignment(AlignmentGeometry3d value) {
     if (_alignment == value) return;
     _alignment = value;
+    markNeedsLayout();
+  }
+
+  TextDirection? _textDirection;
+
+  /// The reading direction [alignment] is resolved in; null reads left to
+  /// right.
+  TextDirection? get textDirection => _textDirection;
+
+  set textDirection(TextDirection? value) {
+    if (_textDirection == value) return;
+    _textDirection = value;
+    // A physical alignment reads the same in either direction.
+    if (_alignment is Alignment3d) return;
     markNeedsLayout();
   }
 
@@ -191,13 +245,22 @@ class Align3d extends ShiftedLayout3d {
             : double.infinity,
       ),
     );
-    child.place(_alignment.inscribe(childSize, size));
+    child.place(_alignment.resolve(_textDirection).inscribe(childSize, size));
   }
 
   @override
   void debugFillProperties(DiagnosticPropertiesBuilder properties) {
     super.debugFillProperties(properties);
-    properties.add(DiagnosticsProperty<Alignment3d>('alignment', alignment));
+    properties.add(
+      DiagnosticsProperty<AlignmentGeometry3d>('alignment', alignment),
+    );
+    properties.add(
+      EnumProperty<TextDirection>(
+        'textDirection',
+        textDirection,
+        defaultValue: null,
+      ),
+    );
     properties.add(
       DoubleProperty('widthFactor', widthFactor, defaultValue: null),
     );

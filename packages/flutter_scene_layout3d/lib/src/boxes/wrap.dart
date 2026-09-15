@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart'
     show DiagnosticPropertiesBuilder, DoubleProperty, EnumProperty;
+import 'package:flutter/painting.dart' show TextDirection, VerticalDirection;
 
 import '../geometry/constraints3d.dart';
 import '../geometry/offset3d.dart';
@@ -14,10 +15,11 @@ import '../layout3d.dart';
 /// Used twice over: along the main axis, to place the children inside a run,
 /// and along the first cross axis, to place the runs inside the box.
 enum WrapAlignment3d {
-  /// Packed at the low end (left, top, or front).
+  /// Packed at the start: the left, or the right in right-to-left; the top,
+  /// or the bottom when the vertical direction is up; the front.
   start,
 
-  /// Packed at the high end (right, bottom, or back).
+  /// Packed at the end, the opposite of [start].
   end,
 
   /// Packed toward the middle.
@@ -39,10 +41,10 @@ enum WrapAlignment3d {
 /// There is no `stretch` here, as in Flutter: a run is only as thick as its
 /// tallest child, so stretching to it would be circular.
 enum WrapCrossAlignment3d {
-  /// At the low end of the run.
+  /// At the start of the run, in the wrap's reading direction.
   start,
 
-  /// At the high end of the run.
+  /// At the end of the run.
   end,
 
   /// Centred in the run.
@@ -75,6 +77,13 @@ class _Run3d {
 ///
 /// Runs need a bound to break against. Given unbounded constraints along
 /// [direction] every child lands in a single run, the same as Flutter.
+///
+/// [textDirection] and [verticalDirection] flip whichever of the main and run
+/// axes are horizontal and vertical, the way they do for `Flex3d`, and with
+/// Flutter's walk: children in a flipped run are placed from the last one,
+/// runs on a flipped cross axis from the last run, and the cross alignment's
+/// start and end trade places. Which children share a run never changes.
+/// Depth never flips, and a null [textDirection] reads left to right.
 class Wrap3d extends MultiChildLayout3d<ParentData3d> {
   /// Creates a wrapping box.
   Wrap3d({
@@ -85,9 +94,13 @@ class Wrap3d extends MultiChildLayout3d<ParentData3d> {
     double runSpacing = 0.0,
     WrapCrossAlignment3d crossAxisAlignment = WrapCrossAlignment3d.start,
     WrapCrossAlignment3d depthAxisAlignment = WrapCrossAlignment3d.center,
+    TextDirection? textDirection,
+    VerticalDirection verticalDirection = VerticalDirection.down,
     super.children,
     super.name,
   }) : _direction = direction,
+       _textDirection = textDirection,
+       _verticalDirection = verticalDirection,
        _alignment = alignment,
        _spacing = spacing,
        _runAlignment = runAlignment,
@@ -178,6 +191,34 @@ class Wrap3d extends MultiChildLayout3d<ParentData3d> {
 
   /// The axis runs stack along, and the axis that only ever aligns.
   (Axis3d, Axis3d) get crossAxes => _direction.others;
+
+  TextDirection? _textDirection;
+
+  /// Which end of the horizontal axis is the start; null reads left to right.
+  TextDirection? get textDirection => _textDirection;
+
+  set textDirection(TextDirection? value) {
+    if (_textDirection == value) return;
+    _textDirection = value;
+    markNeedsLayout();
+  }
+
+  VerticalDirection _verticalDirection;
+
+  /// Which end of the vertical axis is the start.
+  VerticalDirection get verticalDirection => _verticalDirection;
+
+  set verticalDirection(VerticalDirection value) {
+    if (_verticalDirection == value) return;
+    _verticalDirection = value;
+    markNeedsLayout();
+  }
+
+  bool _isFlipped(Axis3d axis) => switch (axis) {
+    Axis3d.horizontal => _textDirection == TextDirection.rtl,
+    Axis3d.vertical => _verticalDirection == VerticalDirection.up,
+    Axis3d.depth => false,
+  };
 
   /// Along the run axis the answers are exact: the smallest a wrap can be is
   /// its widest single child, since nothing narrower could hold that child on
@@ -282,22 +323,28 @@ class Wrap3d extends MultiChildLayout3d<ParentData3d> {
     final actualCross = size.alongAxis(crossAxis);
     final actualDepth = size.alongAxis(depthAxis);
 
+    final flipMain = _isFlipped(mainAxis);
+    final flipCross = _isFlipped(crossAxis);
     final (runLead, runBetween) = _distribute(
       _runAlignment,
       actualCross - crossExtent,
       runs.length,
+      flipped: flipCross,
     );
 
     var crossPosition = runLead;
-    for (final metrics in runs) {
+    for (final metrics in flipCross ? runs.reversed : runs) {
       final (childLead, childBetween) = _distribute(
         _alignment,
         actualMain - metrics.mainExtent,
         metrics.count,
+        flipped: flipMain,
       );
       var mainPosition = childLead;
-      for (var index = metrics.start; index < metrics.end; index++) {
-        final child = childAt(index);
+      for (var step = 0; step < metrics.count; step++) {
+        final child = childAt(
+          flipMain ? metrics.end - 1 - step : metrics.start + step,
+        );
         final childSize = child.size;
         child.place(
           Offset3d.zero
@@ -309,6 +356,7 @@ class Wrap3d extends MultiChildLayout3d<ParentData3d> {
                       _crossAxisAlignment,
                       metrics.crossExtent,
                       childSize.alongAxis(crossAxis),
+                      flipped: flipCross,
                     ),
               )
               .withAxis(
@@ -317,6 +365,7 @@ class Wrap3d extends MultiChildLayout3d<ParentData3d> {
                   _depthAxisAlignment,
                   actualDepth,
                   childSize.alongAxis(depthAxis),
+                  flipped: _isFlipped(depthAxis),
                 ),
               ),
         );
@@ -331,15 +380,19 @@ class Wrap3d extends MultiChildLayout3d<ParentData3d> {
   static (double, double) _distribute(
     WrapAlignment3d alignment,
     double free,
-    int count,
-  ) {
+    int count, {
+    required bool flipped,
+  }) {
     final remaining = math.max(0.0, free);
     final gaps = math.max(0, count - 1);
     return switch (alignment) {
-      WrapAlignment3d.start => (0.0, 0.0),
-      WrapAlignment3d.end => (remaining, 0.0),
+      WrapAlignment3d.start => (flipped ? remaining : 0.0, 0.0),
+      WrapAlignment3d.end => (flipped ? 0.0 : remaining, 0.0),
       WrapAlignment3d.center => (remaining / 2.0, 0.0),
-      WrapAlignment3d.spaceBetween => (0.0, gaps > 0 ? remaining / gaps : 0.0),
+      // A lone child has no gap to share the space with, so it starts, and a
+      // flipped run starts at the other end — Flutter's rule.
+      WrapAlignment3d.spaceBetween =>
+        gaps > 0 ? (0.0, remaining / gaps) : (flipped ? remaining : 0.0, 0.0),
       WrapAlignment3d.spaceAround => () {
         final between = count > 0 ? remaining / count : 0.0;
         return (between / 2.0, between);
@@ -354,10 +407,11 @@ class Wrap3d extends MultiChildLayout3d<ParentData3d> {
   static double _crossOffset(
     WrapCrossAlignment3d alignment,
     double extent,
-    double childExtent,
-  ) => switch (alignment) {
-    WrapCrossAlignment3d.start => 0.0,
-    WrapCrossAlignment3d.end => extent - childExtent,
+    double childExtent, {
+    required bool flipped,
+  }) => switch (alignment) {
+    WrapCrossAlignment3d.start => flipped ? extent - childExtent : 0.0,
+    WrapCrossAlignment3d.end => flipped ? 0.0 : extent - childExtent,
     WrapCrossAlignment3d.center => (extent - childExtent) / 2.0,
   };
 
@@ -379,6 +433,20 @@ class Wrap3d extends MultiChildLayout3d<ParentData3d> {
       EnumProperty<WrapCrossAlignment3d>(
         'depthAxisAlignment',
         depthAxisAlignment,
+      ),
+    );
+    properties.add(
+      EnumProperty<TextDirection>(
+        'textDirection',
+        textDirection,
+        defaultValue: null,
+      ),
+    );
+    properties.add(
+      EnumProperty<VerticalDirection>(
+        'verticalDirection',
+        verticalDirection,
+        defaultValue: VerticalDirection.down,
       ),
     );
   }

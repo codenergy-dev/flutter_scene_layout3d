@@ -20,6 +20,7 @@ import 'package:flutter/widgets.dart'
         Action,
         BuildContext,
         CallbackAction,
+        Directionality,
         FocusNode,
         Intent,
         ShortcutActivator,
@@ -103,18 +104,23 @@ const Color _none = Color(0x00000000);
 /// ## The arrow keys
 ///
 /// A focused slider takes all four arrows, as Flutter's does: up and right
-/// raise it, down and left lower it, by one division — or, for a continuous
+/// raise it, down and left lower it — left and right the other way round in
+/// a right-to-left application — by one division — or, for a continuous
 /// slider, by Flutter's own platform unit, a tenth on Apple platforms and a
 /// twentieth elsewhere. A keyboard change is a whole gesture, so
 /// [onChangeStart] and [onChangeEnd] bracket each step. The arrows therefore
 /// do not move the focus off a slider, which is Flutter's trade too; Tab
 /// does.
 ///
-/// **Left and right follow the track, not the reading direction.** Flutter's
-/// slider mirrors in a right-to-left locale and its arrows mirror with it.
-/// This one's track does not mirror yet — that belongs with the rest of
-/// right-to-left layout — and arrows that disagreed with the thumb they move
-/// would be worse than arrows that ignore the locale.
+/// ## Right to left
+///
+/// Under a right-to-left `Directionality` the whole control mirrors, as
+/// Flutter's does: the minimum is at the right, the active track grows from
+/// the right end, a press reads its fraction from the right, and left and
+/// right on the keyboard follow the thumb they move rather than the numbers.
+/// The track is still stretched on the node tier, pivoted at its right end by
+/// a shift of the part it does not cover, so nothing is laid out for this
+/// either.
 ///
 /// ## Probing one
 ///
@@ -228,6 +234,9 @@ class Slider3d extends StatelessWidget {
     // makes an empty slider draw no active track at all.
     final travel = extent - tokens.thumbSize;
     final at = snap(fraction);
+    // Flutter's slider reads the ambient direction for its layout; its own
+    // `textDirection` is what it announces in.
+    final rtl = Directionality.maybeOf(context) == TextDirection.rtl;
 
     final inactive = SceneSizedBox3d(
       width: metrics.dp(travel),
@@ -241,9 +250,12 @@ class Slider3d extends StatelessWidget {
       ),
     );
 
-    // The whole track, stretched to the value about its own left end. One
+    // The whole track, stretched to the value about its own left end — or,
+    // right to left, about its left end and then moved along by the part it
+    // does not cover, which leaves its right end where layout put it. One
     // matrix; no box changes size, so nothing is laid out again.
     final active = SceneNodeShift3d(
+      shift: Offset3d(rtl ? metrics.dp(travel) * (1.0 - at) : 0.0, 0.0, 0.0),
       scaleX: at,
       child: SceneSizedBox3d(
         width: metrics.dp(travel),
@@ -259,7 +271,11 @@ class Slider3d extends StatelessWidget {
     );
 
     final thumb = SceneNodeShift3d(
-      shift: Offset3d(metrics.dp(travel) * (at - 0.5), 0.0, 0.0),
+      shift: Offset3d(
+        metrics.dp(travel) * (rtl ? 0.5 - at : at - 0.5),
+        0.0,
+        0.0,
+      ),
       child: SceneSizedBox3d(
         width: metrics.dp(tokens.thumbSize),
         height: metrics.dp(tokens.thumbSize),
@@ -298,6 +314,7 @@ class Slider3d extends StatelessWidget {
     final body = SceneSliderGesture3d(
       enabled: enabled,
       padding: metrics.dp(tokens.thumbSize / 2.0),
+      textDirection: rtl ? TextDirection.rtl : TextDirection.ltr,
       onChanged: changed == null ? null : (f) => changed(valueFor(f)),
       onChangeStart: onChangeStart,
       onChangeEnd: onChangeEnd,
@@ -324,7 +341,7 @@ class Slider3d extends StatelessWidget {
       child: SceneActions3d(
         actions: <Type, Action<Intent>>{
           _AdjustSlider3dIntent: CallbackAction<_AdjustSlider3dIntent>(
-            onInvoke: _adjust,
+            onInvoke: (intent) => _adjust(intent, rtl: rtl),
           ),
         },
         child: body,
@@ -360,29 +377,47 @@ class Slider3d extends StatelessWidget {
     };
   }
 
-  static const Map<ShortcutActivator, Intent>
-  _arrows = <ShortcutActivator, Intent>{
-    SingleActivator(LogicalKeyboardKey.arrowUp): _AdjustSlider3dIntent(1),
-    SingleActivator(LogicalKeyboardKey.arrowRight): _AdjustSlider3dIntent(1),
-    SingleActivator(LogicalKeyboardKey.arrowDown): _AdjustSlider3dIntent(-1),
-    SingleActivator(LogicalKeyboardKey.arrowLeft): _AdjustSlider3dIntent(-1),
-  };
+  static const Map<ShortcutActivator, Intent> _arrows =
+      <ShortcutActivator, Intent>{
+        SingleActivator(LogicalKeyboardKey.arrowUp): _AdjustSlider3dIntent(1),
+        SingleActivator(LogicalKeyboardKey.arrowRight): _AdjustSlider3dIntent(
+          1,
+          alongTrack: true,
+        ),
+        SingleActivator(LogicalKeyboardKey.arrowDown): _AdjustSlider3dIntent(
+          -1,
+        ),
+        SingleActivator(LogicalKeyboardKey.arrowLeft): _AdjustSlider3dIntent(
+          -1,
+          alongTrack: true,
+        ),
+      };
 
   /// One arrow's worth of change, as a whole gesture.
-  void _adjust(_AdjustSlider3dIntent intent) {
+  ///
+  /// Left and right name a way along the track, so in right to left they
+  /// trade meanings, as Flutter's `_AdjustSliderIntent` does; up and down
+  /// name the value and do not.
+  void _adjust(_AdjustSlider3dIntent intent, {required bool rtl}) {
     final changed = onChanged;
     if (changed == null) return;
+    final steps = intent.alongTrack && rtl ? -intent.steps : intent.steps;
     onChangeStart?.call();
-    changed(valueFor(fraction + intent.steps * keyboardStep));
+    changed(valueFor(fraction + steps * keyboardStep));
     onChangeEnd?.call();
   }
 }
 
 /// An arrow on a focused [Slider3d]: one step up or down.
 class _AdjustSlider3dIntent extends Intent {
-  const _AdjustSlider3dIntent(this.steps);
+  const _AdjustSlider3dIntent(this.steps, {this.alongTrack = false});
 
+  /// Up the range for a positive count, in left-to-right terms for an arrow
+  /// [alongTrack].
   final int steps;
+
+  /// Whether the arrow is left or right, which the reading direction flips.
+  final bool alongTrack;
 }
 
 /// The pointer half of a [Slider3d]: a box that turns a press and a drag into
@@ -415,6 +450,7 @@ class SliderGesture3d extends ProxyLayout3dWithHitTestBehavior
   SliderGesture3d({
     this.enabled = true,
     this.padding = 0.0,
+    this.textDirection = TextDirection.ltr,
     this.onChanged,
     this.onChangeStart,
     this.onChangeEnd,
@@ -430,6 +466,9 @@ class SliderGesture3d extends ProxyLayout3dWithHitTestBehavior
   /// The thumb's *centre* travels between the two, so a press at the very
   /// left of the control reports zero rather than a fraction of a thumb.
   double padding;
+
+  /// Which end is zero: the left, or the right in right to left.
+  TextDirection textDirection;
 
   /// Called with a fraction between zero and one as the finger moves.
   ValueChanged<double>? onChanged;
@@ -453,7 +492,8 @@ class SliderGesture3d extends ProxyLayout3dWithHitTestBehavior
   double fractionAt(Offset3d local) {
     final usable = size.width - 2.0 * padding;
     if (usable <= 0.0) return 0.0;
-    return ((local.x - padding) / usable).clamp(0.0, 1.0);
+    final along = ((local.x - padding) / usable).clamp(0.0, 1.0);
+    return textDirection == TextDirection.rtl ? 1.0 - along : along;
   }
 
   @override
@@ -605,6 +645,7 @@ class SceneSliderGesture3d extends SingleChildLayout3dWidget {
     super.key,
     this.enabled = true,
     this.padding = 0.0,
+    this.textDirection = TextDirection.ltr,
     this.onChanged,
     this.onChangeStart,
     this.onChangeEnd,
@@ -616,6 +657,9 @@ class SceneSliderGesture3d extends SingleChildLayout3dWidget {
 
   /// The dead zone at each end, in world units.
   final double padding;
+
+  /// Which end is zero.
+  final TextDirection textDirection;
 
   /// Called with a fraction between zero and one as the finger moves.
   final ValueChanged<double>? onChanged;
@@ -630,6 +674,7 @@ class SceneSliderGesture3d extends SingleChildLayout3dWidget {
   SliderGesture3d createLayout(BuildContext context) => SliderGesture3d(
     enabled: enabled,
     padding: padding,
+    textDirection: textDirection,
     onChanged: onChanged,
     onChangeStart: onChangeStart,
     onChangeEnd: onChangeEnd,
@@ -640,6 +685,7 @@ class SceneSliderGesture3d extends SingleChildLayout3dWidget {
     layout
       ..enabled = enabled
       ..padding = padding
+      ..textDirection = textDirection
       ..onChanged = onChanged
       ..onChangeStart = onChangeStart
       ..onChangeEnd = onChangeEnd;

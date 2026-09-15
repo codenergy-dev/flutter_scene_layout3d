@@ -235,7 +235,12 @@ class Layout3dMetrics {
   ///
   /// A padding is not type, so this scales by [unitsPerLogicalPixel] alone:
   /// [textScaleFactor] belongs to [sp] and to nothing else.
-  EdgeInsets3d dpInsets(EdgeInsets3d insets) => insets * unitsPerLogicalPixel;
+  ///
+  /// Any kind of inset converts to the same kind, so an
+  /// [EdgeInsetsDirectional3d] in dp comes back as one in world units, still
+  /// waiting for the box that resolves it to say which side is the start.
+  T dpInsets<T extends EdgeInsetsGeometry3d>(T insets) =>
+      (insets * unitsPerLogicalPixel) as T;
 
   /// [constraints] with each minimum grown (or shrunk) by [density].
   ///

@@ -1,8 +1,8 @@
 ---
 status: in progress
-reason: thirteen of the seventeen items are open; the record of what shipped, the application widget, the wheel and the key, and the test library are closed
+reason: twelve of the seventeen items are open; the record of what shipped, the application widget, the wheel and the key, the test library, and right to left are closed
 created_at: 2026-09-11T21:20:18Z
-updated_at: 2026-09-15T16:48:11Z
+updated_at: 2026-09-15T20:18:28Z
 commit: abc2469ce5c4ec4c41e2738fc5acf55bcf40640a
 ---
 
@@ -93,7 +93,7 @@ plan, which is the rule phase 0 established and every phase since has obeyed.
 | --- | --- | --- |
 | ~~[An application that does not wire its own rays](#an-application-that-does-not-wire-its-own-rays)~~ | layout3d | **done** — every application, ninety lines each |
 | ~~[A wheel, a trackpad and a key that reach a box](#a-wheel-a-trackpad-and-a-key-that-reach-a-box)~~ | layout3d | **done** — scrolling on desktop and web; a keyboard that gets into a scene, across it, and out |
-| [A row that reads right to left](#a-row-that-reads-right-to-left) | layout3d | every non-LTR locale |
+| ~~[A row that reads right to left](#a-row-that-reads-right-to-left)~~ | layout3d | **done** — every non-LTR locale, and the catalogue mirroring with it |
 | [A picture on a panel](#a-picture-on-a-panel) | layout3d | avatars, photographs, gradients, logos |
 | [A box that fades](#a-box-that-fades) | layout3d | `Opacity3d`, and every fade in the motion lane |
 | [A letter someone can type](#a-letter-someone-can-type) | layout3d | text fields, forms, search, pickers |
@@ -152,7 +152,9 @@ changelogs was sitting in the file every agent loads. See its entry.
 
 Then the four the first real port will demand, in whatever order the ported
 screens demand them:
-[right to left](#a-row-that-reads-right-to-left),
+~~[right to left](#a-row-that-reads-right-to-left)~~ — **done**, first of the
+four because the language item waits on it, see
+[its plan](2026_09_15_a_row_that_reads_right_to_left.md) —
 [a picture](#a-picture-on-a-panel),
 [an item that keeps its state](#an-item-that-keeps-its-state), and
 [a screen that knows how big it is](#a-screen-that-knows-how-big-it-is).
@@ -348,6 +350,17 @@ composes characters.
 
 **Package:** `flutter_scene_layout3d`.
 **Slug:** `a_row_that_reads_right_to_left`.
+**Closed** by
+[its own plan](2026_09_15_a_row_that_reads_right_to_left.md). The entry below
+is what it was reasoned from. What that reasoning got wrong, in short: it was
+filed as a layout item and the real hazard was in the catalogue, where every
+physical padding and every hand-computed position was left on the wrong side
+the moment the rows mirrored; the missing directions were a third of what was
+missing; `readingDirection3d` is about what a component announces, not how it
+is laid out; and the design question below had already been answered by the
+wheel. A horizontal scroll view that starts at the right is not a direction
+but an absence — no view here has `reverse` — and is recorded under
+[the components a screen still needs](#the-components-a-screen-still-needs).
 
 **Reading direction reaches the text and stops there.** `Text3d`,
 `RichText3d` and the catalogue's `readingDirection3d` all handle it properly.
@@ -670,6 +683,11 @@ should be grouped by what they actually need:
 - `ProgressIndicator3d` and `RefreshIndicator3d` want the motion lane.
 - `TabBar3d` wants an indicator that slides (node tier, free) and a rounded
   clip it cannot have (see the seams).
+- `Carousel3d`, and any horizontal list in a right-to-left application, want a
+  scroll view with `reverse`, which none here has: Flutter starts a
+  horizontal `ListView` at the right in right to left by reversing its axis.
+  [Right to left](2026_09_15_a_row_that_reads_right_to_left.md) found it and
+  left it, because there was no direction to thread.
 - `Scrollbar3d` wants
   [the wheel plan](#a-wheel-a-trackpad-and-a-key-that-reach-a-box) and, more
   interestingly, a design answer: what *is* a scrollbar beside a surface in a
@@ -736,9 +754,10 @@ component publishes to a screen reader through its own `Semantics3d` — and
 they exist in one language. An application cannot translate them, and an
 application in a locale it cannot translate is not shippable in that locale.
 
-Depends on [a row that reads right to left](#a-row-that-reads-right-to-left)
-for the arrangement half; a translated string in a row that does not mirror is
-half a feature. The plan should also decide how much of Flutter's delegate
+Depended on [a row that reads right to left](#a-row-that-reads-right-to-left)
+for the arrangement half, which is **done**: the catalogue's rows, paddings,
+toolbar, slider, switch and menu corners mirror under the ambient
+`Directionality`, so what is left here is the words. The plan should also decide how much of Flutter's delegate
 machinery to adopt versus a simpler table, given that this package deliberately
 avoids a second vocabulary for anything the platform already spells — the
 `Semantics3d` precedent, where a component author writes Flutter's own

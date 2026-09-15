@@ -834,6 +834,42 @@ remains a reservation of space and `glyphDepth` is the figure that draws.
   for a rectangle it has no render object to give. Moving between boxes on a
   plane is `Focus3dTraversal`'s job, and between planes the host's.
 
+## Reading direction
+
+- **Every row under a right-to-left `Directionality` mirrors, and a physical
+  padding beside it does not.** The widget forms read the ambient direction on
+  their own, so the day an application switches locale, a component's rows run
+  from the right while an `EdgeInsets3d.only(left: 16)` in it stays on the
+  left — now on the *trailing* side. A list tile with its 16dp and 24dp swapped
+  looks worse than one that never mirrored. Write a padding that means
+  *before* as `EdgeInsetsDirectional3d`, and an alignment that means *at the
+  start* as `AlignmentDirectional3d`.
+- **A position worked out by arithmetic does not mirror either.** A node shift
+  that slides a thumb, a `MultiChildLayout3dDelegate` that puts a slot at
+  `x = 0`, a fraction read off `localPosition.x` — none of them go through a
+  box that knows a direction. Read `Directionality.maybeOf(context)` in the
+  `build` method and flip it yourself; the slider, the switch and the app
+  bar's centred toolbar all do.
+- **A component's `textDirection` argument is what it announces in, not how
+  it is laid out.** The catalogue's components take one for their semantics
+  label; their layout follows the ambient `Directionality`, as Flutter's do.
+  Stating `textDirection: TextDirection.rtl` on a single button does not
+  mirror the button.
+- **The imperative layer has no ambient direction.** A `Row3d` built in code
+  reads left to right until it is told otherwise, and so does every box that
+  resolves a directional padding or alignment: set `textDirection` on each of
+  them. Null is left to right rather than an assertion, which is where this
+  package departs from Flutter's `RenderFlex`, so a box that was never told
+  does not fail — it quietly reads the wrong way.
+- **A box's `padding` and `alignment` are geometry now, and `.left` does not
+  compile on them.** They are `EdgeInsetsGeometry3d` and
+  `AlignmentGeometry3d`, which may be directional and so have no left until a
+  direction is known. A test that reads what a box laid out with writes
+  `box.padding.resolve(box.textDirection).left`.
+- **A horizontal scroll view does not start at the right.** Flutter reverses a
+  horizontal `ListView`'s axis in right to left; no view here has `reverse`,
+  so a carousel's first item stays at the left in every language.
+
 ## Semantics
 
 **A `Semantics3d` publishes what it is given and gathers nothing.** Flutter's

@@ -1,9 +1,17 @@
 import 'package:flutter/foundation.dart' show ValueChanged, VoidCallback;
 import 'package:flutter/widgets.dart'
-    show BuildContext, State, StatefulWidget, Widget, WidgetsBinding;
+    show
+        BuildContext,
+        Directionality,
+        State,
+        StatefulWidget,
+        Widget,
+        WidgetsBinding;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart'
     show
         Alignment3d,
+        AlignmentDirectional3d,
+        AlignmentGeometry3d,
         HitTestResult3d,
         Layout3dAnchoring,
         Offset3d,
@@ -83,20 +91,41 @@ class Follower3d extends ProxyLayout3d {
   /// Creates a follower for [anchor].
   Follower3d({
     required Anchor3d anchor,
-    this.self = Alignment3d.topLeft,
-    this.target = Alignment3d.bottomLeft,
+    Alignment3d self = Alignment3d.topLeft,
+    Alignment3d target = Alignment3d.bottomLeft,
     super.name = 'Follower3d',
-  }) : _anchor = anchor {
+  }) : _anchor = anchor,
+       _self = self,
+       _target = target {
     anchor.onPlaced = reanchor;
   }
 
   Anchor3d _anchor;
 
+  Alignment3d _self;
+
   /// Which point of this box sits on the anchor's [target] point.
-  final Alignment3d self;
+  ///
+  /// Physical: this box places a plane against a node and knows no reading
+  /// direction. [Follower3dWidget] resolves a directional corner into this.
+  Alignment3d get self => _self;
+
+  set self(Alignment3d value) {
+    if (_self == value) return;
+    _self = value;
+    reanchor();
+  }
+
+  Alignment3d _target;
 
   /// Which point of the anchor it sits on.
-  final Alignment3d target;
+  Alignment3d get target => _target;
+
+  set target(Alignment3d value) {
+    if (_target == value) return;
+    _target = value;
+    reanchor();
+  }
 
   /// The box being followed.
   Anchor3d get anchor => _anchor;
@@ -146,8 +175,8 @@ class Follower3dWidget extends StatefulWidget {
   const Follower3dWidget({
     super.key,
     required this.anchor,
-    this.self = Alignment3d.topLeft,
-    this.target = Alignment3d.bottomLeft,
+    this.self = AlignmentDirectional3d.topStart,
+    this.target = AlignmentDirectional3d.bottomStart,
     required this.child,
   });
 
@@ -155,10 +184,15 @@ class Follower3dWidget extends StatefulWidget {
   final Anchor3d anchor;
 
   /// Which point of the child sits on the anchor's [target] point.
-  final Alignment3d self;
+  ///
+  /// The top of the leading edge by default, which is Flutter's
+  /// `MenuAnchor`: a menu hangs from its button's start corner and grows
+  /// toward the end, so in a right-to-left application it hangs from the
+  /// right. A directional corner is read in the ambient `Directionality`.
+  final AlignmentGeometry3d self;
 
   /// Which point of the anchor it sits on.
-  final Alignment3d target;
+  final AlignmentGeometry3d target;
 
   /// What follows the anchor.
   final Widget child;
@@ -226,19 +260,28 @@ class _Follower3dHost extends SingleChildLayout3dWidget {
   });
 
   final Anchor3d anchor;
-  final Alignment3d self;
-  final Alignment3d target;
+  final AlignmentGeometry3d self;
+  final AlignmentGeometry3d target;
   final ValueChanged<Follower3d> onCreated;
 
   @override
   Follower3d createLayout(BuildContext context) {
-    final follower = Follower3d(anchor: anchor, self: self, target: target);
+    final direction = Directionality.maybeOf(context);
+    final follower = Follower3d(
+      anchor: anchor,
+      self: self.resolve(direction),
+      target: target.resolve(direction),
+    );
     onCreated(follower);
     return follower;
   }
 
   @override
   void updateLayout(BuildContext context, Follower3d layout) {
-    layout.anchor = anchor;
+    final direction = Directionality.maybeOf(context);
+    layout
+      ..anchor = anchor
+      ..self = self.resolve(direction)
+      ..target = target.resolve(direction);
   }
 }

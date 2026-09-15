@@ -26,6 +26,7 @@ import 'package:flutter/widgets.dart'
         TextOverflow,
         TextStyle,
         ValueChanged,
+        VerticalDirection,
         Widget;
 import 'package:flutter_scene/scene.dart' show Node;
 import 'package:vector_math/vector_math.dart' show Matrix4;
@@ -106,7 +107,7 @@ class SceneNodeBox3d extends Layout3dWidget {
   final BoxFit3d fit;
 
   /// Where the content sits inside the box.
-  final Alignment3d alignment;
+  final AlignmentGeometry3d alignment;
 
   /// A size to use instead of measuring the content.
   final Size3d? explicitSize;
@@ -121,6 +122,7 @@ class SceneNodeBox3d extends Layout3dWidget {
     alignment: alignment,
     explicitSize: explicitSize,
     fallbackSize: fallbackSize,
+    textDirection: Directionality.maybeOf(context),
   );
 
   @override
@@ -130,7 +132,8 @@ class SceneNodeBox3d extends Layout3dWidget {
       ..fit = fit
       ..alignment = alignment
       ..explicitSize = explicitSize
-      ..fallbackSize = fallbackSize;
+      ..fallbackSize = fallbackSize
+      ..textDirection = Directionality.maybeOf(context);
   }
 }
 
@@ -144,14 +147,19 @@ class ScenePadding3d extends SingleChildLayout3dWidget {
   });
 
   /// The inset on each of the six faces.
-  final EdgeInsets3d padding;
+  final EdgeInsetsGeometry3d padding;
 
   @override
-  Padding3d createLayout(BuildContext context) => Padding3d(padding: padding);
+  Padding3d createLayout(BuildContext context) => Padding3d(
+    padding: padding,
+    textDirection: Directionality.maybeOf(context),
+  );
 
   @override
   void updateLayout(BuildContext context, Padding3d layout) {
-    layout.padding = padding;
+    layout
+      ..padding = padding
+      ..textDirection = Directionality.maybeOf(context);
   }
 }
 
@@ -168,7 +176,7 @@ class SceneAlign3d extends SingleChildLayout3dWidget {
   });
 
   /// Where the child sits inside this box.
-  final Alignment3d alignment;
+  final AlignmentGeometry3d alignment;
 
   /// If non-null, this box's width is the child's times this factor.
   final double? widthFactor;
@@ -185,6 +193,7 @@ class SceneAlign3d extends SingleChildLayout3dWidget {
     widthFactor: widthFactor,
     heightFactor: heightFactor,
     depthFactor: depthFactor,
+    textDirection: Directionality.maybeOf(context),
   );
 
   @override
@@ -193,7 +202,8 @@ class SceneAlign3d extends SingleChildLayout3dWidget {
       ..alignment = alignment
       ..widthFactor = widthFactor
       ..heightFactor = heightFactor
-      ..depthFactor = depthFactor;
+      ..depthFactor = depthFactor
+      ..textDirection = Directionality.maybeOf(context);
   }
 }
 
@@ -781,17 +791,21 @@ class SceneTransform3d extends SingleChildLayout3dWidget {
   final Matrix4 transform;
 
   /// The point in this box the transform pivots around.
-  final Alignment3d alignment;
+  final AlignmentGeometry3d alignment;
 
   @override
-  Transform3d createLayout(BuildContext context) =>
-      Transform3d(transform: transform, alignment: alignment);
+  Transform3d createLayout(BuildContext context) => Transform3d(
+    transform: transform,
+    alignment: alignment,
+    textDirection: Directionality.maybeOf(context),
+  );
 
   @override
   void updateLayout(BuildContext context, Transform3d layout) {
     layout
       ..transform = transform
-      ..alignment = alignment;
+      ..alignment = alignment
+      ..textDirection = Directionality.maybeOf(context);
   }
 }
 
@@ -1008,13 +1022,13 @@ class SceneContainer3d extends SingleChildLayout3dWidget {
   });
 
   /// Where the child sits inside the padded content box.
-  final Alignment3d? alignment;
+  final AlignmentGeometry3d? alignment;
 
   /// Space between the container's faces and its child.
-  final EdgeInsets3d padding;
+  final EdgeInsetsGeometry3d padding;
 
   /// Space around the container.
-  final EdgeInsets3d margin;
+  final EdgeInsetsGeometry3d margin;
 
   /// Extra constraints imposed on the content.
   final Constraints3d? constraints;
@@ -1032,7 +1046,7 @@ class SceneContainer3d extends SingleChildLayout3dWidget {
   final Matrix4? transform;
 
   /// The point [transform] pivots around.
-  final Alignment3d transformAlignment;
+  final AlignmentGeometry3d transformAlignment;
 
   @override
   Container3d createLayout(BuildContext context) => Container3d(
@@ -1045,6 +1059,7 @@ class SceneContainer3d extends SingleChildLayout3dWidget {
     depth: depth,
     transform: transform,
     transformAlignment: transformAlignment,
+    textDirection: Directionality.maybeOf(context),
   );
 
   @override
@@ -1060,7 +1075,8 @@ class SceneContainer3d extends SingleChildLayout3dWidget {
         depth,
       )
       ..transform = transform
-      ..transformAlignment = transformAlignment;
+      ..transformAlignment = transformAlignment
+      ..textDirection = Directionality.maybeOf(context);
   }
 }
 
@@ -1074,6 +1090,8 @@ abstract class SceneFlex3d extends Layout3dWidget {
     this.crossAxisAlignment = CrossAxisAlignment3d.center,
     this.depthAxisAlignment,
     this.spacing = 0.0,
+    this.textDirection,
+    this.verticalDirection = VerticalDirection.down,
     super.children,
   });
 
@@ -1098,6 +1116,18 @@ abstract class SceneFlex3d extends Layout3dWidget {
   /// A fixed gap between adjacent children.
   final double spacing;
 
+  /// Which end of the horizontal axis is the start: the main axis of a
+  /// [SceneRow3d], the cross axis of a [SceneColumn3d].
+  ///
+  /// Null — the default — reads the ambient `Directionality`, the way
+  /// Flutter's `Flex` does, and left to right when there is none. So a row
+  /// under a right-to-left application puts its first child on the right
+  /// without saying so.
+  final TextDirection? textDirection;
+
+  /// Which end of the vertical axis is the start.
+  final VerticalDirection verticalDirection;
+
   @override
   Flex3d createLayout(BuildContext context) => Flex3d(
     direction: direction,
@@ -1106,6 +1136,8 @@ abstract class SceneFlex3d extends Layout3dWidget {
     crossAxisAlignment: crossAxisAlignment,
     depthAxisAlignment: depthAxisAlignment,
     spacing: spacing,
+    textDirection: textDirection ?? Directionality.maybeOf(context),
+    verticalDirection: verticalDirection,
   );
 
   @override
@@ -1116,11 +1148,14 @@ abstract class SceneFlex3d extends Layout3dWidget {
       ..mainAxisSize = mainAxisSize
       ..crossAxisAlignment = crossAxisAlignment
       ..depthAxisAlignment = depthAxisAlignment
-      ..spacing = spacing;
+      ..spacing = spacing
+      ..textDirection = textDirection ?? Directionality.maybeOf(context)
+      ..verticalDirection = verticalDirection;
   }
 }
 
-/// A line of children running left to right, the widget form of [Row3d].
+/// A line of children running from the start of the reading direction, the
+/// widget form of [Row3d].
 class SceneRow3d extends SceneFlex3d {
   /// Creates a horizontal line.
   const SceneRow3d({
@@ -1130,6 +1165,8 @@ class SceneRow3d extends SceneFlex3d {
     super.crossAxisAlignment,
     super.depthAxisAlignment,
     super.spacing,
+    super.textDirection,
+    super.verticalDirection,
     super.children,
   });
 
@@ -1147,6 +1184,8 @@ class SceneColumn3d extends SceneFlex3d {
     super.crossAxisAlignment,
     super.depthAxisAlignment,
     super.spacing,
+    super.textDirection,
+    super.verticalDirection,
     super.children,
   });
 
@@ -1165,6 +1204,8 @@ class SceneDepth3d extends SceneFlex3d {
     super.crossAxisAlignment,
     super.depthAxisAlignment,
     super.spacing,
+    super.textDirection,
+    super.verticalDirection,
     super.children,
   });
 
@@ -1233,11 +1274,12 @@ class SceneStack3d extends Layout3dWidget {
     this.alignment = Alignment3d.topLeftFront,
     this.fit = StackFit3d.loose,
     this.depthStep = 0.0,
+    this.textDirection,
     super.children,
   });
 
   /// Where non-positioned children sit.
-  final Alignment3d alignment;
+  final AlignmentGeometry3d alignment;
 
   /// How non-positioned children are sized.
   final StackFit3d fit;
@@ -1245,16 +1287,27 @@ class SceneStack3d extends Layout3dWidget {
   /// How far toward the viewer each successive child is pulled.
   final double depthStep;
 
+  /// Which side a directional [alignment] starts from.
+  ///
+  /// Null — the default — reads the ambient `Directionality`, and left to
+  /// right when there is none.
+  final TextDirection? textDirection;
+
   @override
-  Stack3d createLayout(BuildContext context) =>
-      Stack3d(alignment: alignment, fit: fit, depthStep: depthStep);
+  Stack3d createLayout(BuildContext context) => Stack3d(
+    alignment: alignment,
+    fit: fit,
+    depthStep: depthStep,
+    textDirection: textDirection ?? Directionality.maybeOf(context),
+  );
 
   @override
   void updateLayout(BuildContext context, Stack3d layout) {
     layout
       ..alignment = alignment
       ..fit = fit
-      ..depthStep = depthStep;
+      ..depthStep = depthStep
+      ..textDirection = textDirection ?? Directionality.maybeOf(context);
   }
 }
 
@@ -1322,6 +1375,88 @@ class ScenePositioned3d extends SingleChildLayout3dWidget {
       ..left = left
       ..top = top
       ..right = right
+      ..bottom = bottom
+      ..front = front
+      ..back = back
+      ..width = width
+      ..height = height
+      ..depth = depth;
+  }
+}
+
+/// Pins a child of a [SceneStack3d] to the stack's faces, with its horizontal
+/// insets following the reading direction — the widget form of
+/// [Positioned3d.directional], and the 3D analogue of `PositionedDirectional`.
+///
+/// [start] is the left in a left-to-right application and the right in a
+/// right-to-left one, read from the ambient `Directionality`.
+class ScenePositionedDirectional3d extends SingleChildLayout3dWidget {
+  /// Creates a positioned child.
+  const ScenePositionedDirectional3d({
+    super.key,
+    this.start,
+    this.top,
+    this.end,
+    this.bottom,
+    this.front,
+    this.back,
+    this.width,
+    this.height,
+    this.depth,
+    super.child,
+  });
+
+  /// Inset from the stack's face the reading direction starts at.
+  final double? start;
+
+  /// Inset from the stack's top face.
+  final double? top;
+
+  /// Inset from the stack's face the reading direction ends at.
+  final double? end;
+
+  /// Inset from the stack's bottom face.
+  final double? bottom;
+
+  /// Inset from the stack's front face.
+  final double? front;
+
+  /// Inset from the stack's back face.
+  final double? back;
+
+  /// A fixed width.
+  final double? width;
+
+  /// A fixed height.
+  final double? height;
+
+  /// A fixed depth.
+  final double? depth;
+
+  bool _isRtl(BuildContext context) =>
+      Directionality.maybeOf(context) == TextDirection.rtl;
+
+  @override
+  Positioned3d createLayout(BuildContext context) => Positioned3d.directional(
+    textDirection: Directionality.maybeOf(context) ?? TextDirection.ltr,
+    start: start,
+    top: top,
+    end: end,
+    bottom: bottom,
+    front: front,
+    back: back,
+    width: width,
+    height: height,
+    depth: depth,
+  );
+
+  @override
+  void updateLayout(BuildContext context, Positioned3d layout) {
+    final rtl = _isRtl(context);
+    layout
+      ..left = rtl ? end : start
+      ..top = top
+      ..right = rtl ? start : end
       ..bottom = bottom
       ..front = front
       ..back = back
@@ -1475,6 +1610,8 @@ class SceneWrap3d extends Layout3dWidget {
     this.runSpacing = 0.0,
     this.crossAxisAlignment = WrapCrossAlignment3d.start,
     this.depthAxisAlignment = WrapCrossAlignment3d.center,
+    this.textDirection,
+    this.verticalDirection = VerticalDirection.down,
     super.children,
   });
 
@@ -1499,6 +1636,15 @@ class SceneWrap3d extends Layout3dWidget {
   /// How a child sits on the axis that does not wrap.
   final WrapCrossAlignment3d depthAxisAlignment;
 
+  /// Which end of the horizontal axis is the start.
+  ///
+  /// Null — the default — reads the ambient `Directionality`, and left to
+  /// right when there is none.
+  final TextDirection? textDirection;
+
+  /// Which end of the vertical axis is the start.
+  final VerticalDirection verticalDirection;
+
   @override
   Wrap3d createLayout(BuildContext context) => Wrap3d(
     direction: direction,
@@ -1508,6 +1654,8 @@ class SceneWrap3d extends Layout3dWidget {
     runSpacing: runSpacing,
     crossAxisAlignment: crossAxisAlignment,
     depthAxisAlignment: depthAxisAlignment,
+    textDirection: textDirection ?? Directionality.maybeOf(context),
+    verticalDirection: verticalDirection,
   );
 
   @override
@@ -1519,7 +1667,9 @@ class SceneWrap3d extends Layout3dWidget {
       ..runAlignment = runAlignment
       ..runSpacing = runSpacing
       ..crossAxisAlignment = crossAxisAlignment
-      ..depthAxisAlignment = depthAxisAlignment;
+      ..depthAxisAlignment = depthAxisAlignment
+      ..textDirection = textDirection ?? Directionality.maybeOf(context)
+      ..verticalDirection = verticalDirection;
   }
 }
 
@@ -1917,7 +2067,7 @@ class SceneUnconstrainedBox3d extends SingleChildLayout3dWidget {
   });
 
   /// Where the child sits inside the room this box was given.
-  final Alignment3d alignment;
+  final AlignmentGeometry3d alignment;
 
   /// The axes that keep the constraints this box was given.
   final Set<Axis3d> constrainedAxes;
@@ -1926,13 +2076,15 @@ class SceneUnconstrainedBox3d extends SingleChildLayout3dWidget {
   UnconstrainedBox3d createLayout(BuildContext context) => UnconstrainedBox3d(
     alignment: alignment,
     constrainedAxes: constrainedAxes,
+    textDirection: Directionality.maybeOf(context),
   );
 
   @override
   void updateLayout(BuildContext context, UnconstrainedBox3d layout) {
     layout
       ..alignment = alignment
-      ..constrainedAxes = constrainedAxes;
+      ..constrainedAxes = constrainedAxes
+      ..textDirection = Directionality.maybeOf(context);
   }
 }
 
@@ -1971,7 +2123,7 @@ class SceneOverflowBox3d extends SingleChildLayout3dWidget {
   final double? maxDepth;
 
   /// Where the child sits inside the room this box reports.
-  final Alignment3d alignment;
+  final AlignmentGeometry3d alignment;
 
   @override
   OverflowBox3d createLayout(BuildContext context) => OverflowBox3d(
@@ -1982,6 +2134,7 @@ class SceneOverflowBox3d extends SingleChildLayout3dWidget {
     minDepth: minDepth,
     maxDepth: maxDepth,
     alignment: alignment,
+    textDirection: Directionality.maybeOf(context),
   );
 
   @override
@@ -1993,7 +2146,8 @@ class SceneOverflowBox3d extends SingleChildLayout3dWidget {
       ..maxHeight = maxHeight
       ..minDepth = minDepth
       ..maxDepth = maxDepth
-      ..alignment = alignment;
+      ..alignment = alignment
+      ..textDirection = Directionality.maybeOf(context);
   }
 }
 
@@ -2020,7 +2174,7 @@ class SceneFractionallySizedBox3d extends SingleChildLayout3dWidget {
   final double? depthFactor;
 
   /// Where the child sits inside this box.
-  final Alignment3d alignment;
+  final AlignmentGeometry3d alignment;
 
   @override
   FractionallySizedBox3d createLayout(BuildContext context) =>
@@ -2029,6 +2183,7 @@ class SceneFractionallySizedBox3d extends SingleChildLayout3dWidget {
         heightFactor: heightFactor,
         depthFactor: depthFactor,
         alignment: alignment,
+        textDirection: Directionality.maybeOf(context),
       );
 
   @override
@@ -2037,7 +2192,8 @@ class SceneFractionallySizedBox3d extends SingleChildLayout3dWidget {
       ..widthFactor = widthFactor
       ..heightFactor = heightFactor
       ..depthFactor = depthFactor
-      ..alignment = alignment;
+      ..alignment = alignment
+      ..textDirection = Directionality.maybeOf(context);
   }
 }
 
@@ -2053,6 +2209,7 @@ class SceneIndexedStack3d extends Layout3dWidget {
     this.alignment = Alignment3d.topLeftFront,
     this.fit = StackFit3d.loose,
     this.depthStep = 0.0,
+    this.textDirection,
     super.children,
   });
 
@@ -2060,7 +2217,7 @@ class SceneIndexedStack3d extends Layout3dWidget {
   final int? index;
 
   /// Where the children sit inside the stack.
-  final Alignment3d alignment;
+  final AlignmentGeometry3d alignment;
 
   /// How the children are sized.
   final StackFit3d fit;
@@ -2068,12 +2225,19 @@ class SceneIndexedStack3d extends Layout3dWidget {
   /// How far toward the viewer each successive child's geometry is pulled.
   final double depthStep;
 
+  /// Which side a directional [alignment] starts from.
+  ///
+  /// Null — the default — reads the ambient `Directionality`, and left to
+  /// right when there is none.
+  final TextDirection? textDirection;
+
   @override
   IndexedStack3d createLayout(BuildContext context) => IndexedStack3d(
     index: index,
     alignment: alignment,
     fit: fit,
     depthStep: depthStep,
+    textDirection: textDirection ?? Directionality.maybeOf(context),
   );
 
   @override
@@ -2082,7 +2246,8 @@ class SceneIndexedStack3d extends Layout3dWidget {
       ..alignment = alignment
       ..fit = fit
       ..depthStep = depthStep
-      ..index = index;
+      ..index = index
+      ..textDirection = textDirection ?? Directionality.maybeOf(context);
   }
 }
 
@@ -2137,17 +2302,21 @@ class SceneFittedBox3d extends SingleChildLayout3dWidget {
   final BoxFit3d fit;
 
   /// Where the scaled child sits inside this box.
-  final Alignment3d alignment;
+  final AlignmentGeometry3d alignment;
 
   @override
-  FittedBox3d createLayout(BuildContext context) =>
-      FittedBox3d(fit: fit, alignment: alignment);
+  FittedBox3d createLayout(BuildContext context) => FittedBox3d(
+    fit: fit,
+    alignment: alignment,
+    textDirection: Directionality.maybeOf(context),
+  );
 
   @override
   void updateLayout(BuildContext context, FittedBox3d layout) {
     layout
       ..fit = fit
-      ..alignment = alignment;
+      ..alignment = alignment
+      ..textDirection = Directionality.maybeOf(context);
   }
 }
 
@@ -2164,6 +2333,7 @@ class SceneTable3d extends Layout3dWidget {
     this.depthAxisAlignment = CrossAxisAlignment3d.start,
     this.columnSpacing = 0.0,
     this.rowSpacing = 0.0,
+    this.textDirection,
     super.children,
   });
 
@@ -2188,6 +2358,12 @@ class SceneTable3d extends Layout3dWidget {
   /// The gap between adjacent rows.
   final double rowSpacing;
 
+  /// Which side the first column is on.
+  ///
+  /// Null — the default — reads the ambient `Directionality`, and left to
+  /// right when there is none.
+  final TextDirection? textDirection;
+
   @override
   Table3d createLayout(BuildContext context) => Table3d(
     columnCount: columnCount,
@@ -2197,6 +2373,7 @@ class SceneTable3d extends Layout3dWidget {
     depthAxisAlignment: depthAxisAlignment,
     columnSpacing: columnSpacing,
     rowSpacing: rowSpacing,
+    textDirection: textDirection ?? Directionality.maybeOf(context),
   );
 
   @override
@@ -2208,7 +2385,8 @@ class SceneTable3d extends Layout3dWidget {
       ..defaultVerticalAlignment = defaultVerticalAlignment
       ..depthAxisAlignment = depthAxisAlignment
       ..columnSpacing = columnSpacing
-      ..rowSpacing = rowSpacing;
+      ..rowSpacing = rowSpacing
+      ..textDirection = textDirection ?? Directionality.maybeOf(context);
   }
 }
 
@@ -2388,15 +2566,19 @@ class SceneSliverPadding3d extends SingleChildLayout3dWidget {
   }) : super(child: sliver);
 
   /// The inset on each of the six faces.
-  final EdgeInsets3d padding;
+  final EdgeInsetsGeometry3d padding;
 
   @override
-  SliverPadding3d createLayout(BuildContext context) =>
-      SliverPadding3d(padding: padding);
+  SliverPadding3d createLayout(BuildContext context) => SliverPadding3d(
+    padding: padding,
+    textDirection: Directionality.maybeOf(context),
+  );
 
   @override
   void updateLayout(BuildContext context, SliverPadding3d layout) {
-    layout.padding = padding;
+    layout
+      ..padding = padding
+      ..textDirection = Directionality.maybeOf(context);
   }
 }
 

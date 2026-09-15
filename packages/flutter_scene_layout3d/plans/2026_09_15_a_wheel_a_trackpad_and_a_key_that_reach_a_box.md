@@ -399,6 +399,9 @@ One deliberate divergence: **left and right follow the track, not the reading
 direction.** Flutter mirrors both in a right-to-left locale. This track does
 not mirror yet, and arrows that disagreed with the thumb they move would be
 worse than arrows that ignore the locale — the right-to-left item owns both.
+*(Both taken, in
+[a row that reads right to left](2026_09_15_a_row_that_reads_right_to_left.md):
+the track mirrors, and the arrows follow it.)*
 
 ### Tab across surfaces, and out of the scene
 

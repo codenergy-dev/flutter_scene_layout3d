@@ -269,13 +269,17 @@ class SceneAnimatedContainer3d extends ImplicitlyAnimatedLayout3dWidget {
   });
 
   /// Where the child sits inside the padded content box.
-  final Alignment3d? alignment;
+  final AlignmentGeometry3d? alignment;
 
   /// Space between the container's faces and its child.
-  final EdgeInsets3d padding;
+  ///
+  /// A physical and a directional padding animate into each other through
+  /// the kind that holds both, and the container resolves every frame's value
+  /// in the ambient reading direction.
+  final EdgeInsetsGeometry3d padding;
 
   /// Space around the container.
-  final EdgeInsets3d margin;
+  final EdgeInsetsGeometry3d margin;
 
   /// Extra constraints imposed on the content.
   final Constraints3d? constraints;
@@ -297,7 +301,7 @@ class SceneAnimatedContainer3d extends ImplicitlyAnimatedLayout3dWidget {
   final Matrix4? transform;
 
   /// The point [transform] pivots around.
-  final Alignment3d transformAlignment;
+  final AlignmentGeometry3d transformAlignment;
 
   /// The widget below this one in the tree.
   final Widget? child;
@@ -309,9 +313,9 @@ class SceneAnimatedContainer3d extends ImplicitlyAnimatedLayout3dWidget {
 
 class _SceneAnimatedContainer3dState
     extends AnimatedLayout3dWidgetBaseState<SceneAnimatedContainer3d> {
-  Alignment3dTween? _alignment;
-  EdgeInsets3dTween? _padding;
-  EdgeInsets3dTween? _margin;
+  AlignmentGeometry3dTween? _alignment;
+  EdgeInsetsGeometry3dTween? _padding;
+  EdgeInsetsGeometry3dTween? _margin;
   Constraints3dTween? _constraints;
   Tween<double>? _width;
   Tween<double>? _height;
@@ -323,23 +327,28 @@ class _SceneAnimatedContainer3dState
         visitor(
               _alignment,
               widget.alignment,
-              (value) => Alignment3dTween(begin: value as Alignment3d),
+              (value) =>
+                  AlignmentGeometry3dTween(begin: value as AlignmentGeometry3d),
             )
-            as Alignment3dTween?;
+            as AlignmentGeometry3dTween?;
     _padding =
         visitor(
               _padding,
               widget.padding,
-              (value) => EdgeInsets3dTween(begin: value as EdgeInsets3d),
+              (value) => EdgeInsetsGeometry3dTween(
+                begin: value as EdgeInsetsGeometry3d,
+              ),
             )
-            as EdgeInsets3dTween?;
+            as EdgeInsetsGeometry3dTween?;
     _margin =
         visitor(
               _margin,
               widget.margin,
-              (value) => EdgeInsets3dTween(begin: value as EdgeInsets3d),
+              (value) => EdgeInsetsGeometry3dTween(
+                begin: value as EdgeInsetsGeometry3d,
+              ),
             )
-            as EdgeInsets3dTween?;
+            as EdgeInsetsGeometry3dTween?;
     _constraints =
         visitor(
               _constraints,
@@ -401,7 +410,7 @@ class SceneAnimatedAlign3d extends ImplicitlyAnimatedLayout3dWidget {
   });
 
   /// Where the child sits inside this box.
-  final Alignment3d alignment;
+  final AlignmentGeometry3d alignment;
 
   /// If non-null, this box's width is the child's times this factor.
   final double? widthFactor;
@@ -422,7 +431,7 @@ class SceneAnimatedAlign3d extends ImplicitlyAnimatedLayout3dWidget {
 
 class _SceneAnimatedAlign3dState
     extends AnimatedLayout3dWidgetBaseState<SceneAnimatedAlign3d> {
-  Alignment3dTween? _alignment;
+  AlignmentGeometry3dTween? _alignment;
   Tween<double>? _widthFactor;
   Tween<double>? _heightFactor;
   Tween<double>? _depthFactor;
@@ -433,9 +442,10 @@ class _SceneAnimatedAlign3dState
         visitor(
               _alignment,
               widget.alignment,
-              (value) => Alignment3dTween(begin: value as Alignment3d),
+              (value) =>
+                  AlignmentGeometry3dTween(begin: value as AlignmentGeometry3d),
             )
-            as Alignment3dTween?;
+            as AlignmentGeometry3dTween?;
     _widthFactor =
         visitor(
               _widthFactor,
