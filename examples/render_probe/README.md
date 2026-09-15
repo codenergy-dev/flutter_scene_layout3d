@@ -174,9 +174,10 @@ committed, and each is built in rather than left to be remembered:
 This app depends on the gallery by path to do it. A copy of the gallery's
 screens here would photograph the copy.
 
-**It found something on its first run**: the app bar's title sits flush
-against the bar's leading edge when there is no leading widget, where Flutter
-insets it by 16dp. No suite or probe asks that question.
+**It found something on its first run**: the app bar's title sat flush
+against the bar's leading edge when there was no leading widget, where Flutter
+insets it by 16dp. No suite or probe asked that question; `AppBar3d` has been
+fixed and `app_bar_test.dart` asks it now.
 
 ## The catalogue scenes
 

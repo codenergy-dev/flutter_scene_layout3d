@@ -14,6 +14,18 @@ component has no thickness in Flutter and must have one here, which is the
 token Material does not publish at all. The plan's middle section is where
 that reasoning lives.
 
+- **An app bar keeps its title off an edge with nothing on it.** A bar with no
+  leading widget put its title 4dp from its edge — the bar's own padding and
+  nothing more — and a bar with no actions let a long title run to 4dp of the
+  other one, because the toolbar row's `titleSpacing` is the gap *between* its
+  children. Flutter's `NavigationToolbar` keeps the title 16dp clear of both
+  ends whether or not anything is there, and so does `AppBar3d` now, for the
+  small bar and for the headline of a medium or large `SliverAppBar3d`. The
+  bar's padding counts toward the 16dp rather than being added to it. The
+  gallery's inbox bar had shown the first half in every frame since the
+  gallery was built; the photograph the render probe app now takes of it is
+  what pointed at it.
+
 - **A focused slider moves on the arrow keys.** All four, as Flutter's does: up
   and right raise it, down and left lower it, by one division, or by Flutter's
   platform unit for a continuous slider — a tenth on Apple platforms and a

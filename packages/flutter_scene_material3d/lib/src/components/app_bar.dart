@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' show Color;
 
 import 'package:flutter/semantics.dart' show SemanticsProperties;
@@ -8,6 +9,8 @@ import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart'
         Alignment3d,
         Constraints3d,
         CrossAxisAlignment3d,
+        EdgeInsets3d,
+        Layout3dMetrics,
         MainAxisAlignment3d,
         MainAxisSize3d;
 import 'package:flutter_scene_layout3d/widgets.dart'
@@ -16,6 +19,7 @@ import 'package:flutter_scene_layout3d/widgets.dart'
         SceneAlign3d,
         SceneConstrainedBox3d,
         SceneExpanded3d,
+        ScenePadding3d,
         ScenePositioned3d,
         SceneRow3d,
         SceneSemantics3d,
@@ -236,7 +240,7 @@ class AppBar3d extends StatelessWidget {
         children: <Widget>[
           if (leading != null) leading!,
           if (titled != null)
-            SceneExpanded3d(child: titled)
+            SceneExpanded3d(child: _clearOfEmptyEdges(metrics, style, titled))
           else
             const SceneSpacer3d(),
           ...actions,
@@ -262,6 +266,39 @@ class AppBar3d extends StatelessWidget {
       // surface it is drawn on wins the depth test and the title vanishes
       // with nothing to say why.
       child: SceneAlign3d(alignment: const Alignment3d(0, 1, -1), child: line),
+    );
+  }
+
+  /// [title], kept [AppBarStyle3d.titleSpacing] off each edge of the bar that
+  /// has nothing on it.
+  ///
+  /// The row's `spacing` is the gap *between* its children, so it separates a
+  /// title from a leading widget or an action and does nothing at an edge with
+  /// neither: a bar with no leading widget used to put its title against its
+  /// own edge. Flutter's `NavigationToolbar` keeps the title `middleSpacing`
+  /// clear of both slots whether they hold anything or not, so the bar's edge
+  /// is where the spacing is measured from here — the bar's own padding counts
+  /// toward it rather than being added to it.
+  ///
+  /// Left and right rather than start and end: the row does not mirror in a
+  /// right-to-left locale yet, and a title inset on the wrong side would be
+  /// worse than one that matches the row it is in.
+  Widget _clearOfEmptyEdges(
+    Layout3dMetrics metrics,
+    AppBarStyle3d style,
+    Widget title,
+  ) {
+    double inset(bool empty, double padding) =>
+        empty ? math.max(0.0, style.titleSpacing - padding) : 0.0;
+    final left = inset(leading == null, style.padding.left);
+    final right = inset(actions.isEmpty, style.padding.right);
+    if (left == 0.0 && right == 0.0) return title;
+    return ScenePadding3d(
+      padding: EdgeInsets3d.only(
+        left: metrics.dp(left),
+        right: metrics.dp(right),
+      ),
+      child: title,
     );
   }
 

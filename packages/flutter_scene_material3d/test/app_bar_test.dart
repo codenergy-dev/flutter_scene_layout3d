@@ -138,6 +138,101 @@ void main() {
     });
   });
 
+  group('where the title sits', () {
+    /// The title's edges, and the bar's, in logical pixels from the bar's
+    /// leading edge.
+    ({double titleStart, double titleEnd, double barWidth}) measure(
+      PumpedSurface pumped,
+    ) {
+      final bar = outermostOf<DecoratedBox3d>(pumped.surface);
+      final title = oneOf<Text3d>(pumped.surface);
+      final start = (offsetInSurface(title).x - offsetInSurface(bar).x) / _dp;
+      return (
+        titleStart: start,
+        titleEnd: start + title.size.width / _dp,
+        barWidth: bar.size.width / _dp,
+      );
+    }
+
+    // Flutter's `NavigationToolbar` starts the title `middleSpacing` past the
+    // leading slot and stops it `middleSpacing` short of the trailing one,
+    // whether or not either slot holds anything. A bar with no leading widget
+    // therefore keeps its title 16dp off its edge — and this one used to put
+    // it against the edge, which the gallery's inbox bar showed in every
+    // photograph and no test asked about.
+    testWidgets('keeps the title titleSpacing off an edge with nothing on it', (
+      tester,
+    ) async {
+      final pumped = await pumpComponent(
+        tester,
+        () => screenWith(AppBar3d.text(title: 'Inbox')),
+        centred: false,
+      );
+      final at = measure(pumped);
+
+      expect(at.titleStart, closeTo(AppBarStyle3d.defaultTitleSpacing, 1e-6));
+      expect(
+        at.barWidth - at.titleEnd,
+        closeTo(AppBarStyle3d.defaultTitleSpacing, 1e-6),
+      );
+    });
+
+    testWidgets('keeps the title titleSpacing from a leading widget and from '
+        'the actions, and no further', (tester) async {
+      const button = 48.0;
+      final pumped = await pumpComponent(
+        tester,
+        () => screenWith(
+          AppBar3d.text(
+            title: 'Inbox',
+            leading: const SceneSizedBox3d(width: button * _dp),
+            actions: const <Widget>[SceneSizedBox3d(width: button * _dp)],
+          ),
+        ),
+        centred: false,
+      );
+      final at = measure(pumped);
+      final padding = AppBarStyle3d.of(_theme, AppBarVariant3d.small).padding;
+
+      expect(
+        at.titleStart,
+        closeTo(
+          padding.left + button + AppBarStyle3d.defaultTitleSpacing,
+          1e-6,
+        ),
+      );
+      expect(
+        at.barWidth - at.titleEnd,
+        closeTo(
+          padding.right + button + AppBarStyle3d.defaultTitleSpacing,
+          1e-6,
+        ),
+      );
+    });
+
+    testWidgets('a medium bar keeps its headline off the edge too', (
+      tester,
+    ) async {
+      final pumped = await pumpComponent(
+        tester,
+        () => SceneCustomScrollView3d(
+          slivers: <Widget>[
+            SliverAppBar3d.text(
+              title: 'Inbox',
+              variant: AppBarVariant3d.medium,
+            ),
+          ],
+        ),
+        centred: false,
+      );
+      final at = measure(pumped);
+
+      // Flutter's medium bar pads its expanded title 16dp at both ends.
+      expect(at.titleStart, closeTo(16, 1e-6));
+      expect(at.barWidth - at.titleEnd, closeTo(16, 1e-6));
+    });
+  });
+
   group('SliverAppBar3d', () {
     /// A pinned bar over a list of decorated rows, and the handles a test
     /// wants on it.

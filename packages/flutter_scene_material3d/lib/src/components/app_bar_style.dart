@@ -97,8 +97,8 @@ class AppBarStyle3d {
   /// Flutter's `_LargeScrollUnderFlexibleConfig.expandedHeight`.
   static const double largeExpandedHeight = 152.0;
 
-  /// Material's gap between the leading widget and the title, in logical
-  /// pixels: Flutter's `NavigationToolbar.kMiddleSpacing`.
+  /// Material's space around the title, in logical pixels: Flutter's
+  /// `NavigationToolbar.kMiddleSpacing`.
   static const double defaultTitleSpacing = 16.0;
 
   /// The elevation a bar takes on once content has scrolled under it, in
@@ -198,7 +198,12 @@ class AppBarStyle3d {
   /// Whether the title is centred rather than at the leading edge.
   final bool centerTitle;
 
-  /// The gap between the leading widget and the title, in logical pixels.
+  /// The space around the title, in logical pixels.
+  ///
+  /// The gap between the title and a leading widget or an action, and, on an
+  /// edge of the bar with neither, the distance from that edge — the bar's
+  /// [padding] included — which is how Flutter's `NavigationToolbar` places a
+  /// title. A centred title is not inset by it.
   final double titleSpacing;
 
   /// Space between the bar's faces and its content, in logical pixels.

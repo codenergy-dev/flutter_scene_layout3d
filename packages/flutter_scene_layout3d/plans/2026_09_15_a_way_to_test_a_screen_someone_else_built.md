@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-09-15T16:23:05Z
-updated_at: 2026-09-15T16:48:11Z
+updated_at: 2026-09-15T17:10:08Z
 commit: 2a7c4dc3bece8cd29c02efe5603457feafa5f84a
 ---
 
@@ -310,12 +310,25 @@ Both files were restored and the suite re-run green.
 
 **The app bar's title sits flush against the bar's leading edge.**
 `AppBar3d` spends `titleSpacing` as the gap *between* the row's children, so a
-bar with no `leading` widget puts its title at zero; Flutter's
-`NavigationToolbar` insets the middle by `kMiddleSpacing`, 16dp, whether or not
-there is a leading widget. No suite and no probe asks that, and the gallery's
-inbox bar has shown it in every frame since phase 9. It is a Material component
-change, so it is left for a plan or a fix of its own rather than folded in
-here.
+bar with no `leading` widget puts its title at the bar's own 4dp padding and no
+further; Flutter's `NavigationToolbar` insets the middle by `kMiddleSpacing`,
+16dp, whether or not there is a leading widget. No suite and no probe asks
+that, and the gallery's inbox bar has shown it in every frame since phase 9.
+
+**Fixed, in a change of its own** after this plan closed. Writing the test for
+it found the other half, which no photograph would have shown on the gallery:
+Flutter reserves the same 16dp before the trailing slot too, so a bar with no
+actions let a long title run to 4dp of its trailing edge. `AppBar3d` now keeps
+the title `titleSpacing` off each edge that has nothing on it, measured from
+the edge with the bar's padding counted toward it, for the small bar and the
+headline of a medium or large `SliverAppBar3d`. Three tests in
+`app_bar_test.dart` pin it — the two edges with nothing on them failed at 4dp
+before the change — and a second photograph shows the title inset. One
+difference from Flutter is left as it was: with a leading widget, Flutter's
+leading slot is 56dp wide and the title starts at 72dp, where this bar's 4dp
+padding and a 48dp button put it at 68dp. Nor is a centred title clamped
+clear of the leading widget and the actions, as Flutter's is: it is centred in
+the whole bar, and a long one can run under them.
 
 ## What the reasoning got wrong
 
@@ -351,11 +364,14 @@ message named the deepest box on the path — a `GestureDetector3d#9a7a7` — wh
 tells a reader nothing about *which* control is in the way; it now names the
 nearest semantic label on the path as well.
 
-**And one thing found and not changed.** `Layout3dPointerGroup.hitTest` and
-`lastHit` are documented as the front-most answering surface's path, and in a
-walk that carries on past a surface that does not absorb they are the *last*
-answering surface's. `SceneInput3d.onHit` reports that value, so a HUD in
-front of a panel reports the panel. Changing it changes what an application's
-`onHit` sees, which is not this plan's to decide; it is written down here and
-in the changelog's description of `hitTestAll`, and whoever next touches the
-group should settle it.
+**And one thing found and not changed — and first described wrongly.**
+`Layout3dPointerGroup.hitTest` is documented as the front-most answering
+surface's path, and in a walk that carries on past a surface that does not
+absorb it returns the *last* answering surface's. This plan first said that
+`SceneInput3d.onHit` reports that value too, so a HUD in front of a panel would
+report the panel. **It does not**, and the claim was written without reading
+the group's other walks: `down`, `hover`, `resolveScroll` and `panZoomStart`
+each keep the first answering path, so `onHit` is right. `hitTest` is the one
+walk out of step with its own dartdoc and with the rest of the group, and
+nothing in either package calls it; `test/testing_test.dart` pins its current
+answer only to show why `hitTestAll` was needed.
