@@ -476,9 +476,10 @@ class FocusScope3d extends ProxyLayout3d {
 /// catalogue actually has — a screen of controls arranged on one plane — and
 /// it is wrong for content that faces different ways, where "left" stops
 /// being a property of the plane and becomes a property of the viewer.
-/// Traversal *between* surfaces is not answered here at all; it belongs with
-/// whoever builds overlays, since the question only arises once a second
-/// surface is in front of the first.
+/// Traversal *between* surfaces is not answered here: this class knows one
+/// tree. When Tab runs off the end of it, the default traversal action asks
+/// [Layout3dOwner.onFocusTraversalEdge] before wrapping, and `SceneInput3d`
+/// answers that with the next surface in the scene, or the widgets around it.
 class Focus3dTraversal {
   /// Creates a traversal policy. Subclass it to change the order.
   const Focus3dTraversal();
@@ -532,6 +533,12 @@ class Focus3dTraversal {
   Focus3d? firstFocus(Layout3d root) {
     final candidates = focusableDescendants(root);
     return candidates.isEmpty ? null : candidates.first;
+  }
+
+  /// The box focus should start on when arriving backwards, with Shift-Tab.
+  Focus3d? lastFocus(Layout3d root) {
+    final candidates = focusableDescendants(root);
+    return candidates.isEmpty ? null : candidates.last;
   }
 
   /// The box after [current] in tree order, wrapping around at the end.

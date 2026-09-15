@@ -359,11 +359,25 @@ class _TraverseAction<T extends Intent> extends Action<T> {
     final current = from is Focus3d ? from : null;
     final root = Focus3dTraversal.traversalRootFor(from);
     const traversal = Focus3dTraversal();
+    if (root is! FocusScope3d && _atEdge(traversal, root, current)) {
+      // Off the end of the whole tree, not of a dialog inside it: whoever
+      // placed this surface among others may know where the focus goes next.
+      final edge = from.owner?.onFocusTraversalEdge;
+      if (edge != null && edge(forward)) return null;
+    }
     final target = forward
         ? traversal.next(root, current)
         : traversal.previous(root, current);
     target?.requestFocus();
     return null;
+  }
+
+  /// Whether a step from [current] would wrap round [root]'s boxes.
+  bool _atEdge(Focus3dTraversal traversal, Layout3d root, Focus3d? current) {
+    final candidates = traversal.focusableDescendants(root);
+    if (candidates.isEmpty) return true;
+    if (current == null) return false;
+    return identical(current, forward ? candidates.last : candidates.first);
   }
 }
 

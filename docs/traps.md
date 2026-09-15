@@ -800,9 +800,26 @@ remains a reservation of space and `glyphDepth` is the figure that draws.
   entry was up. Closing the entry hands it back.
 - **A key reaches a scene only once something in it has the focus.** A scene
   nobody has clicked is not reachable from the keyboard at all, because a key
-  with no primary focus is dropped. `SceneInput3d(autofocus: true)` or
-  `Input3dHost.requestSceneFocus()` is the way in; Tab out again is not
-  answered.
+  with no primary focus is dropped. `SceneInput3d(autofocus: true)`, a Tab
+  from the widgets around the scene, or `Input3dHost.requestSceneFocus()` is
+  the way in.
+- **Tab walks surfaces in the order they mounted, not the order they are
+  drawn.** Geometry cannot say which of two panels in a room comes "next" any
+  better than it can say which is in front, and `zOrder` answers the pointer's
+  question rather than the reader's. A panel added to the scene later is
+  tabbed to last, wherever it stands. Mount them in the order a reader should
+  meet them.
+- **A Tab into the scene reads Shift off the keyboard to know which way it
+  came.** Flutter's traversal does not say which direction landed on the host,
+  and the key that sent it is still held. So focusing the host
+  programmatically *while Shift happens to be down* enters the scene at its
+  last box. Use `requestSceneFocus()` for a programmatic return; it restores
+  instead.
+- **Nothing under a surface's scope is Flutter's to traverse.** The scope sets
+  `descendantsAreTraversable` false, so a `FocusNode` handed to a `Focus3d` is
+  never visited by the widget tree's reading-order policy — which would ask it
+  for a rectangle it has no render object to give. Moving between boxes on a
+  plane is `Focus3dTraversal`'s job, and between planes the host's.
 
 ## Semantics
 

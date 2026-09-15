@@ -3,8 +3,11 @@
 // claim it exists to make, which is that a slider inside a scrolling list
 // wins the pointer against the scroll.
 
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, debugDefaultTargetPlatformOverride;
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter/widgets.dart'
-    show BuildContext, State, StatefulWidget, Widget;
+    show BuildContext, FocusManager, State, StatefulWidget, Widget;
 import 'package:flutter_scene/scene.dart' show Node;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
 import 'package:flutter_scene_layout3d/widgets.dart';
@@ -172,6 +175,99 @@ void main() {
         () => Slider3d(value: 0.6, divisions: 4, onChanged: (_) {}),
       );
       expect(componentShifts(it.surface)[0].scaleX, closeTo(0.5, 1e-9));
+    });
+  });
+
+  group('the arrow keys', () {
+    // The focus manager is global and outlives a pumped tree.
+    tearDown(() {
+      FocusManager.instance.primaryFocus?.unfocus();
+      FocusManager.instance.applyFocusChangesIfNeeded();
+    });
+
+    Future<void> focus(PumpedSurface it) async {
+      focusIn(it.surface).requestFocus();
+      FocusManager.instance.applyFocusChangesIfNeeded();
+    }
+
+    testWidgets('step a continuous slider by the platform unit', (
+      tester,
+    ) async {
+      final reported = <double>[];
+      final it = await pumpComponent(
+        tester,
+        () => Slider3d(value: 0.5, onChanged: reported.add),
+      );
+      await focus(it);
+
+      expect(await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight), isTrue);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+
+      // The value is not fed back — the slider is stateless — so each step is
+      // from the same 0.5: up and right raise, down and left lower.
+      expect(reported, <Matcher>[
+        closeTo(0.55, 1e-9),
+        closeTo(0.55, 1e-9),
+        closeTo(0.45, 1e-9),
+        closeTo(0.45, 1e-9),
+      ]);
+    });
+
+    testWidgets('a tenth on Apple platforms, as Flutter\'s', (tester) async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      final reported = <double>[];
+      final it = await pumpComponent(
+        tester,
+        () => Slider3d(value: 0.5, onChanged: reported.add),
+      );
+      await focus(it);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+
+      expect(reported.single, closeTo(0.6, 1e-9));
+      debugDefaultTargetPlatformOverride = null;
+    });
+
+    testWidgets('step a divided slider by a division, in its own range, and '
+        'hold at the end', (tester) async {
+      final reported = <double>[];
+      final it = await pumpComponent(
+        tester,
+        () => Slider3d(
+          value: 30,
+          min: 0,
+          max: 40,
+          divisions: 4,
+          onChanged: reported.add,
+        ),
+      );
+      await focus(it);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowLeft);
+
+      expect(reported, <double>[40, 20]);
+    });
+
+    testWidgets('bracket each step with start and end', (tester) async {
+      final log = <String>[];
+      final it = await pumpComponent(
+        tester,
+        () => Slider3d(
+          value: 0.5,
+          onChanged: (_) => log.add('changed'),
+          onChangeStart: () => log.add('start'),
+          onChangeEnd: () => log.add('end'),
+        ),
+      );
+      await focus(it);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+
+      expect(log, <String>['start', 'changed', 'end']);
     });
   });
 

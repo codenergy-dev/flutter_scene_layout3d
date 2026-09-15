@@ -1,6 +1,7 @@
 import 'dart:ui' show Color;
 
-import 'package:flutter/foundation.dart' show ValueChanged, VoidCallback;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, ValueChanged, VoidCallback, defaultTargetPlatform;
 import 'package:flutter/gestures.dart'
     show
         GestureArenaEntry,
@@ -13,8 +14,19 @@ import 'package:flutter/gestures.dart'
         PointerUpEvent,
         computeHitSlop;
 import 'package:flutter/semantics.dart' show SemanticsProperties;
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter/widgets.dart'
-    show BuildContext, FocusNode, StatelessWidget, TextDirection, Widget;
+    show
+        Action,
+        BuildContext,
+        CallbackAction,
+        FocusNode,
+        Intent,
+        ShortcutActivator,
+        SingleActivator,
+        StatelessWidget,
+        TextDirection,
+        Widget;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart'
     show
         Alignment3d,
@@ -28,8 +40,10 @@ import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart'
 import 'package:flutter_scene_layout3d/widgets.dart'
     show
         Layout3dMetricsScope,
+        SceneActions3d,
         SceneIgnorePointer3d,
         SceneSemantics3d,
+        SceneShortcuts3d,
         SceneSizedBox3d,
         SceneStack3d,
         SceneTapTarget3d,
@@ -85,6 +99,22 @@ const Color _none = Color(0x00000000);
 /// is a relayout on every frame of the drag. A node transform pivots on the
 /// box's **origin corner**, so a full-length track scaled by the value keeps
 /// its left end exactly where layout put it and stops where the thumb is.
+///
+/// ## The arrow keys
+///
+/// A focused slider takes all four arrows, as Flutter's does: up and right
+/// raise it, down and left lower it, by one division — or, for a continuous
+/// slider, by Flutter's own platform unit, a tenth on Apple platforms and a
+/// twentieth elsewhere. A keyboard change is a whole gesture, so
+/// [onChangeStart] and [onChangeEnd] bracket each step. The arrows therefore
+/// do not move the focus off a slider, which is Flutter's trade too; Tab
+/// does.
+///
+/// **Left and right follow the track, not the reading direction.** Flutter's
+/// slider mirrors in a right-to-left locale and its arrows mirror with it.
+/// This one's track does not mirror yet — that belongs with the rest of
+/// right-to-left layout — and arrows that disagreed with the thumb they move
+/// would be worse than arrows that ignore the locale.
 ///
 /// ## Probing one
 ///
@@ -286,6 +316,21 @@ class Slider3d extends StatelessWidget {
       ),
     );
 
+    // Around the gesture box and so above the ink well's focus box, which is
+    // where a key walk starts. Neither box gates a ray on its own extent, so
+    // wrapping the pointer region costs the pointer nothing.
+    final keyed = SceneShortcuts3d(
+      shortcuts: _arrows,
+      child: SceneActions3d(
+        actions: <Type, Action<Intent>>{
+          _AdjustSlider3dIntent: CallbackAction<_AdjustSlider3dIntent>(
+            onInvoke: _adjust,
+          ),
+        },
+        child: body,
+      ),
+    );
+
     final announced = SceneSemantics3d(
       properties: SemanticsProperties(
         slider: true,
@@ -294,13 +339,50 @@ class Slider3d extends StatelessWidget {
         value: (semanticFormatter ?? _percent)(value),
         textDirection: readingDirection3d(context, textDirection),
       ),
-      child: body,
+      child: keyed,
     );
 
     return SceneTapTarget3d(child: announced);
   }
 
   static String _percent(double value) => '${(value * 100).round()}%';
+
+  /// How far one arrow moves the thumb, as a fraction of the range.
+  ///
+  /// Flutter's `_RenderSlider._semanticActionUnit`: one division when there
+  /// are divisions, and the platform's own step when there are not.
+  double get keyboardStep {
+    final divisions = this.divisions;
+    if (divisions != null) return 1.0 / divisions;
+    return switch (defaultTargetPlatform) {
+      TargetPlatform.iOS || TargetPlatform.macOS => 0.1,
+      _ => 0.05,
+    };
+  }
+
+  static const Map<ShortcutActivator, Intent>
+  _arrows = <ShortcutActivator, Intent>{
+    SingleActivator(LogicalKeyboardKey.arrowUp): _AdjustSlider3dIntent(1),
+    SingleActivator(LogicalKeyboardKey.arrowRight): _AdjustSlider3dIntent(1),
+    SingleActivator(LogicalKeyboardKey.arrowDown): _AdjustSlider3dIntent(-1),
+    SingleActivator(LogicalKeyboardKey.arrowLeft): _AdjustSlider3dIntent(-1),
+  };
+
+  /// One arrow's worth of change, as a whole gesture.
+  void _adjust(_AdjustSlider3dIntent intent) {
+    final changed = onChanged;
+    if (changed == null) return;
+    onChangeStart?.call();
+    changed(valueFor(fraction + intent.steps * keyboardStep));
+    onChangeEnd?.call();
+  }
+}
+
+/// An arrow on a focused [Slider3d]: one step up or down.
+class _AdjustSlider3dIntent extends Intent {
+  const _AdjustSlider3dIntent(this.steps);
+
+  final int steps;
 }
 
 /// The pointer half of a [Slider3d]: a box that turns a press and a drag into

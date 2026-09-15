@@ -1175,6 +1175,16 @@ That is a real difference and it is the price of the node tier: the thumb's
 position is written by the widget that builds it, so the width has to be known
 before layout rather than after it.
 
+A focused slider takes **all four arrows**, as Flutter's does: up and right
+raise it, down and left lower it, by one division, or for a continuous slider
+by Flutter's platform unit — a tenth on Apple platforms and a twentieth
+elsewhere. Each press is a whole gesture, so `onChangeStart` and `onChangeEnd`
+bracket it. The arrows therefore do not move the focus off a slider, which is
+Flutter's trade too; Tab does. Left and right follow the **track** rather than
+the reading direction, because the track does not mirror for a right-to-left
+locale yet, and arrows that disagreed with the thumb they move would be worse
+than arrows that ignore the locale.
+
 ### What the tables say
 
 Every figure is `ColorScheme3d` roles and Material's own dp, and
@@ -1512,10 +1522,7 @@ spelling that Flutter deprecated after 3.32 in favour of a group ancestor; that
 migration is an inherited widget plus a registry, and it belongs beside a
 `FormField3d` rather than inside a leaf control. A slider has no **tick marks**
 for its divisions and no **value indicator** above the thumb, both of which are
-ornament on the component whose design question here was the drag — and it does
-not move on the **arrow keys**, which on a focused slider move the focus
-instead, as on any other control; binding Flutter's increase and decrease
-intents is a small change the keyboard layer now makes possible. A switch has
+ornament on the component whose design question here was the drag. A switch has
 no **growing thumb** and nothing else animates either, for the reason the whole
 catalogue does not. And a slider takes an explicit **width** rather than
 filling its parent, because the thumb's position is written before layout

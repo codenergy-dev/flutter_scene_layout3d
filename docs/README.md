@@ -149,7 +149,8 @@ Two entry points:
   have gone, a trackpad pan is a drag by a finger at the cursor, and a key walks
   Flutter's own shortcuts and actions over the layout tree, because a focus
   node on a plane has no context for Flutter's widgets to look them up
-  through.
+  through. Tab walks from surface to surface and out of the scene through the
+  same host, because only the host knows which surfaces exist.
 
 ## Keeping this true
 

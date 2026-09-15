@@ -1,8 +1,8 @@
 ---
 status: in progress
-reason: fourteen of the seventeen items are open; the record of what shipped and the application widget are closed, and the wheel and the key are implemented and waiting on a look at a desktop
+reason: fourteen of the seventeen items are open; the record of what shipped, the application widget, and the wheel and the key are closed
 created_at: 2026-09-11T21:20:18Z
-updated_at: 2026-09-15T12:19:00Z
+updated_at: 2026-09-15T14:18:23Z
 commit: abc2469ce5c4ec4c41e2738fc5acf55bcf40640a
 ---
 
@@ -92,7 +92,7 @@ plan, which is the rule phase 0 established and every phase since has obeyed.
 | Plan | Package | What it unblocks |
 | --- | --- | --- |
 | ~~[An application that does not wire its own rays](#an-application-that-does-not-wire-its-own-rays)~~ | layout3d | **done** — every application, ninety lines each |
-| [A wheel, a trackpad and a key that reach a box](#a-wheel-a-trackpad-and-a-key-that-reach-a-box) | layout3d | **implemented** — scrolling on desktop and web; activating a control without a pointer. Waiting on a person with a trackpad |
+| ~~[A wheel, a trackpad and a key that reach a box](#a-wheel-a-trackpad-and-a-key-that-reach-a-box)~~ | layout3d | **done** — scrolling on desktop and web; a keyboard that gets into a scene, across it, and out |
 | [A row that reads right to left](#a-row-that-reads-right-to-left) | layout3d | every non-LTR locale |
 | [A picture on a panel](#a-picture-on-a-panel) | layout3d | avatars, photographs, gradients, logos |
 | [A box that fades](#a-box-that-fades) | layout3d | `Opacity3d`, and every fade in the motion lane |
@@ -120,10 +120,11 @@ real screen no longer begins by copying ninety lines out of
 real application instead of in a scene. See
 [its plan](2026_09_11_an_application_that_does_not_wire_its_own_rays.md).
 
-**[The wheel and the key](#a-wheel-a-trackpad-and-a-key-that-reach-a-box)
-immediately after** — **implemented**, see
-[its plan](2026_09_15_a_wheel_a_trackpad_and_a_key_that_reach_a_box.md), and
-waiting only on being tried on a desktop. The reasoning here said the
+~~**[The wheel and the key](#a-wheel-a-trackpad-and-a-key-that-reach-a-box)
+immediately after**~~ — **done**, see
+[its plan](2026_09_15_a_wheel_a_trackpad_and_a_key_that_reach_a_box.md), tried
+on a desktop, and extended to a slider on the arrows and Tab across and out of
+the scene. The reasoning here said the
 controller side was built and only routing was missing; a wheel turned out to
 want an operation of its own, and the key turned out not to route through the
 host at all.
@@ -193,12 +194,16 @@ are where a first implementer's decision becomes someone else's constraint.
   widget that owns the rays. What the host owns for the keyboard is the way
   *in*, `requestSceneFocus`. Navigation's back button is a key of that kind
   too, so whoever builds it should expect the focus tree, not the host, to be
-  where it arrives.
+  where it arrives. **And traversal between surfaces is the host's too**, for
+  the reason everything cross-surface is: only the host knows which surfaces
+  exist. It walks them in mount order through
+  `Layout3dOwner.onFocusTraversalEdge`; whoever builds navigation should not
+  build a second answer.
 - **Keys are Flutter's vocabulary walked over the layout tree**, by
   `Shortcuts3d` and `Actions3d`. Two plans consume this:
   [the controls that wait on a keyboard](#the-controls-that-wait-on-a-keyboard)
-  binds intents on components (a slider's increase and decrease is the first
-  small one), and [a letter someone can type](#a-letter-someone-can-type) will
+  binds intents on components — the slider's arrows are the worked example,
+  in `Slider3d`, and [a letter someone can type](#a-letter-someone-can-type) will
   meet it where text editing's own shortcuts live. A Flutter `Shortcuts` widget
   above the `SceneView` reaches nothing on a plane; that is in
   [docs/traps.md](../../../docs/traps.md).
@@ -289,9 +294,8 @@ that seam.
 
 **Package:** `flutter_scene_layout3d`.
 **Slug:** `a_wheel_a_trackpad_and_a_key_that_reach_a_box`.
-**Implemented** by
-[its own plan](2026_09_15_a_wheel_a_trackpad_and_a_key_that_reach_a_box.md),
-which stays open only until a person has tried it on a desktop. The entry
+**Closed** by
+[its own plan](2026_09_15_a_wheel_a_trackpad_and_a_key_that_reach_a_box.md). The entry
 below is what it was reasoned from. What that reasoning got wrong, in short:
 Tab was not wired either, so "traversal moves focus correctly" described a
 policy nothing called; the key does not route through the application widget;

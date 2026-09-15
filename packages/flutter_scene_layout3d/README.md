@@ -1824,13 +1824,32 @@ neither. The imperative half is `Layout3dPointer.resolveScroll` and
 
 **A key goes to the focus, not to the cursor**, so it reaches a box without
 passing through `SceneInput3d` at all; *Keys*, below, is how. What the host adds
-is a way in. A keyboard cannot reach a scene nothing has focused, so the host
-is one focusable widget in Flutter's own traversal and hands the focus straight
-to the front-most surface the moment it gets it — back to wherever the focus
-last was on that surface, or to its first focusable box. `autofocus: true` does
-that on the first frame, and `Input3dHost.requestSceneFocus()` does it on
-demand. Leaving the scene again with Tab is not answered: traversal inside a
-surface cycles, and traversal between surfaces is still nobody's.
+is the way in, the way across and the way out — the three things a keyboard
+needs that no single surface can know.
+
+*In*: a keyboard cannot reach a scene nothing has focused, so the host is one
+focusable widget in Flutter's own traversal and hands the focus into the scene
+the moment it gets it — to the first box of the first surface, or to the last
+box of the last one when Shift is held, which is the direction a Shift-Tab
+arrives from. `autofocus: true` does that on the first frame.
+`Input3dHost.requestSceneFocus()` is the other way back in, for "the user came
+back to the scene": it returns to wherever the focus last was on the
+front-most surface.
+
+*Across*: Tab off the end of one surface goes on to the next, in the order the
+surfaces mounted, with each overlay's floating entries straight after the
+panel that opened them — a snack bar's action comes after the screen that
+showed it. A dialog that traps the focus still cycles inside itself, and
+tabbing onto a panel with such a dialog open lands inside the dialog rather
+than behind its barrier.
+
+*Out*: Tab off the end of the last surface hands the focus back to Flutter's
+traversal from the host's own place in it, so it lands on the next widget
+after the scene. A window that is nothing but the scene has no such widget,
+and the traversal comes straight back in at the other end — Tab goes round
+the whole scene. The seam underneath is `Layout3dOwner.onFocusTraversalEdge`,
+which the default Tab action asks before wrapping a tree; an application
+placing surfaces without a `SceneInput3d` can answer it itself.
 
 ### Claiming the target
 

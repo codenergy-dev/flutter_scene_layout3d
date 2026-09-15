@@ -14,6 +14,14 @@ component has no thickness in Flutter and must have one here, which is the
 token Material does not publish at all. The plan's middle section is where
 that reasoning lives.
 
+- **A focused slider moves on the arrow keys.** All four, as Flutter's does: up
+  and right raise it, down and left lower it, by one division, or by Flutter's
+  platform unit for a continuous slider — a tenth on Apple platforms and a
+  twentieth elsewhere. Each press is a whole gesture, bracketed by
+  `onChangeStart` and `onChangeEnd`. Left and right follow the track rather
+  than the reading direction, because the track does not mirror for a
+  right-to-left locale yet.
+
 - **Enter and Space activate a focused control, and Escape closes an overlay.**
   **`InkWell3d` binds `ActivateIntent`**, the way Flutter's `InkWell` does, so
   every button, card, tile, chip, menu item, navigation destination and

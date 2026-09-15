@@ -23,7 +23,9 @@ import 'package:flutter/widgets.dart'
     show
         BuildContext,
         Focus,
+        FocusManager,
         FocusNode,
+        FocusScopeNode,
         HitTestBehavior,
         InheritedWidget,
         Listener,
@@ -129,13 +131,15 @@ abstract class Input3dHost {
   /// Stops tracking [overlay], and takes its entries out of the group.
   void unregisterOverlay(Overlay3d overlay);
 
-  /// Hands the keyboard to the scene, and reports whether anything took it.
+  /// Hands the keyboard back to the scene, and reports whether anything took
+  /// it.
   ///
   /// The front-most surface that can take the focus gets it: back to wherever
   /// its focus last was, when something on it has held the focus before, and
-  /// to its first focusable box in tree order otherwise. What
-  /// [SceneInput3d.autofocus] does on the first frame and what the host does
-  /// whenever Flutter's own traversal lands on it.
+  /// to its first focusable box in tree order otherwise. The call for "the
+  /// user came back to the scene" — a click on its window, a menu command.
+  /// Arriving by Tab is different, and lands on the first box of the scene
+  /// instead; see [SceneInput3d]'s *A key*.
   bool requestSceneFocus();
 }
 
@@ -212,10 +216,24 @@ class Input3dController {
 ///
 /// A key goes to the focus, not to the cursor, and it reaches a box on a
 /// plane without passing through this widget; [Shortcuts3d] explains the
-/// walk. What this widget adds is a way *in*: a keyboard cannot reach a scene
-/// nothing has focused yet, so the host takes part in Flutter's traversal as
-/// one focusable widget and hands the focus into the front-most surface the
-/// moment it receives it. [autofocus] does that on the first frame.
+/// walk. What this widget adds is the way in, the way across and the way out.
+///
+/// **In.** A keyboard cannot reach a scene nothing has focused, so the host is
+/// one focusable widget in Flutter's own traversal, and hands the focus into
+/// the scene the moment it receives it: to the first box of the first surface,
+/// or to the last box of the last one when Shift is held — the direction a
+/// Shift-Tab arrives from. [autofocus] does that on the first frame.
+///
+/// **Across.** Tab off the end of one surface goes on to the next, in the
+/// order the surfaces mounted, with each overlay's floating entries straight
+/// after the panel that opened them. A dialog that traps the focus still
+/// cycles inside itself, as a `ModalRoute` does.
+///
+/// **Out.** Tab off the end of the last surface hands the focus back to
+/// Flutter's traversal, from this widget's place in it, so it lands on the
+/// next focusable widget after the scene. When there is none — a window that
+/// is nothing but the scene — the traversal comes straight back in at the
+/// other end, and Tab goes round the whole scene.
 class SceneInput3d extends StatefulWidget {
   /// Creates an input host over [child].
   const SceneInput3d({
@@ -335,7 +353,15 @@ class _SceneInput3dState extends State<SceneInput3d> implements Input3dHost {
   final Map<Layout3dOwner, Layout3dSurface> _surfacesByOwner =
       <Layout3dOwner, Layout3dSurface>{};
 
+  /// Every registered surface, in the order it registered, with its z-order.
+  ///
+  /// Insertion-ordered, and a re-registration keeps its place, so the keys are
+  /// also the order Tab walks the panels in.
   final Map<Layout3dSurface, double> _zOrders = <Layout3dSurface, double>{};
+
+  /// Set while the host takes the focus in order to hand it on, so that
+  /// taking it does not hand it straight back into the scene.
+  bool _leaving = false;
 
   /// The host's place in Flutter's own focus traversal: the door a keyboard
   /// comes into the scene through. It never keeps the focus when something
@@ -367,6 +393,12 @@ class _SceneInput3dState extends State<SceneInput3d> implements Input3dHost {
     if (identical(widget.controller?._host, this)) {
       widget.controller?._host = null;
     }
+    for (final overlay in _overlays) {
+      overlay.entriesChanged.removeListener(_watchEntryEdges);
+    }
+    for (final surface in _zOrders.keys) {
+      surface.owner?.onFocusTraversalEdge = null;
+    }
     _group.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -390,6 +422,7 @@ class _SceneInput3dState extends State<SceneInput3d> implements Input3dHost {
     _zOrders[surface] = zOrder;
     final owner = surface.owner;
     if (owner != null) _surfacesByOwner[owner] = surface;
+    _watchTraversalEdge(surface);
   }
 
   @override
@@ -397,17 +430,21 @@ class _SceneInput3dState extends State<SceneInput3d> implements Input3dHost {
     _group.removeSurface(surface);
     _zOrders.remove(surface);
     _surfacesByOwner.removeWhere((_, value) => identical(value, surface));
+    surface.owner?.onFocusTraversalEdge = null;
   }
 
   @override
   void registerOverlay(Overlay3d overlay) {
     if (_overlays.contains(overlay)) return;
     _overlays.add(overlay);
+    overlay.entriesChanged.addListener(_watchEntryEdges);
+    _watchEntryEdges();
   }
 
   @override
   void unregisterOverlay(Overlay3d overlay) {
     if (!_overlays.remove(overlay)) return;
+    overlay.entriesChanged.removeListener(_watchEntryEdges);
     _group.forgetDetachedEntries(overlay);
   }
 
@@ -437,16 +474,139 @@ class _SceneInput3dState extends State<SceneInput3d> implements Input3dHost {
   /// Passes the focus straight through to the scene when Flutter gives it to
   /// the host.
   ///
+  /// Flutter's traversal does not say which way it was going when it landed
+  /// here, and the key that sent it is still held: Shift means Shift-Tab, so
+  /// the scene is entered from its far end.
+  ///
   /// A surface laid out for the first time in the frame that asked has no
   /// sizes yet, and traversal skips a box without one; so a first attempt
   /// that finds nothing tries once more after the frame.
   void _handleFocusChange(bool focused) {
-    if (!focused || !_focusNode.hasPrimaryFocus) return;
-    if (requestSceneFocus()) return;
+    if (_leaving || !focused || !_focusNode.hasPrimaryFocus) return;
+    final forward = !HardwareKeyboard.instance.isShiftPressed;
+    if (_enterScene(forward: forward)) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_focusNode.hasPrimaryFocus) return;
-      requestSceneFocus();
+      _enterScene(forward: forward);
     });
+  }
+
+  // --- traversal between surfaces ----------------------------------------
+
+  /// The order Tab walks the scene's surfaces in.
+  ///
+  /// The panels in the order they registered, which is the order they
+  /// mounted, and after each one the floating entries of the overlays laid
+  /// out on it, in their own order — so a snack bar's action comes after the
+  /// screen that showed it. Entries of an overlay whose panel cannot be
+  /// resolved come last.
+  List<Layout3dSurface> _traversalOrder() {
+    final order = <Layout3dSurface>[];
+    final placed = <Overlay3d>{};
+    for (final surface in _zOrders.keys) {
+      order.add(surface);
+      for (final overlay in _overlays) {
+        final owner = overlay.owner;
+        if (owner == null || !identical(_surfacesByOwner[owner], surface)) {
+          continue;
+        }
+        order.addAll(overlay.detachedSurfaces);
+        placed.add(overlay);
+      }
+    }
+    for (final overlay in _overlays) {
+      if (!placed.contains(overlay)) order.addAll(overlay.detachedSurfaces);
+    }
+    return order;
+  }
+
+  /// Asks [surface]'s tree to consult this host before Tab wraps round it.
+  void _watchTraversalEdge(Layout3dSurface surface) {
+    surface.owner?.onFocusTraversalEdge = (forward) =>
+        _handleTraversalEdge(surface, forward: forward);
+  }
+
+  /// The same, for every floating entry the overlays hold now.
+  ///
+  /// Run when an overlay's entries change rather than at dispatch, because a
+  /// Tab needs the answer and no pointer event has to come first: a snack
+  /// bar that appears while the keyboard is in use must be reachable by it.
+  void _watchEntryEdges() {
+    for (final overlay in _overlays) {
+      overlay.detachedSurfaces.forEach(_watchTraversalEdge);
+    }
+  }
+
+  /// Tab ran off the end of [from]: on to the next surface that has something
+  /// to focus, or out of the scene when none does.
+  bool _handleTraversalEdge(Layout3dSurface from, {required bool forward}) {
+    final order = _traversalOrder();
+    final index = order.indexOf(from);
+    if (index < 0) return false;
+    final onward = forward
+        ? order.sublist(index + 1)
+        : order.sublist(0, index).reversed;
+    for (final surface in onward) {
+      if (_focusInto(surface, forward: forward)) return true;
+    }
+    return _leaveScene(forward: forward);
+  }
+
+  /// Focuses [surface]'s first box, or its last one going backwards.
+  ///
+  /// Except when a dialog on it holds the focus: arriving on a panel with a
+  /// trapping entry open lands inside the entry, never on a box behind its
+  /// barrier. The owner's scope remembers the dialog's scope as the child
+  /// that had the focus, and asking the dialog's scope restores its own.
+  bool _focusInto(Layout3dSurface surface, {required bool forward}) {
+    final owner = surface.owner;
+    if (owner != null && owner.hasFocusScope) {
+      final held = owner.focusScope.focusedChild;
+      if (held is FocusScopeNode) {
+        held.requestFocus();
+        return true;
+      }
+    }
+    const traversal = Focus3dTraversal();
+    final target = forward
+        ? traversal.firstFocus(surface)
+        : traversal.lastFocus(surface);
+    target?.requestFocus();
+    return target != null;
+  }
+
+  /// The first box of the scene, or the last going backwards.
+  bool _enterScene({required bool forward}) {
+    final order = _traversalOrder();
+    for (final surface in forward ? order : order.reversed) {
+      if (_focusInto(surface, forward: forward)) return true;
+    }
+    return false;
+  }
+
+  /// Hands the focus to Flutter's traversal, from the host's own place in it.
+  ///
+  /// Flutter moves from whatever holds the focus in a scope, so the host takes
+  /// it first — quietly, or [_handleFocusChange] would hand it straight back —
+  /// and then asks for the next widget. When that comes back to the host
+  /// itself, there is nothing else to go to, and the scene is entered again
+  /// from the other end.
+  bool _leaveScene({required bool forward}) {
+    _leaving = true;
+    try {
+      _focusNode.requestFocus();
+      FocusManager.instance.applyFocusChangesIfNeeded();
+    } finally {
+      _leaving = false;
+    }
+    if (forward) {
+      _focusNode.nextFocus();
+    } else {
+      _focusNode.previousFocus();
+    }
+    FocusManager.instance.applyFocusChangesIfNeeded();
+    if (!_focusNode.hasPrimaryFocus) return true;
+    return _enterScene(forward: forward);
   }
 
   // --- dispatch ----------------------------------------------------------

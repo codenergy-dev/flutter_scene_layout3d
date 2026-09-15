@@ -153,6 +153,11 @@ class Layout3dOwner {
     // The attachment is what a later `dispose` unparents through; nothing
     // reparents through it, so the null context it is made with is never
     // dereferenced.
+    // Nothing below this scope is Flutter's to traverse. Its nodes have no
+    // context, so a reading-order policy that reached one would ask for a
+    // rectangle there is no render object to give; and moving between them
+    // is `Focus3dTraversal`'s job, not the widget tree's.
+    scope.descendantsAreTraversable = false;
     scope.attach(null, onKeyEvent: _handleScopeKeyEvent);
     focusNodeLayouts[scope] = focusRoot;
     FocusManager.instance.rootScope.setFirstFocus(scope);
@@ -167,6 +172,17 @@ class Layout3dOwner {
   /// nearest enclosing scope, and a Tab from there has to know what tree it
   /// is in.
   Layout3d? focusRoot;
+
+  /// Asked when Tab or Shift-Tab runs off the end of this tree's focusable
+  /// boxes, before traversal wraps round; answers whether it moved the focus
+  /// somewhere else.
+  ///
+  /// [forward] is true for Tab. Only the tree's own end counts: a Tab inside a
+  /// `FocusScope3d` — a dialog — cycles the dialog and never asks. Set by
+  /// `SceneInput3d` on every surface it knows about, which is how Tab walks
+  /// from one surface to the next and out of the scene into the widgets around
+  /// it. Left null, the tree cycles, which is what it always did.
+  bool Function(bool forward)? onFocusTraversalEdge;
 
   /// Offered each key event that reaches [focusScope] while the scope itself
   /// holds primary focus.

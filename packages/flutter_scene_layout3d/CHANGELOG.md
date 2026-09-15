@@ -1,5 +1,25 @@
 ## Unreleased
 
+- **Tab walks from one surface to the next, and out of the scene.** Traversal
+  used to cycle inside whichever surface held the focus, so a keyboard that got
+  into a scene could neither reach a second panel nor leave. Tab off the end of
+  a surface now goes on to the next one, in the order the surfaces mounted,
+  with each overlay's floating entries straight after the panel that opened
+  them; Tab off the last surface hands the focus back to Flutter's traversal,
+  so it lands on the widget after the scene, or comes round to the first box
+  when there is none. A dialog that traps the focus still cycles inside
+  itself. Arriving by Tab lands on the first box of the scene, and by
+  Shift-Tab on the last.
+  - **`Layout3dOwner.onFocusTraversalEdge`** is the seam: the default Tab
+    action asks it before wrapping a tree, and `SceneInput3d` answers it.
+    **`Focus3dTraversal.lastFocus`** is the counterpart of `firstFocus`.
+  - **A surface's focus scope hides its nodes from Flutter's own traversal**
+    with `descendantsAreTraversable`. A surface's scope hangs under the root
+    scope, so traversal running *in* the root scope — which is where it runs
+    in an application with no navigator, and where Tab leaving the scene now
+    sends it — could reach a `FocusNode` handed to a `Focus3d` and ask it for
+    `FocusNode.rect`, which dereferences a context the node does not have.
+
 - **A wheel, two fingers on a trackpad and a key reach a box.** The inputs a
   desktop reaches for first, none of which this package routed: a list
   scrolled by drag alone, and a focused control did nothing with a key.
@@ -43,8 +63,8 @@
     is what the entry uses.
   - **`SceneInput3d.autofocus` and `Input3dHost.requestSceneFocus`** are the
     way a keyboard gets into a scene nothing has focused: the host is one
-    focusable widget in Flutter's traversal and hands the focus to the
-    front-most surface. `Input3dHitPhase.scroll` reports a wheel and a pan.
+    focusable widget in Flutter's traversal and hands the focus into the
+    scene. `Input3dHitPhase.scroll` reports a wheel and a pan.
   - **`Focus3d.onKeyEvent` is mutable**, and exposed on `SceneFocus3d`; a node
     handed in keeps the handler it came with, and gets it back.
     **`Focus3d.layoutFor`** finds the box a focus node stands for.

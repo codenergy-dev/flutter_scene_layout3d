@@ -1,8 +1,7 @@
 ---
-status: in progress
-reason: implemented, and green in all three suites; not yet tried by a person on a desktop with a wheel, a trackpad and a keyboard, which is this plan's oracle
+status: completed
 created_at: 2026-09-15T11:49:21Z
-updated_at: 2026-09-15T12:18:32Z
+updated_at: 2026-09-15T14:18:23Z
 commit: 12384ff196c7ba5d6d2b4c7125fb244b45263c06
 ---
 
@@ -231,10 +230,9 @@ and **hands the focus straight into the scene** when it receives it: to the
 first focusable box on the front-most surface that has one. `autofocus` does
 that on the first frame; `Input3dHost.requestSceneFocus` does it on demand.
 
-Leaving the scene again with Tab is not answered. Traversal inside a surface
-cycles, and traversal between surfaces — and out of them, back into the widget
-tree — was declared the overlays' question when `Focus3dTraversal` was written
-and is still nobody's.
+Leaving the scene again with Tab was left out of the first pass, and so was
+traversal between surfaces. Both were then taken in the same plan — see
+*The follow-up* at the end, which also changed how a Tab *arrives*.
 
 ## The API
 
@@ -277,11 +275,9 @@ Input3dHitPhase.scroll
 
 - **Not text entry.** Anything that composes characters is
   [a letter someone can type](2026_09_11_what_a_real_application_still_needs.md#a-letter-someone-can-type).
-- **Not a slider on the arrow keys.** Flutter's slider binds its own
-  increase/decrease intents; this plan builds the layer that makes that a small
-  change and does not make it. Arrows on a focused slider move focus, as they
-  would on any other control here.
-- **Not traversal out of a surface**, as above.
+- ~~**Not a slider on the arrow keys.**~~ Left out of the first pass and taken
+  in *The follow-up*.
+- ~~**Not traversal out of a surface.**~~ The same.
 - **Not the back button.** Escape is `DismissIntent`; the system back button
   arrives through a `WidgetsBindingObserver` and is
   [the navigation item's](2026_09_11_what_a_real_application_still_needs.md#an-application-with-more-than-one-screen).
@@ -323,10 +319,9 @@ wheel, the Material screen has to take a Tab and an Enter, and a dialog has to
 close on Escape. Headless tests cover the arithmetic and the walk; they cannot
 cover what the platform actually sends.
 
-**Not yet done:** that look. Everything above is headless, and the one thing a
-headless test cannot say is what a real trackpad sends — macOS's momentum
-phase and inertia cancel especially — or whether a wheel notch feels like the
-right distance on a panel across a room.
+**Done**, on 2026-09-15: the gallery was run on a desktop and the wheel, the
+trackpad, Tab, the arrows and Enter all behaved. The follow-up below is
+headless-verified only; it has not been looked at in a window.
 
 ## What the reasoning got wrong
 
@@ -385,3 +380,91 @@ heard the wheel — because `SceneInput3d`'s listener is translucent and nothing
 under it answers a hit test, so a parent that defers to its child is not on
 the path. Flutter's `Scrollable` is opaque, so a real page works; the trap is
 written down in `docs/traps.md`.
+
+## The follow-up: the two things the boundary left out
+
+Asked for once the first pass had been tried in the gallery.
+
+### A slider on the arrow keys
+
+`Slider3d` binds all four arrows through a `SceneShortcuts3d` and a
+`SceneActions3d` around its gesture box, which is above the ink well's focus
+box and so on the key walk. Everything is Flutter's: up and right raise, down
+and left lower, one division or Flutter's platform unit (a tenth on Apple
+platforms, a twentieth elsewhere), and `onChangeStart` and `onChangeEnd`
+bracket each press. The arrows therefore stop moving the focus off a slider,
+which is Flutter's trade as well.
+
+One deliberate divergence: **left and right follow the track, not the reading
+direction.** Flutter mirrors both in a right-to-left locale. This track does
+not mirror yet, and arrows that disagreed with the thumb they move would be
+worse than arrows that ignore the locale — the right-to-left item owns both.
+
+### Tab across surfaces, and out of the scene
+
+- **The seam is `Layout3dOwner.onFocusTraversalEdge`.** The default Tab action
+  asks it when a step would wrap round the *tree* — never inside a
+  `FocusScope3d`, so a dialog still cycles like a `ModalRoute` — and wraps only
+  when it declines. `Focus3dTraversal` stays a policy about one tree.
+- **`SceneInput3d` answers it**, on every surface it registers and on every
+  floating entry, re-installed whenever an overlay's `entriesChanged` fires so
+  that a snack bar shown while the keyboard is in use is reachable without a
+  pointer event first.
+- **The order is mount order**, with each overlay's floating entries straight
+  after the panel that opened them. Geometry cannot say which of two panels in
+  a room is "next" any more than it can say which is in front, and `zOrder`
+  answers the pointer's question, not the reader's.
+- **Out is Flutter's traversal from the host's place in it.** Flutter moves
+  from a scope's focused child, so the host takes the focus quietly first and
+  then calls `nextFocus`. When that comes back to the host — a window that is
+  nothing but the scene — it goes straight back in at the other end.
+- **In changed.** Arriving by Tab now lands on the first box of the first
+  surface, and by Shift-Tab on the last box of the last — the host reads Shift
+  off the keyboard, because Flutter's traversal does not say which direction
+  landed on it. `requestSceneFocus` keeps its "back to where it was" meaning,
+  which is right for a programmatic return and wrong for a Tab: restoring the
+  last box on a forward Tab would hand the focus to the box that was just
+  tabbed away from, and the next Tab would leave again.
+- **Tabbing onto a panel with a trapping dialog open lands inside the
+  dialog**: the owner's scope remembers the dialog's scope as its focused
+  child, and asking that scope restores its own.
+- **A surface's scope sets `descendantsAreTraversable` false.** Its nodes have
+  no context, and `FocusNode.rect` dereferences one; traversal running in the
+  root scope — where it runs without a navigator, and where leaving the scene
+  now sends it — could otherwise reach a node handed to a `Focus3d`.
+
+### The work
+
+- [x] `Slider3d` arrows, `keyboardStep`; four tests in `slider_test.dart`.
+- [x] `Layout3dOwner.onFocusTraversalEdge`, `Focus3dTraversal.lastFocus`, the
+      edge check in the default Tab action, `descendantsAreTraversable` on the
+      surface's scope.
+- [x] `SceneInput3d`: the traversal order, the edge handler on surfaces and
+      entries, leaving and entering the scene; four tests in `keys_test.dart`.
+      The suites are 1054 and 525.
+- [x] Both READMEs, `docs/traps.md`, both changelogs, `AGENTS.md`'s counts,
+      and the map.
+
+### What this reasoning got wrong
+
+**The first plan said traversal between surfaces "is still nobody's", and
+filed it with the overlays.** It turned out to belong to the host, for the
+same reason every other cross-surface question does: the host is the only
+thing that knows which surfaces exist and which overlay hangs off which panel.
+The overlay only knows its own entries.
+
+**Arrival was wrong in the first pass, and nobody could have seen it.** With no
+way out, "back to where the focus was" and "the first box" only differ on a
+second visit, and there was no way to leave to make one. The moment Tab could
+leave, restoring on a forward Tab became a loop between the last box and the
+page.
+
+**Three test mistakes, worth recording because each reads as a code bug.** A
+traversal test put the scope's own boxes in the tree's order and so never
+reached the tree's edge; seeding the focus with `requestSceneFocus` picked the
+most recently registered of two surfaces at equal z-order, because that call
+means "front-most" and not "first"; and the changelog first called the
+`FocusNode.rect` dereference a crash waiting for any application with a page
+and a scene, when with a navigator the traversal never runs in the root scope
+at all. It was checked against the SDK before it was written down, and the
+wording narrowed to what is true.

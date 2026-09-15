@@ -16,6 +16,9 @@ import 'package:flutter/widgets.dart'
         ActivateIntent,
         Alignment,
         CallbackAction,
+        Column,
+        Directionality,
+        Expanded,
         Focus,
         DoNothingAndStopPropagationIntent,
         FocusManager,
@@ -26,6 +29,7 @@ import 'package:flutter/widgets.dart'
         SingleActivator,
         SizedBox,
         Stack,
+        TextDirection,
         Widget;
 import 'package:flutter_scene/scene.dart' show Node, PerspectiveCamera;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
@@ -358,6 +362,51 @@ void main() {
       expect(c.hasPrimaryFocus, isTrue);
     });
 
+    testWidgets('the tree asks before Tab wraps, and a dialog never does', (
+      tester,
+    ) async {
+      final a = box(name: 'a');
+      final b = box(name: 'b');
+      final c = box(name: 'c');
+      final d = box(name: 'd');
+      final surface = surfaceOf(
+        Column3d(
+          children: <Layout3d>[
+            a,
+            FocusScope3d(child: Row3d(children: <Layout3d>[c, d])),
+            b,
+          ],
+        ),
+        size: const Size3d(2, 3, 0),
+      );
+      final asked = <bool>[];
+      surface.owner!.onFocusTraversalEdge = (forward) {
+        asked.add(forward);
+        return false;
+      };
+
+      // b is the tree's last box, so a Tab from it runs off the end of the
+      // tree: asked, declined, and round it goes.
+      b.requestFocus();
+      settleFocus();
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      expect(asked, <bool>[true]);
+      expect(a.hasPrimaryFocus, isTrue);
+
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      expect(asked, <bool>[true, false]);
+      expect(b.hasPrimaryFocus, isTrue);
+
+      // Inside a scope it cycles without asking anybody.
+      d.requestFocus();
+      settleFocus();
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      expect(c.hasPrimaryFocus, isTrue);
+      expect(asked, hasLength(2));
+    });
+
     testWidgets('a surface holding the focus itself tabs to its first box', (
       tester,
     ) async {
@@ -570,6 +619,166 @@ void main() {
         ),
       ),
     );
+
+    /// A focusable box that writes its label down when it gains the focus.
+    Widget labelled(String label, List<String> focused) => SceneFocus3d(
+      onFocusChange: (has) {
+        if (has) focused.add(label);
+      },
+      child: const SceneSizedBox3d.cube(1),
+    );
+
+    Widget panel(List<Widget> children) => SceneLayout3d(
+      parent: Node(),
+      size: const Size3d(4, 4, 0.2),
+      child: SceneRow3d(children: children),
+    );
+
+    /// A scene of [panels], with a focusable widget above it when [elsewhere]
+    /// is given — a page the scene is one part of.
+    Widget page(
+      List<Widget> panels, {
+      Input3dController? controller,
+      FocusNode? elsewhere,
+    }) {
+      final view = SceneInput3d(
+        camera: camera(),
+        controller: controller,
+        // Arriving, which is what a first Tab from the page would do too:
+        // the first box of the first surface.
+        autofocus: true,
+        child: SizedBox.expand(
+          child: Stack(alignment: Alignment.topLeft, children: panels),
+        ),
+      );
+      if (elsewhere == null) return view;
+      return Directionality(
+        textDirection: TextDirection.ltr,
+        child: Column(
+          children: <Widget>[
+            Focus(focusNode: elsewhere, child: const SizedBox(height: 10)),
+            Expanded(child: view),
+          ],
+        ),
+      );
+    }
+
+    Future<void> shiftTab(WidgetTester tester) async {
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    }
+
+    testWidgets('Tab walks from one surface to the next, and back', (
+      tester,
+    ) async {
+      final focused = <String>[];
+      final controller = Input3dController();
+      await tester.pumpWidget(
+        page(<Widget>[
+          panel(<Widget>[labelled('a1', focused), labelled('a2', focused)]),
+          panel(<Widget>[labelled('b1', focused)]),
+        ], controller: controller),
+      );
+      await tester.pump();
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      expect(focused, <String>['a1', 'a2', 'b1']);
+
+      await shiftTab(tester);
+      expect(focused.last, 'a2');
+
+      // A window that is nothing but the scene: off the last surface there is
+      // nowhere else, so round to the first box of the first one.
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      expect(focused.last, 'a1');
+    });
+
+    testWidgets('Tab leaves the scene for the page, and comes back in at the '
+        'end it arrives from', (tester) async {
+      final focused = <String>[];
+      final controller = Input3dController();
+      final elsewhere = FocusNode(debugLabel: 'elsewhere');
+      addTearDown(elsewhere.dispose);
+      await tester.pumpWidget(
+        page(
+          <Widget>[
+            panel(<Widget>[labelled('a1', focused)]),
+            panel(<Widget>[labelled('b1', focused), labelled('b2', focused)]),
+          ],
+          controller: controller,
+          elsewhere: elsewhere,
+        ),
+      );
+      await tester.pump();
+      expect(focused, <String>['a1']);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      expect(focused.last, 'b2');
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      expect(elsewhere.hasPrimaryFocus, isTrue, reason: 'out to the page');
+
+      // Flutter's traversal from the page lands on the host, which passes it
+      // straight to the first box.
+      elsewhere.nextFocus();
+      await tester.pump();
+      expect(focused.last, 'a1');
+
+      // Shift-Tab off the first box leaves backwards, and Shift-Tab back in
+      // lands on the last box of the last surface.
+      await shiftTab(tester);
+      expect(elsewhere.hasPrimaryFocus, isTrue);
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+      elsewhere.previousFocus();
+      await tester.pump();
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+      expect(focused.last, 'b2');
+    });
+
+    testWidgets('a floating entry comes straight after the panel that '
+        'showed it', (tester) async {
+      final focused = <String>[];
+      final controller = Input3dController();
+      final overlay = Overlay3dController();
+      await tester.pumpWidget(
+        page(<Widget>[
+          SceneLayout3d(
+            parent: Node(),
+            size: const Size3d(4, 4, 0.2),
+            child: SceneOverlay3d(
+              controller: overlay,
+              child: SceneRow3d(
+                children: <Widget>[labelled('screen', focused)],
+              ),
+            ),
+          ),
+          panel(<Widget>[labelled('beside', focused)]),
+        ], controller: controller),
+      );
+      // A snack bar's action: a detached entry that neither is modal nor
+      // traps the focus, so it is reachable only by walking to it.
+      overlay.overlay!.insertEntry(
+        Overlay3dEntry(
+          layer: const OverlayLayer3d.detached(),
+          builder: (_) => Focus3d(
+            onFocusChange: (has) {
+              if (has) focused.add('snack bar');
+            },
+            child: TestBox(const Size3d(1, 1, 0)),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(focused, <String>['screen']);
+
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+
+      expect(focused, <String>['screen', 'snack bar', 'beside']);
+    });
 
     testWidgets('autofocus hands the keyboard to the first box', (
       tester,
