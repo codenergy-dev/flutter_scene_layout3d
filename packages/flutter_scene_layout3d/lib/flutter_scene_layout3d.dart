@@ -229,6 +229,7 @@ export 'src/input/draggable.dart'
 export 'src/input/events.dart'
     show HitTestBehavior3d, HitTestTarget3d, PointerEvent3d, PointerSequence3d;
 export 'src/input/focus.dart' show Focus3d, Focus3dTraversal, FocusScope3d;
+export 'src/input/shortcuts.dart' show Actions3d, Shortcuts3d;
 export 'src/input/gesture_detector.dart' show GestureDetector3d;
 export 'src/input/listener.dart'
     show
@@ -236,7 +237,7 @@ export 'src/input/listener.dart'
         Listener3d,
         PointerEvent3dCallback,
         ProxyLayout3dWithHitTestBehavior;
-export 'src/input/pointer.dart' show Layout3dPointer;
+export 'src/input/pointer.dart' show Layout3dPointer, PointerScroll3d;
 export 'src/input/pointer_group.dart' show Layout3dPointerGroup;
 export 'src/input/tap_target.dart' show TapTarget3d;
 export 'src/layout3d.dart'

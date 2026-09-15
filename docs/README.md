@@ -144,6 +144,12 @@ Two entry points:
   when it mounts, and what is in front of what is stated on the surface rather
   than restated from a tick — because geometry cannot answer that question for
   a panel turned away from the camera.
+  [A wheel, a trackpad and a key that reach a box](../packages/flutter_scene_layout3d/plans/2026_09_15_a_wheel_a_trackpad_and_a_key_that_reach_a_box.md)
+  is the second, and it lands on that host: a wheel goes where a press would
+  have gone, a trackpad pan is a drag by a finger at the cursor, and a key walks
+  Flutter's own shortcuts and actions over the layout tree, because a focus
+  node on a plane has no context for Flutter's widgets to look them up
+  through.
 
 ## Keeping this true
 

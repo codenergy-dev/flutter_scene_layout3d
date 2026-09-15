@@ -1,8 +1,8 @@
 ---
 status: in progress
-reason: fifteen of the seventeen items are open; the record of what shipped and the application widget are closed
+reason: fourteen of the seventeen items are open; the record of what shipped and the application widget are closed, and the wheel and the key are implemented and waiting on a look at a desktop
 created_at: 2026-09-11T21:20:18Z
-updated_at: 2026-09-11T23:58:00Z
+updated_at: 2026-09-15T12:19:00Z
 commit: abc2469ce5c4ec4c41e2738fc5acf55bcf40640a
 ---
 
@@ -92,7 +92,7 @@ plan, which is the rule phase 0 established and every phase since has obeyed.
 | Plan | Package | What it unblocks |
 | --- | --- | --- |
 | ~~[An application that does not wire its own rays](#an-application-that-does-not-wire-its-own-rays)~~ | layout3d | **done** — every application, ninety lines each |
-| [A wheel, a trackpad and a key that reach a box](#a-wheel-a-trackpad-and-a-key-that-reach-a-box) | layout3d | scrolling on desktop and web; activating a control without a pointer |
+| [A wheel, a trackpad and a key that reach a box](#a-wheel-a-trackpad-and-a-key-that-reach-a-box) | layout3d | **implemented** — scrolling on desktop and web; activating a control without a pointer. Waiting on a person with a trackpad |
 | [A row that reads right to left](#a-row-that-reads-right-to-left) | layout3d | every non-LTR locale |
 | [A picture on a panel](#a-picture-on-a-panel) | layout3d | avatars, photographs, gradients, logos |
 | [A box that fades](#a-box-that-fades) | layout3d | `Opacity3d`, and every fade in the motion lane |
@@ -121,10 +121,12 @@ real application instead of in a scene. See
 [its plan](2026_09_11_an_application_that_does_not_wire_its_own_rays.md).
 
 **[The wheel and the key](#a-wheel-a-trackpad-and-a-key-that-reach-a-box)
-immediately after**, and possibly in the same breath — the first ported screen
-will meet it in the first minute on a desktop, and the controller side is
-already built (`Scroll3dController.jumpBy`, `applyUserOffset` and `fling` all
-exist), so what is missing is routing rather than mechanism.
+immediately after** — **implemented**, see
+[its plan](2026_09_15_a_wheel_a_trackpad_and_a_key_that_reach_a_box.md), and
+waiting only on being tried on a desktop. The reasoning here said the
+controller side was built and only routing was missing; a wheel turned out to
+want an operation of its own, and the key turned out not to route through the
+host at all.
 
 **[A way to test a screen someone else built](#a-way-to-test-a-screen-someone-else-built)
 early, out of order.** The audit's sharpest evidence is that ten of this
@@ -185,7 +187,21 @@ are where a first implementer's decision becomes someone else's constraint.
   the group and the camera. `SceneInput3d` takes a `child` rather than
   building the `SceneView`, which is what makes it drivable from a widget test
   with no window — the test library's half of this is already possible, and
-  `test/input_test.dart` is the worked example.
+  `test/input_test.dart` is the worked example. **Corrected by the wheel and
+  the key:** the wheel and the trackpad do route through it, and the key does
+  not — a key goes to the focus, and the focus manager never consults the
+  widget that owns the rays. What the host owns for the keyboard is the way
+  *in*, `requestSceneFocus`. Navigation's back button is a key of that kind
+  too, so whoever builds it should expect the focus tree, not the host, to be
+  where it arrives.
+- **Keys are Flutter's vocabulary walked over the layout tree**, by
+  `Shortcuts3d` and `Actions3d`. Two plans consume this:
+  [the controls that wait on a keyboard](#the-controls-that-wait-on-a-keyboard)
+  binds intents on components (a slider's increase and decrease is the first
+  small one), and [a letter someone can type](#a-letter-someone-can-type) will
+  meet it where text editing's own shortcuts live. A Flutter `Shortcuts` widget
+  above the `SceneView` reaches nothing on a plane; that is in
+  [docs/traps.md](../../../docs/traps.md).
 - **Two plans want an asynchronous texture, and one already has the trap.** A
   glyph's wall arrives with the atlas rather than with the layout, which is
   `GlyphAtlas3d.outlineRevision` and is written up in
@@ -273,6 +289,15 @@ that seam.
 
 **Package:** `flutter_scene_layout3d`.
 **Slug:** `a_wheel_a_trackpad_and_a_key_that_reach_a_box`.
+**Implemented** by
+[its own plan](2026_09_15_a_wheel_a_trackpad_and_a_key_that_reach_a_box.md),
+which stays open only until a person has tried it on a desktop. The entry
+below is what it was reasoned from. What that reasoning got wrong, in short:
+Tab was not wired either, so "traversal moves focus correctly" described a
+policy nothing called; the key does not route through the application widget;
+and the defect underneath was in the overlay again — a trapping entry did not
+take the focus, which activation would have turned into a dialog opened twice
+by one Enter.
 
 Two absences that are one plan, because both are "an input Flutter has and
 this stack does not route".
@@ -404,8 +429,10 @@ engine gains node opacity, revisit that decision too.
 
 **The largest item on this map by a wide margin**, and the Material catalogue
 plan already declares it out of its own scope in as many words: there is no
-`EditableText3d`, no text selection, no cursor, no clipboard and no keyboard
-plumbing anywhere in the stack. What it gates: `TextField3d`, and through it
+`EditableText3d`, no text selection, no cursor, no clipboard and no
+text-input client anywhere in the stack. (Keys do reach a focused box now,
+through `Shortcuts3d` and `Actions3d` — which is where an editor's own
+shortcuts will want to live — but nothing composes a character.) What it gates: `TextField3d`, and through it
 `SearchBar3d`, `DropdownMenu3d`'s editable form, `DatePicker3d`'s text entry,
 `Autocomplete3d` — and `Form3d`/`FormField3d`/validation, which do not exist
 in any form and which nearly every real application has.
@@ -779,6 +806,6 @@ got wrong — the same shape the
 re-read parts of it.
 
 **And reread the seams whenever one closes.** This map's items touch each
-other in seven places, all named above, and this repository has already been
+other in eight places, all named above, and this repository has already been
 bitten by the failure mode: closing a plan made three statements in other
 plans false, and nothing warned anyone.

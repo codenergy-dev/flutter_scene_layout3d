@@ -13,7 +13,9 @@ import 'package:flutter/foundation.dart'
         describeIdentity,
         mustCallSuper,
         protected;
-import 'package:flutter/widgets.dart' show FocusManager, FocusScopeNode;
+import 'package:flutter/services.dart' show KeyEvent;
+import 'package:flutter/widgets.dart'
+    show FocusManager, FocusNode, FocusScopeNode, KeyEventResult;
 import 'package:flutter_scene/scene.dart' show Node;
 import 'package:vector_math/vector_math.dart' show Matrix4;
 
@@ -27,6 +29,14 @@ import 'geometry/size3d.dart';
 import 'hit_test.dart';
 import 'metrics.dart';
 import 'slot.dart';
+
+/// Which box each focus node in a layout tree stands for.
+///
+/// Filled in by `Focus3d`, `FocusScope3d` and [Layout3dOwner.focusScope], and
+/// read through `Focus3d.layoutFor`. Not exported: it is how the key layer
+/// finds a box from `FocusManager.primaryFocus`, which is a node with no
+/// context, and nothing outside the package has a reason to write it.
+final Expando<Layout3d> focusNodeLayouts = Expando<Layout3d>('Layout3d focus');
 
 /// Builds the layout for one item of a lazily built view.
 ///
@@ -143,9 +153,33 @@ class Layout3dOwner {
     // The attachment is what a later `dispose` unparents through; nothing
     // reparents through it, so the null context it is made with is never
     // dereferenced.
-    scope.attach(null);
+    scope.attach(null, onKeyEvent: _handleScopeKeyEvent);
+    focusNodeLayouts[scope] = focusRoot;
     FocusManager.instance.rootScope.setFirstFocus(scope);
     return _focusScope = scope;
+  }
+
+  /// The box [focusScope] stands for, which is the root of the tree.
+  ///
+  /// Set by `Layout3dSurface`. It is what a key walk starts from when the
+  /// surface's scope itself holds primary focus, which happens whenever the
+  /// focused box is taken out of the tree: Flutter hands the focus to the
+  /// nearest enclosing scope, and a Tab from there has to know what tree it
+  /// is in.
+  Layout3d? focusRoot;
+
+  /// Offered each key event that reaches [focusScope] while the scope itself
+  /// holds primary focus.
+  ///
+  /// Set by `Layout3dSurface` to the package's key walk. The owner knows
+  /// nothing about keys; it only has the node they arrive at.
+  KeyEventResult Function(KeyEvent event)? onFocusScopeKeyEvent;
+
+  KeyEventResult _handleScopeKeyEvent(FocusNode node, KeyEvent event) {
+    if (!identical(FocusManager.instance.primaryFocus, node)) {
+      return KeyEventResult.ignored;
+    }
+    return onFocusScopeKeyEvent?.call(event) ?? KeyEventResult.ignored;
   }
 
   /// Whether anything on this surface has ever asked for focus.

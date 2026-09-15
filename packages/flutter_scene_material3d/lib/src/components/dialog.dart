@@ -202,6 +202,8 @@ Future<T?> showDialog3d<T>({
     // own modal stack has no depth step between the scrim and what it covers.
     modal: false,
     trapFocus: true,
+    // The route's too, not only the barrier's: it is what Escape asks.
+    barrierDismissible: barrierDismissible,
     restoreFocus: restoreFocus,
     alignment: alignment,
     debugLabel: debugLabel ?? 'Dialog3d',

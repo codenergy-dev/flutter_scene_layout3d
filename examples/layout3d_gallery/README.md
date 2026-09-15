@@ -82,6 +82,12 @@ viewer, which is why the ordering is stated rather than derived. The upright
 screen's snack bars are detached surfaces of their own and land a step in
 front of it without the gallery saying anything.
 
+The same host routes the wheel and a trackpad, so the mesh list scrolls under
+either as well as under a drag. Keys need no wiring either: click a control and Tab,
+the arrows, Enter and Space work on the Material screens. The gallery does not
+pass `autofocus`, because a window that grabbed the keyboard before anyone
+touched it would be a strange example to copy.
+
 The gallery used to wire all of that by hand, and it is worth knowing what it
 cost, because it is the argument for the widget: about ninety lines, three of
 them with silent failure modes — a z-order in the wrong relative order routed

@@ -203,6 +203,8 @@ Future<T?> showModalBottomSheet3d<T>({
     layer: overlayLayer3d(theme, metrics),
     modal: false,
     trapFocus: true,
+    // The route's too, not only the barrier's: it is what Escape asks.
+    barrierDismissible: barrierDismissible,
     restoreFocus: restoreFocus,
     alignment: edge.alignment,
     debugLabel: debugLabel ?? 'BottomSheet3d',

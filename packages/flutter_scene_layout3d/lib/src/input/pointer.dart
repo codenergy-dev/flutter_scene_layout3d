@@ -330,6 +330,88 @@ class Layout3dPointer {
     _drags[pointer]?.cancel();
   }
 
+  /// What a wheel along [worldRay] would scroll, or null when nothing would
+  /// move.
+  ///
+  /// [scrollDelta] is the platform's `PointerScrollEvent.scrollDelta`, in
+  /// logical pixels, already swapped by the host when a modifier flips the
+  /// axes. The ray is hit-tested afresh — a wheel has nothing captured — and
+  /// the path is handed to [PointerScroll3d.resolve], which picks the
+  /// innermost view that would actually move.
+  ///
+  /// Resolving and applying are separate on purpose: a host inside a widget
+  /// tree registers the answer with Flutter's `pointerSignalResolver` and
+  /// applies it only if nothing nearer the pointer claimed the wheel first.
+  PointerScroll3d? resolveScroll(Ray worldRay, Offset scrollDelta) =>
+      PointerScroll3d.resolve(
+        hitTest(worldRay),
+        scrollDelta,
+        unitsPerLogicalPixel: surface.metrics.unitsPerLogicalPixel,
+      );
+
+  /// Stops every scrolling view under [worldRay] that is still coasting.
+  ///
+  /// What a trackpad's `PointerScrollInertiaCancelEvent` means: fingers came
+  /// down on a list the platform was still carrying. Every view on the path
+  /// is told, not only the innermost, which is Flutter's rule too — the
+  /// fingers are on all of them.
+  void cancelScrollInertia(Ray worldRay) {
+    for (final entry in hitTest(worldRay).path) {
+      final layout = entry.layout;
+      if (layout is Scrollable3d) {
+        (layout as Scrollable3d).controller.pointerScroll(0.0);
+      }
+    }
+  }
+
+  /// Starts a trackpad pan along [worldRay], grabbing the nearest scrolling
+  /// view under it, and reports whether one was grabbed.
+  ///
+  /// A pan-zoom is a drag by a finger that went down where the cursor is: the
+  /// host feeds [panZoomUpdate] the ray through the cursor moved by the pan
+  /// offset, and the view follows it through the same ray-plane arithmetic a
+  /// touch drag uses, so the content stays under the fingers at any angle and
+  /// the release flings.
+  ///
+  /// What it is not is a press. **Nothing on the path is handed an event**: a
+  /// two-finger scroll across a button must neither tap it nor focus it. A
+  /// path with no scrolling view on it starts nothing and returns false.
+  bool panZoomStart(Ray worldRay, {int pointer = 0, Duration? timeStamp}) {
+    cancel(pointer: pointer);
+    final hit = hitTest(worldRay);
+    if (hit.entryOf<Scrollable3d>() == null) return false;
+    final sequence = _Sequence(
+      owner: this,
+      devicePointer: pointer,
+      hit: hit,
+      kind: PointerDeviceKind.trackpad,
+      buttons: 0,
+      dispatches: false,
+    );
+    _sequences[pointer] = sequence;
+    sequence.begin(worldRay, timeStamp ?? _clock.elapsed);
+    return sequence.scrollable != null;
+  }
+
+  /// Moves the virtual finger of a trackpad pan to [worldRay].
+  ///
+  /// Returns true when the grabbed view moved. A no-op for a pointer that has
+  /// no pan in progress.
+  bool panZoomUpdate(Ray worldRay, {int pointer = 0, Duration? timeStamp}) {
+    final sequence = _sequences[pointer];
+    if (sequence == null || sequence.dispatches) return false;
+    return sequence.move(worldRay, timeStamp ?? _clock.elapsed);
+  }
+
+  /// Ends a trackpad pan, letting the grabbed view go at the speed the
+  /// fingers were moving.
+  void panZoomEnd({Ray? worldRay, int pointer = 0, Duration? timeStamp}) {
+    final sequence = _sequences[pointer];
+    if (sequence == null || sequence.dispatches) return;
+    _sequences.remove(pointer);
+    sequence.end(worldRay, timeStamp ?? _clock.elapsed);
+  }
+
   /// Moves an unpressed pointer to [worldRay], emitting enter and exit along
   /// the way.
   ///
@@ -543,6 +625,74 @@ class Layout3dPointer {
   static const double _parallel = 1e-9;
 }
 
+/// A wheel's worth of scrolling, resolved to the view it will move.
+///
+/// The answer [Layout3dPointer.resolveScroll] gives, and deliberately a value
+/// rather than a side effect: a host inside a widget tree hands [apply] to
+/// Flutter's `pointerSignalResolver`, which runs it only if nothing nearer the
+/// pointer claimed the wheel first.
+///
+/// ## Which view takes a wheel
+///
+/// Flutter's rule, unchanged. The path is walked deepest first, and the first
+/// [Scrollable3d] that would *actually move* takes the wheel: its axis has a
+/// component in the delta, and its clamped target differs from where it is. So
+/// a vertical wheel over a horizontal carousel inside a vertical list scrolls
+/// the list, and a wheel at the end of an inner list goes on to the outer one.
+///
+/// The delta is in logical pixels on the plane, converted through the tree's
+/// metrics — a 100-pixel notch moves a list 100dp of its own content, however
+/// far away and at whatever angle the plane is seen. It does not change sign
+/// for a plane seen from behind: a wheel is about moving further into a list,
+/// and "further in" is a property of the layout, not of where the viewer
+/// stands. A depth-axis view takes no wheel at all.
+class PointerScroll3d {
+  const PointerScroll3d._(this.scrollable, this.delta);
+
+  /// The view the wheel is for.
+  final Scrollable3d scrollable;
+
+  /// How far it moves, in layout units along its own axis.
+  final double delta;
+
+  /// Scrolls [scrollable] by [delta], and reports whether it moved.
+  ///
+  /// Checked again rather than assumed, because something else may have moved
+  /// the view between resolving and applying.
+  bool apply() => scrollable.controller.pointerScroll(delta);
+
+  /// The innermost view on [path] a wheel of [scrollDelta] would move, or
+  /// null when none would.
+  ///
+  /// [scrollDelta] is in logical pixels, as `PointerScrollEvent` reports it;
+  /// [unitsPerLogicalPixel] turns it into layout units.
+  static PointerScroll3d? resolve(
+    HitTestResult3d path,
+    Offset scrollDelta, {
+    required double unitsPerLogicalPixel,
+  }) {
+    for (final entry in path.path) {
+      final layout = entry.layout;
+      if (layout is! Scrollable3d) continue;
+      final scrollable = layout as Scrollable3d;
+      final pixels = switch (scrollable.scrollAxis) {
+        Axis3d.horizontal => scrollDelta.dx,
+        Axis3d.vertical => scrollDelta.dy,
+        Axis3d.depth => 0.0,
+      };
+      if (pixels == 0.0) continue;
+      final delta = pixels * unitsPerLogicalPixel;
+      final controller = scrollable.controller;
+      if (controller.pointerScrollTarget(delta) == controller.offset) continue;
+      return PointerScroll3d._(scrollable, delta);
+    }
+    return null;
+  }
+
+  @override
+  String toString() => 'PointerScroll3d(${scrollable.runtimeType} by $delta)';
+}
+
 /// What a pointer that is hovering is over.
 class _Hover {
   _Hover({required this.arenaPointer, required this.path});
@@ -565,6 +715,7 @@ class _Sequence implements PointerSequence3d, GestureArenaMember {
     required this.hit,
     required this.kind,
     required this.buttons,
+    this.dispatches = true,
   }) : arenaPointer = Layout3dPointer._allocateArenaPointer();
 
   final Layout3dPointer owner;
@@ -575,6 +726,11 @@ class _Sequence implements PointerSequence3d, GestureArenaMember {
 
   final PointerDeviceKind kind;
   final int buttons;
+
+  /// Whether the path is handed pointer events, which is false for exactly
+  /// one kind of sequence: a trackpad pan, which moves a view and presses
+  /// nothing.
+  final bool dispatches;
 
   @override
   final int arenaPointer;
@@ -627,6 +783,14 @@ class _Sequence implements PointerSequence3d, GestureArenaMember {
     final surfaceEntry = hit.entryOf<Layout3dSurface>();
     _surfaceDepth = surfaceEntry?.localPosition.z ?? 0.0;
     _global = _globalFor(worldRay) ?? Offset.zero;
+    if (!dispatches) {
+      // Nothing is handed an event, so nothing can enter the arena either and
+      // the drag is accepted the moment it is armed. The events are not even
+      // built: Flutter asserts that a down, a move or an up never carries the
+      // trackpad kind, because a trackpad's gestures are pan-zooms.
+      _armDrag(worldRay, timeStamp);
+      return;
+    }
     final event = PointerDownEvent(
       pointer: arenaPointer,
       kind: kind,
@@ -651,6 +815,7 @@ class _Sequence implements PointerSequence3d, GestureArenaMember {
     final global = _globalFor(worldRay) ?? _global;
     final delta = global - _global;
     _global = global;
+    if (!dispatches) return _dragTo(worldRay, timeStamp);
     final event = PointerMoveEvent(
       pointer: arenaPointer,
       kind: kind,
@@ -667,6 +832,13 @@ class _Sequence implements PointerSequence3d, GestureArenaMember {
   void end(Ray? worldRay, Duration timeStamp) {
     final global = (worldRay == null ? null : _globalFor(worldRay)) ?? _global;
     _global = global;
+    if (!dispatches) {
+      // No last sample, exactly as a touch up takes none: a release arrives
+      // where the last move left the fingers, and a repeated position at a
+      // later time would read as the fingers having stopped.
+      _releaseDrag();
+      return;
+    }
     final event = PointerUpEvent(
       pointer: arenaPointer,
       kind: kind,
@@ -682,6 +854,11 @@ class _Sequence implements PointerSequence3d, GestureArenaMember {
   }
 
   void abandon(Duration timeStamp) {
+    if (!dispatches) {
+      _velocity = null;
+      _releaseDrag();
+      return;
+    }
     final event = PointerCancelEvent(
       pointer: arenaPointer,
       kind: kind,

@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
 import 'package:flutter_scene_layout3d/widgets.dart';
 import 'package:flutter_scene_material3d/flutter_scene_material3d.dart';
@@ -214,6 +215,37 @@ void main() {
       // The press landed on the barrier and went no further.
       expect(taps, 1);
       expect(pumped.overlay.entries, hasLength(1));
+    });
+
+    testWidgets('Escape pops it, unless it must be answered', (tester) async {
+      final pumped = await pumpOverlay(tester);
+      final dismissed = showDialog3d<String>(
+        context: pumped.context,
+        builder: (context) => const Dialog3d(child: SceneSizedBox3d.cube(0.4)),
+      );
+      await tester.pump();
+
+      // The dialog took the focus when it opened, so Escape reaches it with
+      // nothing inside focused.
+      expect(await tester.sendKeyEvent(LogicalKeyboardKey.escape), isTrue);
+      await tester.pump();
+      expect(await dismissed, isNull);
+      expect(pumped.overlay.entries, isEmpty);
+
+      final held = showDialog3d<String>(
+        context: pumped.context,
+        barrierDismissible: false,
+        builder: (context) => const Dialog3d(child: SceneSizedBox3d.cube(0.4)),
+      );
+      await tester.pump();
+
+      expect(await tester.sendKeyEvent(LogicalKeyboardKey.escape), isFalse);
+      await tester.pump();
+      expect(pumped.overlay.entries, hasLength(1));
+
+      Navigator3d.of(pumped.overlay)!.pop('kept');
+      await tester.pump();
+      expect(await held, 'kept');
     });
 
     testWidgets('it traps focus and hands it back on the pop', (tester) async {

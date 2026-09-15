@@ -14,6 +14,18 @@ component has no thickness in Flutter and must have one here, which is the
 token Material does not publish at all. The plan's middle section is where
 that reasoning lives.
 
+- **Enter and Space activate a focused control, and Escape closes an overlay.**
+  **`InkWell3d` binds `ActivateIntent`**, the way Flutter's `InkWell` does, so
+  every button, card, tile, chip, menu item, navigation destination and
+  selection control answers the keyboard: the ripple starts from the middle of
+  the control, `onTap` runs, and the ripple is let go. The binding is enabled
+  only for an enabled control with an `onTap`, so a key on one that would do
+  nothing goes on up the tree. A dialog, a menu and a modal sheet take the
+  focus when they open and close on Escape; **`showDialog3d` and
+  `showModalBottomSheet3d` now hand `barrierDismissible` to their route** as
+  well as to their scrim, so a dialog that must be answered refuses the key as
+  it refuses the tap.
+
 - **Every label and icon on a panel is lifted off its face.**
   **`Material3d.contentLift`**: two surfaces sharing a plane both write depth
   there and come out striped rather than one hiding the other, and no

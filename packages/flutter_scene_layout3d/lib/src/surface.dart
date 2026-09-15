@@ -15,6 +15,7 @@ import 'geometry/constraints3d.dart';
 import 'geometry/offset3d.dart';
 import 'geometry/size3d.dart';
 import 'hit_test.dart';
+import 'input/shortcuts.dart';
 import 'layout3d.dart';
 import 'metrics.dart';
 import 'slot.dart';
@@ -68,7 +69,9 @@ class Layout3dSurface extends SingleChildLayout3d {
     _owner
       ..basis = basis ?? LayoutBasis3d.xy
       ..metrics = metrics
-      ..onNeedVisualUpdate = onNeedVisualUpdate;
+      ..onNeedVisualUpdate = onNeedVisualUpdate
+      ..focusRoot = this
+      ..onFocusScopeKeyEvent = (event) => Actions3d.handleKeyEvent(this, event);
     attach(_owner);
     applyNodeTransform();
   }

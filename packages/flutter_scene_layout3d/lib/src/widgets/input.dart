@@ -2,43 +2,61 @@ import 'dart:ui' show Offset, Size;
 
 import 'package:flutter/gestures.dart'
     show
+        GestureBinding,
         PointerCancelEvent,
+        PointerDeviceKind,
         PointerDownEvent,
         PointerExitEvent,
         PointerHoverEvent,
         PointerMoveEvent,
+        PointerPanZoomEndEvent,
+        PointerPanZoomStartEvent,
+        PointerPanZoomUpdateEvent,
+        PointerScrollEvent,
+        PointerScrollInertiaCancelEvent,
+        PointerSignalEvent,
         PointerUpEvent;
 import 'package:flutter/rendering.dart' show RenderBox;
+import 'package:flutter/services.dart'
+    show HardwareKeyboard, LogicalKeyboardKey;
 import 'package:flutter/widgets.dart'
     show
         BuildContext,
+        Focus,
+        FocusNode,
         HitTestBehavior,
         InheritedWidget,
         Listener,
         MouseRegion,
         State,
         StatefulWidget,
-        Widget;
+        Widget,
+        WidgetsBinding;
 import 'package:flutter_scene/scene.dart' show Camera;
 import 'package:vector_math/vector_math.dart' show Ray;
 
 import '../hit_test.dart';
 import '../layout3d.dart';
+import '../input/focus.dart';
+import '../input/pointer.dart';
 import '../input/pointer_group.dart';
+import '../input/shortcuts.dart';
 import '../overlay/overlay.dart';
 import '../surface.dart';
 
 /// What an event was doing when it found something.
 ///
-/// Open on purpose: the inputs this stack routes are not all here yet — a
-/// wheel and a key are their own plan — and a reader should be able to tell a
-/// phase that is missing from one that was forgotten.
+/// Keys are not here and will not be: a key goes to the focus, not to what is
+/// under the cursor, so there is no hit to report.
 enum Input3dHitPhase {
   /// A press going down.
   press,
 
   /// A pointer moving with nothing pressed.
   hover,
+
+  /// A wheel turning, or two fingers starting a pan on a trackpad.
+  scroll,
 }
 
 /// What a pointer found, reported to [SceneInput3d.onHit].
@@ -57,12 +75,12 @@ class Input3dHit {
   /// What the pointer was doing.
   final Input3dHitPhase phase;
 
-  /// Whether a press took hold of a scrolling view.
+  /// Whether the event took hold of a scrolling view.
   ///
-  /// The one piece of news a press carries that the path does not: a
-  /// [Scrollable3d] under the ray has started following this pointer, so an
-  /// application animating that scroll position for show knows to stop.
-  /// Always false for a hover.
+  /// The one piece of news a press or a scroll carries that the path does
+  /// not: a [Scrollable3d] under the ray has started following this pointer,
+  /// or is about to move under a wheel, so an application animating that
+  /// scroll position for show knows to stop. Always false for a hover.
   final bool grabbedScrollable;
 }
 
@@ -110,6 +128,15 @@ abstract class Input3dHost {
 
   /// Stops tracking [overlay], and takes its entries out of the group.
   void unregisterOverlay(Overlay3d overlay);
+
+  /// Hands the keyboard to the scene, and reports whether anything took it.
+  ///
+  /// The front-most surface that can take the focus gets it: back to wherever
+  /// its focus last was, when something on it has held the focus before, and
+  /// to its first focusable box in tree order otherwise. What
+  /// [SceneInput3d.autofocus] does on the first frame and what the host does
+  /// whenever Flutter's own traversal lands on it.
+  bool requestSceneFocus();
 }
 
 /// Imperative access to the [Input3dHost] a [SceneInput3d] owns.
@@ -163,11 +190,32 @@ class Input3dController {
 /// A dialog is put one whole step in front of the surface whose overlay
 /// opened it, so nothing has to restate that relationship.
 ///
-/// ## The events it does not route yet
+/// ## A wheel and a trackpad
 ///
-/// A wheel, a trackpad gesture and a key. They belong here — this is where
-/// they will land — and wiring them to nothing would hide that they are
-/// missing, so they are left visibly absent rather than quietly dropped.
+/// A wheel goes where a press would have gone — the front-most surface that
+/// answers the ray, so a wheel over a dialog does not scroll the page behind
+/// it — and on that surface to the innermost view that would actually move,
+/// which is Flutter's rule; see [PointerScroll3d]. It claims the wheel through
+/// Flutter's `pointerSignalResolver`, and only when something would move, so a
+/// scroll view in the widget tree around the scene keeps working. Shift turns
+/// a mouse wheel sideways, as it does in Flutter.
+///
+/// Two fingers on a trackpad are a **drag by a finger that went down where the
+/// cursor is**, run through the same arithmetic a touch drag uses, so the
+/// content stays under the fingers at any angle and flings when they lift. A
+/// pan presses nothing: no control under it is tapped or focused. Its scale
+/// and rotation are ignored — this widget zooms neither the camera nor the
+/// layout — and an application that wants a pinch wraps a `Listener` of its
+/// own around this one.
+///
+/// ## A key
+///
+/// A key goes to the focus, not to the cursor, and it reaches a box on a
+/// plane without passing through this widget; [Shortcuts3d] explains the
+/// walk. What this widget adds is a way *in*: a keyboard cannot reach a scene
+/// nothing has focused yet, so the host takes part in Flutter's traversal as
+/// one focusable widget and hands the focus into the front-most surface the
+/// moment it receives it. [autofocus] does that on the first frame.
 class SceneInput3d extends StatefulWidget {
   /// Creates an input host over [child].
   const SceneInput3d({
@@ -176,6 +224,7 @@ class SceneInput3d extends StatefulWidget {
     this.controller,
     this.onHit,
     this.viewSize,
+    this.autofocus = false,
     required this.child,
   });
 
@@ -190,12 +239,20 @@ class SceneInput3d extends StatefulWidget {
   /// Imperative access to the host this widget owns.
   final Input3dController? controller;
 
-  /// Called after a press or a hover, with what it found.
+  /// Called after a press, a hover or a scroll, with what it found.
   ///
   /// Not after a move: a move goes to the surfaces that captured the press
   /// and does not ask what is under the ray, so there would be nothing fresh
   /// to report.
   final Input3dHitCallback? onHit;
+
+  /// Whether the scene takes the keyboard on the first frame.
+  ///
+  /// The focus goes to the first focusable box on the front-most surface that
+  /// has one. Leave it false in an application where the scene is one part of
+  /// a screen: a scene nobody has interacted with should not take the
+  /// keyboard away from the widgets around it.
+  final bool autofocus;
 
   /// The logical size of the view the rays are cast against.
   ///
@@ -280,6 +337,11 @@ class _SceneInput3dState extends State<SceneInput3d> implements Input3dHost {
 
   final Map<Layout3dSurface, double> _zOrders = <Layout3dSurface, double>{};
 
+  /// The host's place in Flutter's own focus traversal: the door a keyboard
+  /// comes into the scene through. It never keeps the focus when something
+  /// in the scene can take it.
+  final FocusNode _focusNode = FocusNode(debugLabel: 'SceneInput3d');
+
   @override
   void initState() {
     super.initState();
@@ -306,6 +368,7 @@ class _SceneInput3dState extends State<SceneInput3d> implements Input3dHost {
       widget.controller?._host = null;
     }
     _group.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
@@ -346,6 +409,44 @@ class _SceneInput3dState extends State<SceneInput3d> implements Input3dHost {
   void unregisterOverlay(Overlay3d overlay) {
     if (!_overlays.remove(overlay)) return;
     _group.forgetDetachedEntries(overlay);
+  }
+
+  @override
+  bool requestSceneFocus() {
+    _syncOverlays();
+    for (final surface in _group.surfaces) {
+      final owner = surface.owner;
+      // Back to where the focus last was on this surface — which, with a
+      // dialog open, is inside the dialog — rather than to the first box in
+      // tree order, which could be behind the barrier.
+      if (owner != null &&
+          owner.hasFocusScope &&
+          owner.focusScope.focusedChild != null) {
+        owner.focusScope.requestFocus();
+        return true;
+      }
+      final first = const Focus3dTraversal().firstFocus(surface);
+      if (first != null) {
+        first.requestFocus();
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// Passes the focus straight through to the scene when Flutter gives it to
+  /// the host.
+  ///
+  /// A surface laid out for the first time in the frame that asked has no
+  /// sizes yet, and traversal skips a box without one; so a first attempt
+  /// that finds nothing tries once more after the frame.
+  void _handleFocusChange(bool focused) {
+    if (!focused || !_focusNode.hasPrimaryFocus) return;
+    if (requestSceneFocus()) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_focusNode.hasPrimaryFocus) return;
+      requestSceneFocus();
+    });
   }
 
   // --- dispatch ----------------------------------------------------------
@@ -449,6 +550,74 @@ class _SceneInput3dState extends State<SceneInput3d> implements Input3dHost {
     _report(Input3dHitPhase.hover);
   }
 
+  void _handleSignal(PointerSignalEvent event) {
+    if (event is PointerScrollInertiaCancelEvent) {
+      final ray = _rayAt(event.localPosition);
+      if (ray == null) return;
+      _syncOverlays();
+      // Not through the resolver, which is Flutter's position too: the
+      // fingers are on every view under them, and every one of them stops.
+      _group.cancelScrollInertia(ray);
+      return;
+    }
+    if (event is! PointerScrollEvent) return;
+    final ray = _rayAt(event.localPosition);
+    if (ray == null) return;
+    _syncOverlays();
+    final scroll = _group.resolveScroll(ray, _scrollDeltaOf(event));
+    _report(Input3dHitPhase.scroll, grabbedScrollable: scroll != null);
+    if (scroll == null) return;
+    GestureBinding.instance.pointerSignalResolver.register(event, (resolved) {
+      if (!scroll.apply()) return;
+      if (resolved is PointerScrollEvent) {
+        // Tells the platform the wheel was used, so a web page around the
+        // application does not scroll as well.
+        resolved.respond(allowPlatformDefault: false);
+      }
+    });
+  }
+
+  /// The wheel's delta, turned sideways for a mouse while Shift is held.
+  ///
+  /// Flutter's `ScrollBehavior.pointerAxisModifiers`, and only for a mouse:
+  /// a trackpad arriving as a wheel (on the web) already has both axes, and
+  /// swapping them would send a vertical swipe sideways.
+  static Offset _scrollDeltaOf(PointerScrollEvent event) {
+    final delta = event.scrollDelta;
+    if (event.kind != PointerDeviceKind.mouse) return delta;
+    final pressed = HardwareKeyboard.instance.logicalKeysPressed;
+    final shifted =
+        pressed.contains(LogicalKeyboardKey.shiftLeft) ||
+        pressed.contains(LogicalKeyboardKey.shiftRight);
+    return shifted ? Offset(delta.dy, delta.dx) : delta;
+  }
+
+  void _handlePanZoomStart(PointerPanZoomStartEvent event) {
+    final ray = _rayAt(event.localPosition);
+    if (ray == null) return;
+    _syncOverlays();
+    final grabbed = _group.panZoomStart(
+      ray,
+      pointer: event.pointer,
+      timeStamp: event.timeStamp,
+    );
+    _report(Input3dHitPhase.scroll, grabbedScrollable: grabbed);
+  }
+
+  /// The virtual finger is the cursor moved by the pan so far.
+  void _handlePanZoomUpdate(PointerPanZoomUpdateEvent event) {
+    final ray = _rayAt(event.localPosition + event.localPan);
+    if (ray == null) return;
+    _group.panZoomUpdate(
+      ray,
+      pointer: event.pointer,
+      timeStamp: event.timeStamp,
+    );
+  }
+
+  void _handlePanZoomEnd(PointerPanZoomEndEvent event) =>
+      _group.panZoomEnd(pointer: event.pointer, timeStamp: event.timeStamp);
+
   /// Takes the pointer off every surface when it leaves the view.
   ///
   /// Without this a box lit by a hover keeps its state layer when the cursor
@@ -459,23 +628,32 @@ class _SceneInput3dState extends State<SceneInput3d> implements Input3dHost {
 
   @override
   Widget build(BuildContext context) {
-    return MouseRegion(
-      opaque: false,
-      onExit: _handleExit,
-      child: Listener(
-        // Translucent, the position SceneView's own listener takes: the whole
-        // box reports pointers whether or not the scene drew anything there,
-        // and widgets behind the view still get their events.
-        behavior: HitTestBehavior.translucent,
-        onPointerDown: _handleDown,
-        onPointerMove: _handleMove,
-        onPointerUp: _handleUp,
-        onPointerCancel: _handleCancel,
-        onPointerHover: _handleHover,
-        child: Input3dScope(
-          host: this,
-          camera: widget.camera,
-          child: widget.child,
+    return Focus(
+      focusNode: _focusNode,
+      autofocus: widget.autofocus,
+      onFocusChange: _handleFocusChange,
+      child: MouseRegion(
+        opaque: false,
+        onExit: _handleExit,
+        child: Listener(
+          // Translucent, the position SceneView's own listener takes: the
+          // whole box reports pointers whether or not the scene drew anything
+          // there, and widgets behind the view still get their events.
+          behavior: HitTestBehavior.translucent,
+          onPointerDown: _handleDown,
+          onPointerMove: _handleMove,
+          onPointerUp: _handleUp,
+          onPointerCancel: _handleCancel,
+          onPointerHover: _handleHover,
+          onPointerSignal: _handleSignal,
+          onPointerPanZoomStart: _handlePanZoomStart,
+          onPointerPanZoomUpdate: _handlePanZoomUpdate,
+          onPointerPanZoomEnd: _handlePanZoomEnd,
+          child: Input3dScope(
+            host: this,
+            camera: widget.camera,
+            child: widget.child,
+          ),
         ),
       ),
     );

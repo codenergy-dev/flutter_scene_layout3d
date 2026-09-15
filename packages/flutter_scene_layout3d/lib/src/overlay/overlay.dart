@@ -8,7 +8,8 @@ import 'package:flutter/foundation.dart'
         IterableProperty,
         Listenable,
         VoidCallback;
-import 'package:flutter/widgets.dart' show FocusManager, FocusNode;
+import 'package:flutter/widgets.dart'
+    show Action, DismissAction, DismissIntent, FocusManager, FocusNode, Intent;
 import 'package:flutter_scene/scene.dart' show Camera, Node;
 import 'package:vector_math/vector_math.dart' show Matrix4, Vector3;
 
@@ -19,6 +20,7 @@ import '../geometry/basis3d.dart';
 import '../geometry/constraints3d.dart';
 import '../geometry/offset3d.dart';
 import '../input/focus.dart';
+import '../input/shortcuts.dart';
 import '../layout3d.dart';
 import '../metrics.dart';
 import '../surface.dart';
@@ -222,14 +224,26 @@ class Overlay3dEntry {
   /// defaults to this.
   final bool modal;
 
-  /// Whether a tap on the barrier calls [onDismiss].
+  /// Whether a tap on the barrier, or Escape, calls [onDismiss].
+  ///
+  /// Flutter's `barrierDismissible`, and it governs both for the same reason
+  /// Flutter's does: a dialog that must be answered should not be escapable
+  /// by either route.
   final bool dismissible;
 
-  /// Called when a tap lands outside the content, on the barrier.
+  /// Called when a tap lands outside the content, on the barrier — or when
+  /// Escape is pressed with the focus inside an entry that is [modal] or
+  /// traps focus.
   ///
   /// Nothing is removed for you: an entry that should close on an outside
   /// tap passes `onDismiss: entry.remove`, and a route lets [Navigator3d] pop
   /// it.
+  ///
+  /// The Escape half is an [Actions3d] binding `DismissIntent` around the
+  /// entry's content, enabled exactly when [dismissible] is true and this is
+  /// set. An entry that is neither modal nor trapping — a snack bar, a
+  /// tooltip — carries none, and Escape leaves it alone, as it does in
+  /// Flutter.
   final VoidCallback? onDismiss;
 
   /// Builds the scrim geometry inside the barrier, if any.
@@ -247,12 +261,20 @@ class Overlay3dEntry {
   /// overlay's alignment applies directly.
   final Alignment3d? alignment;
 
-  /// Whether the entry's content gets a [FocusScope3d] of its own.
+  /// Whether the entry's content gets a [FocusScope3d] of its own, and takes
+  /// the focus when it is inserted.
   ///
   /// A trapped entry's focus does not leak: [Focus3d.requestFocus] inside it
   /// asks the entry's scope rather than the surface's, and
   /// [Focus3dTraversal.traversalRootFor] stops the walk at the same place, so
   /// tabbing inside a dialog cycles the dialog. Defaults to [modal].
+  ///
+  /// Taking the focus is `ModalRoute`'s behaviour on a push, and it is not a
+  /// nicety: the control that opened the dialog would otherwise keep the
+  /// focus behind the barrier, where Enter would open the dialog a second
+  /// time and Escape could not find the dialog to close it. A box inside with
+  /// `autofocus` still gets the focus; without one the scope holds it, and a
+  /// Tab lands on the first box inside.
   final bool trapFocus;
 
   /// Whether removing the entry hands focus back to whatever had it.
@@ -285,8 +307,8 @@ class Overlay3dEntry {
   /// pointed at.
   Layout3dSurface? get surface => _surface;
 
-  /// The root of the layout this entry built, including the barrier and the
-  /// focus scope wrapped around it.
+  /// The root of the layout this entry built, including the barrier, the
+  /// focus scope and the dismissal binding wrapped around it.
   ///
   /// Null before insertion. For a detached entry this is the child of
   /// [surface], not a descendant of the overlay.
@@ -318,7 +340,10 @@ class Overlay3dEntry {
     );
     final surface = _surface;
     final old = _content;
-    _build(overlay);
+    // A rebuilt entry keeps the focus only if it had it: rebuilding a dialog
+    // the viewer has since clicked away from must not snatch the keyboard
+    // back.
+    _build(overlay, takeFocus: _scope?.hasFocus ?? false);
     if (surface != null) {
       surface.child = _content;
     } else {
@@ -330,7 +355,7 @@ class Overlay3dEntry {
   // ------------------------------------------------------------- internals
 
   /// Builds the content, wrapping it in the barrier and the focus scope.
-  void _build(Overlay3d overlay) {
+  void _build(Overlay3d overlay, {required bool takeFocus}) {
     var root = builder(this);
     if (modal) {
       root = Stack3d(
@@ -354,6 +379,20 @@ class Overlay3dEntry {
       // nowhere. A rebuilt entry starts with focus wherever its content asks.
       root = _scope = FocusScope3d(
         debugLabel: debugLabel ?? 'Overlay3dEntry',
+        autofocus: takeFocus,
+        child: root,
+      );
+    }
+    if (modal || trapFocus) {
+      // Outside the scope, so the binding is above the scope's own box as
+      // well as above everything in it: a dialog that has just opened holds
+      // the focus in its scope, with nothing inside focused yet, and Escape
+      // has to work from there.
+      root = Actions3d(
+        actions: <Type, Action<Intent>>{
+          DismissIntent: _DismissEntryAction(this),
+        },
+        name: 'Overlay3dEntry.dismiss',
         child: root,
       );
     }
@@ -364,7 +403,7 @@ class Overlay3dEntry {
     assert(_overlay == null, 'An Overlay3dEntry is inserted once.');
     _overlay = overlay;
     _restoreTo = restoreFocus ? FocusManager.instance.primaryFocus : null;
-    _build(overlay);
+    _build(overlay, takeFocus: true);
     final host = _host = _Overlay3dEntryHost(this);
     final layer = this.layer;
     if (layer is DetachedOverlayLayer3d) {
@@ -450,6 +489,26 @@ class Overlay3dEntry {
     final where = layer is DetachedOverlayLayer3d ? 'detached' : 'in plane';
     return 'Overlay3dEntry(${debugLabel ?? ''}$where'
         '${modal ? ', modal' : ''})';
+  }
+}
+
+/// Escape, for an entry that is modal or traps focus.
+///
+/// `ModalRoute`'s `_DismissModalAction`, re-expressed for an entry: enabled
+/// when a tap on the barrier would dismiss, and doing what that tap does.
+class _DismissEntryAction extends DismissAction {
+  _DismissEntryAction(this.entry);
+
+  final Overlay3dEntry entry;
+
+  @override
+  bool isEnabled(DismissIntent intent) =>
+      entry.isInserted && entry.dismissible && entry.onDismiss != null;
+
+  @override
+  Object? invoke(DismissIntent intent) {
+    entry.onDismiss?.call();
+    return null;
   }
 }
 

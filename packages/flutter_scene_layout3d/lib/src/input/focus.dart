@@ -4,12 +4,15 @@ import 'dart:ui' show Rect;
 import 'package:flutter/foundation.dart'
     show DiagnosticPropertiesBuilder, FlagProperty, StringProperty;
 import 'package:flutter/gestures.dart' show PointerDownEvent;
+import 'package:flutter/services.dart' show KeyEvent;
 import 'package:flutter/widgets.dart'
     show
         FocusAttachment,
+        FocusManager,
         FocusNode,
         FocusOnKeyEventCallback,
         FocusScopeNode,
+        KeyEventResult,
         TraversalDirection,
         ValueChanged;
 import 'package:vector_math/vector_math.dart' show Matrix4, Vector3;
@@ -18,6 +21,7 @@ import '../geometry/size3d.dart';
 import '../hit_test.dart';
 import '../layout3d.dart';
 import 'events.dart';
+import 'shortcuts.dart';
 
 /// Ties a Flutter [FocusNode] to a box, so a layout can be focused.
 ///
@@ -69,18 +73,14 @@ class Focus3d extends ProxyLayout3d implements HitTestTarget3d {
     bool autofocus = false,
     bool canRequestFocus = true,
     bool skipTraversal = true,
-    FocusOnKeyEventCallback? onKeyEvent,
+    this.onKeyEvent,
     super.child,
     super.name,
   }) : _autofocus = autofocus,
        _canRequestFocus = canRequestFocus,
        _skipTraversal = skipTraversal,
-       _onKeyEvent = onKeyEvent,
        _ownsNode = focusNode == null {
-    _node = focusNode ?? _makeNode();
-    _attachment = _node.attach(null, onKeyEvent: _onKeyEvent);
-    _node.addListener(_handleFocusChanged);
-    _hadFocus = _node.hasFocus;
+    _attachNode(focusNode ?? _makeNode());
   }
 
   late FocusNode _node;
@@ -90,7 +90,79 @@ class Focus3d extends ProxyLayout3d implements HitTestTarget3d {
   bool _autofocus;
   final bool _canRequestFocus;
   final bool _skipTraversal;
-  final FocusOnKeyEventCallback? _onKeyEvent;
+
+  /// The handler a node handed in already had, which this box calls after
+  /// its own and puts back when it lets the node go.
+  FocusOnKeyEventCallback? _nodeKeyHandler;
+
+  /// Called with each key event that reaches this box, before any
+  /// [Shortcuts3d] above it is consulted.
+  ///
+  /// Return [KeyEventResult.handled] to consume the key. Unlike on a bare
+  /// `FocusNode`, a handler here also sees the keys of the focusable boxes
+  /// *inside* this one — see [Actions3d.handleKeyEvent], which is what gives a
+  /// `Focus3d` around a region the bubbling Flutter's `Focus` has. Costs
+  /// nothing to change.
+  FocusOnKeyEventCallback? onKeyEvent;
+
+  /// The box a focus node stands for, or null when it stands for none.
+  ///
+  /// Every [Focus3d] and [FocusScope3d] is findable from its node, and so is
+  /// the scope of a surface ([Layout3dOwner.focusScope]), which stands for
+  /// the surface. The lookup Flutter's own actions do with
+  /// `primaryFocus.context`, for a node that has no context: the default
+  /// traversal and scroll actions start from
+  /// `Focus3d.layoutFor(FocusManager.instance.primaryFocus!)`.
+  static Layout3d? layoutFor(FocusNode node) => focusNodeLayouts[node];
+
+  void _attachNode(FocusNode node) {
+    _node = node;
+    // Read before attaching, because attaching with a handler replaces the
+    // node's own.
+    _nodeKeyHandler = node.onKeyEvent;
+    _attachment = node.attach(null, onKeyEvent: _handleKeyEvent);
+    node.addListener(_handleFocusChanged);
+    _hadFocus = node.hasFocus;
+    focusNodeLayouts[node] = this;
+  }
+
+  void _detachNode() {
+    _node.removeListener(_handleFocusChanged);
+    // Detaching is what takes the node back out of the focus tree; a node
+    // that is only disposed would be left parented under the scope.
+    _attachment.detach();
+    if (identical(focusNodeLayouts[_node], this)) {
+      focusNodeLayouts[_node] = null;
+    }
+    if (_ownsNode) {
+      _node.dispose();
+    } else {
+      // A node the caller keeps goes back the way it came.
+      _node.onKeyEvent = _nodeKeyHandler;
+    }
+  }
+
+  /// What a key reaching this box's node does.
+  ///
+  /// This box's [onKeyEvent], then the node's own handler, then — for the box
+  /// that holds primary focus, and only for it — the walk up the layout tree.
+  /// The focus manager goes on to offer the key to the scopes above the node;
+  /// the walk has already covered everything they stand for, so theirs
+  /// declines.
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    for (final handler in <FocusOnKeyEventCallback?>[
+      onKeyEvent,
+      _nodeKeyHandler,
+    ]) {
+      final result = handler?.call(node, event) ?? KeyEventResult.ignored;
+      if (result != KeyEventResult.ignored) return result;
+    }
+    if (owner == null) return KeyEventResult.ignored;
+    if (!identical(FocusManager.instance.primaryFocus, node)) {
+      return KeyEventResult.ignored;
+    }
+    return Actions3d.handleKeyEvent(this, event);
+  }
 
   FocusNode _makeNode() => FocusNode(
     debugLabel: node.name,
@@ -106,8 +178,11 @@ class Focus3d extends ProxyLayout3d implements HitTestTarget3d {
 
   /// The node holding this box's place in Flutter's focus tree.
   ///
-  /// Everything a `FocusNode` can do it can do here: listen to it, hand it to
-  /// a `Shortcuts` or `Actions` widget, ask it for `hasPrimaryFocus`.
+  /// Everything a `FocusNode` can do it can do here: listen to it, ask it for
+  /// `hasPrimaryFocus`, request focus through it. What it cannot usefully be
+  /// handed to is a Flutter `Shortcuts` or `Actions` widget, which look their
+  /// bindings up through a `BuildContext` this node does not have; key
+  /// bindings on a plane are [Shortcuts3d] and [Actions3d].
   FocusNode get focusNode => _node;
 
   /// Swaps the node, or hands ownership back with null.
@@ -121,14 +196,9 @@ class Focus3d extends ProxyLayout3d implements HitTestTarget3d {
   set focusNode(FocusNode? value) {
     if (identical(_node, value)) return;
     final hadFocus = _node.hasPrimaryFocus;
-    _node.removeListener(_handleFocusChanged);
-    _attachment.detach();
-    if (_ownsNode) _node.dispose();
+    _detachNode();
     _ownsNode = value == null;
-    _node = value ?? _makeNode();
-    _attachment = _node.attach(null, onKeyEvent: _onKeyEvent);
-    _node.addListener(_handleFocusChanged);
-    _hadFocus = _node.hasFocus;
+    _attachNode(value ?? _makeNode());
     if (hadFocus) requestFocus();
   }
 
@@ -226,11 +296,7 @@ class Focus3d extends ProxyLayout3d implements HitTestTarget3d {
 
   @override
   void dispose() {
-    _node.removeListener(_handleFocusChanged);
-    // Detaching is what takes the node back out of the focus tree; a node
-    // that is only disposed would be left parented under the scope.
-    _attachment.detach();
-    if (_ownsNode) _node.dispose();
+    _detachNode();
     super.dispose();
   }
 
@@ -287,6 +353,7 @@ class FocusScope3d extends ProxyLayout3d {
   FocusScope3d({
     FocusScopeNode? node,
     String? debugLabel,
+    this.autofocus = false,
     super.child,
     super.name,
   }) : _ownsNode = node == null {
@@ -299,12 +366,39 @@ class FocusScope3d extends ProxyLayout3d {
     // Attached with a null context for the same reason the owner's scope is:
     // the attachment is what a later detach unparents through, and nothing
     // ever reparents through the context.
-    _attachment = _scope.attach(null);
+    _nodeKeyHandler = _scope.onKeyEvent;
+    _attachment = _scope.attach(null, onKeyEvent: _handleKeyEvent);
+    focusNodeLayouts[_scope] = this;
   }
 
   late final FocusScopeNode _scope;
   late final FocusAttachment _attachment;
   final bool _ownsNode;
+  FocusOnKeyEventCallback? _nodeKeyHandler;
+
+  /// Whether this scope takes the focus as soon as it joins an attached tree.
+  ///
+  /// What a dialog wants, and what `ModalRoute` does on a push: focus moves
+  /// *into* the thing that just appeared, so a key goes to it rather than to
+  /// the control behind the barrier that opened it. A box inside with its own
+  /// `autofocus` still wins, since it asks this same scope; without one the
+  /// scope holds the focus itself, and a Tab lands on the first box inside.
+  ///
+  /// Read once, when the box is attached.
+  final bool autofocus;
+
+  /// A key reaching this scope while the scope itself holds primary focus —
+  /// a dialog that has just opened, with nothing inside it focused yet —
+  /// walks the layout tree from here, the way a focused box's does.
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    final own = _nodeKeyHandler?.call(node, event) ?? KeyEventResult.ignored;
+    if (own != KeyEventResult.ignored) return own;
+    if (owner == null) return KeyEventResult.ignored;
+    if (!identical(FocusManager.instance.primaryFocus, node)) {
+      return KeyEventResult.ignored;
+    }
+    return Actions3d.handleKeyEvent(this, event);
+  }
 
   /// The node this box holds focus through.
   ///
@@ -319,6 +413,7 @@ class FocusScope3d extends ProxyLayout3d {
   void attach(Layout3dOwner owner) {
     super.attach(owner);
     _parentUnderEnclosingScope(owner);
+    if (autofocus) _scope.requestFocus();
   }
 
   /// Hangs this scope under the one above it.
@@ -344,7 +439,14 @@ class FocusScope3d extends ProxyLayout3d {
     // Detaching is what takes the scope back out of the focus tree; a scope
     // that is only disposed would be left parented under its ancestor.
     _attachment.detach();
-    if (_ownsNode) _scope.dispose();
+    if (identical(focusNodeLayouts[_scope], this)) {
+      focusNodeLayouts[_scope] = null;
+    }
+    if (_ownsNode) {
+      _scope.dispose();
+    } else {
+      _scope.onKeyEvent = _nodeKeyHandler;
+    }
     super.dispose();
   }
 

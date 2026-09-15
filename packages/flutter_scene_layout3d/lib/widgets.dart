@@ -123,8 +123,9 @@ export 'src/input/draggable.dart'
 export 'src/input/events.dart'
     show HitTestBehavior3d, HitTestTarget3d, PointerEvent3d;
 export 'src/input/focus.dart' show Focus3d, Focus3dTraversal, FocusScope3d;
+export 'src/input/shortcuts.dart' show Actions3d, Shortcuts3d;
 export 'src/input/listener.dart' show PointerEvent3dCallback;
-export 'src/input/pointer.dart' show Layout3dPointer;
+export 'src/input/pointer.dart' show Layout3dPointer, PointerScroll3d;
 export 'src/input/pointer_group.dart' show Layout3dPointerGroup;
 export 'src/overlay/modal_barrier.dart' show ModalBarrier3d;
 export 'src/overlay/navigator.dart'
@@ -213,6 +214,7 @@ export 'src/widgets/layouts.dart'
     show
         Layout3dWidgetBuilder,
         SceneAbsorbPointer3d,
+        SceneActions3d,
         SceneAlign3d,
         SceneAspectRatio3d,
         SceneBaseline3d,
@@ -252,6 +254,7 @@ export 'src/widgets/layouts.dart'
         ScenePositioned3d,
         SceneRow3d,
         SceneSemantics3d,
+        SceneShortcuts3d,
         SceneSizedBox3d,
         SceneSlotProvider3d,
         SceneSliverGrid3d,

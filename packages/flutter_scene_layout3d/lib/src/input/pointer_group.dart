@@ -1,3 +1,5 @@
+import 'dart:ui' show Offset;
+
 import 'package:flutter/gestures.dart' show PointerDeviceKind, kPrimaryButton;
 import 'package:flutter_scene/scene.dart' show Camera;
 import 'package:vector_math/vector_math.dart' show Matrix4, Ray, Vector3;
@@ -211,6 +213,7 @@ class Layout3dPointerGroup {
     for (final captured in _captured.values) {
       captured.remove(member);
     }
+    _panZooms.removeWhere((_, held) => identical(held, member));
     for (final held in _entrySurfaces.values) {
       held.remove(surface);
     }
@@ -467,6 +470,102 @@ class Layout3dPointerGroup {
     }
   }
 
+  /// What a wheel along [worldRay] would scroll, across every surface.
+  ///
+  /// A wheel goes where a press would have gone: the members are walked front
+  /// to back, and the front-most surface that answers the ray is the one the
+  /// wheel is for — so a wheel over a dialog does not scroll the page behind
+  /// it, even when the dialog has nothing to scroll. A surface added with
+  /// `absorbs: false` that has nothing to scroll lets the walk carry on.
+  /// Which view on that surface takes it is [PointerScroll3d.resolve]'s rule.
+  ///
+  /// Updates [lastHit], which is what a host reports after a wheel.
+  PointerScroll3d? resolveScroll(Ray worldRay, Offset scrollDelta) {
+    _lastHit = HitTestResult3d();
+    _lastPointer = null;
+    for (final member in _ordered()) {
+      final scroll = member.pointer.resolveScroll(worldRay, scrollDelta);
+      final hit = member.pointer.lastHit;
+      if (hit.isEmpty) continue;
+      if (_lastPointer == null) {
+        _lastPointer = member.pointer;
+        _lastHit = hit;
+      }
+      if (scroll != null) return scroll;
+      if (member.absorbs) return null;
+    }
+    return null;
+  }
+
+  /// Stops the coasting views under [worldRay] on the front-most surface
+  /// that answers, and on the non-absorbing ones in front of it.
+  void cancelScrollInertia(Ray worldRay) {
+    for (final member in _ordered()) {
+      member.pointer.cancelScrollInertia(worldRay);
+      if (member.pointer.lastHit.isEmpty) continue;
+      if (member.absorbs) return;
+    }
+  }
+
+  /// Starts a trackpad pan on the front-most surface that answers.
+  ///
+  /// The ordinary walk and the ordinary absorption rule, and no events
+  /// dispatched anywhere — see [Layout3dPointer.panZoomStart]. Returns true
+  /// when a scrolling view was grabbed; the surface that grabbed it holds the
+  /// pan until [panZoomEnd], wherever the fingers go.
+  bool panZoomStart(Ray worldRay, {int pointer = 0, Duration? timeStamp}) {
+    panZoomEnd(pointer: pointer, timeStamp: timeStamp);
+    _lastHit = HitTestResult3d();
+    _lastPointer = null;
+    for (final member in _ordered()) {
+      final grabbed = member.pointer.panZoomStart(
+        worldRay,
+        pointer: pointer,
+        timeStamp: timeStamp,
+      );
+      final hit = member.pointer.lastHit;
+      if (hit.isEmpty) continue;
+      if (_lastPointer == null) {
+        _lastPointer = member.pointer;
+        _lastHit = hit;
+      }
+      if (grabbed) {
+        _panZooms[pointer] = member;
+        return true;
+      }
+      if (member.absorbs) return false;
+    }
+    return false;
+  }
+
+  /// Moves the virtual finger of a trackpad pan, and reports whether the
+  /// grabbed view moved.
+  bool panZoomUpdate(Ray worldRay, {int pointer = 0, Duration? timeStamp}) =>
+      _panZooms[pointer]?.pointer.panZoomUpdate(
+        worldRay,
+        pointer: pointer,
+        timeStamp: timeStamp,
+      ) ??
+      false;
+
+  /// Ends a trackpad pan, letting the grabbed view go.
+  void panZoomEnd({Ray? worldRay, int pointer = 0, Duration? timeStamp}) =>
+      _panZooms
+          .remove(pointer)
+          ?.pointer
+          .panZoomEnd(
+            worldRay: worldRay,
+            pointer: pointer,
+            timeStamp: timeStamp,
+          );
+
+  /// The surface holding each trackpad pan, keyed by the device pointer.
+  ///
+  /// Kept apart from [_captured] because a pan is not a press: nothing on the
+  /// path was handed a down, and a press on the same device must not end it
+  /// by cancelling a capture it never had.
+  final Map<int, _Member> _panZooms = <int, _Member>{};
+
   /// Moves an unpressed pointer, hovering the front-most surface that answers
   /// and taking the pointer off the ones behind it.
   ///
@@ -525,6 +624,7 @@ class Layout3dPointerGroup {
     _members.clear();
     _bySurface.clear();
     _captured.clear();
+    _panZooms.clear();
     _entrySurfaces.clear();
     _lastPointer = null;
     _lastHit = HitTestResult3d();

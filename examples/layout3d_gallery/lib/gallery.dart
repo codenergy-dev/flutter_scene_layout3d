@@ -116,15 +116,16 @@ class _Layout3dGalleryState extends State<Layout3dGallery> {
 
   // --- input -------------------------------------------------------------
 
-  /// Reports what a press or a hover found.
+  /// Reports what a press, a hover or a scroll found.
   ///
   /// The whole of this gallery's input wiring. There is no `Listener`, no
   /// `camera.screenPointToRay`, no pointer group filled in from a tick and no
   /// z-orders restated every frame: `SceneInput3d` owns all of that, and each
   /// surface states where it stands on its own widget.
   void _handleHit(Input3dHit hit) {
-    // A press that took hold of the mesh list retires the clock that scrolls
-    // it for show, and hands the position to the drag for good.
+    // A press, a wheel or two fingers that took hold of the mesh list retire
+    // the clock that scrolls it for show, and hand the position to the
+    // viewer for good.
     if (hit.grabbedScrollable) _scrolledByHand = true;
     _report(hit.result);
   }

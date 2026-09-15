@@ -960,6 +960,7 @@ than none.
 | `Listener3d`, `HitTestTarget3d`, `HitTestBehavior3d` | `Listener` + `MouseRegion`, `HitTestTarget`, `HitTestBehavior` |
 | `GestureDetector3d`, `HitTestArea3d`, `TapTarget3d` | `GestureDetector`, a bare hit-test region, Material's 48dp target |
 | `Focus3d`, `Focus3dTraversal`, `FocusScope3d` | `Focus`, `FocusTraversalPolicy`, `FocusScope` |
+| `Shortcuts3d`, `Actions3d` | `Shortcuts`, `Actions`, and `WidgetsApp`'s default bindings — walked over the layout tree |
 | `Draggable3d`, `DragTarget3d` | `Draggable`, `DragTarget`, on a session of our own rather than `MultiDragGestureRecognizer` |
 | `Drag3dSession`, `Drag3dTarget`, `Drag3dDetails`, `Drag3dEvent` | the drag machinery Flutter keeps inside `Draggable`, made a seam |
 | `Drag3dStartMode`, `Drag3dAnchor`, `Drag3dAutoscroll` | `Draggable`'s long-press variants, `DragAnchorStrategy`, `EdgeDraggingAutoScroller` |
@@ -971,6 +972,7 @@ than none.
 | `Layout3d.anchorOffsetTo` | `CompositedTransformTarget` and `CompositedTransformFollower`, as one call on the node tier |
 | `Layout3dPointerGroup` | routing a ray across surfaces, which a screen does not need |
 | `SceneInput3d`, `Input3dHost` | the `Listener` an application would otherwise write, with the rays and the surfaces owned for it |
+| `PointerScroll3d`, `Scroll3dController.pointerScroll` | `Scrollable`'s pointer-signal handling and `ScrollPosition.pointerScroll` |
 | `NodeBox3d` | the leaf that holds content |
 | `Text3d`, `TextMeasurement3d` | `Text`, and the `TextPainter` behind it |
 | `AtlasText3dRenderer`, `RichText3d` | the two halves of `RenderParagraph.paint`: glyphs from an atlas, or Flutter's own raster |
@@ -1373,9 +1375,15 @@ the viewer is moving it, idle for a programmatic jump; that is what stops a
 floating header unrolling because a spring, rather than a finger, carried the
 offset backwards.
 
-Anything else — a thumbstick, a wheel, a scripted camera move — drives
-`Scroll3dController.offset` directly, or `applyUserOffset` if it wants the
-physics applied to it as though it were a finger.
+A wheel has a method of its own, `pointerScroll`, because a wheel is not a
+finger: it jumps rather than dragging, stops at the ends whatever the physics
+would allow — there is no finger to let go of, so nothing would spring an
+overscrolled list back — and then lets the physics settle, which is what snaps
+a page view to a page after a notch. `SceneInput3d` calls it for you; see
+*A wheel, a trackpad and a key* below. Anything else — a thumbstick, a
+scripted camera move — drives `Scroll3dController.offset` directly, or
+`applyUserOffset` if it wants the physics applied to it as though it were a
+finger.
 
 A `PageView3d` is a list with two things decided for it: every item is exactly
 as long as the window, and the release settles on an item boundary instead of
@@ -1768,9 +1776,9 @@ is what a readout floating over the scene wants.
 
 The camera is published to everything below, so a `SceneLayout3d` with a
 camera binding and a `SceneOverlay3d` with a billboarded dialog need not be
-handed one of their own. `onHit` reports what a press or a hover found — and
-whether the press took hold of a scrolling view, which is the one piece of
-news the path does not carry. It is not called for a move, because a move goes
+handed one of their own. `onHit` reports what a press, a hover or a scroll
+found — and whether it took hold of a scrolling view, which is the one piece
+of news the path does not carry. It is not called for a move, because a move goes
 to the surfaces that captured the press and never asks what is under the ray.
 
 It wraps the view rather than replacing it, deliberately: a `SceneView` has
@@ -1778,12 +1786,51 @@ more than twenty parameters, and a widget that forwarded them would be a list
 that rots every time the engine grows one. Keep the view you know — its
 `onTick`, its loading gate, its camera builder — and let this own the input.
 
-**A wheel, a trackpad gesture and a key are not routed yet.** They belong
-here, and they are left visibly absent rather than quietly dropped: scrolling
-by the usual gesture on a desktop, and activating a focused control from the
-keyboard, are the next piece of work. Reach the host from inside the subtree
-with `SceneInput3d.of(context)`, or from the widget that built it with an
-`Input3dController`.
+Reach the host from inside the subtree with `SceneInput3d.of(context)`, or
+from the widget that built it with an `Input3dController`.
+
+### A wheel, a trackpad and a key
+
+The three inputs a desktop reaches for first, and `SceneInput3d` routes all of
+them with nothing more to write.
+
+**A wheel goes where a press would have gone**, then to the innermost view that
+would actually move. The front-most surface that answers the ray is the one the
+wheel is for — a wheel over a dialog does not scroll the page behind it — and
+on that surface's path the first scrolling view whose axis is in the delta and
+which is not already at that end takes it. That is Flutter's rule, so a
+vertical wheel over a sideways carousel scrolls the list around the carousel,
+and a wheel at the bottom of an inner list goes on to the outer one. Shift
+turns a mouse wheel sideways, as it does in Flutter. The delta is logical
+pixels on the plane, so a notch moves a list the same distance of its own
+content however far away the panel is. It does not change sign for a panel
+seen from behind: a wheel moves further into a list, and "further in" belongs
+to the layout, not to where the viewer stands.
+
+The scene claims a wheel through Flutter's `pointerSignalResolver`, and only
+when something would move — so a scroll view in the widget tree around the
+scene keeps working, and gets the wheel whenever the list under the cursor has
+nowhere to go.
+
+**Two fingers on a trackpad are a drag by a finger that went down where the
+cursor is.** The pan offset moves that virtual finger, and the grabbed view
+follows it through the same ray-plane arithmetic a touch drag uses, so the
+content stays under the fingers at any angle and flings when they lift. A pan
+presses nothing: a two-finger scroll across a button neither taps it nor
+focuses it. Its scale and rotation are ignored — a pinch that zooms the camera
+and a pinch that zooms the layout are different products, and this builds
+neither. The imperative half is `Layout3dPointer.resolveScroll` and
+`panZoomStart`/`panZoomUpdate`/`panZoomEnd`, on a group or a single pointer.
+
+**A key goes to the focus, not to the cursor**, so it reaches a box without
+passing through `SceneInput3d` at all; *Keys*, below, is how. What the host adds
+is a way in. A keyboard cannot reach a scene nothing has focused, so the host
+is one focusable widget in Flutter's own traversal and hands the focus straight
+to the front-most surface the moment it gets it — back to wherever the focus
+last was on that surface, or to its first focusable box. `autofocus: true` does
+that on the first frame, and `Input3dHost.requestSceneFocus()` does it on
+demand. Leaving the scene again with Tab is not answered: traversal inside a
+surface cycles, and traversal between surfaces is still nobody's.
 
 ### Claiming the target
 
@@ -1874,9 +1921,8 @@ Listener3d(
 ### Focus
 
 `Focus3d` ties a Flutter `FocusNode` to a box. The node graph is Flutter's
-unchanged — listen to the node, hand it to `Shortcuts` and `Actions`, ask it
-for `hasPrimaryFocus` — and what the box adds is *which geometry* the focus
-belongs to, so a highlight can be drawn on it and traversal can reason about
+unchanged — listen to the node, ask it for `hasPrimaryFocus`, request focus
+through it — and what the box adds is *which geometry* the focus belongs to, so a highlight can be drawn on it and traversal can reason about
 where it is. A press inside one focuses it, which on a plane nothing else
 would do; a component that only wants a focus ring for keyboard use should
 consult `FocusManager.instance.highlightMode` before drawing one, as Material
@@ -1893,7 +1939,8 @@ A modal wants its own scope, and `FocusScope3d` is it: wrap a subtree in one
 and everything inside asks *that* scope for focus rather than the surface's,
 so a dialog cannot hand focus to the page behind it. `Focus3d.enclosingScope`
 is the walk that finds it, and `Overlay3dEntry` puts one in for you when the
-entry is modal.
+entry is modal — and focuses it when the entry opens, so a key goes to the
+dialog rather than to the button behind the barrier that opened it.
 
 Traversal inside a surface is `Focus3dTraversal`: `next` and `previous` walk
 tree order, and `inDirection` projects every candidate onto the surface plane
@@ -1908,9 +1955,61 @@ nothing about content facing different ways, or about traversal *between*
 surfaces, which stays open now that detached overlay entries have made a
 second surface a real thing.
 
-All five of these boxes have widget forms, like every other layout here:
+### Keys
+
+Flutter's key bindings are `Shortcuts`, which turns a key into an `Intent`, and
+`Actions`, which says what an intent does for the widgets below it. Neither
+widget can reach a box on a plane, and not for want of a feature: an action is
+looked up from `primaryFocus.context`, which a `Focus3d`'s node does not have,
+and a key walks the *focus* tree, where a `Focus3d`'s ancestors are its scopes
+rather than the boxes around it. So the walk is done over the layout tree
+instead, by `Shortcuts3d` and `Actions3d` — and **the vocabulary stays
+Flutter's**: the activators, the intents and the actions are Flutter's own
+classes, so a `CallbackAction` or a `SingleActivator` written for a screen
+works here unchanged.
+
+```dart
+Shortcuts3d(
+  shortcuts: const <ShortcutActivator, Intent>{
+    SingleActivator(LogicalKeyboardKey.delete): DeleteIntent(),
+  },
+  child: Actions3d(
+    actions: <Type, Action<Intent>>{
+      DeleteIntent: CallbackAction<DeleteIntent>(onInvoke: (_) => remove()),
+    },
+    child: Focus3d(child: row),
+  ),
+)
+```
+
+A key reaching the focused box goes up from it, nearest first. A `Focus3d`
+with an `onKeyEvent` hears it — including a `Focus3d` around a whole region,
+which is the bubbling Flutter's `Focus` has and a flat focus tree could not
+give — and a `Shortcuts3d` that maps it names an intent, whose action is the
+nearest `Actions3d` binding for that type. A nearer binding that is disabled
+is not skipped over: the key goes on up, unhandled, exactly as in Flutter.
+`Actions3d.maybeInvoke(box, intent)` fires an intent with no key behind it,
+for a gamepad or a command menu.
+
+Every walk ends at `Shortcuts3d.defaults` and `Actions3d.defaults`, which are
+`WidgetsApp`'s: Tab and Shift-Tab walk `Focus3dTraversal` inside the focused
+box's scope, so a dialog cycles itself; the arrows move focus on the plane;
+Page Up, Page Down and the control-arrows scroll the enclosing list by
+Flutter's line and page. Enter and Space map to `ActivateIntent` and Escape to
+`DismissIntent`, and neither has a default action, as in Flutter: a control
+binds the first — the Material catalogue's `InkWell3d` does — and an overlay
+entry that is modal or traps focus binds the second to its `onDismiss`,
+enabled while `dismissible` is true. Switch a default off by mapping its key
+nearer the focus to `DoNothingAndStopPropagationIntent`.
+
+Both boxes pass a ray straight to their child without gating it on their own
+extent, so wrapping one round a `TapTarget3d` does not cut off the target's
+reach. A detached overlay entry is a surface of its own, and its walk ends at
+its own root rather than passing through the panel that opened it.
+
+All of these boxes have widget forms, like every other layout here:
 `SceneListener3d`, `SceneGestureDetector3d`, `SceneHitTestArea3d`,
-`SceneTapTarget3d` and `SceneFocus3d`.
+`SceneTapTarget3d`, `SceneFocus3d`, `SceneShortcuts3d` and `SceneActions3d`.
 
 ## Overlays: what "in front" means
 
@@ -2651,7 +2750,7 @@ announced at its full size.
 its axis, the same protocol on the ground plane, and a scrolling list built
 with the declarative widgets. It is wired for input: the cursor names what it
 is over, on all three surfaces and through the turning panel, and the list
-scrolls by dragging. Wrapping, grids, slivers and intrinsics have unit
+scrolls by dragging, by the wheel and by two fingers on a trackpad. Wrapping, grids, slivers and intrinsics have unit
 coverage but no interactive demo yet.
 
 `examples/render_probe` draws real geometry through the layout boxes on a GPU

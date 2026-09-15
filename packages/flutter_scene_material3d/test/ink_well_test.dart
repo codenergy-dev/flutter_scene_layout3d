@@ -7,11 +7,12 @@
 // trusting the code path.
 
 import 'package:flutter/gestures.dart' show kPressTimeout;
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter/widgets.dart'
-    show Builder, BuildContext, FocusManager, Widget;
+    show ActivateIntent, Builder, BuildContext, FocusManager, Widget;
 import 'package:flutter_scene/scene.dart' show Node;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart'
-    show DecoratedBox3d, Ripple3d;
+    show Actions3d, DecoratedBox3d, Ripple3d;
 import 'package:flutter_scene_layout3d/widgets.dart';
 import 'package:flutter_scene_material3d/flutter_scene_material3d.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -430,6 +431,66 @@ void main() {
       pointer.down(rayAt(surface, const Offset3d(0.7, 1.0, 0)));
       pointer.up();
       expect(taps, 1, reason: 'and the reach still stops at 48dp');
+    });
+  });
+
+  group('the keyboard', () {
+    testWidgets('Enter and Space tap a focused control, rippling from its '
+        'middle', (tester) async {
+      var taps = 0;
+      final control = await pumpControl(tester, onTap: () => taps++);
+      final laidOut = control.child.layoutCount;
+      final built = control.builds[0];
+
+      // A pointer press that turned into nothing, leaving a noted point in
+      // the corner. A keyboard press must not ripple from there.
+      control.pointer
+        ..down(rayAt(control.surface, const Offset3d(0.2, 0.2, 0)))
+        ..cancel();
+      focusIn(control.surface).requestFocus();
+      FocusManager.instance.applyFocusChangesIfNeeded();
+
+      expect(await tester.sendKeyEvent(LogicalKeyboardKey.enter), isTrue);
+      expect(taps, 1);
+      await tester.pump(const Duration(milliseconds: 16));
+      final ripple = control.layer.ripple!;
+      expect(ripple.origin.x, closeTo(1, 1e-6));
+      expect(ripple.origin.y, closeTo(1, 1e-6));
+
+      expect(await tester.sendKeyEvent(LogicalKeyboardKey.space), isTrue);
+      expect(taps, 2);
+
+      await tester.pumpAndSettle();
+      expect(control.layer.ripple, isNull, reason: 'let go at once');
+      // The tier holds for a key as it does for a pointer.
+      expect(control.child.layoutCount, laidOut);
+      expect(control.builds[0], built);
+    });
+
+    testWidgets('a control that would do nothing lets the key go on', (
+      tester,
+    ) async {
+      final silent = await pumpControl(tester);
+      focusIn(silent.surface).requestFocus();
+      FocusManager.instance.applyFocusChangesIfNeeded();
+
+      expect(await tester.sendKeyEvent(LogicalKeyboardKey.enter), isFalse);
+    });
+
+    testWidgets('a disabled control is not activated', (tester) async {
+      var taps = 0;
+      final control = await pumpControl(
+        tester,
+        enabled: false,
+        onTap: () => taps++,
+      );
+      final focus = focusIn(control.surface);
+
+      // Not focusable from the first frame: the node is the control's own,
+      // and a disabled control says so before it is ever rebuilt.
+      expect(focus.canRequestFocus, isFalse);
+      Actions3d.maybeInvoke(focus, const ActivateIntent());
+      expect(taps, 0);
     });
   });
 }

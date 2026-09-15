@@ -751,6 +751,49 @@ remains a reservation of space and `glyphDepth` is the figure that draws.
   its *laid-out* position is not, and a `Text3d` inside it would answer there
   and steal the drop.
 
+## The wheel and the keyboard
+
+- **`flutter_scene`'s `CameraControls` zooms on the same wheel a list scrolls
+  on.** It reads `PointerScrollEvent.scrollDelta.dy` straight off a `Listener`
+  and never consults Flutter's `pointerSignalResolver`, so claiming the wheel
+  politely — which is what `SceneInput3d` does — does not stop it. A scene with
+  orbit controls and a scrolling panel both zooms and scrolls on every notch.
+  Nothing on this side can fix that; disable the controls while the cursor is
+  over a surface, or give the camera a different gesture.
+- **The engine's `SceneView` treats a trackpad pan as scroll deltas; this
+  package treats it as a drag.** The engine's `ScenePointer` forwards the pan
+  to widget surfaces as a wheel; `SceneInput3d` moves a virtual finger by it,
+  so the content stays under the fingers on a tilted panel. The two are
+  consistent on a panel facing the viewer and diverge as it turns — which is
+  the reason for the choice, and worth knowing when a scene has both kinds of
+  surface.
+- **A widget wrapped round the scene that defers to its child is not hit where
+  the scene draws nothing.** `SceneInput3d`'s listener is translucent, the
+  position `SceneView`'s own takes, so it reports every pointer over its box
+  but does not *answer* the hit test unless something beneath it does — and a
+  `SceneView`'s layout hosts take no space. A parent with the default
+  `HitTestBehavior.deferToChild` is therefore not on the path, and never hears
+  the wheel the scene declined. Flutter's `Scrollable` is opaque by default, so
+  a real scroll view around the scene works; a hand-written `Listener` has to
+  say `opaque`.
+- **A Flutter `Shortcuts` or `Actions` widget above the `SceneView` reaches
+  nothing on a plane.** The key walks the focus tree, where a `Focus3d`'s
+  ancestors are its scopes and not the widgets around the view, and the action
+  is looked up through a `BuildContext` the node does not have. Bindings for a
+  surface go *inside* it, as `SceneShortcuts3d` and `SceneActions3d`. A
+  detached overlay entry is a surface of its own: a binding around a screen
+  does not reach a dialog floating in front of it either.
+- **A trapped overlay entry takes the focus when it opens.** That is what makes
+  Escape reach a dialog and stops Enter re-activating the button behind the
+  barrier, and it is `ModalRoute`'s behaviour — but it is a change for anything
+  written before it that expected the opener to keep the focus while the
+  entry was up. Closing the entry hands it back.
+- **A key reaches a scene only once something in it has the focus.** A scene
+  nobody has clicked is not reachable from the keyboard at all, because a key
+  with no primary focus is dropped. `SceneInput3d(autofocus: true)` or
+  `Input3dHost.requestSceneFocus()` is the way in; Tab out again is not
+  answered.
+
 ## Semantics
 
 **A `Semantics3d` publishes what it is given and gathers nothing.** Flutter's
@@ -842,7 +885,7 @@ a raised card inside a scrolling list stands proud of it.
 
 ## When testing a component headlessly
 
-Three things that cost time in phase 5 and are invisible from the code.
+Things that cost time, in phase 5 and since, and are invisible from the code.
 
 - **A surface's constraints are tight, and `SceneSizedBox3d` enforces its
   parent's.** A bar pumped straight onto a `SceneLayout3d(size: …)` comes out
@@ -876,6 +919,16 @@ Three things that cost time in phase 5 and are invisible from the code.
   that keeps the previous press's origin, a cancel that lights nothing up, a
   wash that never fades — which is what makes it expensive. Hold one in a
   field.
+- **`tester.sendKeyEvent` is a down *and* an up.** Every handler on the path
+  hears both, so an `onKeyEvent` that logs without checking for a
+  `KeyDownEvent` logs each key twice. The shortcut activators ignore the up on
+  their own.
+- **`FocusNode.unfocus()` erases the scope's memory of what had the focus.**
+  Its default disposition is `UnfocusDisposition.scope`, which takes the node
+  out of its scope's history — so a test that unfocuses to simulate "the
+  keyboard went elsewhere" and then asks the scene to take it back finds the
+  *first* box, not the last one. Move the focus to a real node outside the
+  scene instead.
 - **A component has two `TapTarget3d`s per control, not one.** The outer one
   carries the 48dp reach and the `InkWell3d`'s own sits inside it at
   `Size3d.zero` — one target rather than two nested ones disagreeing about

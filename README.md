@@ -293,7 +293,8 @@ renderer of your *own*, which is what having a seam there is for.
 Open, each for a stated reason rather than for lack of time:
 
 - **Text input.** There is no editing layer anywhere in this stack — no
-  cursor, no selection, no keyboard plumbing — so there is no `TextField3d`,
+  cursor, no selection, no text-input client; a key reaches a control to
+  activate it and composes nothing — so there is no `TextField3d`,
   and it is not planned.
 - **Subtree opacity.** `flutter_scene` has no per-node opacity for a fade to
   multiply into, so a subtree cannot be faded as a whole. Disabled states are

@@ -275,4 +275,7 @@ plan had read that file without noticing it.
 **What was deliberately not done, and stays open:** the wheel, the trackpad
 and the key. `onPointerSignal` and `onPointerPanZoom*` are not wired, because
 wiring them to nothing would hide that they are missing. That is the next
-item on the map, and it lands on `Input3dHost`.
+item on the map, and it lands on `Input3dHost`. *Since closed by*
+[a wheel, a trackpad and a key that reach a box](2026_09_15_a_wheel_a_trackpad_and_a_key_that_reach_a_box.md)
+— the wheel and the trackpad did land on the host; the key, it turned out,
+does not pass through it at all.

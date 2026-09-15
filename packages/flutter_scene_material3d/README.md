@@ -350,6 +350,16 @@ nothing there; `Button3d` puts the target outside the panel and asks the ink
 well for `minimumSize: Size3d.zero`. See *Pointers* in
 [docs/traps.md](../../docs/traps.md), and the next section.
 
+**Enter and Space activate a focused control**, because `InkWell3d` binds
+Flutter's `ActivateIntent` the way Flutter's `InkWell` does — so every button,
+card, tile, chip, menu item, navigation destination and selection control
+answers the keyboard with nothing more to write. An activation is a press with
+no pointer behind it: the ripple starts from the middle of the control, `onTap`
+runs, and the ripple is let go. It is enabled only for an enabled control that
+has an `onTap`, so a key on one that would do nothing goes on up the tree
+instead of being swallowed. Tab and the arrows move between controls; both are
+the layout package's defaults, described under *Keys* in its README.
+
 ## The seven buttons
 
 Every Material button is here, and they are all the same widget:
@@ -908,6 +918,13 @@ Future<void> _confirmDelete(BuildContext context) async {
   }
 }
 ```
+
+Every overlay that covers the screen — a dialog, a menu, a modal sheet —
+**takes the focus when it opens and closes on Escape**, which is what
+Flutter's `ModalRoute` does. `barrierDismissible: false` refuses both the tap
+on the scrim and the key, for a dialog that has to be answered. A snack bar, a
+tooltip and a persistent sheet cover nothing, take no focus, and leave Escape
+alone.
 
 `showModalBottomSheet3d` and `showBottomSheet3d` are the same shape for a
 sheet — the first over a scrim and returning a value, the second part of the
@@ -1495,15 +1512,19 @@ spelling that Flutter deprecated after 3.32 in favour of a group ancestor; that
 migration is an inherited widget plus a registry, and it belongs beside a
 `FormField3d` rather than inside a leaf control. A slider has no **tick marks**
 for its divisions and no **value indicator** above the thumb, both of which are
-ornament on the component whose design question here was the drag. A switch has
+ornament on the component whose design question here was the drag — and it does
+not move on the **arrow keys**, which on a focused slider move the focus
+instead, as on any other control; binding Flutter's increase and decrease
+intents is a small change the keyboard layer now makes possible. A switch has
 no **growing thumb** and nothing else animates either, for the reason the whole
 catalogue does not. And a slider takes an explicit **width** rather than
 filling its parent, because the thumb's position is written before layout
 rather than after it.
 
 Text input is not planned at all: there is no `EditableText3d`, no selection,
-no cursor and no keyboard plumbing anywhere in the stack, so a `TextField3d`
-is a project of its own rather than a component.
+no cursor and no text-input client anywhere in the stack — the keyboard
+reaches a control to activate it, and composes nothing — so a `TextField3d` is
+a project of its own rather than a component.
 
 The plan is
 [`plans/2026_09_01_flutter_scene_material3d.md`](plans/2026_09_01_flutter_scene_material3d.md),

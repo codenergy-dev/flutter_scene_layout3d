@@ -1,5 +1,58 @@
 ## Unreleased
 
+- **A wheel, two fingers on a trackpad and a key reach a box.** The inputs a
+  desktop reaches for first, none of which this package routed: a list
+  scrolled by drag alone, and a focused control did nothing with a key.
+  - **A wheel goes where a press would have gone**, then to the innermost view
+    that would actually move — Flutter's rule, so a vertical wheel over a
+    sideways carousel scrolls the list around it, and a wheel at the end of an
+    inner list goes on to the outer one. A dialog in front takes the wheel
+    even when it has nothing to scroll. `SceneInput3d` claims it through
+    Flutter's `pointerSignalResolver`, and only when something would move, so
+    a scroll view in the widget tree around the scene still gets the rest.
+    Shift turns a mouse wheel sideways. The rule is **`PointerScroll3d`**, and
+    **`Layout3dPointer.resolveScroll`** and the group's counterpart apply it.
+  - **`Scroll3dController.pointerScroll`** is `ScrollPosition.pointerScroll`:
+    a jump clamped to the range whatever the physics — a wheel has no finger to
+    let go of, so nothing would spring an overscrolled list back — followed by
+    a settle at rest, which is what snaps a page view after a notch.
+  - **A trackpad pan is a drag by a finger that went down where the cursor
+    is**, through `panZoomStart`, `panZoomUpdate` and `panZoomEnd`. It runs
+    through the ray-plane arithmetic a touch drag uses, so the content stays
+    under the fingers on a tilted panel and flings on release, and it presses
+    nothing: no control under two fingers is tapped or focused. Its scale and
+    rotation are ignored. **`cancelScrollInertia`** stops a coasting list when
+    the fingers land on it again.
+  - **`Shortcuts3d` and `Actions3d`** are Flutter's `Shortcuts` and `Actions`,
+    walked over the layout tree, because a focus node on a plane has no
+    context and no widget ancestors for Flutter's to find. The activators, the
+    intents and the actions are Flutter's own classes. A key goes up from the
+    focused box nearest first; a `Focus3d` around a region now hears the keys
+    of the controls inside it; a disabled nearer binding does not fall through.
+    **`Actions3d.maybeInvoke`** fires an intent with no key behind it.
+  - **The defaults are `WidgetsApp`'s**: Tab and Shift-Tab walk
+    `Focus3dTraversal` inside the focused box's scope, the arrows move focus on
+    the plane, Page Up and Page Down scroll the enclosing list. Enter and Space
+    map to `ActivateIntent` and Escape to `DismissIntent`, with no default
+    action for either — a control and a modal supply them.
+  - **A trapping `Overlay3dEntry` takes the focus when it opens**, and an entry
+    that is modal or traps focus **closes on Escape** through its `onDismiss`,
+    while `dismissible`. Before this the button that opened a dialog kept the
+    focus behind the barrier — invisible while keys did nothing, and a dialog
+    opened twice by one Enter the moment they did. **`FocusScope3d.autofocus`**
+    is what the entry uses.
+  - **`SceneInput3d.autofocus` and `Input3dHost.requestSceneFocus`** are the
+    way a keyboard gets into a scene nothing has focused: the host is one
+    focusable widget in Flutter's traversal and hands the focus to the
+    front-most surface. `Input3dHitPhase.scroll` reports a wheel and a pan.
+  - **`Focus3d.onKeyEvent` is mutable**, and exposed on `SceneFocus3d`; a node
+    handed in keeps the handler it came with, and gets it back.
+    **`Focus3d.layoutFor`** finds the box a focus node stands for.
+    **`SceneShortcuts3d`** and **`SceneActions3d`** are the widget forms.
+- **`SceneFocus3d` states `canRequestFocus` on a node handed in when it is
+  created**, not only when it is updated, so a control built disabled around a
+  node of its own is not focusable until its first rebuild.
+
 - **An application no longer wires its own rays.** `SceneInput3d` wraps the
   `SceneView` and owns the input: the listener, the camera arithmetic that
   turns a pointer position into a world ray, the `Layout3dPointerGroup`, and
@@ -34,8 +87,6 @@
   - **A pointer that leaves the view is taken off every surface**, so a box
     lit by a hover no longer keeps its state layer when the cursor leaves the
     window — nothing else would ever have told it otherwise.
-  - Not routed yet, and deliberately left visible rather than quietly dropped:
-    a wheel, a trackpad gesture and a key.
 - **`Layout3dPointerGroup` keeps its detached-entry bookkeeping per overlay.**
   It was one flat set shared across every overlay it was called for, so with
   two overlays each `syncDetachedEntries` took out the other's entries — a

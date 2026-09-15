@@ -287,6 +287,53 @@ class Scroll3dController extends ChangeNotifier {
     _startSimulation(simulation);
   }
 
+  /// Where a wheel moving the position by [delta] would put it.
+  ///
+  /// Clamped to the scrollable range whatever the physics, which is how a
+  /// wheel differs from a drag: a mouse notch past the end of a bouncing list
+  /// does not pull the content away from its edge, because there is no finger
+  /// to let go of and nothing would ever spring it back. A view asks this
+  /// before claiming a wheel, and declines one that would not move it, so the
+  /// view around it gets the chance.
+  double pointerScrollTarget(double delta) =>
+      (_offset + delta).clamp(minScrollExtent, _maxScrollExtent);
+
+  /// Moves the position by [delta] layout units of wheel travel, the 3D
+  /// analogue of `ScrollPosition.pointerScroll`, and reports whether it moved.
+  ///
+  /// A jump rather than an animation, clamped to the range (see
+  /// [pointerScrollTarget]), and followed by a ballistic settle at zero
+  /// velocity — which does nothing for a list in range under clamping
+  /// physics, and is what lets a page view snap to a page after a notch.
+  /// [userScrollDirection] reads as the viewer scrolling while the listeners
+  /// are told, and goes idle again once nothing is moving.
+  ///
+  /// A zero [delta] stops whatever is animating the position and lets the
+  /// physics settle it. That is what a trackpad's inertia cancel asks for: the
+  /// fingers came down on a list the platform was still coasting.
+  bool pointerScroll(double delta) {
+    if (delta == 0.0) {
+      stopAnimation();
+      _startSimulation(_physics.createBallisticSimulation(this, 0.0));
+      return false;
+    }
+    final target = pointerScrollTarget(delta);
+    if (target == _offset) return false;
+    stopAnimation();
+    _userScrollDirection = target < _offset
+        ? ScrollDirection3d.forward
+        : ScrollDirection3d.reverse;
+    _offset = target;
+    notifyListeners();
+    final simulation = _physics.createBallisticSimulation(this, 0.0);
+    if (simulation == null) {
+      _userScrollDirection = ScrollDirection3d.idle;
+    } else {
+      _startSimulation(simulation);
+    }
+    return true;
+  }
+
   // ------------------------------------------------------------- animation
 
   Ticker? _ticker;

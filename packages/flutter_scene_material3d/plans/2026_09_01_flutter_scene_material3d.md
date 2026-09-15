@@ -1746,7 +1746,11 @@ reader will look for and not find:
   get if anything in this stack activated a control from the keyboard. Nothing
   does yet; the fallback exists so that a component driving the controller
   directly — an imperative scene, a component with its own gesture — is never
-  handed a ripple at the origin corner.
+  handed a ripple at the origin corner. *Since closed:*
+  [a wheel, a trackpad and a key that reach a box](../../flutter_scene_layout3d/plans/2026_09_15_a_wheel_a_trackpad_and_a_key_that_reach_a_box.md)
+  made `InkWell3d` bind `ActivateIntent`, and a keyboard press now ripples from
+  the middle of the *control* — it notes that point itself, because a point
+  left by a pointer press that never became a tap would otherwise be used.
 - **`InkResponse3d`'s circular splash.** Flutter distinguishes a bounded ink
   well from an unbounded ink response with a circular splash. That distinction
   is about clipping to a container, which is the previous bullet, so there is

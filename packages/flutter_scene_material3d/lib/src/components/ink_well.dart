@@ -2,11 +2,26 @@ import 'package:flutter/foundation.dart' show ValueChanged;
 import 'package:flutter/gestures.dart'
     show GestureLongPressCallback, GestureTapCallback;
 import 'package:flutter/widgets.dart'
-    show BuildContext, FocusNode, State, StatefulWidget, Widget;
+    show
+        Action,
+        ActivateIntent,
+        BuildContext,
+        FocusNode,
+        Intent,
+        State,
+        StatefulWidget,
+        Widget;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart'
-    show HitTestBehavior3d, PointerEvent3d, Size3d, TapTarget3d;
+    show
+        Focus3d,
+        HitTestBehavior3d,
+        Offset3d,
+        PointerEvent3d,
+        Size3d,
+        TapTarget3d;
 import 'package:flutter_scene_layout3d/widgets.dart'
     show
+        SceneActions3d,
         SceneFocus3d,
         SceneGestureDetector3d,
         SceneListener3d,
@@ -30,10 +45,22 @@ import 'ink.dart';
 /// )
 /// ```
 ///
-/// Three boxes, in an order that matters. Outermost is a `TapTarget3d` at
-/// Material's 48dp minimum, so a small control is still easy to hit; then a
-/// `Focus3d`, so the control is reachable from a keyboard and lights up when
-/// it is; then a `Listener3d` and a `GestureDetector3d` for the pointer.
+/// Boxes in an order that matters. Outermost is a `TapTarget3d` at
+/// Material's 48dp minimum, so a small control is still easy to hit; then an
+/// `Actions3d` binding `ActivateIntent`, and a `Focus3d` inside it, so the
+/// control is reachable from a keyboard, lights up when it is, and fires on
+/// Enter or Space; then a `Listener3d` and a `GestureDetector3d` for the
+/// pointer.
+///
+/// ## Activation from the keyboard
+///
+/// Flutter's `InkWell` binds `ActivateIntent` and `GestureDetector` does not,
+/// and the split is kept: this is the control, so this is where Enter and
+/// Space land. An activation is a press with no pointer behind it — the
+/// ripple starts from the middle of the control, `onTap` runs, and the ripple
+/// is let go. It is enabled only for an enabled control with an [onTap], so a
+/// key on a control that would do nothing goes on up the tree instead of
+/// being swallowed.
 ///
 /// ## The tier it must not leave
 ///
@@ -162,6 +189,24 @@ class InkWell3d extends StatefulWidget {
 class _InkWell3dState extends State<InkWell3d> {
   InkController3d? _ink;
 
+  /// The node the focus box uses when the caller gave none.
+  ///
+  /// Held here rather than left to the box, because an activation has to find
+  /// the box it is centred on, and [Focus3d.layoutFor] finds a box from its
+  /// node. Skips Flutter's own traversal, as a node the box made would.
+  FocusNode? _ownedFocusNode;
+
+  FocusNode get _focusNode =>
+      widget.focusNode ??
+      (_ownedFocusNode ??= FocusNode(
+        debugLabel: 'InkWell3d',
+        skipTraversal: true,
+      ));
+
+  late final Map<Type, Action<Intent>> _actions = <Type, Action<Intent>>{
+    ActivateIntent: _ActivateInkWell3d(this),
+  };
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -182,7 +227,31 @@ class _InkWell3dState extends State<InkWell3d> {
     // above — so a control taken out of the tree mid-hover has to say so, or
     // the panel keeps the wash forever.
     _ink?.clearInkStates();
+    // After the focus box, which the element tree has already unmounted: a
+    // child is taken down before its parent's state is disposed.
+    _ownedFocusNode?.dispose();
     super.dispose();
+  }
+
+  /// A press with no pointer behind it, from Enter or Space.
+  ///
+  /// The ripple is centred on the control by noting its middle first — a
+  /// point left over from an earlier pointer press that never became a tap
+  /// would otherwise be where a keyboard press ripples from. The pressed state
+  /// goes on and off around [InkWell3d.onTap], which starts the ripple and
+  /// lets it go; [InkWell3d.onHighlightChanged] is not called, because Flutter
+  /// does not highlight a keyboard activation either.
+  void _activate() {
+    final box = Focus3d.layoutFor(_focusNode);
+    if (box != null && box.hasSize) {
+      _ink?.noteRipplePoint(
+        box,
+        Offset3d(box.size.width / 2.0, box.size.height / 2.0, 0.0),
+      );
+    }
+    _set(Material3dState.pressed, true);
+    widget.onTap?.call();
+    _set(Material3dState.pressed, false);
   }
 
   void _set(Material3dState state, bool active) =>
@@ -220,30 +289,50 @@ class _InkWell3dState extends State<InkWell3d> {
     final enabled = widget.enabled;
     return SceneTapTarget3d(
       minimumSize: widget.minimumSize,
-      child: SceneFocus3d(
-        focusNode: widget.focusNode,
-        autofocus: widget.autofocus,
-        focusOnPointerDown: widget.focusOnPointerDown,
-        canRequestFocus: enabled,
-        onFocusChange: _handleFocusChange,
-        child: SceneListener3d(
-          onPointerEnter: (_) => _handleHover(true),
-          onPointerExit: (_) => _handleHover(false),
-          onPointerDown: _handleDown,
-          // Defers to the gesture detector below, which is opaque: a control
-          // is hovered exactly where it is pressable.
-          behavior: HitTestBehavior3d.deferToChild,
-          child: SceneGestureDetector3d(
-            onTapDown: enabled ? (_) => _handleHighlight(true) : null,
-            onTapUp: enabled ? (_) => _handleHighlight(false) : null,
-            onTapCancel: enabled ? () => _handleHighlight(false) : null,
-            onTap: enabled ? widget.onTap : null,
-            onDoubleTap: enabled ? widget.onDoubleTap : null,
-            onLongPress: enabled ? widget.onLongPress : null,
-            child: widget.child,
+      child: SceneActions3d(
+        actions: _actions,
+        child: SceneFocus3d(
+          focusNode: _focusNode,
+          autofocus: widget.autofocus,
+          focusOnPointerDown: widget.focusOnPointerDown,
+          canRequestFocus: enabled,
+          onFocusChange: _handleFocusChange,
+          child: SceneListener3d(
+            onPointerEnter: (_) => _handleHover(true),
+            onPointerExit: (_) => _handleHover(false),
+            onPointerDown: _handleDown,
+            // Defers to the gesture detector below, which is opaque: a control
+            // is hovered exactly where it is pressable.
+            behavior: HitTestBehavior3d.deferToChild,
+            child: SceneGestureDetector3d(
+              onTapDown: enabled ? (_) => _handleHighlight(true) : null,
+              onTapUp: enabled ? (_) => _handleHighlight(false) : null,
+              onTapCancel: enabled ? () => _handleHighlight(false) : null,
+              onTap: enabled ? widget.onTap : null,
+              onDoubleTap: enabled ? widget.onDoubleTap : null,
+              onLongPress: enabled ? widget.onLongPress : null,
+              child: widget.child,
+            ),
           ),
         ),
       ),
     );
+  }
+}
+
+/// Enter and Space on an [InkWell3d].
+class _ActivateInkWell3d extends Action<ActivateIntent> {
+  _ActivateInkWell3d(this.state);
+
+  final _InkWell3dState state;
+
+  @override
+  bool isEnabled(ActivateIntent intent) =>
+      state.mounted && state.widget.enabled && state.widget.onTap != null;
+
+  @override
+  Object? invoke(ActivateIntent intent) {
+    state._activate();
+    return null;
   }
 }

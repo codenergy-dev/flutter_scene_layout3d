@@ -13,10 +13,14 @@ import 'package:flutter/semantics.dart' show SemanticsProperties;
 import 'package:flutter/widgets.dart'
     show
         BuildContext,
+        Action,
         DefaultTextStyle,
         Directionality,
         FocusNode,
+        FocusOnKeyEventCallback,
         IndexedWidgetBuilder,
+        Intent,
+        ShortcutActivator,
         TextAlign,
         TextDirection,
         TextOverflow,
@@ -55,6 +59,7 @@ import '../input/events.dart';
 import '../input/focus.dart';
 import '../input/gesture_detector.dart';
 import '../input/listener.dart';
+import '../input/shortcuts.dart';
 import '../input/tap_target.dart';
 import '../scroll/grid_delegate.dart';
 import '../scroll/grid_view.dart';
@@ -539,12 +544,18 @@ class SceneFocus3d extends SingleChildLayout3dWidget {
     this.focusOnPointerDown = true,
     this.autofocus = false,
     this.canRequestFocus = true,
+    this.onKeyEvent,
     super.child,
   });
 
   /// The node holding this box's place in the focus tree, or null for one of
   /// its own.
   final FocusNode? focusNode;
+
+  /// Called with each key that reaches this box — including, unlike on a
+  /// bare `FocusNode`, the keys of the focusable boxes inside it. See
+  /// [Focus3d.onKeyEvent].
+  final FocusOnKeyEventCallback? onKeyEvent;
 
   /// Called when this box gains or loses focus.
   final ValueChanged<bool>? onFocusChange;
@@ -559,22 +570,90 @@ class SceneFocus3d extends SingleChildLayout3dWidget {
   final bool canRequestFocus;
 
   @override
-  Focus3d createLayout(BuildContext context) => Focus3d(
-    focusNode: focusNode,
-    onFocusChange: onFocusChange,
-    focusOnPointerDown: focusOnPointerDown,
-    autofocus: autofocus,
-    canRequestFocus: canRequestFocus,
-  );
+  Focus3d createLayout(BuildContext context) =>
+      Focus3d(
+          focusNode: focusNode,
+          onFocusChange: onFocusChange,
+          focusOnPointerDown: focusOnPointerDown,
+          autofocus: autofocus,
+          canRequestFocus: canRequestFocus,
+          onKeyEvent: onKeyEvent,
+        )
+        // Stated on a node handed in as well as on one the box makes, as
+        // [updateLayout] does: a control built disabled around a node of its
+        // own must not be focusable until its first rebuild.
+        ..canRequestFocus = canRequestFocus;
 
   @override
   void updateLayout(BuildContext context, Focus3d layout) {
     layout
       ..focusNode = focusNode
       ..onFocusChange = onFocusChange
+      ..onKeyEvent = onKeyEvent
       ..focusOnPointerDown = focusOnPointerDown
       ..canRequestFocus = canRequestFocus
       ..autofocus = autofocus;
+  }
+}
+
+/// Maps key presses to intents for the boxes below it, the widget form of
+/// [Shortcuts3d].
+///
+/// Flutter's own vocabulary, so a binding written for a 2D screen reads the
+/// same here:
+///
+/// ```dart
+/// SceneShortcuts3d(
+///   shortcuts: const <ShortcutActivator, Intent>{
+///     SingleActivator(LogicalKeyboardKey.delete): DeleteIntent(),
+///   },
+///   child: SceneActions3d(
+///     actions: <Type, Action<Intent>>{
+///       DeleteIntent: CallbackAction<DeleteIntent>(onInvoke: (_) => delete()),
+///     },
+///     child: row,
+///   ),
+/// )
+/// ```
+///
+/// A Flutter `Shortcuts` widget above the `SceneView` does not reach a box on
+/// a plane — see [Shortcuts3d] for why — so the binding goes here, inside the
+/// surface.
+class SceneShortcuts3d extends SingleChildLayout3dWidget {
+  /// Creates a box that maps [shortcuts] for its subtree.
+  const SceneShortcuts3d({super.key, required this.shortcuts, super.child});
+
+  /// The bindings this box adds.
+  final Map<ShortcutActivator, Intent> shortcuts;
+
+  @override
+  Shortcuts3d createLayout(BuildContext context) =>
+      Shortcuts3d(shortcuts: shortcuts);
+
+  @override
+  void updateLayout(BuildContext context, Shortcuts3d layout) {
+    layout.shortcuts = shortcuts;
+  }
+}
+
+/// Binds intents to what they do for the boxes below it, the widget form of
+/// [Actions3d].
+///
+/// A focused control finds the nearest binding for an intent's type above
+/// it. A Flutter `Actions` widget above the `SceneView` is not consulted.
+class SceneActions3d extends SingleChildLayout3dWidget {
+  /// Creates a box that binds [actions] for its subtree.
+  const SceneActions3d({super.key, required this.actions, super.child});
+
+  /// The bindings this box adds, keyed by intent type.
+  final Map<Type, Action<Intent>> actions;
+
+  @override
+  Actions3d createLayout(BuildContext context) => Actions3d(actions: actions);
+
+  @override
+  void updateLayout(BuildContext context, Actions3d layout) {
+    layout.actions = actions;
   }
 }
 
