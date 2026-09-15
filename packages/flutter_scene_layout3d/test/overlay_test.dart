@@ -579,6 +579,31 @@ void main() {
       ]);
     });
 
+    test('a hit test past a surface that does not absorb reports the front '
+        'one, as a press does', () {
+      final back = plate('back');
+      final front = plate('front');
+      final group = Layout3dPointerGroup()
+        ..addSurface(back.surface)
+        ..addSurface(front.surface, zOrder: 1, absorbs: false);
+      addTearDown(group.dispose);
+      final ray = rayAt(front.surface, const Offset3d(0.5, 0.5, 0));
+
+      // The walk still reaches the back surface — it is on the list of paths a
+      // press is dispatched to — but the answer is the front one's, which is
+      // what `down` and `hover` have always put in `lastHit`.
+      expect(group.hitTestAll(ray).map((path) => path.target), <Layout3d>[
+        front.content,
+        back.content,
+      ]);
+      expect(group.hitTest(ray).target, same(front.content));
+      expect(group.lastPointer, same(group.pointerFor(front.surface)));
+
+      group.down(ray);
+      expect(group.lastHit.target, same(front.content));
+      group.up();
+    });
+
     test('the camera breaks a tie between equal z-orders', () {
       final near = plate('near');
       final far = plate('far');

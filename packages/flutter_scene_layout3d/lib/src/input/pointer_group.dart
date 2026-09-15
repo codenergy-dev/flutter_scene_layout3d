@@ -288,15 +288,21 @@ class Layout3dPointerGroup {
   /// What [worldRay] reaches on the front-most surface that answers, without
   /// touching any sequence state.
   ///
-  /// Returns an empty result when no surface answers.
+  /// The walk goes on past a surface that does not absorb, exactly as a press
+  /// does, so every surface a press would reach has tested the ray; the answer
+  /// is still the front-most one's, which is what [down] and [hover] put in
+  /// [lastHit]. Every path is [hitTestAll]'s. Returns an empty result when no
+  /// surface answers.
   HitTestResult3d hitTest(Ray worldRay) {
     _lastHit = HitTestResult3d();
     _lastPointer = null;
     for (final member in _ordered()) {
       final hit = member.pointer.hitTest(worldRay);
       if (hit.isEmpty) continue;
-      _lastHit = hit;
-      _lastPointer = member.pointer;
+      if (_lastPointer == null) {
+        _lastHit = hit;
+        _lastPointer = member.pointer;
+      }
       if (member.absorbs) break;
     }
     return _lastHit;
@@ -308,9 +314,8 @@ class Layout3dPointerGroup {
   /// The front-most surface that answers comes first, followed by those
   /// behind it for as long as the surfaces answering do not absorb — the same
   /// walk [down] makes, so a box is on one of these paths exactly when a press
-  /// there would reach it. [hitTest] answers a narrower question, and in a
-  /// walk that carries on past a surface that does not absorb it reports the
-  /// last path rather than the first. Empty when nothing answers.
+  /// there would reach it. [hitTest] is the first of them. Empty when nothing
+  /// answers.
   List<HitTestResult3d> hitTestAll(Ray worldRay) {
     final paths = <HitTestResult3d>[];
     for (final member in _ordered()) {

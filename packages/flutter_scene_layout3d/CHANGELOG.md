@@ -1,5 +1,14 @@
 ## Unreleased
 
+- **`Layout3dPointerGroup.hitTest` answers with the front-most surface, as its
+  documentation always said.** Past a surface added with `absorbs: false` it
+  used to hand back the path of the *last* surface that answered — a HUD in
+  front of a panel reported the panel — while `down`, `hover`, the wheel and
+  the trackpad all kept the first. It keeps the first now, and so does
+  `lastHit` after it. The walk itself is unchanged: every surface a press would
+  reach still tests the ray. Nothing in either package called it, which is how
+  the two answers lived side by side.
+
 - **A test library for the screens an application builds.**
   `package:flutter_scene_layout3d/testing.dart` is `flutter_test`'s vocabulary
   pointed at the layout tree. Until now the package exported nothing a test
@@ -35,9 +44,9 @@
   Every path a press at a point of the view would be dispatched to, front to
   back, with the overlays' entries synced first — the question a tooltip, an
   editor's pick or a test asks. **`Layout3dPointerGroup.hitTestAll`** is the
-  same walk given a ray. The group's existing `hitTest` was not enough for it:
-  where a surface in front does not absorb, it reports the path *behind*, so a
-  box on a HUD would read as unreachable.
+  same walk given a ray; `hitTest` answers with only the first of those paths,
+  and a box on the panel behind a HUD is reached by a press as surely as the
+  HUD is.
 
 - **Tab walks from one surface to the next, and out of the scene.** Traversal
   used to cycle inside whichever surface held the focus, so a keyboard that got

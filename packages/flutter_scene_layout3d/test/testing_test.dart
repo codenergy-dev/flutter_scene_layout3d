@@ -556,15 +556,15 @@ void main() {
       expect(log, isEmpty, reason: 'nothing was dispatched');
       expect(host.pointers.lastHit, same(before));
 
-      // The group's own `hitTest` reports the *last* of those paths, which is
-      // why this question needed a walk of its own.
+      // The group's own `hitTest` is the first of those paths, which is why a
+      // question about the box on the panel behind needed a walk of its own.
       final ray = camera.screenPointToRay(
         const Offset(400, 300),
         const Size(800, 600),
       );
       expect(
         host.pointers.hitTest(ray).firstOf<Semantics3d>()!.properties.label,
-        'back',
+        'hud',
       );
     });
 

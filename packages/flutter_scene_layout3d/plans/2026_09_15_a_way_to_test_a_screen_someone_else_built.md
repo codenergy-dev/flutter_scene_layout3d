@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-09-15T16:23:05Z
-updated_at: 2026-09-15T17:10:08Z
+updated_at: 2026-09-15T17:21:28Z
 commit: 2a7c4dc3bece8cd29c02efe5603457feafa5f84a
 ---
 
@@ -364,14 +364,16 @@ message named the deepest box on the path — a `GestureDetector3d#9a7a7` — wh
 tells a reader nothing about *which* control is in the way; it now names the
 nearest semantic label on the path as well.
 
-**And one thing found and not changed — and first described wrongly.**
-`Layout3dPointerGroup.hitTest` is documented as the front-most answering
+**And one thing found, first described wrongly, and then fixed.**
+`Layout3dPointerGroup.hitTest` was documented as the front-most answering
 surface's path, and in a walk that carries on past a surface that does not
-absorb it returns the *last* answering surface's. This plan first said that
-`SceneInput3d.onHit` reports that value too, so a HUD in front of a panel would
-report the panel. **It does not**, and the claim was written without reading
-the group's other walks: `down`, `hover`, `resolveScroll` and `panZoomStart`
-each keep the first answering path, so `onHit` is right. `hitTest` is the one
-walk out of step with its own dartdoc and with the rest of the group, and
-nothing in either package calls it; `test/testing_test.dart` pins its current
-answer only to show why `hitTestAll` was needed.
+absorb it returned the *last* answering surface's. This plan first said that
+`SceneInput3d.onHit` reported that value too, so a HUD in front of a panel
+would report the panel. **It did not**, and the claim was written without
+reading the group's other walks: `down`, `hover`, `resolveScroll` and
+`panZoomStart` each keep the first answering path, so `onHit` was right all
+along. `hitTest` was the one walk out of step with its own dartdoc and with the
+rest of the group, and nothing in either package called it. It was fixed in a
+commit of its own after this plan closed: it keeps the first path now, and a
+test in `overlay_test.dart` — written first, and failing on the old walk —
+pins it beside the group's other tests.
