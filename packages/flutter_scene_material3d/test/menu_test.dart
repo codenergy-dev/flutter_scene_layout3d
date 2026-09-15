@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart'
     show BuildContext, StatefulBuilder, Widget;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
+import 'package:flutter_scene_layout3d/testing.dart';
 import 'package:flutter_scene_layout3d/widgets.dart';
 import 'package:flutter_scene_material3d/flutter_scene_material3d.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -149,49 +150,43 @@ void main() {
   });
 
   group('PopupMenuButton3d', () {
-    testWidgets('opens a menu and closes it with the chosen value', (
-      tester,
-    ) async {
+    testWidgets('opens a menu and closes it with the item pressed where it '
+        'is drawn', (tester) async {
+      // Pressed through the camera, the way a person presses it. This test
+      // used to aim a ray at where the overlay had *laid the menu out* — the
+      // middle of the panel, where nothing is drawn — and the press landed,
+      // because a follower answered hit tests there and not at its button.
+      // Aimed where the item is drawn, the press reached the barrier and the
+      // menu closed with nothing chosen.
       final chosen = <String>[];
-      final pumped = await pumpOverlay(
-        tester,
-        child: cornerButton(twoItems, onSelected: chosen.add),
-      );
-
-      final anchor = oneOf<Anchor3d>(pumped.surface);
-      expect(anchor.hasSize, isTrue);
-      expect(pumped.overlay.entries, isEmpty);
-
-      // A tap on the button.
-      pumped.pointer.down(rayAt(pumped.surface, const Offset3d(0.2, 0.2, 0)));
-      pumped.pointer.up();
-      await tester.pump();
-
-      expect(pumped.overlay.entries, hasLength(1));
-      final follower = oneOf<Follower3d>(pumped.surface);
-      expect(follower.hasSize, isTrue);
-
-      // Choosing an item pops the route with its value.
-      final item = boxesOf<Semantics3d>(
-        pumped.surface,
-      ).firstWhere((box) => box.properties.label == 'Delete');
-      final target = offsetInSurface(item);
-      final second = Layout3dPointer(pumped.surface);
-      second.down(
-        rayAt(
-          pumped.surface,
-          Offset3d(
-            target.x + item.size.width / 2,
-            target.y + item.size.height / 2,
-            0,
+      await tester.pumpSurface3d(
+        SceneTheme3d(
+          data: Theme3dData.light,
+          child: SceneOverlay3d(
+            child: SceneStack3d(
+              children: <Widget>[
+                cornerButton(twoItems, onSelected: chosen.add),
+              ],
+            ),
           ),
         ),
       );
-      second.up();
+      expect(find3d.bySubtype<Follower3d>(), findsNothing);
+
+      await tester.tap3d(find3d.bySemanticsLabel('More'));
+      await tester.pump();
+
+      final follower = tester.layout3d<Follower3d>(
+        find3d.bySubtype<Follower3d>(),
+      );
+      expect(follower.nodeOffset, isNot(Offset3d.zero));
+      expect(find3d.bySemanticsLabel('Delete'), isReachable3d);
+
+      await tester.tap3d(find3d.bySemanticsLabel('Delete'));
       await tester.pump();
 
       expect(chosen, <String>['delete']);
-      expect(pumped.overlay.entries, isEmpty);
+      expect(find3d.bySemanticsLabel('Delete'), findsNothing);
     });
 
     testWidgets('the menu is at the button, not at the middle of the panel', (

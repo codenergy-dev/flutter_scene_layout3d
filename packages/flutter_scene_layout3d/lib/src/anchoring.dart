@@ -69,6 +69,12 @@ extension Layout3dAnchoring on Layout3d {
   /// re-anchoring after a scroll or a resize another assignment rather than
   /// an accumulation that drifts.
   ///
+  /// **A follower placed this way has to be pressed where it is drawn**, and
+  /// that is its own job: a hit test moves a ray into a child by [offset]
+  /// alone, so a box anchored by [nodeOffset] answers where layout put it. Shift
+  /// the ray by [nodeOffset] in the follower's `hitTest`, as
+  /// `flutter_scene_material3d`'s `Follower3d` does.
+  ///
   /// **It writes nothing and lays nothing out.** [nodeOffset] is the node
   /// tier — one matrix a frame, no `markNeedsLayout` — which is the only tier
   /// a component may re-anchor on per frame. See *Staying off the relayout

@@ -741,6 +741,19 @@ remains a reservation of space and `glyphDepth` is the figure that draws.
   report where layout put a follower rather than where it is drawn. A render
   probe of an anchored overlay has to use the **anchor** as its oracle.
   `examples/render_probe`'s `menu_at_its_button` does exactly that.
+- **And a follower is pressed where layout put it, unless it says otherwise.**
+  Hit testing moves a ray into a child by the child's `offset` alone, so a box
+  anchored by `nodeOffset` is *drawn* at its anchor and *answers* wherever the
+  overlay laid its entry out — usually the middle of the panel, with nothing
+  drawn there. For an animation that is the point; for anchoring it is a menu
+  whose items cannot be pressed, because a press on the item lands on the
+  barrier behind it. A box whose node offset is its placement shifts its own
+  hit test by it: override `hitTest` to call
+  `super.hitTest(result, ray: ray.shifted(nodeOffset))`, which is what
+  `flutter_scene_material3d`'s `Follower3d` does and what Flutter's
+  `CompositedTransformFollower` does with its offset. `PopupMenuButton3d`
+  shipped without it, and its test passed by pressing the empty middle of the
+  panel; `tester.tap3d` aims where the item is drawn, and failed.
 - **A follower needs more than one hook to follow.** `Layout3d.place` fires on
   a box that moves and **not** on the boxes below it, so a follower watching
   its anchor's `place` hears about a row moving inside a list and hears nothing

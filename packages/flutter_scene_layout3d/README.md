@@ -2192,6 +2192,22 @@ The consequence worth knowing before writing a test: `screenCenter` and
 anchored box rather than where it is drawn. A probe of an anchored overlay uses
 the *anchor* as its oracle.
 
+**And the same is true of a press**, which is the consequence worth knowing
+before shipping one. A hit test moves a ray into a child by its `offset` alone,
+so an anchored menu answers where the overlay laid it out and not where it is
+drawn. A box whose node offset *is* its placement says so in its hit test:
+
+```dart
+@override
+bool hitTest(HitTestResult3d result, {required Ray3d ray}) =>
+    super.hitTest(result, ray: ray.shifted(nodeOffset));
+```
+
+That is `flutter_scene_material3d`'s `Follower3d`, and Flutter's
+`CompositedTransformFollower` does the same with its own offset. An animation
+leaves it out on purpose: a sliding thumb should still be pressed where layout
+put its slot.
+
 ## Dragging things around
 
 Every drag so far has been a drag of the thing under the finger: a list moves

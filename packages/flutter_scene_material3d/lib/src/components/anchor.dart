@@ -2,7 +2,13 @@ import 'package:flutter/foundation.dart' show ValueChanged, VoidCallback;
 import 'package:flutter/widgets.dart'
     show BuildContext, State, StatefulWidget, Widget, WidgetsBinding;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart'
-    show Alignment3d, Layout3dAnchoring, Offset3d, ProxyLayout3d;
+    show
+        Alignment3d,
+        HitTestResult3d,
+        Layout3dAnchoring,
+        Offset3d,
+        ProxyLayout3d,
+        Ray3d;
 import 'package:flutter_scene_layout3d/widgets.dart'
     show SingleChildLayout3dWidget;
 
@@ -63,6 +69,16 @@ class Anchor3dWidget extends SingleChildLayout3dWidget {
 /// The follower half of the anchoring. It re-anchors on two occasions and
 /// both are inside the layout pass, so the menu is never a frame behind its
 /// button: when the follower itself is placed, and when the anchor is.
+///
+/// **It is pressed where it is drawn.** A node offset moves geometry and
+/// leaves the box where layout put it, which is right for an animation — a
+/// sliding thumb, a lifted slot — and wrong for this one: the offset *is* the
+/// placement, and the place layout gave the follower is wherever the overlay
+/// happened to lay its entry out, with nothing drawn there. So a hit test is
+/// shifted by [nodeOffset] before it is asked, which is what Flutter's
+/// `CompositedTransformFollower` does with its own offset. A menu item used
+/// to answer in the empty middle of the panel while a press on the item, at
+/// its button, reached the barrier and closed the menu.
 class Follower3d extends ProxyLayout3d {
   /// Creates a follower for [anchor].
   Follower3d({
@@ -107,6 +123,10 @@ class Follower3d extends ProxyLayout3d {
     super.place(offset);
     reanchor();
   }
+
+  @override
+  bool hitTest(HitTestResult3d result, {required Ray3d ray}) =>
+      super.hitTest(result, ray: ray.shifted(nodeOffset));
 
   @override
   void dispose() {

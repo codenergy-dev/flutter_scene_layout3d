@@ -14,6 +14,17 @@ component has no thickness in Flutter and must have one here, which is the
 token Material does not publish at all. The plan's middle section is where
 that reasoning lives.
 
+- **A menu item is pressed where it is drawn.** `Follower3d` puts a menu at its
+  button with a node offset, and a hit test moves a ray into a box by its
+  layout offset alone — so every item of a `PopupMenuButton3d` answered in the
+  middle of the panel, where the overlay had laid the menu out and nothing was
+  drawn, and a press on the item itself reached the barrier and closed the
+  menu with nothing chosen. `Follower3d` now shifts its hit test by its own
+  node offset, which is what Flutter's `CompositedTransformFollower` does. The
+  component's test had been pressing the empty middle of the panel; it presses
+  through the camera now, with `tester.tap3d`, which is how the defect was
+  found.
+
 - **An app bar keeps its title off an edge with nothing on it.** A bar with no
   leading widget put its title 4dp from its edge — the bar's own padding and
   nothing more — and a bar with no actions let a long title run to 4dp of the

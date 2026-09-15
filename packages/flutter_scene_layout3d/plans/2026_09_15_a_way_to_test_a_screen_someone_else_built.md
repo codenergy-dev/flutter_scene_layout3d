@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-09-15T16:23:05Z
-updated_at: 2026-09-15T17:21:28Z
+updated_at: 2026-09-15T17:31:56Z
 commit: 2a7c4dc3bece8cd29c02efe5603457feafa5f84a
 ---
 
@@ -329,6 +329,22 @@ leading slot is 56dp wide and the title starts at 72dp, where this bar's 4dp
 padding and a 48dp button put it at 68dp. Nor is a centred title clamped
 clear of the leading widget and the actions, as Flutter's is: it is centred in
 the whole bar, and a long one can run under them.
+
+## What the library found once its helpers replaced the old ones
+
+**A menu could not be pressed where it was drawn.** Replacing the Material
+suite's two `offsetInSurface` copies with one definition of where a box is
+drawn turned `PopupMenuButton3d`'s own test red: it had been aiming at where
+the overlay laid the menu out — the empty middle of the panel — and a follower
+answered hit tests there, because a node offset moves geometry and not the box.
+Aimed where the item is drawn, through the camera with `tap3d`, the press
+reached the barrier and closed the menu with nothing chosen. It is the hazard
+this plan's opening section described, two helpers giving two answers to
+"where is this box", and one of them was hiding a defect a person would have
+met on the first menu they opened. `Follower3d` now shifts its hit test by its
+node offset, the anchoring recipe in the layout README and `docs/traps.md` say
+so, and the test presses through the camera. Fixed in a commit of its own,
+before the helpers were replaced.
 
 ## What the reasoning got wrong
 
