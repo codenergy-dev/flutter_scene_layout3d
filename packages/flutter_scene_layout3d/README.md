@@ -1137,6 +1137,8 @@ than none.
 | `ReorderableList3d`, `SliverReorderableList3d`, `Reorder3dCallback` | `ReorderableListView`, `SliverReorderableList`, `ReorderCallback` — with `newIndex` meaning where the item ends up |
 | `Overlay3d`, `Overlay3dEntry`, `OverlayLayer3d` | `Overlay`, `OverlayEntry`, and the 3D question Flutter does not have |
 | `ModalBarrier3d`, `Navigator3d`, `Route3d` | `ModalBarrier`, `Navigator`, `Route` |
+| `Route3dTransition`, `TimedRoute3dTransition`, `Route3d.animation` | `TransitionRoute`'s controller and the duration-and-curve half of `PageRouteBuilder` |
+| `Motion3d`, `MotionTransition3d`, `SceneMotionTransition3d` | `SlideTransition`, `ScaleTransition` and `RotationTransition`, as one value and one box on the node tier |
 | `WidgetOverlay3dEntry`, `WidgetPageRoute3d` | an entry and a route whose content is a widget subtree |
 | `Layout3d.anchorOffsetTo` | `CompositedTransformTarget` and `CompositedTransformFollower`, as one call on the node tier |
 | `Layout3dPointerGroup` | routing a ray across surfaces, which a screen does not need |
@@ -2367,14 +2369,15 @@ removing it hands focus back to whatever held it before.
 
 `Navigator3d` is the thin route stack over all of it: `push` returns the
 future the route's result arrives on, `pop` completes it, and
-`Route3dTransition` is the seam an animation will fill — its `reverse` is
-awaited before the entry is taken out, so a leaving route is on screen for the
-whole of it. It is deliberately not wired into Flutter's own `Navigator`:
-Flutter's overlay is a stack of `RenderBox`es and its routes build 2D widgets,
-and there is no honest mapping. A 3D dialog opened from a 2D route, and the
-system back button popping this stack, are not answered here — an application
-that wants either pushes on this navigator from wherever it likes and calls
-`pop` from its own `PopScope`.
+`Route3dTransition` says what happens while a route comes and goes — its
+`reverse` is awaited before the entry is taken out, so a leaving route is on
+screen for the whole of it. `TimedRoute3dTransition` is the one that moves;
+see *A route that arrives* under Animation. It is deliberately not wired into
+Flutter's own `Navigator`: Flutter's overlay is a stack of `RenderBox`es and
+its routes build 2D widgets, and there is no honest mapping. A 3D dialog
+opened from a 2D route, and the system back button popping this stack, are
+not answered here — an application that wants either pushes on this navigator
+from wherever it likes and calls `pop` from its own `PopScope`.
 
 An entry's content is a `Layout3d` built by a callback rather than a widget
 subtree, which is the one place this differs from Flutter's `Overlay`. The
@@ -2731,6 +2734,66 @@ This is the same distinction `ParentData3d.sceneOffset` draws for
 `Stack3d.depthStep`, and the two compose. Use `nodeOffset` rather than
 `sceneOffset` for an animation: `sceneOffset` belongs to the parent, and a
 stack rewrites it on every placement.
+
+### A route that arrives
+
+A route has a clock of its own, `Route3d.animation`, which reads 0 while the
+route is away and 1 once it is here. `Route3dTransition` winds it and nothing
+else; what the movement *looks* like is a `Motion3d` — where the content
+stands before it has arrived — applied by a `MotionTransition3d` on the node
+tier:
+
+```dart
+final navigator = Navigator3d(
+  overlay,
+  vsync: this,
+  transition: const TimedRoute3dTransition(
+    duration: Duration(milliseconds: 220),
+  ),
+);
+
+final answer = await navigator.push(
+  WidgetPageRoute3d<bool>(
+    motion: const Motion3d.grow(),
+    builder: (context, route) => confirmDialog(onYes: () => route.pop(true)),
+  ),
+);
+```
+
+`Motion3d` says how far off in logical pixels (`offset`), how far off as a
+fraction of the content's own size (`fraction`), how much smaller (`scale`),
+and how far turned (`turn`, about `axis`, pivoting on `origin`). Both ways of
+saying "how far" are there because the two questions differ: *rise 24dp* is a
+figure a token set states and a density resolves, while *start one whole
+height below* is a bottom sheet whose height is whatever it turned out to be.
+`Motion3d.fromBelow` is that sheet, `Motion3d.grow()` a dialog,
+`Motion3d.fromBehind` an arrival through the plane, and `Motion3d.turn()` the
+one two dimensions cannot have.
+
+Three things about it are worth knowing before you use it.
+
+**The clock rests at arrival, not at departure.** A route pushed with
+`Route3dTransition.none` — the default — is never wound at all, so a resting
+value of 0 would leave its content parked wherever the motion says "away". A
+timed transition sets it to 0 as it starts, in the same turn as the push.
+
+**The box re-applies on layout as well as on every tick**, because half of
+what a motion says is a fraction of a size, and the size arrives late: a
+ticker's first tick lands before the frame's layout, and a widget-built
+overlay entry's subtree does not exist until the build after the insertion.
+Without that, a route would show one frame at rest and then jump.
+
+**Place the box inside a scrim, not around it.** `PageRoute3d.motion` and
+`WidgetPageRoute3d.motion` wrap the whole of what the route built, which is
+right when the entry builds the barrier (`modal: true`) and wrong when the
+content carries its own — a dim that slides in with the dialog it dims is not
+a transition anyone asked for. Content of that shape writes the
+`SceneMotionTransition3d` by hand, around the dialog and inside the scrim.
+
+There is no fade. Fading a subtree needs a per-node opacity in `flutter_scene`
+and there is none — `Node` carries `visible` and nothing else — so `Motion3d`
+has no opacity field rather than one that fades a panel and leaves its label
+opaque.
 
 ### Implicit: a size, a padding, an alignment
 
@@ -3283,16 +3346,21 @@ content, each one either lifted toward the viewer on the host surface or on a
 surface of its own, with `ModalBarrier3d` for the scrim, `FocusScope3d` for
 the focus a modal traps, `Layout3dPointerGroup` for routing a ray across
 surfaces, and `Navigator3d` for the route stack over the whole of it. See
-*Overlays* above. What is left is an entry whose content is a *widget*
-subtree rather than a built layout, focus traversal across surfaces, and the
-transitions `Route3dTransition` is the hook for.
+*Overlays* above. The three things this once said were left have all landed:
+`WidgetOverlay3dEntry` and `WidgetPageRoute3d` give an entry a widget subtree,
+traversal crosses surfaces through `Input3dHost` and
+`Layout3dOwner.onFocusTraversalEdge`, and `TimedRoute3dTransition` with
+`Motion3d` fills the transition hook — see *A route that arrives* above. What
+is left is a `Hero3d`, which needs a flight built by a builder rather than a
+subtree carried across, for the same reason `Draggable3d`'s feedback is
+built.
 
 **8. Animation and scroll physics.** ~~Done~~: three paths, cheapest first —
 decoration setters that only repaint, `Layout3d.nodeOffset` and
 `nodeTransform` for geometry that moves without any box changing size (with
-`NodeTransform3d` and `SceneAnimatedSlide3d` over them), and
-`ImplicitlyAnimatedLayout3dWidget` with `SceneAnimatedContainer3d` and its
-siblings for the animations that really do relayout. On the scroll side,
+`NodeTransform3d`, `SceneAnimatedSlide3d` and now `MotionTransition3d` over
+them), and `ImplicitlyAnimatedLayout3dWidget` with `SceneAnimatedContainer3d`
+and its siblings for the animations that really do relayout. On the scroll side,
 `Scroll3dPhysics` with clamping and bouncing, a release that flings from a
 velocity `Layout3dPointer` tracks on the grabbed view's plane, and
 `animateTo`, `fling` and `ensureVisible3d` on the controller. See *Animation*

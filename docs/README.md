@@ -205,6 +205,22 @@ Two entry points:
   a room does not have a notch. And a size class is left unanswered on
   purpose: `MediaQuery3d` publishes the extent a screen would branch on, and
   the breakpoints belong to whoever builds the components that need them.
+- **A route that arrives instead of appearing** is
+  [the eighth](../packages/flutter_scene_layout3d/plans/2026_09_16_a_route_that_arrives_instead_of_appearing.md),
+  and the first of the motion lane. The seam had been left on purpose and
+  nothing filled it, so every dialog, menu and sheet existed between one frame
+  and the next. A route now carries a clock — `Route3d.animation`, resting at
+  *arrival* rather than at departure, so a route with no transition is where it
+  belongs from its first layout — and `TimedRoute3dTransition` winds it. What
+  the movement looks like is a separate thing, a `Motion3d` applied by a
+  `MotionTransition3d` on the node tier, and it is placed by whoever builds the
+  route's content rather than by the entry: a route may carry a scrim of its
+  own, and a dim that slides in with the dialog it dims is not a transition.
+  The box re-applies on layout as well as on every tick, because a motion
+  stated as a fraction of a size needs a size the box does not have until it
+  has been laid out. There is still no fade, for the reason there has never
+  been one: `flutter_scene` has no per-node opacity. `Hero3d` is deferred to a
+  plan of its own.
 
 ## Keeping this true
 

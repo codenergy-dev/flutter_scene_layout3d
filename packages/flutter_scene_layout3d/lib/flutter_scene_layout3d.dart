@@ -86,6 +86,7 @@
 library;
 
 export 'src/anchoring.dart' show Layout3dAnchoring;
+export 'src/animation/motion.dart' show Motion3d, MotionTransition3d;
 export 'src/animation/node_transform.dart' show NodeTransform3d;
 export 'src/animation/tweens.dart'
     show
@@ -272,7 +273,12 @@ export 'src/layout_pass.dart' show Layout3dLayoutPassMixin;
 export 'src/metrics.dart' show Layout3dMetrics, VisualDensity3d;
 export 'src/overlay/modal_barrier.dart' show ModalBarrier3d;
 export 'src/overlay/navigator.dart'
-    show Navigator3d, PageRoute3d, Route3d, Route3dTransition;
+    show
+        Navigator3d,
+        PageRoute3d,
+        Route3d,
+        Route3dTransition,
+        TimedRoute3dTransition;
 export 'src/overlay/overlay.dart'
     show
         DetachedOverlayLayer3d,

@@ -1,5 +1,43 @@
 ## Unreleased
 
+- **A route arrives instead of appearing.** `Route3dTransition.none` was the
+  only implementation that shipped, so a dialog, a menu and a sheet each
+  existed between one frame and the next. The clock now exists, and it is on
+  the node tier: an arrival costs one matrix a frame and lays nothing out.
+  - **`Route3d.animation`** is an `Animation<double>` that reads 0 while the
+    route is away and 1 once it is here. The route owns it because the route
+    has the right lifetime — a transition is held on the navigator and shared
+    by every route on it — and it **rests at 1**, which is arrival, so a route
+    pushed with `Route3dTransition.none` is at rest from its first layout
+    rather than parked wherever its motion says "away".
+  - **`TimedRoute3dTransition`** winds it: a `duration`, a `reverseDuration`, a
+    `curve` and a `reverseCurve`, and nothing else. A pop that interrupts an
+    arrival reverses from wherever the route had got to, over that fraction of
+    the duration, so a dialog dismissed a frame after it opened closes at once
+    instead of crawling back. A zero duration keeps `Navigator3d.removeRoute`'s
+    synchronous path, and `Navigator3d.vsync` is the ticker provider, null
+    meaning a bare `Ticker`, as everywhere else in this package.
+  - **`Motion3d`** says where content stands before it has arrived: an offset
+    in logical pixels, an offset as a fraction of the content's own size, a
+    scale, and a turn about an axis with a pivot both of the last two use.
+    `Motion3d.fromBelow` is a sheet, `Motion3d.grow()` a dialog,
+    `Motion3d.fromBehind` an arrival through the plane, and `Motion3d.turn()`
+    the one with no two-dimensional analogue. It deliberately carries **no
+    opacity**: `flutter_scene` has no per-node opacity, and a dialog whose
+    panel fades while its label does not is worse than one that does not fade.
+  - **`MotionTransition3d`** and **`SceneMotionTransition3d`** apply it —
+    Flutter's `SlideTransition`, `ScaleTransition` and `RotationTransition` in
+    one box, writing `nodeOffset` and `nodeTransform` and never marking
+    anything dirty. It re-applies from its own `performLayout` as well as on
+    every tick, because half of what a motion says is a fraction of a size the
+    box does not have until it has been laid out — and a widget-built entry's
+    subtree does not exist until the build after the insertion.
+  - **`PageRoute3d.motion` and `WidgetPageRoute3d.motion`** wrap a route's own
+    content in one. Content that carries a scrim of its own puts the box
+    *inside* the scrim instead, which is why the box is placed by whoever
+    builds the content rather than by the entry: a dim that slides in with the
+    dialog it dims is wrong.
+
 - **A screen knows how big it is, and the reader's own font setting reaches
   it.** Two absences that were one: nothing in either package had ever read
   `MediaQuery`, so a 3D screen could not be asked its size and could not be

@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-08-25T20:31:04Z
-updated_at: 2026-09-09T02:00:00Z
+updated_at: 2026-09-16T21:30:00Z
 commit: 657eef80eb8dc8085c3b3a84a8069273495506be
 ---
 
@@ -231,14 +231,20 @@ the world, and a press captures every surface that answered it.
   `SceneOverlay3d` hands what the *first* path reconciled to the entry's slot.
   The same plan added `Layout3d.anchorOffsetTo`, because nothing here anchored
   anything and a menu belongs at its button.
-- **Focus traversal across surfaces.** Trapping is done and
+- **Focus traversal across surfaces.** ~~Trapping is done and
   `Focus3dTraversal.traversalRootFor` is the hook, but a `Tab` that walks from
-  a detached entry into the panel behind it has no policy. It was named as a
-  cost of shape (B) in this plan, not as a deliverable, and it is the same
-  open item the pointer-dispatch plan left.
-- **Transitions.** `Route3dTransition` is the seam and `none` is the only
-  implementation; the animation plan fills it in. `reverse` is awaited before
-  the entry is removed, so a leaving route is on screen for the whole of it.
+  a detached entry into the panel behind it has no policy.~~ **Closed** by
+  [a wheel, a trackpad and a key that reach a box](2026_09_15_a_wheel_a_trackpad_and_a_key_that_reach_a_box.md):
+  the walk leaves a surface through `Layout3dOwner.onFocusTraversalEdge`, and
+  `SceneInput3d` is what knows which surfaces there are to walk to.
+- **Transitions.** ~~`Route3dTransition` is the seam and `none` is the only
+  implementation~~ — **closed** by
+  [a route that arrives instead of appearing](2026_09_16_a_route_that_arrives_instead_of_appearing.md):
+  a route carries a clock, `TimedRoute3dTransition` winds it, and a
+  `MotionTransition3d` inside the route's content moves it on the node tier.
+  `reverse` is awaited before the entry is removed, so a leaving route is on
+  screen for the whole of it — which is what makes that work. A `Hero3d` is
+  still missing.
 - **Flutter `Navigator` interop and system back handling**, which this plan
   puts out of scope and which stay out of it.
 

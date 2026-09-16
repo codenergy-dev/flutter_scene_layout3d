@@ -1,7 +1,12 @@
 import 'dart:async' show Completer, Future, unawaited;
 
+import 'package:flutter/animation.dart'
+    show Animation, AnimationController, Curve, Curves;
 import 'package:flutter/foundation.dart' show SynchronousFuture, protected;
+import 'package:flutter/scheduler.dart'
+    show SchedulerBinding, Ticker, TickerCallback, TickerProvider;
 
+import '../animation/motion.dart';
 import '../geometry/alignment3d.dart';
 import '../layout3d.dart';
 import 'overlay.dart';
@@ -13,9 +18,12 @@ import 'overlay.dart';
 /// in, so an implementation has a laid-out subtree to move: the entry's
 /// [Overlay3dEntry.content] is in the tree for the whole of both calls.
 ///
-/// Nothing here animates anything — this package has no clock of its own yet
-/// (see the animation plan). [none] is the honest default: routes appear and
-/// disappear at once.
+/// [none] is the default, and it is still the honest one for a route that is
+/// meant to be there at once. [TimedRoute3dTransition] is the one that moves:
+/// it winds [Route3d.animation] from 0 to 1 and back, and what that *looks*
+/// like is a [Motion3d] on a [MotionTransition3d] inside the route's content
+/// — which is where it has to be, because a route's content may include a
+/// scrim, and a scrim does not slide in with the dialog it dims.
 abstract class Route3dTransition {
   /// Allows subclasses to be const.
   const Route3dTransition();
@@ -49,6 +57,78 @@ class _NoTransition extends Route3dTransition {
   String toString() => 'Route3dTransition.none';
 }
 
+/// The transition that moves: it winds [Route3d.animation] from 0 to 1 as the
+/// route arrives, and back to 0 as it leaves.
+///
+/// ```dart
+/// final navigator = Navigator3d(
+///   overlay,
+///   transition: const TimedRoute3dTransition(
+///     duration: Duration(milliseconds: 220),
+///   ),
+/// );
+///
+/// navigator.push(
+///   PageRoute3d<void>(
+///     motion: const Motion3d.grow(),
+///     builder: (route) => dialog,
+///   ),
+/// );
+/// ```
+///
+/// **This class decides the clock and nothing else.** What the movement looks
+/// like is a [Motion3d] read by a [MotionTransition3d] inside the route's
+/// content, which is the split Flutter draws between a route's controller and
+/// its transition builder, and which matters more here: a route's content may
+/// carry its own scrim, and a scrim must not slide in with what it dims.
+///
+/// A pop that interrupts an arrival reverses from wherever the route had got
+/// to, over that fraction of the duration, rather than replaying the whole of
+/// it — so a dialog dismissed one frame after it opened closes at once
+/// instead of crawling back from nearly nothing.
+///
+/// A zero duration finishes synchronously, which keeps
+/// [Navigator3d.removeRoute]'s synchronous path: the entry comes out in the
+/// same turn, exactly as it does under [Route3dTransition.none].
+class TimedRoute3dTransition extends Route3dTransition {
+  /// Creates a transition over [duration].
+  const TimedRoute3dTransition({
+    this.duration = const Duration(milliseconds: 200),
+    this.reverseDuration,
+    this.curve = Curves.easeOutCubic,
+    this.reverseCurve,
+  });
+
+  /// How long an arrival takes.
+  final Duration duration;
+
+  /// How long a departure takes, or null for [duration].
+  final Duration? reverseDuration;
+
+  /// The curve an arrival follows.
+  final Curve curve;
+
+  /// The curve a departure follows, or null for [curve].
+  final Curve? reverseCurve;
+
+  @override
+  Future<void> forward(Route3d<Object?> route) {
+    // Before the animation rather than as part of it: `push` calls this in
+    // the same turn as the insertion, so the route is at its starting point
+    // before the frame that first lays its content out.
+    route._animationController.value = 0.0;
+    return route._driveTo(1.0, duration, curve);
+  }
+
+  @override
+  Future<void> reverse(Route3d<Object?> route) =>
+      route._driveTo(0.0, reverseDuration ?? duration, reverseCurve ?? curve);
+
+  @override
+  String toString() =>
+      'TimedRoute3dTransition(${duration.inMilliseconds}ms, $curve)';
+}
+
 /// One thing on a [Navigator3d]'s stack, and the future its result arrives
 /// on.
 ///
@@ -67,6 +147,7 @@ abstract class Route3d<T> {
   Navigator3d? _navigator;
   Overlay3dEntry? _entry;
   bool _popping = false;
+  AnimationController? _controller;
 
   /// The navigator holding this route, or null before it is pushed and after
   /// it is finished.
@@ -77,6 +158,48 @@ abstract class Route3d<T> {
 
   /// Completes when this route is popped, with the result the pop carried.
   Future<T?> get popped => _completer.future;
+
+  /// How far this route has arrived: 0 while it is away, 1 once it is here.
+  ///
+  /// What a [MotionTransition3d] inside the route's content reads, and what a
+  /// [Route3dTransition] winds. The route owns it because the route is the
+  /// object with the right lifetime: a transition is held on the navigator
+  /// and shared by every route on it, while this is created on first use and
+  /// disposed when the route finishes.
+  ///
+  /// **It rests at 1, which is arrival.** A route pushed with
+  /// [Route3dTransition.none] — the default — is never wound at all, and
+  /// content that read 0 there would place itself wherever its [Motion3d]
+  /// says "away" and stay. A timed transition sets it to 0 as it starts, in
+  /// the same turn as the push and before anything has been laid out.
+  ///
+  /// The ticker under it comes from [Navigator3d.vsync], or is a bare
+  /// [Ticker] when there is none; see there.
+  Animation<double> get animation => _animationController;
+
+  AnimationController get _animationController =>
+      _controller ??= AnimationController(
+        value: 1.0,
+        vsync: _navigator?.vsync ?? const _BareTickerProvider(),
+      );
+
+  /// Winds [animation] to [target], over the part of [duration] the remaining
+  /// distance is worth.
+  ///
+  /// A [SynchronousFuture] when there is nothing to animate, which is what
+  /// keeps [Navigator3d.removeRoute]'s synchronous removal path alive.
+  Future<void> _driveTo(double target, Duration duration, Curve curve) {
+    final controller = _animationController;
+    final distance = (controller.value - target).abs();
+    final remaining = duration * distance;
+    if (remaining <= Duration.zero) {
+      controller.value = target;
+      return SynchronousFuture<void>(null);
+    }
+    return target < controller.value
+        ? controller.animateBack(target, duration: remaining, curve: curve)
+        : controller.animateTo(target, duration: remaining, curve: curve);
+  }
 
   /// Whether this route is on a navigator's stack.
   bool get isActive => _navigator?.routes.contains(this) ?? false;
@@ -114,6 +237,11 @@ abstract class Route3d<T> {
     _entry = null;
     didPop(typed);
     if (!_completer.isCompleted) _completer.complete(typed);
+    // Last, so that a `didPop` reading [animation] reads the value the route
+    // finished on rather than a fresh one. The entry — and the box that was
+    // listening — has already been taken out by the navigator.
+    _controller?.dispose();
+    _controller = null;
   }
 
   @override
@@ -137,6 +265,7 @@ class PageRoute3d<T> extends Route3d<T> {
   /// Creates a route over [builder].
   PageRoute3d({
     required this.builder,
+    this.motion,
     this.layer = const OverlayLayer3d.inPlane(),
     this.modal = true,
     this.barrierDismissible = true,
@@ -150,6 +279,18 @@ class PageRoute3d<T> extends Route3d<T> {
 
   /// Builds the route's content.
   final Layout3d Function(PageRoute3d<T> route) builder;
+
+  /// Where the content stands before it has arrived, or null for no movement.
+  ///
+  /// A convenience over wrapping what [builder] returns in a
+  /// [MotionTransition3d] driven by [animation] — which is what this does,
+  /// and what content that wants the box somewhere else (inside its own
+  /// scrim, rather than around it) should do by hand instead.
+  ///
+  /// It moves nothing on its own: the navigator's [Navigator3d.transition]
+  /// is what winds the clock, and under [Route3dTransition.none] a route with
+  /// a motion is simply at rest.
+  final Motion3d? motion;
 
   /// Which surface the route lives on, and how far in front.
   final OverlayLayer3d layer;
@@ -181,7 +322,7 @@ class PageRoute3d<T> extends Route3d<T> {
 
   @override
   Overlay3dEntry createEntry() => Overlay3dEntry(
-    builder: (_) => builder(this),
+    builder: (_) => wrapRoute3dMotion(this, motion, builder(this)),
     layer: layer,
     modal: modal,
     dismissible: barrierDismissible,
@@ -219,7 +360,11 @@ class PageRoute3d<T> extends Route3d<T> {
 /// `PopScope`.
 class Navigator3d {
   /// Creates a navigator over [overlay].
-  Navigator3d(this.overlay, {this.transition = Route3dTransition.none}) {
+  Navigator3d(
+    this.overlay, {
+    this.transition = Route3dTransition.none,
+    this.vsync,
+  }) {
     _navigators[overlay] = this;
   }
 
@@ -228,6 +373,15 @@ class Navigator3d {
 
   /// What runs while a route arrives or leaves.
   Route3dTransition transition;
+
+  /// The ticker provider the routes' animations run on.
+  ///
+  /// Null means a bare [Ticker], which schedules through the same
+  /// [SchedulerBinding] and works outside a `State`. Give one where there is
+  /// a `State` in the picture so that `TickerMode` can mute an arrival with
+  /// the route it belongs to — the same arrangement [Scroll3dController],
+  /// [Draggable3d] and [Dismissible3d] already ask for.
+  TickerProvider? vsync;
 
   static final Expando<Navigator3d> _navigators = Expando<Navigator3d>(
     'Navigator3d',
@@ -323,4 +477,33 @@ class Navigator3d {
 
   @override
   String toString() => 'Navigator3d(${_routes.length} routes)';
+}
+
+/// Wraps [content] in a [MotionTransition3d] driven by [route], when there is
+/// a motion to apply.
+///
+/// Shared by [PageRoute3d] and `WidgetPageRoute3d`, which differ in what they
+/// build and not in how it arrives.
+Layout3d wrapRoute3dMotion(
+  Route3d<Object?> route,
+  Motion3d? motion,
+  Layout3d content,
+) => motion == null
+    ? content
+    : MotionTransition3d(
+        animation: route.animation,
+        motion: motion,
+        child: content,
+      );
+
+/// The ticker a route's animation runs on when nobody supplied one.
+///
+/// A bare [Ticker] goes through the same [SchedulerBinding] as any other; what
+/// it does not get is `TickerMode`, which is why [Navigator3d.vsync] exists.
+class _BareTickerProvider implements TickerProvider {
+  const _BareTickerProvider();
+
+  @override
+  Ticker createTicker(TickerCallback onTick) =>
+      Ticker(onTick, debugLabel: 'Route3d');
 }

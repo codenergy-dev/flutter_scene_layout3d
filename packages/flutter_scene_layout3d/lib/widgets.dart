@@ -43,9 +43,10 @@ export 'src/animation/implicit.dart'
         SceneAnimatedContainer3d,
         SceneAnimatedPositioned3d,
         SceneAnimatedSizedBox3d;
+export 'src/animation/motion.dart' show Motion3d, MotionTransition3d;
 export 'src/animation/node_transform.dart' show NodeTransform3d;
 export 'src/animation/node_widgets.dart'
-    show SceneAnimatedSlide3d, SceneNodeTransform3d;
+    show SceneAnimatedSlide3d, SceneMotionTransition3d, SceneNodeTransform3d;
 export 'src/animation/tweens.dart'
     show
         Alignment3dTween,
@@ -134,7 +135,12 @@ export 'src/input/pointer.dart' show Layout3dPointer, PointerScroll3d;
 export 'src/input/pointer_group.dart' show Layout3dPointerGroup;
 export 'src/overlay/modal_barrier.dart' show ModalBarrier3d;
 export 'src/overlay/navigator.dart'
-    show Navigator3d, PageRoute3d, Route3d, Route3dTransition;
+    show
+        Navigator3d,
+        PageRoute3d,
+        Route3d,
+        Route3dTransition,
+        TimedRoute3dTransition;
 export 'src/overlay/overlay.dart'
     show
         DetachedOverlayLayer3d,

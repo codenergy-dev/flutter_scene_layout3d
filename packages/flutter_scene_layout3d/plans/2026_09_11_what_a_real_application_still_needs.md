@@ -102,7 +102,7 @@ plan, which is the rule phase 0 established and every phase since has obeyed.
 | [A letter someone can type](#a-letter-someone-can-type) | layout3d | text fields, forms, search, pickers |
 | ~~[An item that keeps its state](#an-item-that-keeps-its-state)~~ | layout3d | **done** — forms in lists, and the declarative layer complete |
 | ~~[A screen that knows how big it is](#a-screen-that-knows-how-big-it-is)~~ | layout3d | **done** — the reader's font setting, the safe area, and something to branch on |
-| [A route that arrives instead of appearing](#a-route-that-arrives-instead-of-appearing) | layout3d | transitions, fades, `Hero3d` |
+| [A route that arrives instead of appearing](#a-route-that-arrives-instead-of-appearing) | layout3d | **the transitions are done**; `Hero3d` is what the row is still open for |
 | [An application with more than one screen](#an-application-with-more-than-one-screen) | layout3d | named routes, deep links, the system back button |
 | ~~[A way to test a screen someone else built](#a-way-to-test-a-screen-someone-else-built)~~ | layout3d | **done** — anyone building on this, including us |
 | [The motion tokens](#the-motion-tokens) | material3d | every animating component |
@@ -171,9 +171,17 @@ and everything below it is now a choice rather than a queue.
 
 Then motion, as a pair:
 [a route that arrives](#a-route-that-arrives-instead-of-appearing) here and
-[the motion tokens](#the-motion-tokens) in the catalogue.
-[A box that fades](#a-box-that-fades) belongs with them and may not be
-takeable — see its entry.
+[the motion tokens](#the-motion-tokens) in the catalogue. **The layout half
+has landed** — see
+[its plan](2026_09_16_a_route_that_arrives_instead_of_appearing.md) — which
+makes the catalogue half the ripe one: a route now carries a clock and a
+`Motion3d` says what an arrival looks like, and what is missing is the
+duration and the curve each component should use, which is what the token
+family is. Nothing in the catalogue moves until it is taken, so **this is the
+first item on the map whose result cannot be seen by running the gallery**.
+[A box that fades](#a-box-that-fades) belongs with them and is still not
+takeable: the engine was checked again at `flutter_scene 0.23.0` and has no
+per-node opacity — see its entry.
 
 Then [the catalogue batch](#the-components-a-screen-still-needs), which is
 broad and shallow, and
@@ -260,7 +268,13 @@ are where a first implementer's decision becomes someone else's constraint.
   two. The specific hazard is documented and has already cost time: **an
   animation that has stopped changing must stop asking for frames**, or
   `pumpAndSettle` spins forever, and a `Ticker` restarted after a stop begins
-  its clock at zero.
+  its clock at zero. **Settled for the route half, and it added one rule:** an
+  arrival is `MotionTransition3d` on the node tier, driven by
+  `Route3d.animation`, and a box whose motion is stated as a fraction of its
+  own size has to re-apply from `performLayout` — the first tick lands before
+  the layout that would give it a size, and a widget-built entry has no subtree
+  at all until the build after the insertion. Anything else that arrives late
+  and moves meets the same ordering.
 - **`Decoration3dPainterCache` is what makes a screen of panels affordable**,
   and it keys on `Decoration3d.cacheKey`. Two plans here compute colours that
   did not exist before — [a scheme from one colour](#a-scheme-from-one-colour)
@@ -489,7 +503,13 @@ and light masks and shadow flags, and no opacity or tint of any kind.
 So **this plan's first step is not code, it is checking whether the engine has
 moved**, and if it has not, choosing between the two answers `AGENTS.md`
 allows: work around it on this side, or open an issue upstream — and write
-down which. The working-around options are all partial and one of them is
+down which. **Checked again on 2026-09-16**, by
+[a route that arrives](#a-route-that-arrives-instead-of-appearing), because
+the fades were its to ship if they existed: `pubspec.lock` still resolves
+`flutter_scene 0.23.0`, and a grep for `opacity` over the engine's `lib/`
+finds fog, splats and a glTF extras codec and nothing on `Node`. The gate has
+not moved, and `Motion3d` ships with no opacity field rather than one that
+fades a panel and leaves its label. The working-around options are all partial and one of them is
 explicitly forbidden by the earlier plan: shipping an `Opacity3d` that faded
 only `BoxDecoration3d` is the thing that plan told its implementer not to do,
 because a box whose panel fades and whose label does not is worse than no
@@ -629,6 +649,19 @@ layout, so it has to leave something behind for an author to branch on.
 
 **Package:** `flutter_scene_layout3d`.
 **Slug:** `a_route_that_arrives_instead_of_appearing`.
+**Mostly closed** by
+[its own plan](2026_09_16_a_route_that_arrives_instead_of_appearing.md): the
+clock, the transitions and the box that moves a subtree have shipped, and
+**the row stays open for `Hero3d` alone**, which that plan defers to one of
+its own with the reasoning for it written down. The entry below is what it was
+reasoned from. What that reasoning got wrong, in short: it said the seam was
+one hook wide and it was two — a transition can only wind a clock, because
+*what* moves has to be chosen by whoever built the route's content, since a
+catalogue route carries its own scrim and a dim must not slide in with the
+dialog it dims. The tier was right, and so was the warning about the ticker;
+what the entry did not see is that a motion stated as a fraction of a size
+needs a size the box does not have when the first tick arrives, so the box
+re-applies from `performLayout` as well.
 
 **Nothing in either package animates except the press ripple.**
 `Route3dTransition.none` is the only implementation that ships, so a dialog, a
@@ -734,7 +767,10 @@ which tokens are actually used, which is why the ripple shipped with
 controller, holding Flutter's own `InkRipple` figures — rather than opening a
 family for one animation. **[A route that arrives](#a-route-that-arrives-instead-of-appearing)
 is the event that makes this plan ripe**, because it is the first time several
-components need the same curve.
+components need the same curve — and **that event has happened**: the layout
+package now has `TimedRoute3dTransition` and `Motion3d`, so every overlay in
+the catalogue is one duration and one curve away from arriving instead of
+appearing, and nothing in the catalogue moves until this plan says which.
 
 Its first customers, all currently deferred for want of it: the switch thumb
 that should grow from 16dp to 24dp as it crosses, the chip that lifts under a

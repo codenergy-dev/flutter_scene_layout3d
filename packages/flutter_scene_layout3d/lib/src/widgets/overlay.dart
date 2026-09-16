@@ -18,6 +18,8 @@ import 'package:flutter/widgets.dart'
         WidgetsBinding;
 import 'package:flutter_scene/scene.dart' show Camera, SceneScope;
 
+import '../animation/motion.dart';
+import '../animation/node_widgets.dart';
 import '../boxes/stack.dart';
 import '../geometry/alignment3d.dart';
 import '../layout3d.dart';
@@ -625,6 +627,7 @@ class WidgetPageRoute3d<T> extends Route3d<T> {
   /// Creates a route over [builder].
   WidgetPageRoute3d({
     required this.builder,
+    this.motion,
     this.layer = const OverlayLayer3d.inPlane(),
     this.modal = true,
     this.barrierDismissible = true,
@@ -639,6 +642,17 @@ class WidgetPageRoute3d<T> extends Route3d<T> {
   /// Builds the route's content.
   final Widget Function(BuildContext context, WidgetPageRoute3d<T> route)
   builder;
+
+  /// Where the content stands before it has arrived, or null for no movement.
+  ///
+  /// Wraps the whole of what [builder] returns in a [SceneMotionTransition3d]
+  /// driven by [Route3d.animation]. Content that carries a scrim of its own
+  /// wants the box *inside* the scrim instead — a dim that slides in with the
+  /// dialog it dims is wrong — and writes the widget by hand there.
+  ///
+  /// It moves nothing on its own: [Navigator3d.transition] is what winds the
+  /// clock.
+  final Motion3d? motion;
 
   /// Which surface the route lives on, and how far in front.
   final OverlayLayer3d layer;
@@ -676,7 +690,17 @@ class WidgetPageRoute3d<T> extends Route3d<T> {
 
   @override
   Overlay3dEntry createEntry() => WidgetOverlay3dEntry(
-    contentBuilder: (context, _) => builder(context, this),
+    contentBuilder: (context, _) {
+      final content = builder(context, this);
+      final motion = this.motion;
+      return motion == null
+          ? content
+          : SceneMotionTransition3d(
+              animation: animation,
+              motion: motion,
+              child: content,
+            );
+    },
     layer: layer,
     modal: modal,
     dismissible: barrierDismissible,

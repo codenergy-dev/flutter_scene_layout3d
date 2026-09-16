@@ -151,6 +151,19 @@ frame after an animation starts always reports elapsed zero. A test that pumps
 once and reads a radius reads nothing and concludes the animation never
 started. Pump twice, or settle.
 
+**An animation that needs the box's size starts before the size exists.** A
+motion stated as a fraction of the content — a sheet that comes up from one
+whole height below — and any pivot that is not the origin corner both need a
+size the box does not have on the frame it was made. The ordering is against
+you twice over: a ticker's first tick lands in the animation phase,
+*before* the layout that settles the size, and a widget-built overlay entry's
+subtree does not exist at all until the build after the insertion. A driver
+that only writes on ticks therefore shows one frame at rest and then jumps.
+`MotionTransition3d` re-applies from its own `performLayout` for exactly that
+reason, and writing the node tier there is free: it does not dirty layout, and
+`worldTransform` undoes it. Anything else that arrives late and moves — a
+route, a snack bar, a tooltip — has the same problem and the same answer.
+
 **A bar that fills is a scale, not a width**, and that is worth knowing before
 you write the obvious thing. A slider's active track, a progress bar, a meter:
 the natural implementation gives a box a width and changes it, which is a

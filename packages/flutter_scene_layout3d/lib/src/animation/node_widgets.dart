@@ -11,6 +11,7 @@ import 'package:vector_math/vector_math.dart' show Matrix4;
 
 import '../geometry/offset3d.dart';
 import '../widgets/framework.dart';
+import 'motion.dart';
 import 'node_transform.dart';
 import 'tweens.dart';
 
@@ -158,4 +159,49 @@ class _SceneAnimatedSlide3dState extends State<SceneAnimatedSlide3d>
   @override
   Widget build(BuildContext context) =>
       SceneNodeTransform3d(offset: _animation, child: widget.child);
+}
+
+/// The declarative form of [MotionTransition3d]: a subtree that arrives.
+///
+/// Give it the animation a route carries and a [Motion3d] saying where the
+/// content starts, and the subtree moves from there to rest without anything
+/// being laid out again:
+///
+/// ```dart
+/// SceneMotionTransition3d(
+///   animation: route.animation,
+///   motion: const Motion3d.grow(),
+///   child: Dialog3d(child: choices),
+/// )
+/// ```
+///
+/// A route built with `WidgetPageRoute3d(motion: ...)` is already wrapped in
+/// one of these, so this is for the content that wants the box somewhere
+/// other than around the whole page — inside a scrim rather than around it,
+/// which is exactly where a catalogue's own modal frame puts it.
+class SceneMotionTransition3d extends SingleChildLayout3dWidget {
+  /// Creates a box that moves [child] from [motion] to rest.
+  const SceneMotionTransition3d({
+    super.key,
+    this.animation,
+    this.motion = Motion3d.none,
+    super.child,
+  });
+
+  /// How far the content has arrived, from 0 to 1, or null for arrived.
+  final Animation<double>? animation;
+
+  /// Where the content stands before it has arrived.
+  final Motion3d motion;
+
+  @override
+  MotionTransition3d createLayout(BuildContext context) =>
+      MotionTransition3d(animation: animation, motion: motion);
+
+  @override
+  void updateLayout(BuildContext context, MotionTransition3d layout) {
+    layout
+      ..animation = animation
+      ..motion = motion;
+  }
 }

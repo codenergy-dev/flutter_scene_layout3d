@@ -6,7 +6,15 @@
 import 'dart:ui' show Color;
 
 import 'package:flutter/widgets.dart'
-    show BuildContext, FontWeight, InlineSpan, TextSpan, TextStyle, Widget;
+    show
+        Animation,
+        BuildContext,
+        FontWeight,
+        InlineSpan,
+        TextSpan,
+        TextStyle,
+        TickerProvider,
+        Widget;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
 import 'package:flutter_scene_layout3d/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -69,7 +77,40 @@ Widget richTextExample(BuildContext context, String name) => SceneRichText3d(
   ),
 );
 
+/// The arrival examples: the widget one from `SceneMotionTransition3d`'s own
+/// dartdoc, and the push from the README's *A route that arrives*.
+Widget motionExample(Animation<double> animation, Widget dialog) =>
+    SceneMotionTransition3d(
+      animation: animation,
+      motion: const Motion3d.grow(),
+      child: dialog,
+    );
+
+Future<bool?> pushExample(Overlay3d overlay, TickerProvider vsync) {
+  final navigator = Navigator3d(
+    overlay,
+    vsync: vsync,
+    transition: const TimedRoute3dTransition(
+      duration: Duration(milliseconds: 220),
+    ),
+  );
+  return navigator.push(
+    WidgetPageRoute3d<bool>(
+      motion: const Motion3d.grow(),
+      builder: (context, route) => SceneGestureDetector3d(
+        onTap: () => route.pop(true),
+        child: const SceneText3d('Yes'),
+      ),
+    ),
+  );
+}
+
 void main() {
+  test('the arrival dartdoc and README examples compile as written', () {
+    expect(motionExample, isNotNull);
+    expect(pushExample, isNotNull);
+  });
+
   test('the keep-alive and rich text dartdoc examples compile as written', () {
     expect(keepAliveExample(const <Question>[Question('why')]), isNotNull);
     expect(richTextExample, isNotNull);
