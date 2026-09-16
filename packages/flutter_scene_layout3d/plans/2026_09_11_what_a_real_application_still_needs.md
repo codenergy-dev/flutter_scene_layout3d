@@ -1,8 +1,8 @@
 ---
 status: in progress
-reason: nine of the seventeen items are open; the record of what shipped, the application widget, the wheel and the key, the test library, right to left, the picture, the item that keeps its state and the screen that knows how big it is are closed
+reason: nine of the seventeen items are open, one of them now planned; the record of what shipped, the application widget, the wheel and the key, the test library, right to left, the picture, the item that keeps its state and the screen that knows how big it is are closed
 created_at: 2026-09-11T21:20:18Z
-updated_at: 2026-09-16T18:05:00Z
+updated_at: 2026-09-16T23:20:00Z
 commit: abc2469ce5c4ec4c41e2738fc5acf55bcf40640a
 ---
 
@@ -98,7 +98,7 @@ plan, which is the rule phase 0 established and every phase since has obeyed.
 | ~~[A wheel, a trackpad and a key that reach a box](#a-wheel-a-trackpad-and-a-key-that-reach-a-box)~~ | layout3d | **done** — scrolling on desktop and web; a keyboard that gets into a scene, across it, and out |
 | ~~[A row that reads right to left](#a-row-that-reads-right-to-left)~~ | layout3d | **done** — every non-LTR locale, and the catalogue mirroring with it |
 | ~~[A picture on a panel](#a-picture-on-a-panel)~~ | layout3d | **done** — avatars, photographs, gradients, logos |
-| [A box that fades](#a-box-that-fades) | layout3d | `Opacity3d`, and every fade in the motion lane |
+| [A box that fades](#a-box-that-fades) | layout3d | **planned** — `Opacity3d`, and every fade in the motion lane |
 | [A letter someone can type](#a-letter-someone-can-type) | layout3d | text fields, forms, search, pickers |
 | ~~[An item that keeps its state](#an-item-that-keeps-its-state)~~ | layout3d | **done** — forms in lists, and the declarative layer complete |
 | ~~[A screen that knows how big it is](#a-screen-that-knows-how-big-it-is)~~ | layout3d | **done** — the reader's font setting, the safe area, and something to branch on |
@@ -179,9 +179,12 @@ makes the catalogue half the ripe one: a route now carries a clock and a
 duration and the curve each component should use, which is what the token
 family is. Nothing in the catalogue moves until it is taken, so **this is the
 first item on the map whose result cannot be seen by running the gallery**.
-[A box that fades](#a-box-that-fades) belongs with them and is still not
-takeable: the engine was checked again at `flutter_scene 0.23.0` and has no
-per-node opacity — see its entry.
+[A box that fades](#a-box-that-fades) belongs with them and **is now
+takeable**, which is a reversal: the engine still has no per-node opacity at
+`flutter_scene 0.23.0`, and that turned out to be the wrong thing to have been
+checking. Its [plan](2026_09_16_a_box_that_fades.md) is written and the
+expensive half — choosing between five ways of doing it, four of them
+photographed failing — is spent.
 
 Then [the catalogue batch](#the-components-a-screen-still-needs), which is
 broad and shallow, and
@@ -491,6 +494,21 @@ Three decisions the plan owns:
 
 **Package:** `flutter_scene_layout3d`.
 **Slug:** `a_box_that_fades`.
+**Planned**, not yet built, by
+[its own plan](2026_09_16_a_box_that_fades.md) — which was written *after* an
+experiment rather than before one, because this entry had sent two
+investigations to ask the wrong question.
+
+**The entry below is what it was reasoned from, and its premise is wrong.**
+There is no per-node opacity in the engine, and it does not matter: this
+package draws with materials it owns, and both of them already multiply alpha.
+What stands in the way is `depth_write`, which makes this the *partly*
+transparent case that
+[a transparent slab that does not erase](2026_09_10_a_transparent_slab_that_does_not_erase.md)
+left open — and screen-door coverage goes around it for the cost of one
+uniform. Five approaches were built and photographed in
+`examples/render_probe`'s `opacity_poc` target; two of them fail at opacity
+1.0, where nothing is supposed to be happening. The item is **takeable**.
 
 **There is no `Opacity3d`, and it may not be buildable here.** This is the one
 item on the map with an upstream gate, and it was already investigated once:

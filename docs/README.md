@@ -218,9 +218,26 @@ Two entry points:
   own, and a dim that slides in with the dialog it dims is not a transition.
   The box re-applies on layout as well as on every tick, because a motion
   stated as a fraction of a size needs a size the box does not have until it
-  has been laid out. There is still no fade, for the reason there has never
-  been one: `flutter_scene` has no per-node opacity. `Hero3d` is deferred to a
-  plan of its own.
+  has been laid out. It shipped with **no fade**, and the reason it gave —
+  `flutter_scene` has no per-node opacity — turned out to be the wrong reason;
+  see the next entry. `Hero3d` is deferred to a plan of its own.
+- **A box that fades** is
+  [the ninth](../packages/flutter_scene_layout3d/plans/2026_09_16_a_box_that_fades.md),
+  written but not yet built, and it is the one plan here written *after* its
+  experiment rather than before it. The map had parked the item on an upstream
+  gate — the engine has no opacity on `Node` — and that is true and beside the
+  point, because this package draws with materials it owns and both of them
+  already multiply alpha. What actually stands in the way is `depth_write`,
+  which makes a fading subtree the *partly* transparent case
+  [the transparent slab](../packages/flutter_scene_layout3d/plans/2026_09_10_a_transparent_slab_that_does_not_erase.md)
+  left open. Five ways round it were built and photographed in
+  `examples/render_probe`'s `opacity_poc` target; **two of them draw the wrong
+  picture at opacity 1.0**, where nothing is meant to be happening. What
+  survives is screen-door coverage against an ordered Bayer matrix: one
+  uniform, every colour untouched, ordering unchanged by the fade. The find
+  nobody had made is a third drawing seam — a glyph's **wall** is an opaque
+  `UnlitMaterial` coloured by its vertices, so a naively faded label dissolves
+  its letters and keeps their outline.
 
 ## Keeping this true
 

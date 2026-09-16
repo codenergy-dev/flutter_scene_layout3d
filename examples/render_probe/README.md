@@ -348,3 +348,95 @@ also gives every decorated box a material of its own, which is what lets
 `material_elevation` show three different colours at once instead of three
 copies of whichever panel painted last, and it installs the glyph material,
 without which `type_on_a_turning_panel` fails by design.
+
+## The opacity experiment
+
+One target here is not a probe suite and is not run by CI:
+
+```sh
+flutter drive --driver=test_driver/photograph.dart \
+  --target=integration_test/opacity_poc_test.dart \
+  -d macos --enable-flutter-gpu
+```
+
+It exists to answer *a box that fades* on the plan map, which had been parked
+on the belief that subtree opacity needs a per-node opacity in `flutter_scene`
+and that there is none. There is none — and it is not the gate. Both shaders
+the layout package ships already multiply alpha, so fading is uniform
+arithmetic; what stands in the way is that both declare `depth_write: true`,
+and a partly transparent slab that writes depth hides what is behind it
+instead of showing it through. That is the case
+`2026_09_10_a_transparent_slab_that_does_not_erase.md` left open as upstream,
+and a fading subtree is that case everywhere at once.
+
+So the target draws one scene four ways at four opacities and photographs each.
+`lib/opacity_poc.dart` holds the approaches and the scene;
+`tool/make_opacity_variants.dart` generates the shader variants they need, as
+patched copies of the package's two shaders — **nothing in the package is
+edited**, and the generator fails loudly rather than silently producing a copy
+when a patch site moves.
+
+The scene is where the work went, as usual. It has **two halves, because the
+defect lives in only one of them**: a blended draw erases only what is drawn
+after it, so a faded card standing plainly in front of a backdrop is drawn
+second and behaves perfectly whatever the approach. The left half is that
+benign arrangement, and it answers the questions about alpha — does the label
+fade with its panel, what does the fade look like. The right half is the
+ordering a navigation bar produced: the faded panel's bounds centre is further
+from the camera than the backdrop's while its front face is nearer, so it is
+drawn first, writes its depth, and the backdrop never draws. Three earlier
+versions of this scene reproduced nothing, each for its own reason — the faded
+panel buried inside the backdrop, the colour never actually faded, and a label
+so large that every "panel" reading was a reading of the label.
+
+The readings printed at the end are a guide to which pictures to open, not
+assertions; two of the four approaches are expected to draw something wrong.
+What they found:
+
+- **Folding the opacity into the alpha and changing nothing else** fades
+  correctly wherever the ordering was already benign, and on the other half
+  punches a hole: at 12% the backdrop is gone and the scene's own clear colour
+  shows through a rectangle the size of the card. Its labels fail separately
+  and earlier — `text_glyph3d.fmat` discards below `alpha_cutoff: 0.35`, so a
+  faded label loses its **face** while its silhouette wall survives, and reads
+  as a hollow outline rather than as faint type.
+- **Turning depth write off** is worse, and worse in a way that has nothing to
+  do with opacity: at **full opacity** the panel in front is painted over by
+  the backdrop behind it, because with nothing writing depth the only ordering
+  left is the back-to-front sort and that sort is one number per draw. This is
+  the same finding the 09-10 plan photographed, reproduced deterministically.
+- **Screen-door coverage** — discarding fragments against a threshold instead
+  of blending — is correct: the two halves of the scene become pixel-for-pixel
+  indistinguishable, which is the whole claim, since it means the fade no
+  longer depends on the ordering at all. Labels fade smoothly with no cliff,
+  because the tint's alpha never moves and the cutoff never sees it.
+- **Which threshold matters, and only to the eye.** The engine's own hash from
+  `shaders/lod_fade.glsl` is tuned for foliage far away under temporal
+  anti-aliasing; on a still panel hundreds of pixels across, with no TAA here,
+  it photographs as visible diagonal hatching. An ordered 4x4 Bayer matrix
+  gives the same numbers and no visible pattern at all.
+- **Rendering the subtree into a texture** — the fourth approach, and the only
+  one that is a `saveLayer` rather than an approximation of one — gets the
+  arithmetic exactly right and the depth exactly wrong. The scene carries a
+  `pin`, a small opaque panel standing in front of the faded card and outside
+  the faded subtree, for precisely this: every approach that leaves the depth
+  buffer in charge draws it over the card at every opacity, and this one buries
+  it **at opacity 1.0**, where nothing is supposed to be happening at all. Only
+  the sliver that overhangs the card's edge survives. A composited texture is
+  drawn over the screen view entire, so the subtree is flat against everything
+  outside it.
+
+  What it buys is visible in the `ink` column, which is the label's contrast
+  against the card under it. True group opacity scales that contrast linearly:
+  0.316 at full, so 0.095 at 30% — and the measurement is 0.096. Screen-door
+  reads 0.140 at the same opacity, because a label and the panel under it are
+  each faded on their own and the label's surviving pixels are full strength.
+  That is the group-opacity error, quantified: about half again as much label
+  as there should be at 30%, zero at either end.
+
+  Its costs beyond the flattening are worth writing down because they are not
+  obvious. It is a whole render pass per faded subtree per frame. And
+  `Node.layers` is **not inherited** — the engine's dartdoc says to set it on
+  each mesh-bearing node — so the subtree has to be walked to its leaves, and a
+  node created while a fade is running is born on the default layer and appears
+  at full opacity.
