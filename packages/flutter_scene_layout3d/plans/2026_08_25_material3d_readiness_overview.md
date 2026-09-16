@@ -170,13 +170,13 @@ label.
 
 Also open, each for a stated reason rather than for lack of time:
 
-- **A reorderable list has no declarative form.** There is no
-  `SceneReorderableList3d`, and there cannot be one until
-  `Layout3dBuiltChildrenMixin` grows a seam that lets a view adopt what the
-  child manager built: the list wraps every item in a `Draggable3d` of its
-  own, and the declarative contract is that `removeChild` is handed back the
-  very layout `createChild` returned. The same seam is what an
-  explicit-children constructor for that list would need.
+- ~~**A reorderable list has no declarative form.**~~ **Closed** by
+  [an item that keeps its state](2026_09_16_an_item_that_keeps_its_state.md),
+  which built the seam this entry asked for —
+  `Layout3dBuiltChildrenMixin.wrapBuiltChild` and `builtChildOf` — and
+  `SceneReorderableList3d` and `SceneSliverReorderableList3d` over it. An
+  explicit-children constructor is still deliberately absent, for the reason
+  it always was: a reorder is a statement about the caller's data.
 - **`Drag3dAnchor.targetPlane` is reserved, not built.** Re-parenting a
   feedback box into the target's overlay costs two layout passes and a rebuild
   in the middle of the one interaction this whole design keeps off the

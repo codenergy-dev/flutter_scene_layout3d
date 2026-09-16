@@ -138,3 +138,56 @@ class Offstage3d extends SingleChildLayout3d with Layout3dChildIntrinsicsMixin {
     properties.add(DiagnosticsProperty<bool>('offstage', offstage));
   }
 }
+
+/// A box that asks a lazy view not to release its child when the window
+/// leaves it.
+///
+/// The 3D analogue of Flutter's `KeepAlive`, and it exists for the same one
+/// reason: a built item is disposed when the window and its cache have moved
+/// past it, and everything the item held goes with it — the `State` of a
+/// stateful widget, a scroll position, a half-filled form. Put this at the
+/// top of the item and the view parks the item instead, giving it back
+/// untouched when the window comes round again.
+///
+/// ```dart
+/// SceneListView3d.builder(
+///   itemCount: questions.length,
+///   itemBuilder: (context, index) => SceneKeepAlive3d(
+///     child: AnswerRow(question: questions[index]),
+///   ),
+/// )
+/// ```
+///
+/// **It has to be the top of the item**, which is the whole of the contract:
+/// the view asks the child it holds, and nothing bubbles up from inside the
+/// subtree. Flutter has an `AutomaticKeepAlive` that listens for a
+/// notification from anywhere below; this package does not, and a widget that
+/// wants keeping asks for it where the list can see.
+///
+/// A parked child is out of the layout tree, not hidden in it: it is not laid
+/// out, not drawn, not reachable by a ray and not walked for semantics, which
+/// is what makes keeping one cheap. What it costs is memory — the subtree, its
+/// nodes and whatever they hold stay alive for as long as the view does — so
+/// this is for the handful of items that have something to lose, not for a
+/// list of labels.
+///
+/// Setting [keepAlive] back to false does not release the child there and
+/// then; the next pass that finds the index outside its window does.
+class KeepAlive3d extends ProxyLayout3d {
+  /// Creates a box asking for [child] to be kept.
+  KeepAlive3d({this.keepAlive = true, super.child, super.name});
+
+  /// Whether the enclosing lazy view should park this item rather than
+  /// release it.
+  ///
+  /// Read by the view as it releases what the window has left behind, so
+  /// changing it costs nothing until then — which is why it is a plain field
+  /// rather than a property that marks anything dirty.
+  bool keepAlive;
+
+  @override
+  void debugFillProperties(DiagnosticPropertiesBuilder properties) {
+    super.debugFillProperties(properties);
+    properties.add(DiagnosticsProperty<bool>('keepAlive', keepAlive));
+  }
+}

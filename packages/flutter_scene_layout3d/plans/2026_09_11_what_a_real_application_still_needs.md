@@ -1,8 +1,8 @@
 ---
 status: in progress
-reason: eleven of the seventeen items are open; the record of what shipped, the application widget, the wheel and the key, the test library, right to left and the picture are closed
+reason: ten of the seventeen items are open; the record of what shipped, the application widget, the wheel and the key, the test library, right to left, the picture and the item that keeps its state are closed
 created_at: 2026-09-11T21:20:18Z
-updated_at: 2026-09-16T14:40:00Z
+updated_at: 2026-09-16T16:10:00Z
 commit: abc2469ce5c4ec4c41e2738fc5acf55bcf40640a
 ---
 
@@ -97,7 +97,7 @@ plan, which is the rule phase 0 established and every phase since has obeyed.
 | ~~[A picture on a panel](#a-picture-on-a-panel)~~ | layout3d | **done** — avatars, photographs, gradients, logos |
 | [A box that fades](#a-box-that-fades) | layout3d | `Opacity3d`, and every fade in the motion lane |
 | [A letter someone can type](#a-letter-someone-can-type) | layout3d | text fields, forms, search, pickers |
-| [An item that keeps its state](#an-item-that-keeps-its-state) | layout3d | forms in lists; the declarative forms still missing |
+| ~~[An item that keeps its state](#an-item-that-keeps-its-state)~~ | layout3d | **done** — forms in lists, and the declarative layer complete |
 | [A screen that knows how big it is](#a-screen-that-knows-how-big-it-is) | layout3d | accessibility text scale, insets, responsive screens |
 | [A route that arrives instead of appearing](#a-route-that-arrives-instead-of-appearing) | layout3d | transitions, fades, `Hero3d` |
 | [An application with more than one screen](#an-application-with-more-than-one-screen) | layout3d | named routes, deep links, the system back button |
@@ -157,8 +157,10 @@ four because the language item waits on it, see
 [its plan](2026_09_15_a_row_that_reads_right_to_left.md) —
 ~~[a picture](#a-picture-on-a-panel)~~ — **done**, second, see
 [its plan](2026_09_15_a_picture_on_a_panel.md) —
-[an item that keeps its state](#an-item-that-keeps-its-state), and
-[a screen that knows how big it is](#a-screen-that-knows-how-big-it-is).
+~~[an item that keeps its state](#an-item-that-keeps-its-state)~~ — **done**,
+third, see [its plan](2026_09_16_an_item_that_keeps_its_state.md) — and
+[a screen that knows how big it is](#a-screen-that-knows-how-big-it-is), which
+is the last of the four and the next thing to take.
 
 Then motion, as a pair:
 [a route that arrives](#a-route-that-arrives-instead-of-appearing) here and
@@ -521,6 +523,19 @@ already helps and where it does not:
 
 **Package:** `flutter_scene_layout3d`.
 **Slug:** `an_item_that_keeps_its_state`.
+**Closed** by
+[its own plan](2026_09_16_an_item_that_keeps_its_state.md). The entry below is
+what it was reasoned from. What that reasoning got wrong, in short: the shared
+seam was real and was two hooks, exactly as this entry and the prior plan
+predicted, so the *design* held — and the work was somewhere else entirely, in
+the disposal bookkeeping a dropped child breaks. The defect it found is that
+a view asking `childManager` at teardown asks the wrong question, because the
+element clears itself on the way out while the children it built are still on
+the books; every declarative list was disposing children its elements had
+already disposed. And the reorderable widget turned out to have a question
+nobody had asked: what a drag carries cannot be a second copy of a widget
+item, because building one lays a render box out and a drag begins during a
+pointer event.
 
 Two gaps that are one plan because they are the same seam.
 
@@ -542,12 +557,15 @@ child manager built, because the list wraps every item in a `Draggable3d` of
 its own while the declarative contract is that `removeChild` is handed back
 the very layout `createChild` returned. **That is the same seam keep-alive
 needs**, for the same reason — both are a view wanting a say in the lifetime
-of a built child.
+of a built child. **Settled:** it is `wrapBuiltChild` and `builtChildOf` on
+`Layout3dBuiltChildrenMixin`, and it cost two hooks.
 
 `SceneRichText3d`'s absence is worth calling out separately as the cheapest
 inconsistency on the whole map: `RichText3d` has just absorbed two phases of
 work — a paragraph with a side to it, its own CPU rasterization, per-span
-wall colours — and **a `build` method cannot reach any of it.**
+wall colours — and **a `build` method cannot reach any of it.** It was twenty
+lines of property forwarding, and it was the best value on this map per line
+written.
 
 ## A screen that knows how big it is
 

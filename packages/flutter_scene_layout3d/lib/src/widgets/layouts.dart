@@ -11,6 +11,8 @@ import 'package:flutter/gestures.dart'
         GestureTapCancelCallback,
         GestureTapDownCallback,
         GestureTapUpCallback;
+import 'package:flutter/animation.dart' show Curve, Curves;
+import 'package:flutter/scheduler.dart' show TickerProvider;
 import 'package:flutter/semantics.dart' show SemanticsProperties;
 import 'package:flutter/widgets.dart'
     show
@@ -30,19 +32,22 @@ import 'package:flutter/widgets.dart'
         ImageErrorListener,
         ImageProvider,
         IndexedWidgetBuilder,
+        InlineSpan,
         Intent,
         MemoryImage,
         NetworkImage,
         ShortcutActivator,
+        StrutStyle,
         TextAlign,
         TextDirection,
         TextOverflow,
         TextStyle,
+        TextWidthBasis,
         ValueChanged,
         VerticalDirection,
         Widget,
         createLocalImageConfiguration;
-import 'package:flutter_scene/scene.dart' show Node;
+import 'package:flutter_scene/scene.dart' show Node, WidgetUpdatePolicy;
 import 'package:vector_math/vector_math.dart' show Matrix4;
 
 import '../boxes/aspect_ratio.dart';
@@ -61,6 +66,7 @@ import '../boxes/shifted.dart';
 import '../boxes/sized.dart';
 import '../boxes/stack.dart';
 import '../boxes/table.dart';
+import '../boxes/visibility.dart';
 import '../boxes/wrap.dart';
 import '../clip.dart';
 import '../decoration/box_decoration.dart';
@@ -73,16 +79,20 @@ import '../geometry/constraints3d.dart';
 import '../geometry/edge_insets3d.dart';
 import '../geometry/offset3d.dart';
 import '../geometry/size3d.dart';
+import '../input/autoscroll.dart';
+import '../input/draggable.dart';
 import '../input/events.dart';
 import '../input/focus.dart';
 import '../input/gesture_detector.dart';
 import '../input/listener.dart';
 import '../input/shortcuts.dart';
 import '../input/tap_target.dart';
+import '../layout3d.dart';
 import '../scroll/grid_delegate.dart';
 import '../scroll/grid_view.dart';
 import '../scroll/list_view.dart';
 import '../scroll/page_view.dart';
+import '../scroll/reorderable_list.dart';
 import '../scroll/scroll_controller.dart';
 import '../scroll/scroll_physics.dart';
 import '../scroll/viewport.dart';
@@ -93,8 +103,10 @@ import '../sliver/sliver.dart';
 import '../sliver/sliver_grid.dart';
 import '../sliver/sliver_list.dart';
 import '../sliver/sliver_persistent_header.dart';
+import '../sliver/sliver_reorderable_list.dart';
 import '../sliver/sliver_padding.dart';
 import '../text/break_rules.dart';
+import '../text/rich_text3d.dart';
 import '../text/text3d.dart';
 import '../text/text_measurement.dart';
 import '../text/text_renderer.dart';
@@ -309,6 +321,93 @@ class SceneAbsorbPointer3d extends SingleChildLayout3dWidget {
   @override
   void updateLayout(BuildContext context, AbsorbPointer3d layout) {
     layout.absorbing = absorbing;
+  }
+}
+
+/// Hides its child without taking it out of the layout, the widget form of
+/// [Visibility3d].
+///
+/// The space stays reserved and nothing above moves; a hidden box is neither
+/// drawn nor reachable by a ray. Use [SceneOffstage3d] to take the space back
+/// as well.
+class SceneVisibility3d extends SingleChildLayout3dWidget {
+  /// Creates a box showing or hiding [child].
+  const SceneVisibility3d({super.key, this.visible = true, super.child});
+
+  /// Whether the child is drawn and reachable by a ray.
+  final bool visible;
+
+  @override
+  Visibility3d createLayout(BuildContext context) =>
+      Visibility3d(visible: visible);
+
+  @override
+  void updateLayout(BuildContext context, Visibility3d layout) {
+    layout.visible = visible;
+  }
+}
+
+/// Hides its child and gives back the space it took, the widget form of
+/// [Offstage3d].
+///
+/// The child is still laid out, so flipping [offstage] back shows something
+/// that is already measured rather than something that appears a frame later.
+class SceneOffstage3d extends SingleChildLayout3dWidget {
+  /// Creates a box that can take [child] out of the layout.
+  const SceneOffstage3d({super.key, this.offstage = true, super.child});
+
+  /// Whether the child is hidden and its space given back.
+  final bool offstage;
+
+  @override
+  Offstage3d createLayout(BuildContext context) =>
+      Offstage3d(offstage: offstage);
+
+  @override
+  void updateLayout(BuildContext context, Offstage3d layout) {
+    layout.offstage = offstage;
+  }
+}
+
+/// Asks a lazy view not to release this item when the window leaves it, the
+/// widget form of [KeepAlive3d].
+///
+/// The answer to an item that has something to lose — an expanded row, a
+/// half-filled form, a scroll position of its own. Without one, scrolling far
+/// enough disposes the item and its [State] goes with it.
+///
+/// ```dart
+/// SceneListView3d.builder(
+///   itemCount: questions.length,
+///   itemExtent: 0.4,
+///   itemBuilder: (context, index) => SceneKeepAlive3d(
+///     child: AnswerRow(question: questions[index]),
+///   ),
+/// )
+/// ```
+///
+/// **It has to be the item itself**, at the top of what `itemBuilder`
+/// returns: the view asks the child it holds, and there is no counterpart to
+/// Flutter's `AutomaticKeepAlive` listening for a notification from deeper in.
+/// A kept item stays in memory for as long as the view does, so keep the ones
+/// with something to lose and let the rest go.
+class SceneKeepAlive3d extends SingleChildLayout3dWidget {
+  /// Creates a box asking for [child] to be kept.
+  const SceneKeepAlive3d({super.key, this.keepAlive = true, super.child});
+
+  /// Whether the enclosing lazy view parks this item rather than releasing it.
+  ///
+  /// Turning it off does not release the item there and then; the next pass
+  /// that finds it outside the window does.
+  final bool keepAlive;
+
+  @override
+  KeepAlive3d createLayout(BuildContext context) =>
+      KeepAlive3d(keepAlive: keepAlive);
+
+  @override
+  void updateLayout(BuildContext context, KeepAlive3d layout) {
+    layout.keepAlive = keepAlive;
   }
 }
 
@@ -704,6 +803,41 @@ class SceneConstrainedBox3d extends SingleChildLayout3dWidget {
   @override
   void updateLayout(BuildContext context, ConstrainedBox3d layout) {
     layout.additionalConstraints = constraints;
+  }
+}
+
+/// Sizes its child to the child's own preferred extent along one axis, the
+/// widget form of [IntrinsicExtent3d].
+///
+/// [SceneIntrinsicWidth3d], [SceneIntrinsicHeight3d] and
+/// [SceneIntrinsicDepth3d] are the names to reach for; this one is for the
+/// case where the axis is decided at runtime. It is expensive either way —
+/// answering the question walks the whole subtree, and then the subtree is
+/// laid out again for real.
+class SceneIntrinsicExtent3d extends SingleChildLayout3dWidget {
+  /// Creates a box sizing [child] to its intrinsic extent along [axis].
+  const SceneIntrinsicExtent3d({
+    super.key,
+    required this.axis,
+    this.step,
+    super.child,
+  });
+
+  /// The axis the child is sized to its own preference along.
+  final Axis3d axis;
+
+  /// If non-null, the extent is rounded up to a multiple of this.
+  final double? step;
+
+  @override
+  IntrinsicExtent3d createLayout(BuildContext context) =>
+      IntrinsicExtent3d(axis: axis, step: step);
+
+  @override
+  void updateLayout(BuildContext context, IntrinsicExtent3d layout) {
+    layout
+      ..axis = axis
+      ..step = step;
   }
 }
 
@@ -1679,9 +1813,10 @@ class SceneViewport3d extends SingleChildLayout3dWidget {
 /// dozen that are visible.
 ///
 /// A built item is a widget like any other: it reads inherited state, keeps
-/// its own [State], and rebuilds on its own. It is not kept alive, though —
-/// scrolling far enough disposes it, and its [State] goes with it, so put
-/// anything that has to survive that outside the list.
+/// its own [State], and rebuilds on its own. It is not kept alive by default —
+/// scrolling far enough disposes it, and its [State] goes with it — so wrap an
+/// item that has something to lose in a [SceneKeepAlive3d] and the list parks
+/// it instead of releasing it.
 ///
 /// ```dart
 /// SceneListView3d.builder(
@@ -1764,6 +1899,154 @@ class SceneListView3d extends LazyLayout3dWidget {
   @override
   void updateLayout(BuildContext context, ListView3d layout) {
     layout
+      ..scrollDirection = scrollDirection
+      ..spacing = spacing
+      ..itemExtent = itemExtent
+      ..crossAxisAlignment = crossAxisAlignment
+      ..depthAxisAlignment = depthAxisAlignment
+      ..cacheExtent = cacheExtent;
+    layout.controller = controller;
+  }
+}
+
+/// A scrolling list whose items can be dragged into a different order, the
+/// widget form of [ReorderableList3d].
+///
+/// Items are always built rather than listed, for the reason the imperative
+/// list gives: a reorder is a statement about the caller's own data, so the
+/// list has to be a function of that data to mean anything.
+///
+/// ```dart
+/// SceneReorderableList3d(
+///   itemCount: tracks.length,
+///   itemExtent: 0.4,
+///   itemBuilder: (context, index) => TrackRow(track: tracks[index]),
+///   feedbackBuilder: (index) => Container3d(
+///     size: const Size3d(2, 0.4, 0.02),
+///     decoration: cardDecoration,
+///   ),
+///   onReorder: (oldIndex, newIndex) => setState(
+///     () => tracks.insert(newIndex, tracks.removeAt(oldIndex)),
+///   ),
+/// )
+/// ```
+///
+/// ## What a drag carries
+///
+/// [feedbackBuilder] is required here and optional on the imperative list,
+/// and that is the one real difference between them. What flies under the
+/// pointer is a *second* copy of the item, and a widget item cannot be
+/// copied: building one goes through this widget's element, inside a build
+/// scope, and lays a render box out — legal inside a layout pass and nowhere
+/// else, while a drag begins during a pointer event. So what is carried is
+/// stated as geometry, which is usually a card the size of a row.
+///
+/// ## Reordering the data
+///
+/// [onReorder] reports `(oldIndex, newIndex)` once, at the drop, with
+/// **[newIndex] where the item ends up** — one `insert` after one `removeAt`.
+/// Do it in a `setState`: the widget layer rebuilds every item standing when
+/// this widget rebuilds, which is what puts the reordered data on the plane.
+/// There is no [ReorderableList3d.refresh] to call, because a rebuild of the
+/// list is the refresh.
+///
+/// An item is picked up with a long press by default, so an ordinary drag is
+/// still free to scroll the list. Set [startMode] to
+/// [Drag3dStartMode.immediate] for a list of drag handles.
+class SceneReorderableList3d extends LazyLayout3dWidget {
+  /// Creates a reorderable list that builds its items as it reaches them.
+  const SceneReorderableList3d({
+    super.key,
+    required int itemCount,
+    required IndexedWidgetBuilder itemBuilder,
+    required this.onReorder,
+    required this.feedbackBuilder,
+    this.startMode = const Drag3dStartMode.longPress(),
+    this.gapDuration = const Duration(milliseconds: 200),
+    this.gapCurve = Curves.easeInOut,
+    this.autoscroll = const Drag3dAutoscroll(),
+    this.vsync,
+    this.scrollDirection = Axis3d.vertical,
+    this.controller,
+    this.spacing = 0.0,
+    this.itemExtent,
+    this.crossAxisAlignment = CrossAxisAlignment3d.center,
+    this.depthAxisAlignment = CrossAxisAlignment3d.center,
+    this.cacheExtent = 0.0,
+  }) : super(itemCount: itemCount, itemBuilder: itemBuilder);
+
+  /// Called once, at the drop, when an item ended somewhere else.
+  final Reorder3dCallback onReorder;
+
+  /// Builds what is carried under the pointer, given the item's index.
+  final Layout3dItemBuilder feedbackBuilder;
+
+  /// When a press on an item becomes a reorder drag.
+  final Drag3dStartMode startMode;
+
+  /// How long the items take to slide aside when the gap moves.
+  final Duration gapDuration;
+
+  /// The curve the items follow as they slide aside.
+  final Curve gapCurve;
+
+  /// How an item carried to the edge of the window scrolls the list, or null
+  /// to leave it still.
+  final Drag3dAutoscroll? autoscroll;
+
+  /// The ticker provider the gap animation and the autoscroll run on.
+  final TickerProvider? vsync;
+
+  /// The axis the list scrolls along.
+  final Axis3d scrollDirection;
+
+  /// The scroll position. One is created and owned when this is null.
+  final Scroll3dController? controller;
+
+  /// The gap between adjacent items.
+  final double spacing;
+
+  /// A fixed extent for every item along the scroll axis.
+  final double? itemExtent;
+
+  /// How items are positioned on the first cross axis.
+  final CrossAxisAlignment3d crossAxisAlignment;
+
+  /// How items are positioned on the second cross axis.
+  final CrossAxisAlignment3d depthAxisAlignment;
+
+  /// How far beyond the window items stay built.
+  final double cacheExtent;
+
+  @override
+  ReorderableList3d createLayout(BuildContext context) =>
+      ReorderableList3d.managed(
+        onReorder: onReorder,
+        feedbackBuilder: feedbackBuilder,
+        startMode: startMode,
+        gapDuration: gapDuration,
+        gapCurve: gapCurve,
+        autoscroll: autoscroll,
+        vsync: vsync,
+        scrollDirection: scrollDirection,
+        controller: controller,
+        spacing: spacing,
+        itemExtent: itemExtent,
+        crossAxisAlignment: crossAxisAlignment,
+        depthAxisAlignment: depthAxisAlignment,
+        cacheExtent: cacheExtent,
+      );
+
+  @override
+  void updateLayout(BuildContext context, ReorderableList3d layout) {
+    layout
+      ..onReorder = onReorder
+      ..feedbackBuilder = feedbackBuilder
+      ..startMode = startMode
+      ..gapDuration = gapDuration
+      ..gapCurve = gapCurve
+      ..autoscroll = autoscroll
+      ..vsync = vsync
       ..scrollDirection = scrollDirection
       ..spacing = spacing
       ..itemExtent = itemExtent
@@ -1972,9 +2255,9 @@ class SceneSliverToBoxAdapter3d extends SingleChildLayout3dWidget {
 /// A run of items in a sliver world, the widget form of [SliverList3d].
 ///
 /// The same two shapes [SceneListView3d] has, and the same caveats: a built
-/// item is an ordinary widget, it is not kept alive once the window and its
-/// cache have left it, and an [itemExtent] is what stops a long list from
-/// measuring its way to a deep offset.
+/// item is an ordinary widget, it is released once the window and its cache
+/// have left it unless a [SceneKeepAlive3d] asks otherwise, and an [itemExtent]
+/// is what stops a long list from measuring its way to a deep offset.
 class SceneSliverList3d extends LazyLayout3dWidget {
   /// Creates a sliver list over an explicit set of children.
   const SceneSliverList3d({
@@ -2020,6 +2303,117 @@ class SceneSliverList3d extends LazyLayout3dWidget {
   @override
   void updateLayout(BuildContext context, SliverList3d layout) {
     layout
+      ..spacing = spacing
+      ..itemExtent = itemExtent
+      ..crossAxisAlignment = crossAxisAlignment
+      ..depthAxisAlignment = depthAxisAlignment;
+  }
+}
+
+/// A run of items that can be dragged into a different order, the widget form
+/// of [SliverReorderableList3d].
+///
+/// [SceneReorderableList3d] is this sliver in a window of its own; reach for
+/// this one when a reorderable run has to sit between other slivers in a
+/// `SceneCustomScrollView3d`.
+///
+/// ## What a drag carries
+///
+/// [feedbackBuilder] is required here and optional on the imperative list,
+/// and that is the one real difference between them. What flies under the
+/// pointer is a *second* copy of the item, and a widget item cannot be
+/// copied: building one goes through this widget's element, inside a build
+/// scope, and lays a render box out — legal inside a layout pass and nowhere
+/// else, while a drag begins during a pointer event. So what is carried is
+/// stated as geometry, which is usually a card the size of a row.
+///
+/// ## Reordering the data
+///
+/// [onReorder] reports `(oldIndex, newIndex)` once, at the drop, with
+/// **[newIndex] where the item ends up** — one `insert` after one `removeAt`.
+/// Do it in a `setState`: the widget layer rebuilds every item standing when
+/// this widget rebuilds, which is what puts the reordered data on the plane.
+/// There is no [ReorderableList3d.refresh] to call, because a rebuild of the
+/// list is the refresh.
+class SceneSliverReorderableList3d extends LazyLayout3dWidget {
+  /// Creates a reorderable sliver that builds its items as it reaches them.
+  const SceneSliverReorderableList3d({
+    super.key,
+    required int itemCount,
+    required IndexedWidgetBuilder itemBuilder,
+    required this.onReorder,
+    required this.feedbackBuilder,
+    this.startMode = const Drag3dStartMode.longPress(),
+    this.gapDuration = const Duration(milliseconds: 200),
+    this.gapCurve = Curves.easeInOut,
+    this.autoscroll = const Drag3dAutoscroll(),
+    this.vsync,
+    this.spacing = 0.0,
+    this.itemExtent,
+    this.crossAxisAlignment = CrossAxisAlignment3d.center,
+    this.depthAxisAlignment = CrossAxisAlignment3d.center,
+  }) : super(itemCount: itemCount, itemBuilder: itemBuilder);
+
+  /// Called once, at the drop, when an item ended somewhere else.
+  final Reorder3dCallback onReorder;
+
+  /// Builds what is carried under the pointer, given the item's index.
+  final Layout3dItemBuilder feedbackBuilder;
+
+  /// When a press on an item becomes a reorder drag.
+  final Drag3dStartMode startMode;
+
+  /// How long the items take to slide aside when the gap moves.
+  final Duration gapDuration;
+
+  /// The curve the items follow as they slide aside.
+  final Curve gapCurve;
+
+  /// How an item carried to the edge of the window scrolls the list, or null
+  /// to leave it still.
+  final Drag3dAutoscroll? autoscroll;
+
+  /// The ticker provider the gap animation and the autoscroll run on.
+  final TickerProvider? vsync;
+
+  /// The gap between adjacent items.
+  final double spacing;
+
+  /// A fixed extent for every item along the scroll axis.
+  final double? itemExtent;
+
+  /// How items are positioned on the first cross axis.
+  final CrossAxisAlignment3d crossAxisAlignment;
+
+  /// How items are positioned on the second cross axis.
+  final CrossAxisAlignment3d depthAxisAlignment;
+
+  @override
+  SliverReorderableList3d createLayout(BuildContext context) =>
+      SliverReorderableList3d.managed(
+        onReorder: onReorder,
+        feedbackBuilder: feedbackBuilder,
+        startMode: startMode,
+        gapDuration: gapDuration,
+        gapCurve: gapCurve,
+        autoscroll: autoscroll,
+        vsync: vsync,
+        spacing: spacing,
+        itemExtent: itemExtent,
+        crossAxisAlignment: crossAxisAlignment,
+        depthAxisAlignment: depthAxisAlignment,
+      );
+
+  @override
+  void updateLayout(BuildContext context, SliverReorderableList3d layout) {
+    layout
+      ..onReorder = onReorder
+      ..feedbackBuilder = feedbackBuilder
+      ..startMode = startMode
+      ..gapDuration = gapDuration
+      ..gapCurve = gapCurve
+      ..autoscroll = autoscroll
+      ..vsync = vsync
       ..spacing = spacing
       ..itemExtent = itemExtent
       ..crossAxisAlignment = crossAxisAlignment
@@ -2193,6 +2587,144 @@ class SceneText3d extends Layout3dWidget {
       ..rules = rules
       ..measurement = measurement ?? SegmentedTextMeasurement3d.shared;
     _applyRenderer(context, layout);
+  }
+}
+
+/// A styled paragraph laid out as a box, the widget form of [RichText3d].
+///
+/// [SceneText3d] is one string in one style, assembled out of a shared glyph
+/// atlas. This is everything that is not that: several spans with styles of
+/// their own, a `WidgetSpan`, a decoration, a shadow, a font feature — the
+/// paragraph is handed back to Flutter to paint into a texture, and the
+/// texture is drawn on the plane.
+///
+/// ```dart
+/// SceneRichText3d(
+///   text: TextSpan(
+///     style: DefaultTextStyle.of(context).style,
+///     children: [
+///       const TextSpan(text: 'Signed, '),
+///       TextSpan(text: name, style: const TextStyle(fontWeight: FontWeight.bold)),
+///     ],
+///   ),
+/// )
+/// ```
+///
+/// Two things to know, and both are in [RichText3d]'s own dartdoc at length.
+/// The spans carry their own styles, so nothing here is merged onto the
+/// ambient [DefaultTextStyle] the way [SceneText3d] merges — a span with no
+/// style is drawn in Flutter's default, not in yours. And [glyphDepth], not
+/// [depth], is what gives the letters a side to them: `depth` reserves room in
+/// the layout and draws nothing.
+class SceneRichText3d extends Layout3dWidget {
+  /// Creates a paragraph box over [text].
+  const SceneRichText3d({
+    super.key,
+    required this.text,
+    this.textAlign = TextAlign.start,
+    this.textDirection,
+    this.softWrap = true,
+    this.overflow = TextOverflow.clip,
+    this.maxLines,
+    this.depth = 0.0,
+    this.glyphDepth,
+    this.glyphDepthFactor = 0.10,
+    this.maxWallSegments = RichText3d.defaultMaxWallSegments,
+    this.strutStyle,
+    this.textWidthBasis = TextWidthBasis.parent,
+    this.resolution = 2.0,
+    this.depthOffset = 0.2,
+    this.update = WidgetUpdatePolicy.everyFrame,
+  });
+
+  /// The span this box lays out.
+  final InlineSpan text;
+
+  /// How lines sit inside the box's width.
+  final TextAlign textAlign;
+
+  /// Which way the text runs; the ambient [Directionality] by default.
+  final TextDirection? textDirection;
+
+  /// Whether a line may end because it ran out of room.
+  final bool softWrap;
+
+  /// What text that does not fit does.
+  final TextOverflow overflow;
+
+  /// The most lines the text may take.
+  final int? maxLines;
+
+  /// How much depth the box reserves, in world units.
+  final double depth;
+
+  /// How thick the letters are, in logical pixels, or null to derive it.
+  final double? glyphDepth;
+
+  /// The share of the root span's font size the letters are thick, when
+  /// [glyphDepth] says nothing.
+  final double glyphDepthFactor;
+
+  /// The ceiling on how much wall geometry one paragraph may build.
+  final int maxWallSegments;
+
+  /// The strut the lines are measured against.
+  final StrutStyle? strutStyle;
+
+  /// Whether the box is as wide as its longest line or as wide as it was
+  /// allowed to be.
+  final TextWidthBasis textWidthBasis;
+
+  /// How many texture pixels are captured per logical pixel.
+  final double resolution;
+
+  /// How far the paragraph is lifted off the face it is drawn on, in logical
+  /// pixels.
+  final double depthOffset;
+
+  /// When the captured texture is refreshed.
+  final WidgetUpdatePolicy update;
+
+  TextDirection _resolveDirection(BuildContext context) =>
+      textDirection ?? Directionality.maybeOf(context) ?? TextDirection.ltr;
+
+  @override
+  RichText3d createLayout(BuildContext context) => RichText3d(
+    text,
+    textAlign: textAlign,
+    textDirection: _resolveDirection(context),
+    softWrap: softWrap,
+    overflow: overflow,
+    maxLines: maxLines,
+    depth: depth,
+    glyphDepth: glyphDepth,
+    glyphDepthFactor: glyphDepthFactor,
+    maxWallSegments: maxWallSegments,
+    strutStyle: strutStyle,
+    textWidthBasis: textWidthBasis,
+    resolution: resolution,
+    depthOffset: depthOffset,
+    update: update,
+  );
+
+  @override
+  void updateLayout(BuildContext context, RichText3d layout) {
+    layout
+      ..text = text
+      ..textAlign = textAlign
+      ..textDirection = _resolveDirection(context)
+      ..softWrap = softWrap
+      ..overflow = overflow
+      ..maxLines = maxLines
+      ..depth = depth
+      ..glyphDepth = glyphDepth
+      ..glyphDepthFactor = glyphDepthFactor
+      ..maxWallSegments = maxWallSegments
+      ..strutStyle = strutStyle
+      ..textWidthBasis = textWidthBasis
+      ..resolution = resolution
+      ..depthOffset = depthOffset
+      ..update = update;
   }
 }
 

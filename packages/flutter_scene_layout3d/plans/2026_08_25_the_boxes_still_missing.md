@@ -208,11 +208,13 @@ test.
       overlay and is carried by `nodeOffset`, so a drag costs one matrix write
       a frame and reaches the relayout path exactly twice.
 
-      Two gaps are left behind deliberately, and both are recorded in that
-      plan rather than here: there is **no `SceneReorderableList3d`**, because
-      the list wraps every item in a `Draggable3d` and the declarative layer's
-      contract is that `removeChild` is handed back the very layout
-      `createChild` returned; and `Drag3dAnchor.targetPlane` is reserved
+      Two gaps were left behind deliberately, and both are recorded in that
+      plan rather than here. The first — **no `SceneReorderableList3d`**,
+      because the list wraps every item in a `Draggable3d` and the declarative
+      layer's contract is that `removeChild` is handed back the very layout
+      `createChild` returned — was closed by
+      [an item that keeps its state](2026_09_16_an_item_that_keeps_its_state.md),
+      which built the seam. `Drag3dAnchor.targetPlane` is still reserved
       rather than built, because the mechanism this design named for it turned
       out to be the wrong one. Neither is remaining work in *this* file: the
       boxes the catalogue asked for by name are here.

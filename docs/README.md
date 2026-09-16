@@ -181,6 +181,17 @@ Two entry points:
   Flutter's `onChanged` rather than a fourth revision counter — an atlas needs
   counters because its one texture keeps changing under the meshes baked from
   it, and a picture's arrival is a value anyone can compare.
+  [An item that keeps its state](../packages/flutter_scene_layout3d/plans/2026_09_16_an_item_that_keeps_its_state.md)
+  is the sixth, and it is two absences that turned out to be one seam: a view
+  wanting a say in the lifetime of a child it did not build. `KeepAlive3d`
+  parks an item the window has left instead of releasing it — dropped from the
+  layout tree rather than hidden in it, so no walk in the package needs an
+  exception for it — and `wrapBuiltChild`/`builtChildOf` let a view hold
+  something other than what was built, which is what finally gave the
+  reorderable lists their widget forms. The defect it found is about teardown:
+  a view asking whether it *has* a child manager asks the wrong question,
+  because the element clears itself on the way out while the children it built
+  are still on the books.
 
 ## Keeping this true
 

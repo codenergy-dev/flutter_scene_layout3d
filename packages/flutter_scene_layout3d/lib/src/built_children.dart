@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show protected;
 
 import 'boxes/flex.dart' show CrossAxisAlignment3d;
+import 'boxes/visibility.dart' show KeepAlive3d;
 import 'geometry/constraints3d.dart';
 import 'geometry/offset3d.dart';
 import 'layout3d.dart';
@@ -208,9 +209,17 @@ mixin Layout3dBuiltChildrenMixin<ParentDataType extends ParentData3d>
       'A view has one child manager, and $runtimeType already has one.',
     );
     _childManager = value;
+    _hadManager |= value != null;
     resetMeasurements();
     markNeedsLayout();
   }
+
+  /// Whether this view has ever had a [childManager].
+  ///
+  /// The element that is the manager clears itself on the way out, while the
+  /// children it built are still on this view's books, so "is there a manager"
+  /// is the wrong question to ask at teardown and this is the right one.
+  bool _hadManager = false;
 
   /// How many children this view holds.
   int get itemCount {
@@ -236,11 +245,86 @@ mixin Layout3dBuiltChildrenMixin<ParentDataType extends ParentData3d>
 
   final Map<int, Layout3d> _active = <int, Layout3d>{};
 
+  final Map<int, Layout3d> _keptAlive = <int, Layout3d>{};
+
   /// The children currently built, by index.
   ///
   /// Everything for an explicit view; the window plus whatever cache the view
   /// keeps for a built one.
   Iterable<int> get activeIndices => _active.keys;
+
+  /// The indices this view has parked rather than released, because the child
+  /// standing there asked to be kept alive.
+  ///
+  /// Out of the layout tree and out of [positionedChildren]: a parked child is
+  /// not laid out, not drawn, not hit-tested and not walked for semantics. It
+  /// is here so that the window coming back to the index finds the child it
+  /// left, with everything the child's subtree holds — a [KeepAlive3d]'s
+  /// reason for existing is that the `State` above it survives the trip.
+  Iterable<int> get keptAliveIndices => _keptAlive.keys;
+
+  /// Wraps what was built, before this view adopts it.
+  ///
+  /// The seam for a view whose children are not the children that were built.
+  /// A `SliverReorderableList3d` puts every item inside a `Draggable3d` of its
+  /// own, so that a press on an item picks it up without the caller building a
+  /// drag handle; returning [built] — the default, and every other view here —
+  /// is a view that holds what it was handed.
+  ///
+  /// This runs on both paths, the [itemBuilder] and the [childManager], which
+  /// is the point of it being here rather than in a builder a view overrode:
+  /// the manager path never consults [itemBuilder] at all, so a view that
+  /// wrapped there could not be reached from a `build` method.
+  ///
+  /// A view that overrides this overrides [builtChildOf] with the inverse.
+  @protected
+  Layout3d wrapBuiltChild(int index, Layout3d built) => built;
+
+  /// What was built, given what this view holds in its place.
+  ///
+  /// The inverse of [wrapBuiltChild], and the read every question about a
+  /// child's *contents* goes through: a manager is handed back the very layout
+  /// its `createChild` returned, and keep-alive asks the item rather than the
+  /// wrapper around it.
+  @protected
+  Layout3d builtChildOf(Layout3d adopted) => adopted;
+
+  /// Takes the built child back out of the wrapper this view put around it,
+  /// and disposes the wrapper alone.
+  ///
+  /// Only ever needed under a [childManager], which disposes what it built:
+  /// the wrapper has to let go first, or disposing it would take the item with
+  /// it. Returns the built child.
+  Layout3d _unwrapForManager(Layout3d adopted) {
+    final built = builtChildOf(adopted);
+    if (identical(built, adopted)) return built;
+    assert(
+      adopted is Layout3dWithChildMixin,
+      'A $runtimeType wrapped a built child in a ${adopted.runtimeType}, '
+      'which holds no child this view can take back out of it. A wrapper '
+      'returned from wrapBuiltChild holds the built child as its own child.',
+    );
+    (adopted as Layout3dWithChildMixin).child = null;
+    adopted.dispose();
+    return built;
+  }
+
+  /// Whether the child standing at an index asked not to be released.
+  bool _wantsKeepAlive(Layout3d adopted) {
+    final built = builtChildOf(adopted);
+    return built is KeepAlive3d && built.keepAlive;
+  }
+
+  /// Releases a child this view has already taken off its books, through
+  /// whoever created it.
+  void _releaseChild(int index, Layout3d adopted) {
+    final manager = _childManager;
+    if (manager == null) {
+      adopted.dispose();
+      return;
+    }
+    manager.removeChild(index, _unwrapForManager(adopted));
+  }
 
   /// Refuses a child list edit from outside, which the bookkeeping would not
   /// survive.
@@ -290,16 +374,17 @@ mixin Layout3dBuiltChildrenMixin<ParentDataType extends ParentData3d>
   void refresh() {
     resetMeasurements();
     if (isLazy) {
-      final manager = _childManager;
       for (final entry in _active.entries.toList()) {
         super.remove(entry.value);
-        if (manager != null) {
-          manager.removeChild(entry.key, entry.value);
-        } else {
-          entry.value.dispose();
-        }
+        _releaseChild(entry.key, entry.value);
       }
       _active.clear();
+      // A parked child stands for an index into the data that just changed,
+      // which is the one thing keeping it alive was never a promise about.
+      for (final entry in _keptAlive.entries.toList()) {
+        _releaseChild(entry.key, entry.value);
+      }
+      _keptAlive.clear();
     }
     markNeedsLayout();
   }
@@ -310,16 +395,23 @@ mixin Layout3dBuiltChildrenMixin<ParentDataType extends ParentData3d>
   Layout3d obtainChild(int index, Constraints3d childConstraints) {
     var child = _active[index];
     if (child == null) {
-      final manager = _childManager;
-      final built = manager == null
-          ? itemBuilder!(index)
-          : manager.createChild(index);
-      assert(
-        built != null,
-        'The child manager of $runtimeType built nothing for index $index, '
-        'which is inside the $itemCount $itemNoun it says it has.',
-      );
-      child = built!;
+      // A child parked by [KeepAlive3d] is the one that belongs here, and
+      // taking it back is the whole point of having parked it. Parking hid it;
+      // what its visibility should be from here is the view's own answer,
+      // written as it places what it holds.
+      child = _keptAlive.remove(index)?..node.visible = true;
+      if (child == null) {
+        final manager = _childManager;
+        final built = manager == null
+            ? itemBuilder!(index)
+            : manager.createChild(index);
+        assert(
+          built != null,
+          'The child manager of $runtimeType built nothing for index $index, '
+          'which is inside the $itemCount $itemNoun it says it has.',
+        );
+        child = wrapBuiltChild(index, built!);
+      }
       // Kept in index order, so the child list and the scene graph read the
       // same way round however the window arrived at this index.
       final position = _active.keys.where((i) => i < index).length;
@@ -353,31 +445,45 @@ mixin Layout3dBuiltChildrenMixin<ParentDataType extends ParentData3d>
     if (manager == null) return _active[index];
     final previous = _active[index];
     final built = manager.createChild(index);
-    if (identical(previous, built)) return built;
+    if (previous != null && identical(builtChildOf(previous), built)) {
+      return previous;
+    }
     if (previous != null) {
       _active.remove(index);
       if (identical(previous.parent, this)) super.remove(previous);
     }
     if (built == null) return null;
+    final child = wrapBuiltChild(index, built);
     final position = _active.keys.where((i) => i < index).length;
-    _active[index] = built;
-    if (!identical(built.parent, this)) super.insert(built, index: position);
-    return built;
+    _active[index] = child;
+    if (!identical(child.parent, this)) super.insert(child, index: position);
+    return child;
   }
 
-  /// Disposes every built child outside `[first, last]`.
+  /// Disposes every built child outside `[first, last]`, except the ones a
+  /// [KeepAlive3d] asked this view to park instead.
   @protected
   void releaseOutside(int first, int last) {
+    final count = itemCount;
     for (final index in _active.keys.toList()) {
       if (index >= first && index <= last) continue;
       final child = _active.remove(index)!;
       super.remove(child);
-      final manager = _childManager;
-      if (manager != null) {
-        manager.removeChild(index, child);
-      } else {
-        child.dispose();
+      // An index past the end is not an index the window left behind; it is
+      // one the data no longer has, and nothing about it is worth keeping.
+      if (index < count && _wantsKeepAlive(child)) {
+        child.node.visible = false;
+        _keptAlive[index] = child;
+        continue;
       }
+      _releaseChild(index, child);
+    }
+    // A count that shrank leaves parked children standing for indices that
+    // are gone. They are released here rather than the next time the window
+    // reaches them, because it never will.
+    for (final index in _keptAlive.keys.toList()) {
+      if (index < count) continue;
+      _releaseChild(index, _keptAlive.remove(index)!);
     }
   }
 
@@ -428,12 +534,26 @@ mixin Layout3dBuiltChildrenMixin<ParentDataType extends ParentData3d>
   ///
   /// Only for a manager. A built view otherwise owns its children outright
   /// and releases them through [releaseOutside].
+  ///
+  /// [child] is what the manager built, which under a view that wraps is not
+  /// what this view holds — so the wrapper around it is taken off the books
+  /// and disposed here too. A parked child is looked for as well: its element
+  /// can be unmounted while the window is nowhere near it, and a bucket left
+  /// holding a disposed layout is a crash the next time the window comes back.
   void forgetBuiltChild(Layout3d child) {
     assert(_childManager != null);
-    for (final index in _active.keys.toList()) {
-      if (identical(_active[index], child)) {
-        _active.remove(index);
-        break;
+    for (final books in <Map<int, Layout3d>>[_active, _keptAlive]) {
+      for (final index in books.keys.toList()) {
+        final adopted = books[index]!;
+        if (!identical(adopted, child) &&
+            !identical(builtChildOf(adopted), child)) {
+          continue;
+        }
+        books.remove(index);
+        if (identical(adopted.parent, this)) super.remove(adopted);
+        if (!identical(adopted, child)) _unwrapForManager(adopted);
+        resetMeasurements();
+        return;
       }
     }
     if (identical(child.parent, this)) super.remove(child);
@@ -442,6 +562,24 @@ mixin Layout3dBuiltChildrenMixin<ParentDataType extends ParentData3d>
 
   @override
   void dispose() {
+    for (final child in _keptAlive.values) {
+      // A view with no manager built its parked children itself and disposes
+      // them here. Under a manager the item is disposed by the element that
+      // built it, which unmounts before this view does — read from
+      // [_hadManager] rather than from [childManager], because the element
+      // stops being the manager on the way out and the parked children
+      // outlive that. What is left to dispose is a wrapper this view put
+      // around the item, which is nobody else's.
+      if (!_hadManager) {
+        child.dispose();
+        continue;
+      }
+      final built = builtChildOf(child);
+      if (identical(built, child)) continue;
+      (child as Layout3dWithChildMixin).child = null;
+      child.dispose();
+    }
+    _keptAlive.clear();
     _active.clear();
     super.dispose();
   }

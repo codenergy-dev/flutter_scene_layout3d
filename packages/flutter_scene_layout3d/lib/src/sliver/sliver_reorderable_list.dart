@@ -131,6 +131,48 @@ class SliverReorderableList3d extends SliverList3d implements Drag3dTarget {
          name: name,
        );
 
+  /// Creates a reorderable list whose items come from a child manager.
+  ///
+  /// The shape the declarative layer creates: `SceneSliverReorderableList3d`
+  /// builds a list of this kind and then hands it its element as the manager,
+  /// exactly as `SceneSliverList3d` does with a plain [SliverList3d]. The
+  /// count arrives from the widget too, so neither is asked for here.
+  ///
+  /// [feedbackBuilder] is required rather than optional in this shape, and
+  /// that is the one real difference between the two. What is carried under
+  /// the pointer is a *second* copy of the item, and a widget item cannot be
+  /// copied: building one goes through the element, in a build scope, and lays
+  /// its render box out — which is legal inside a layout pass and nowhere
+  /// else, while a drag begins during a pointer event. So the caller states
+  /// what is carried, as geometry.
+  // ignore: use_super_parameters
+  SliverReorderableList3d.managed({
+    required this.onReorder,
+    required Layout3dItemBuilder this.feedbackBuilder,
+    Drag3dStartMode startMode = const Drag3dStartMode.longPress(),
+    this.gapDuration = const Duration(milliseconds: 200),
+    this.gapCurve = Curves.easeInOut,
+    this.autoscroll = const Drag3dAutoscroll(),
+    this.vsync,
+    double spacing = 0.0,
+    double? itemExtent,
+    Layout3dPrototypeBuilder? prototypeItem,
+    Layout3dContentExtentEstimator? contentExtentEstimator,
+    CrossAxisAlignment3d crossAxisAlignment = CrossAxisAlignment3d.center,
+    CrossAxisAlignment3d depthAxisAlignment = CrossAxisAlignment3d.center,
+    String? name,
+  }) : _rawBuilder = null,
+       _startMode = startMode,
+       super(
+         spacing: spacing,
+         itemExtent: itemExtent,
+         prototypeItem: prototypeItem,
+         contentExtentEstimator: contentExtentEstimator,
+         crossAxisAlignment: crossAxisAlignment,
+         depthAxisAlignment: depthAxisAlignment,
+         name: name,
+       );
+
   /// Called once, at the drop, when an item ended somewhere else.
   ///
   /// Not called when the item was let go where it started, and not called
@@ -139,19 +181,35 @@ class SliverReorderableList3d extends SliverList3d implements Drag3dTarget {
   /// what Flutter's `ReorderableListView` reports.
   Reorder3dCallback onReorder;
 
-  /// The builder the caller gave, before this list wrapped its items.
+  /// The builder the caller gave, or null when the items come from a child
+  /// manager instead.
   ///
-  /// Every item is wrapped in a [Draggable3d] that carries a token only this
-  /// list accepts, which is how a press on an item becomes a reorder without
-  /// the caller having to build a drag handle. [itemBuilder] is overridden to
-  /// hand the wrapped builder to the machinery, so the wrapping is invisible
-  /// to everything that walks the child list.
-  final Layout3dItemBuilder _rawBuilder;
+  /// Kept because the feedback is a second copy of the item, built straight
+  /// from here rather than through the view's index-to-child map: asking the
+  /// map would hand back the item that is already in the list.
+  final Layout3dItemBuilder? _rawBuilder;
 
-  Layout3d _buildWrapped(int index) => _wrap(_rawBuilder(index), index);
-
+  /// Puts every item inside a [Draggable3d] carrying a token only this list
+  /// accepts, which is how a press on an item becomes a reorder without the
+  /// caller having to build a drag handle.
+  ///
+  /// The wrapping is here rather than around [itemBuilder] so that it happens
+  /// on both paths. A widget item is built by a [Layout3dChildManager] that
+  /// never consults `itemBuilder` at all, and a list that wrapped there could
+  /// not be reached from a `build` method; `SceneSliverReorderableList3d` is
+  /// what this makes possible.
   @override
-  Layout3dItemBuilder? get itemBuilder => _buildWrapped;
+  Layout3d wrapBuiltChild(int index, Layout3d built) => _Reorder3dHandle(
+    list: this,
+    buildIndex: index,
+    startMode: _startMode,
+    child: built,
+  );
+
+  /// The item inside the handle this list wrapped around it.
+  @override
+  Layout3d builtChildOf(Layout3d adopted) =>
+      adopted is _Reorder3dHandle ? adopted.child! : adopted;
 
   /// Builds what is carried under the pointer, given the item's index.
   ///
@@ -456,13 +514,6 @@ class SliverReorderableList3d extends SliverList3d implements Drag3dTarget {
 
   // ------------------------------------------------------------- the list
 
-  Layout3d _wrap(Layout3d item, int index) => _Reorder3dHandle(
-    list: this,
-    buildIndex: index,
-    startMode: _startMode,
-    child: item,
-  );
-
   /// Whether a drag is currently moving this list on its own.
   ///
   /// True while a picked-up item is being held in the edge band and the
@@ -601,6 +652,13 @@ class _Reorder3dHandle extends Draggable3d<Object> {
   Layout3d _buildFeedback(Drag3dSession session) {
     final index = list._indexOf(this) ?? buildIndex;
     final builder = list.feedbackBuilder ?? list._rawBuilder;
-    return builder(index);
+    assert(
+      builder != null,
+      'A ${list.runtimeType}.managed has nothing to carry under the pointer. '
+      'Its items are widgets, which cannot be copied outside a layout pass, '
+      'so feedbackBuilder is what says what a drag carries and it must not be '
+      'set to null.',
+    );
+    return builder!(index);
   }
 }

@@ -124,6 +124,7 @@ export 'src/input/draggable.dart'
         Drag3dWillAccept,
         DragTarget3d,
         Draggable3d;
+export 'src/input/autoscroll.dart' show Drag3dAutoscroll;
 export 'src/input/events.dart'
     show HitTestBehavior3d, HitTestTarget3d, PointerEvent3d;
 export 'src/input/focus.dart' show Focus3d, Focus3dTraversal, FocusScope3d;
@@ -151,7 +152,7 @@ export 'src/widgets/overlay.dart'
         WidgetOverlay3dBuilder,
         WidgetOverlay3dEntry,
         WidgetPageRoute3d;
-export 'src/layout3d.dart' show Layout3d;
+export 'src/layout3d.dart' show Layout3d, Layout3dItemBuilder;
 export 'src/metrics.dart' show Layout3dMetrics, VisualDensity3d;
 export 'src/semantics.dart'
     show Semantics3d, debugFocusableBoxesWithoutSemantics;
@@ -161,6 +162,7 @@ export 'src/scroll/grid_delegate.dart'
         Grid3dDelegateWithFixedCrossAxisCount,
         Grid3dDelegateWithMaxCrossAxisExtent,
         Grid3dLayout;
+export 'src/sliver/sliver_reorderable_list.dart' show Reorder3dCallback;
 export 'src/scroll/scroll_controller.dart'
     show ScrollDirection3d, Scroll3dController;
 export 'src/scroll/scroll_physics.dart'
@@ -245,19 +247,24 @@ export 'src/widgets/layouts.dart'
         SceneIgnorePointer3d,
         SceneIndexedStack3d,
         SceneIntrinsicDepth3d,
+        SceneIntrinsicExtent3d,
         SceneIntrinsicHeight3d,
         SceneIntrinsicWidth3d,
+        SceneKeepAlive3d,
         SceneLayoutBuilder3d,
         SceneLayoutId3d,
         SceneLimitedBox3d,
         SceneListener3d,
         SceneListView3d,
         SceneNodeBox3d,
+        SceneOffstage3d,
         SceneOverflowBox3d,
         ScenePageView3d,
         ScenePadding3d,
         ScenePositioned3d,
         ScenePositionedDirectional3d,
+        SceneReorderableList3d,
+        SceneRichText3d,
         SceneRow3d,
         SceneSemantics3d,
         SceneShortcuts3d,
@@ -267,6 +274,7 @@ export 'src/widgets/layouts.dart'
         SceneSliverList3d,
         SceneSliverPadding3d,
         SceneSliverPersistentHeader3d,
+        SceneSliverReorderableList3d,
         SceneSliverToBoxAdapter3d,
         SceneSpacer3d,
         SceneStack3d,
@@ -276,6 +284,7 @@ export 'src/widgets/layouts.dart'
         SceneTransform3d,
         SceneUnconstrainedBox3d,
         SceneViewport3d,
+        SceneVisibility3d,
         SceneWrap3d;
 export 'src/widgets/surface.dart'
     show Layout3dController, Layout3dMetricsScope, SceneLayout3d;

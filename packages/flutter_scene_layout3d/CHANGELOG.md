@@ -1,5 +1,45 @@
 ## Unreleased
 
+- **An item can keep its state after the window has left it.** A lazily built
+  item used to be disposed once the window and its cache had moved past it, and
+  everything it held went with it — the `State` of a stateful row, a scroll
+  position, a half-filled form. A form in a list is what a real application is,
+  so it now has an answer.
+  - **`KeepAlive3d` and `SceneKeepAlive3d`** wrap the item that has something to
+    lose. The view parks it instead of releasing it, and hands it back whole
+    when the window comes round. It has to be the item itself, at the top of
+    what the builder returns: there is no counterpart to Flutter's
+    `AutomaticKeepAlive` listening for a notification from deeper in.
+  - **A parked child is off the layout tree, not hidden in it.** Unparented and
+    off its parent's node, so nothing lays it out, draws it, points at it or
+    walks it for semantics — the same trade `RenderSliverMultiBoxAdaptor`'s
+    keep-alive bucket makes, and the reason a kept item costs memory and
+    nothing else. `Layout3dBuiltChildrenMixin.keptAliveIndices` says which they
+    are. An index the data no longer has is released rather than parked, and
+    `refresh()` empties the bucket.
+- **A view can hold something other than what was built.**
+  `Layout3dBuiltChildrenMixin.wrapBuiltChild` and `builtChildOf` are the seam:
+  a view wraps a built child before adopting it, and the manager is still
+  handed back the very layout its `createChild` returned. `SliverReorderableList3d`
+  is the customer — it puts every item inside a `Draggable3d` — and moving its
+  wrapping here is what made the widget forms below possible, because a widget
+  item is built by a child manager that never consults `itemBuilder` at all.
+- **`SceneReorderableList3d` and `SceneSliverReorderableList3d`**, the widget
+  forms of the two reorderable views, over
+  `ReorderableList3d.managed` and `SliverReorderableList3d.managed`. Their
+  `feedbackBuilder` is required where the imperative list's is optional: what
+  flies under the pointer is a second copy of the item, and a widget item
+  cannot be copied outside a layout pass, so what is carried is stated as
+  geometry. `ReorderableList3d.vsync` is now readable and writable in place,
+  which is what lets a rebuild move the list onto a new ticker provider.
+- **`SceneRichText3d`, `SceneVisibility3d`, `SceneOffstage3d` and
+  `SceneIntrinsicExtent3d`**, the four declarative forms the imperative layer
+  had and a `build` method could not reach. `SceneRichText3d` is the notable
+  one: `RichText3d` had absorbed a paragraph with a side to it, its own CPU
+  rasterization and per-span wall colours, and none of it was reachable from a
+  widget. It resolves the ambient `Directionality` the way `SceneText3d` does,
+  and merges no style, because the spans carry their own.
+
 - **A panel can hold a picture, and a gradient.** `BoxDecoration3d` carried one
   colour and nothing else; every real screen has an avatar, a photograph, a
   logo or a brand gradient on it, and the only way to draw one was to leave the

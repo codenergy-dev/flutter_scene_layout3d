@@ -118,12 +118,17 @@ it to a follow-up.
       place. See *What the reasoning got wrong*, point 5.
 - **Phase 5 — keep-alive: out of scope, by this plan's own design section**
       ("note it, design the manager so it can be added, and leave it to a
-      follow-up"). Not implemented, and not a gap in this plan. As it
-      says: an item that leaves the window and its cache is disposed. What a
-      follow-up needs is here already — the manager is the only thing that
-      releases a child, so parking one instead of releasing it is a change to
-      `releaseOutside` and to what `positionedChildren` yields, not to the
-      element.
+      follow-up"). Not implemented here, and not a gap in this plan.
+      **The follow-up is
+      [an item that keeps its state](2026_09_16_an_item_that_keeps_its_state.md),
+      and this note was mostly right:** parking a child instead of releasing it
+      is a change to `releaseOutside` and to what `positionedChildren` yields.
+      The half it got wrong is the last clause. The element *does* have to
+      learn something, because a parked child is unparented and its render box
+      can therefore no longer find the view that holds it — so
+      `Layout3dLazyElement._forgetLayout` stopped guarding on `debugDisposed`,
+      and the view had to stop asking `childManager` whether it had one at
+      teardown.
 - [x] **Phase 6 — README.** *Scrolling* now covers the declarative builders
       and what a built item does not keep; the roadmap's sliver entry no
       longer says lazy widgets have no answer.

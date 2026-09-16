@@ -117,6 +117,53 @@ class ReorderableList3d extends BoxScrollView3d<SliverReorderableList3d> {
          name: name,
        );
 
+  /// Creates a reorderable list whose items come from a child manager.
+  ///
+  /// The shape `SceneReorderableList3d` creates: the items and the count come
+  /// from the widget's own element rather than from an [itemBuilder], and
+  /// what a drag carries has to be stated, because a widget item cannot be
+  /// copied outside a layout pass. See [SliverReorderableList3d.managed].
+  // ignore: use_super_parameters
+  ReorderableList3d.managed({
+    required Reorder3dCallback onReorder,
+    required Layout3dItemBuilder feedbackBuilder,
+    Drag3dStartMode startMode = const Drag3dStartMode.longPress(),
+    Duration gapDuration = const Duration(milliseconds: 200),
+    Curve gapCurve = Curves.easeInOut,
+    Drag3dAutoscroll? autoscroll = const Drag3dAutoscroll(),
+    TickerProvider? vsync,
+    Axis3d scrollDirection = Axis3d.vertical,
+    Scroll3dController? controller,
+    double spacing = 0.0,
+    double? itemExtent,
+    Layout3dPrototypeBuilder? prototypeItem,
+    Layout3dContentExtentEstimator? contentExtentEstimator,
+    CrossAxisAlignment3d crossAxisAlignment = CrossAxisAlignment3d.center,
+    CrossAxisAlignment3d depthAxisAlignment = CrossAxisAlignment3d.center,
+    double cacheExtent = 0.0,
+    String? name,
+  }) : super(
+         sliver: SliverReorderableList3d.managed(
+           onReorder: onReorder,
+           feedbackBuilder: feedbackBuilder,
+           startMode: startMode,
+           gapDuration: gapDuration,
+           gapCurve: gapCurve,
+           autoscroll: autoscroll,
+           vsync: vsync,
+           spacing: spacing,
+           itemExtent: itemExtent,
+           prototypeItem: prototypeItem,
+           contentExtentEstimator: contentExtentEstimator,
+           crossAxisAlignment: crossAxisAlignment,
+           depthAxisAlignment: depthAxisAlignment,
+         ),
+         scrollDirection: scrollDirection,
+         controller: controller,
+         cacheExtent: cacheExtent,
+         name: name,
+       );
+
   /// Called once, at the drop, when an item ended somewhere else.
   Reorder3dCallback get onReorder => sliver.onReorder;
 
@@ -150,6 +197,13 @@ class ReorderableList3d extends BoxScrollView3d<SliverReorderableList3d> {
   Drag3dAutoscroll? get autoscroll => sliver.autoscroll;
 
   set autoscroll(Drag3dAutoscroll? value) => sliver.autoscroll = value;
+
+  /// The ticker provider the gap animation and the autoscroll run on.
+  ///
+  /// Null takes a raw `Ticker`, which is what a list outside a `State` gets.
+  TickerProvider? get vsync => sliver.vsync;
+
+  set vsync(TickerProvider? value) => sliver.vsync = value;
 
   /// Whether a drag is scrolling this list on its own right now.
   bool get isAutoscrolling => sliver.isAutoscrolling;

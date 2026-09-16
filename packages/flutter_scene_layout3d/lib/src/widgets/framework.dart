@@ -766,9 +766,17 @@ class Layout3dLazyElement extends RenderObjectElement
     );
   }
 
+  /// Takes what stood for [index] off the view's books.
+  ///
+  /// Told even when the layout has already been disposed, which a parked item
+  /// reaches and an active one does not: an active item's own render box calls
+  /// `forgetBuiltChild` on the way out, because its layout is still parented to
+  /// the view, while a parked one is unparented and its render box has nothing
+  /// to tell. Leaving it in the bucket would hand the window a disposed layout
+  /// the next time it came back to the index.
   void _forgetLayout(int index) {
     final layout = _childLayouts.remove(index);
-    if (layout != null && !layout.debugDisposed) _view.forgetBuiltChild(layout);
+    if (layout != null) _view.forgetBuiltChild(layout);
   }
 
   Widget? _build(int index) =>

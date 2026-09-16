@@ -1,7 +1,15 @@
 // The declarative layer: widgets own layout objects, and the element tree
 // reconciles the layout tree.
 
-import 'package:flutter/widgets.dart' show ValueKey, Widget;
+import 'package:flutter/widgets.dart'
+    show
+        Directionality,
+        InlineSpan,
+        TextDirection,
+        TextSpan,
+        TextStyle,
+        ValueKey,
+        Widget;
 import 'package:flutter_scene/scene.dart' show Node;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
 import 'package:flutter_scene_layout3d/widgets.dart';
@@ -11,6 +19,11 @@ List<Layout3d> childrenOf(Layout3d layout) =>
     (layout as MultiChildLayout3d).children;
 
 Layout3d rootOf(Layout3dController controller) => controller.surface!.child!;
+
+/// The one child of a single-child layout, for the tests that put a box under
+/// a [Center3d] so that it is loosely constrained rather than sized by the
+/// surface.
+Layout3d childOf(Layout3d layout) => (layout as Layout3dWithChildMixin).child!;
 
 void main() {
   testWidgets('a const single-child widget is const, and skips its rebuild', (
@@ -635,5 +648,148 @@ void main() {
     expect(header.pinned, isFalse);
     expect(header.delegate.maxExtent, 6);
     expect(header.geometry.scrollExtent, 6);
+  });
+
+  testWidgets('a visibility widget hides its child without moving anything', (
+    tester,
+  ) async {
+    final controller = Layout3dController();
+    Widget frame(bool visible) => SceneLayout3d(
+      parent: Node(),
+      size: const Size3d(4, 4, 2),
+      controller: controller,
+      child: SceneCenter3d(
+        child: SceneVisibility3d(
+          visible: visible,
+          child: const SceneSizedBox3d(width: 2, height: 1, depth: 1),
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(frame(true));
+    final box = childOf(rootOf(controller)) as Visibility3d;
+    expect(box.visible, isTrue);
+    expect(box.size, const Size3d(2, 1, 1));
+
+    await tester.pumpWidget(frame(false));
+    expect(childOf(rootOf(controller)), same(box));
+    expect(box.visible, isFalse);
+    expect(box.node.visible, isFalse);
+    // The space is still reserved, which is the whole difference from
+    // SceneOffstage3d.
+    expect(box.size, const Size3d(2, 1, 1));
+  });
+
+  testWidgets('an offstage widget gives the space back', (tester) async {
+    final controller = Layout3dController();
+    Widget frame(bool offstage) => SceneLayout3d(
+      parent: Node(),
+      size: const Size3d(4, 4, 2),
+      controller: controller,
+      child: SceneCenter3d(
+        child: SceneOffstage3d(
+          offstage: offstage,
+          child: const SceneSizedBox3d(width: 2, height: 1, depth: 1),
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(frame(false));
+    final box = childOf(rootOf(controller)) as Offstage3d;
+    expect(box.size, const Size3d(2, 1, 1));
+
+    await tester.pumpWidget(frame(true));
+    expect(childOf(rootOf(controller)), same(box));
+    expect(box.offstage, isTrue);
+    expect(box.size, Size3d.zero);
+  });
+
+  testWidgets('a keep-alive widget writes its flag in place', (tester) async {
+    final controller = Layout3dController();
+    Widget frame(bool keep) => SceneLayout3d(
+      parent: Node(),
+      size: const Size3d(4, 4, 2),
+      controller: controller,
+      child: SceneCenter3d(
+        child: SceneKeepAlive3d(
+          keepAlive: keep,
+          child: const SceneSizedBox3d(width: 2, height: 1, depth: 1),
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(frame(true));
+    final box = childOf(rootOf(controller)) as KeepAlive3d;
+    expect(box.keepAlive, isTrue);
+
+    await tester.pumpWidget(frame(false));
+    expect(childOf(rootOf(controller)), same(box));
+    expect(box.keepAlive, isFalse);
+    // A pass-through box: the child's size is the box's size.
+    expect(box.size, const Size3d(2, 1, 1));
+  });
+
+  testWidgets('an intrinsic-extent widget takes its axis at runtime', (
+    tester,
+  ) async {
+    final controller = Layout3dController();
+    Widget frame(Axis3d axis) => SceneLayout3d(
+      parent: Node(),
+      size: const Size3d(8, 8, 2),
+      controller: controller,
+      child: SceneCenter3d(
+        child: SceneIntrinsicExtent3d(
+          axis: axis,
+          step: 2,
+          child: const SceneSizedBox3d(width: 3, height: 1, depth: 1),
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(frame(Axis3d.horizontal));
+    final box = childOf(rootOf(controller)) as IntrinsicExtent3d;
+    expect(box.axis, Axis3d.horizontal);
+    // Three wide, rounded up to the next multiple of the step.
+    expect(box.size.width, 4);
+
+    await tester.pumpWidget(frame(Axis3d.vertical));
+    expect(childOf(rootOf(controller)), same(box));
+    expect(box.axis, Axis3d.vertical);
+    expect(box.size.height, 2);
+  });
+
+  testWidgets('a rich text widget owns its paragraph and reads the ambient '
+      'direction', (tester) async {
+    final controller = Layout3dController();
+    Widget frame(String tail, TextDirection direction) => Directionality(
+      textDirection: direction,
+      child: SceneLayout3d(
+        parent: Node(),
+        size: const Size3d(8, 4, 2),
+        controller: controller,
+        child: SceneCenter3d(
+          child: SceneRichText3d(
+            text: TextSpan(
+              style: const TextStyle(fontSize: 14),
+              children: <InlineSpan>[
+                const TextSpan(text: 'Signed, '),
+                TextSpan(text: tail),
+              ],
+            ),
+            maxLines: 2,
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(frame('Ada', TextDirection.ltr));
+    final box = childOf(rootOf(controller)) as RichText3d;
+    expect(box.textDirection, TextDirection.ltr);
+    expect(box.maxLines, 2);
+
+    await tester.pumpWidget(frame('Grace', TextDirection.rtl));
+    expect(childOf(rootOf(controller)), same(box));
+    expect(box.textDirection, TextDirection.rtl);
+    expect((box.text as TextSpan).children!.last, isA<TextSpan>());
   });
 }

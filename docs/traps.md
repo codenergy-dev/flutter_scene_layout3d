@@ -138,6 +138,32 @@ does not move while a container resizes a label through a whole run; that test
 fails first if text measurement gets back onto the layout path, which is the
 regression the whole prepare/layout split exists to prevent.
 
+## A kept-alive item is the item, not something inside it
+
+`KeepAlive3d` and `SceneKeepAlive3d` ask a lazy view not to release an item
+when the window moves past it. **The view asks the child it holds**, which
+means the keep-alive has to be the top of what the builder returns:
+
+```dart
+// Kept.
+itemBuilder: (context, index) => SceneKeepAlive3d(child: AnswerRow(...)),
+
+// Not kept, and nothing says so.
+itemBuilder: (context, index) =>
+    SceneContainer3d(child: SceneKeepAlive3d(child: AnswerRow(...))),
+```
+
+The second one compiles, lays out, draws and scrolls exactly like the first,
+and silently loses the item's `State` when the window leaves it. Flutter has an
+`AutomaticKeepAlive` that listens for a notification from anywhere below the
+item; this package has no notification tier, so there is nothing to bubble.
+
+Two smaller edges behind the same feature. A kept item **costs memory for as
+long as the view lives** — its whole subtree, its nodes and whatever they hold
+— so keep the handful with a form or a scroll position in them, not a list of
+labels. And setting `keepAlive` back to false **does not release the item
+there and then**: the next pass that finds it outside the window does.
+
 ## Four transform channels, and they are not interchangeable
 
 A box's node carries

@@ -87,8 +87,11 @@ immediate example, and it has since landed with the views still separate. It
 is weaker evidence than it looked: the feature went into
 `Layout3dMeasuredChildrenMixin`, which both lists already share, and each list
 pays three lines of wiring for it. The argument still holds for anything that
-touches *placement* — reverse lists, a `center` sliver, keep-alive — because
-that is the part the two views actually keep two copies of.
+touches *placement* — reverse lists, a `center` sliver — because
+that is the part the two views actually keep two copies of. Keep-alive was on
+that list and turned out not to belong on it: it landed in
+`Layout3dBuiltChildrenMixin` beside the rest of the bookkeeping, and neither
+view paid a line for it.
 
 **It is the shape a reader expects, and the render-level claim is exact.** The
 package's whole proposition is "Flutter's protocol, one axis richer". A reader

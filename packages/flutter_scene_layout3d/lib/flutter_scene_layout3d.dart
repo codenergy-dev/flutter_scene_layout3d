@@ -27,7 +27,8 @@
 ///    whole-node culling today, plane uniforms for the materials that can
 ///    take them.
 ///  * [Visibility3d] and [Offstage3d], hiding a subtree with and without
-///    giving its space back.
+///    giving its space back, and [KeepAlive3d], which asks a lazy view to park
+///    an item rather than release it when the window moves on.
 ///  * [Text3d], the leaf that lays a string out, with [TextMeasurement3d]
 ///    and its two policies behind it: prepare a string once, then fit it to
 ///    any width without consulting the font again.
@@ -147,7 +148,7 @@ export 'src/boxes/table.dart'
         Table3d,
         TableCellAlignment3d,
         TableColumnWidth3d;
-export 'src/boxes/visibility.dart' show Offstage3d, Visibility3d;
+export 'src/boxes/visibility.dart' show KeepAlive3d, Offstage3d, Visibility3d;
 export 'src/boxes/wrap.dart' show Wrap3d, WrapAlignment3d, WrapCrossAlignment3d;
 export 'src/built_children.dart'
     show

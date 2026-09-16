@@ -275,11 +275,13 @@ one ordinary rebuild puts everything where it belongs.
 
 Two consequences worth writing down. Items of unequal extent make the gap
 exactly the dragged item's extent and nothing smarter, which is what Flutter
-does and which jitters slightly; and because this package has **no
-keep-alive** (the README says so), an item scrolled out of the cache during a
-long drag is disposed — so the session must hold the payload and the
+does and which jitters slightly; and an item scrolled out of the cache during
+a long drag is disposed — so the session must hold the payload and the
 feedback, **never the source layout**. A drag whose source has been disposed
-still drops correctly.
+still drops correctly. (There *is* a keep-alive now, added by
+[an item that keeps its state](2026_09_16_an_item_that_keeps_its_state.md),
+and it changes nothing here: it is opt-in, and a list widens its released
+range to reach the dragged index either way.)
 
 ### Autoscroll is on a ticker, not on the move stream
 
@@ -597,8 +599,16 @@ that turned out to be untrue.
   becomes real the fix is a release-with-exception in
   `Layout3dBuiltChildrenMixin`, not a wider range.
 
-- **There is no `SceneReorderableList3d`, and there cannot be one without a
-  new seam.** The list wraps every item in a `Draggable3d` of its own — which
+- ~~**There is no `SceneReorderableList3d`, and there cannot be one without a
+  new seam.**~~ **Closed** by
+  [an item that keeps its state](2026_09_16_an_item_that_keeps_its_state.md),
+  which took the first of the two ways out below: `wrapBuiltChild` and
+  `builtChildOf` on `Layout3dBuiltChildrenMixin`, with the wrapping moved off
+  `itemBuilder` so that it happens on the manager path too. The reasoning
+  below is what it was built from, and it held. The one thing it did not
+  foresee is that the widget form has to be told what a drag carries: a widget
+  item cannot be copied outside a layout pass, so `feedbackBuilder` is
+  required there. The list wraps every item in a `Draggable3d` of its own — which
   is what buys the whole of phase 2's machinery for free and is why this plan
   did not need a fourth hand-rolled recognizer. But a wrapped item is not what
   the child manager built, and the declarative layer's contract is that
@@ -666,7 +676,9 @@ The two gaps left open are named rather than hidden: there is no
 (both want a child-manager seam that does not exist), and
 `Drag3dAnchor.targetPlane` is reserved because the mechanism this plan named
 for it is the wrong one. Both are written up below and in the dartdoc a reader
-would reach for first.
+would reach for first. **The first has since closed:** the seam was built by
+[an item that keeps its state](2026_09_16_an_item_that_keeps_its_state.md) and
+the widget forms are here; the explicit child list stays absent on purpose.
 
 [The boxes still missing](2026_08_25_the_boxes_still_missing.md) is
 `completed` as of this plan: its last item was these four components, and the

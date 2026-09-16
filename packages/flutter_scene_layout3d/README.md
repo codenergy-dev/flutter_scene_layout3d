@@ -1118,11 +1118,12 @@ screen. See *Scrolling* below for what a built item does and does not keep.
 A handful of widgets have no imperative counterpart because they *are* the
 widget layer: `SceneAnimatedContainer3d` and its siblings are stateful, and
 `SceneAnimatedSlide3d` owns the controller behind a node-only animation. See
-*Animation* below. `SceneText3d` is the one that gains something from being a widget: it has a
+*Animation* below. `SceneText3d` is the one that gains most from being a widget: it has a
 `BuildContext` to ask, so it picks up the ambient `DefaultTextStyle`,
 `DefaultTextRenderer3d` and `Directionality` the way a Flutter `Text` does —
 from the widget tree the scene is hosted in, not from anything inside the
-scene. The one thing a `BuildContext` reads from *inside* the scene is the
+scene. `SceneRichText3d` reads the ambient `Directionality` too, but not the
+style: the spans carry their own. The one thing a `BuildContext` reads from *inside* the scene is the
 surface's unit contract, `Layout3dMetricsScope.of(context)`, which is how a
 figure written in logical pixels becomes the world units every one of these
 widgets takes; see *Reading the contract from a `build` method* above.
@@ -1380,16 +1381,35 @@ SceneListView3d.builder(
 )
 ```
 
-Two things to know about a built item. It is **not kept alive**: scrolling far
-enough disposes it and its `State` goes with it, so anything that has to
-survive that belongs outside the list (Flutter's `KeepAlive` has no
-counterpart here yet). And each item has to resolve to a layout — a
-`Scene*3d` widget, under as many builders, providers and stateful widgets as
-you like — because what the list places is a box on the plane; a Flutter
-`Text` in there is an error rather than a silently empty row. There is no
-widget form of `prototypeItem`, either: a prototype is measured without being
-mounted, and a widget cannot be laid out without being in the tree, so state
-the `itemExtent` when you know it.
+Two things to know about a built item. By default it is **not kept alive**:
+scrolling far enough disposes it and its `State` goes with it. Wrap the ones
+that have something to lose in a `SceneKeepAlive3d` and the view parks them
+instead — off the layout tree, so nothing lays them out, draws them or points
+at them, but whole when the window comes back:
+
+```dart
+SceneListView3d.builder(
+  itemCount: questions.length,
+  itemExtent: 0.6,
+  itemBuilder: (context, index) => SceneKeepAlive3d(
+    child: AnswerRow(question: questions[index]),
+  ),
+)
+```
+
+The `SceneKeepAlive3d` has to be the item itself, at the top of what
+`itemBuilder` returns: the view asks the child it holds, and there is no
+counterpart to Flutter's `AutomaticKeepAlive` listening for a notification
+from deeper in. A kept item stays in memory for as long as the view does, so
+keep the handful with a form or a scroll position in them and let the labels
+go.
+
+And each item has to resolve to a layout — a `Scene*3d` widget, under as many
+builders, providers and stateful widgets as you like — because what the list
+places is a box on the plane; a Flutter `Text` in there is an error rather
+than a silently empty row. There is no widget form of `prototypeItem`, either:
+a prototype is measured without being mounted, and a widget cannot be laid out
+without being in the tree, so state the `itemExtent` when you know it.
 
 A list needs a bounded extent **across** its scroll axis, because that is what
 it gives an item to span, and it says so rather than guessing. A camera-bound
@@ -2541,17 +2561,20 @@ assumes otherwise:
   out, so a caller who moved something down the list has to decrement it
   first. That off-by-one is the most reported confusion about that widget and
   there was nothing to be gained by inheriting it.
-- **There is no explicit-children constructor**, and **no
-  `SceneReorderableList3d`.** `onReorder` hands back a pair of indices into the
-  caller's data and expects the next build to reflect them, so the list has to
-  be a function of that data to mean anything: `itemCount` and `itemBuilder`,
-  and `refresh` when the data changes. The missing widget form is a harder
-  story — the list wraps every item in a `Draggable3d`, and the declarative
-  layer's contract is that `Layout3dChildManager.removeChild` is handed back
-  the very layout `createChild` returned, which wrapping breaks. Closing it
-  wants either a hook that lets a view adopt what the manager built or a
-  recognizer on the list itself so items need no wrapper; both are more than a
-  widget form deserves on its own, and neither has been built.
+- **There is no explicit-children constructor**, in either shape. `onReorder`
+  hands back a pair of indices into the caller's data and expects the next
+  build to reflect them, so the list has to be a function of that data to mean
+  anything: `itemCount` and `itemBuilder`, and `refresh` when the data changes
+  — or, in the widget form, a `setState`, which rebuilds the items standing
+  and is the refresh.
+- **The widget form asks what a drag carries.** `SceneReorderableList3d` and
+  `SceneSliverReorderableList3d` take a required `feedbackBuilder` returning a
+  `Layout3d`, where the imperative list defaults to a second copy of the item.
+  A widget item cannot be copied: building one goes through the list's element,
+  inside a build scope, and lays a render box out, which is legal inside a
+  layout pass and nowhere else — and a drag begins during a pointer event. So
+  what flies under the finger is stated as geometry, usually a card the size of
+  a row.
 
 An item held at the edge of the window scrolls the list under it.
 `Drag3dAutoscroll` says how deep the band is and how fast, in dp, and a
@@ -3112,10 +3135,11 @@ catalogue is here — `LimitedBox3d`, `UnconstrainedBox3d`, `OverflowBox3d`,
 See *Building from the room you got* above. The family that needed
 drag-and-drop is here too — `Draggable3d`, `DragTarget3d`, `Dismissible3d`,
 `ReorderableList3d` and `SliverReorderableList3d` over a `Drag3dSession` that
-searches across surfaces; see *Dragging things around*. What is left of it is a
-widget form for the reorderable list, which wants a seam the declarative layer
-does not have yet, and `Drag3dAnchor.targetPlane`, which is reserved and says
-in its own dartdoc why the mechanism planned for it was the wrong one.
+searches across surfaces, with `SceneReorderableList3d` and
+`SceneSliverReorderableList3d` the widget forms of the last two; see *Dragging
+things around*. What is left of it is `Drag3dAnchor.targetPlane`, which is
+reserved and says in its own dartdoc why the mechanism planned for it was the
+wrong one.
 
 **3. Slivers.** ~~Mostly done~~: `CustomScrollView3d` drives the protocol,
 with `SliverList3d`, `SliverGrid3d` and `SliverToBoxAdapter3d` on top of it and
@@ -3129,11 +3153,12 @@ independent: `SliverFillRemaining3d`, a reverse growth direction and a
 **widgets** lazily is done: `SceneListView3d.builder` and its three siblings
 inflate an item as the window reaches it, through a `Layout3dChildManager` the
 view consults and a `RenderObjectElement` that implements it inside a build
-scope, the way `SliverMultiBoxAdaptorElement` does. What is left of that is
-keep-alive — an item that leaves the cache is disposed, with no counterpart to
-Flutter's `KeepAlive` — and the key remapping that would let a keyed reorder
-move an element instead of rebuilding it in place (a `GlobalKey` already
-moves).
+scope, the way `SliverMultiBoxAdaptorElement` does, and `KeepAlive3d` parks an
+item the window has left instead of releasing it. What is left of that is
+`AutomaticKeepAlive3d` — keeping is asked for at the top of an item, and
+nothing bubbles up from inside it — and the key remapping that would let a
+keyed reorder move an element instead of rebuilding it in place (a `GlobalKey`
+already moves).
 
 **4. Text.** ~~Done~~: `Text3d` lays a string out as a box, sizes itself,
 answers intrinsics and states a baseline, over a prepare/layout split whose
@@ -3212,13 +3237,11 @@ you cannot see* above. What is left is a visual inspector, which belongs to
 the Flutter Scene Editor rather than here.
 
 **What is next.** Nothing in this list depends on anything else in it any
-more, so the order is a matter of what a caller reaches for first: keep-alive
-for a lazily built item, which the reorderable list currently works around
-rather than fixes; a widget form for that list, and the child-manager seam it
-needs; route transitions over `Route3dTransition`; focus traversal across
-surfaces; a distance-field glyph atlas for type that stays sharp as a panel
-approaches; and a per-node opacity in the engine, which is what an `Opacity3d`
-is waiting on.
+more, so the order is a matter of what a caller reaches for first: route
+transitions over `Route3dTransition`; a `MediaQuery3d` and the `TextScaler`
+that would carry a reader's own font setting onto a plane; a distance-field
+glyph atlas for type that stays sharp as a panel approaches; and a per-node
+opacity in the engine, which is what an `Opacity3d` is waiting on.
 
 ## License
 
