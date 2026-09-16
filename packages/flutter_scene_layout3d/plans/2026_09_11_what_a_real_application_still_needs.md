@@ -1,8 +1,8 @@
 ---
 status: in progress
-reason: ten of the seventeen items are open; the record of what shipped, the application widget, the wheel and the key, the test library, right to left, the picture and the item that keeps its state are closed
+reason: nine of the seventeen items are open; the record of what shipped, the application widget, the wheel and the key, the test library, right to left, the picture, the item that keeps its state and the screen that knows how big it is are closed
 created_at: 2026-09-11T21:20:18Z
-updated_at: 2026-09-16T16:10:00Z
+updated_at: 2026-09-16T18:05:00Z
 commit: abc2469ce5c4ec4c41e2738fc5acf55bcf40640a
 ---
 
@@ -80,8 +80,11 @@ design questions rather than absences, and the Material catalogue plan
 what a **window size class** means for a surface floating in a room, and what
 **"off the edge"** means for a menu on a panel that may be at any angle. Both
 are touched by items here — the first by
-[a screen that knows how big it is](#a-screen-that-knows-how-big-it-is) — and
-neither is settled by them.
+[a screen that knows how big it is](#a-screen-that-knows-how-big-it-is), which
+is **done** and deliberately stopped short of it: it publishes the extent a
+screen would branch on, `MediaQuery3d.of(context).size`, and leaves the
+breakpoints to whoever builds a component that needs them — and neither is
+settled by them.
 
 ## The plans
 
@@ -98,7 +101,7 @@ plan, which is the rule phase 0 established and every phase since has obeyed.
 | [A box that fades](#a-box-that-fades) | layout3d | `Opacity3d`, and every fade in the motion lane |
 | [A letter someone can type](#a-letter-someone-can-type) | layout3d | text fields, forms, search, pickers |
 | ~~[An item that keeps its state](#an-item-that-keeps-its-state)~~ | layout3d | **done** — forms in lists, and the declarative layer complete |
-| [A screen that knows how big it is](#a-screen-that-knows-how-big-it-is) | layout3d | accessibility text scale, insets, responsive screens |
+| ~~[A screen that knows how big it is](#a-screen-that-knows-how-big-it-is)~~ | layout3d | **done** — the reader's font setting, the safe area, and something to branch on |
 | [A route that arrives instead of appearing](#a-route-that-arrives-instead-of-appearing) | layout3d | transitions, fades, `Hero3d` |
 | [An application with more than one screen](#an-application-with-more-than-one-screen) | layout3d | named routes, deep links, the system back button |
 | ~~[A way to test a screen someone else built](#a-way-to-test-a-screen-someone-else-built)~~ | layout3d | **done** — anyone building on this, including us |
@@ -159,8 +162,12 @@ four because the language item waits on it, see
 [its plan](2026_09_15_a_picture_on_a_panel.md) —
 ~~[an item that keeps its state](#an-item-that-keeps-its-state)~~ — **done**,
 third, see [its plan](2026_09_16_an_item_that_keeps_its_state.md) — and
-[a screen that knows how big it is](#a-screen-that-knows-how-big-it-is), which
-is the last of the four and the next thing to take.
+~~[a screen that knows how big it is](#a-screen-that-knows-how-big-it-is)~~ —
+**done**, fourth and last of them, see
+[its plan](2026_09_16_a_screen_that_knows_how_big_it_is.md). **The four the
+first real port would demand are all closed**, which makes the port itself the
+next thing worth doing: it is the oracle this whole map is measured against,
+and everything below it is now a choice rather than a queue.
 
 Then motion, as a pair:
 [a route that arrives](#a-route-that-arrives-instead-of-appearing) here and
@@ -232,6 +239,21 @@ are where a first implementer's decision becomes someone else's constraint.
   `Decoration3dPaintRequest.onChanged`: the way anything that arrives late asks
   to be drawn again without a relayout. The next asynchronous resource — a
   video frame, a remote icon — uses that and adds no counter either.
+- **The screen's two channels, and which one a thing belongs on.**
+  [A screen that knows how big it is](#a-screen-that-knows-how-big-it-is)
+  settled it: what the *layout measures with* goes on `Layout3dMetrics` — the
+  reader's `TextScaler` is there, read inside `performLayout` where there is no
+  `BuildContext` — and what a *`build` method branches on* goes on
+  `MediaQuery3d`, which is a widget-layer widget exactly as Flutter's is.
+  Anything ambient that a later plan adds has to pick one, and the test is that
+  question and not convenience. Two plans consume it already:
+  [a letter someone can type](#a-letter-someone-can-type), whose caret and
+  selection geometry are type and therefore scale with the scaler rather than
+  with the density, and
+  [the components a screen still needs](#the-components-a-screen-still-needs),
+  which owns the two things that plan deliberately left: a `Scaffold3d` that
+  consumes the safe area the way Flutter's does, and whatever a breakpoint
+  turns out to mean for a panel in a room.
 - **Motion and the relayout path.** The animation tiers exist and are the whole
   reason a ripple is affordable: repaint-only, node-only, and implicit for when
   a size really changed. Every item in the motion lane must land on the first
@@ -571,6 +593,19 @@ written.
 
 **Package:** `flutter_scene_layout3d`.
 **Slug:** `a_screen_that_knows_how_big_it_is`.
+**Closed** by
+[its own plan](2026_09_16_a_screen_that_knows_how_big_it_is.md). The entry
+below is what it was reasoned from. What that reasoning got wrong, in short:
+it filed the `TextScaler` migration as a *migration*, and a scaler that is not
+linear across sizes broke the premise the whole text layer leans on, which
+split the two text boxes onto different answers; the inset question turned out
+to have a one-word answer (nothing, for any surface that is not standing in
+for the view) and the real work was deciding that `MediaQuery3d` is a widget
+layer thing, as it is in Flutter, where no render object reads one; and the
+piece it did not see at all is that a surface which *states* a metrics — which
+is how an author says "this panel is a smaller screen" — would have silently
+opted every label on it out of the reader's font setting, so the friction
+shipped as an assert.
 
 There is no `MediaQuery3d` and no `SafeArea3d`, and the piece of `MediaQuery`
 that does exist is wired the wrong way round. `Layout3dMetrics.textScaleFactor`
@@ -746,6 +781,14 @@ should be grouped by what they actually need:
   of them.
 - `RangeSlider3d` is a second arena problem rather than a second thumb — two
   thumbs competing for one pointer — and phase 7 said so.
+- **`Scaffold3d` does not consume the safe area**, and Flutter's does.
+  [A screen that knows how big it is](#a-screen-that-knows-how-big-it-is)
+  built `MediaQuery3d.padding` and `SceneSafeArea3d` and left the catalogue
+  side alone on purpose, because whether an app bar stops at the status bar or
+  is drawn *under* it is a component decision with tokens attached. A ported
+  screen writes `SceneSafeArea3d` itself until this is taken. The same entry
+  owns a control that grows with its label: a 48dp row of 14sp type at a large
+  accessibility setting is a row the text overflows, here as in Flutter.
 - `AlertDialog3d` is a column and a row inside `Dialog3d` and phase 6
   deliberately refused it as the first component that exists only to save a
   caller writing a `SceneColumn3d`. **Revisit that judgement with an

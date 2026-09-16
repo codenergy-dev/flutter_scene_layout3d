@@ -85,6 +85,36 @@ Three things about the scope that are not obvious:
   stale, and it is another way of saying what the next section says: nothing on
   a per-frame path may write the metrics.
 
+**The reader's font setting is on the metrics, and the screen's size is not.**
+`Layout3dMetrics.textScaler` carries the accessibility scale, because the
+*layout* measures with it and a `performLayout` has no `BuildContext`;
+`MediaQuery3d.of(context)` carries the extent and the safe area, which only a
+`build` method consumes. Two channels, and each is the first place someone
+looks for the other:
+
+- **You never set the scaler.** `SceneLayout3d` reads
+  `MediaQuery.textScalerOf(context)` and writes it onto the surface. A
+  `metrics` argument that carries one asserts — deliberate friction, because
+  the quiet version of that mistake is a panel whose type cannot grow and
+  nothing saying so. To pin a surface to a scale, state it on the binding
+  (`Layout3dCameraBinding.fixedDensity(rate, textScaler: …)`) or on a
+  `MediaQuery` above the view.
+- **A scaler is not a factor.** It is non-linear across sizes, so
+  `metrics.textScaleFor(fontSize)` is how a box that measured type at its
+  style's own size gets the multiplier for *that* size. A `Text3d` does
+  exactly that and keeps its cheap path; a `RichText3d` cannot, holding spans
+  of several sizes, so its painter measures at the scaled sizes instead — and
+  a change of scale re-measures the paragraph there.
+
+**A safe area belongs to the view, not to the plane.** `MediaQuery3d.padding`
+is non-zero only under a surface bound by
+`Layout3dCameraBinding.screenFilling`, because that panel stands in for the
+window; a panel on a wall reports zero, and that is an answer rather than an
+omission. So `SceneSafeArea3d` is a no-op on most surfaces **and should still
+be written**: the same screen ported onto a camera-bound surface needs it, and
+it costs one box that insets by nothing. The catalogue does not do it for you
+— `Scaffold3d` does not consume the padding the way Flutter's does.
+
 ## Staying off the relayout path
 
 **Writing `Layout3dSurface.metrics` relayouts the whole subtree, by design.**

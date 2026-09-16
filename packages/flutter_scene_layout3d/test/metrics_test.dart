@@ -1,6 +1,7 @@
 // The unit contract: how many world units a logical pixel is worth, who owns
 // the number, and what changing it costs.
 
+import 'package:flutter/painting.dart' show TextScaler;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -24,10 +25,33 @@ void main() {
     test('sp scales type and dp does not', () {
       const metrics = Layout3dMetrics(
         unitsPerLogicalPixel: 0.01,
-        textScaleFactor: 1.5,
+        textScaler: TextScaler.linear(1.5),
       );
       expect(metrics.sp(14), closeTo(0.21, 1e-12));
       expect(metrics.dp(14), closeTo(0.14, 1e-12));
+    });
+
+    test('sp asks the scaler, which need not be linear across sizes', () {
+      // The reason the dial is a TextScaler and not a number: this one grows
+      // small type by half and leaves large type where it is, which is the
+      // shape of every real accessibility curve.
+      const metrics = Layout3dMetrics(
+        textScaler: _ClampedScaler(1.5, upTo: 20),
+      );
+      expect(metrics.sp(14), closeTo(0.21, 1e-12));
+      expect(metrics.sp(40), closeTo(0.40, 1e-12));
+    });
+
+    test('textScaleFor states the same scaler as a multiplier', () {
+      // What a box that measured at the style's own size multiplies by.
+      const metrics = Layout3dMetrics(
+        textScaler: _ClampedScaler(1.5, upTo: 20),
+      );
+      expect(metrics.textScaleFor(14), closeTo(1.5, 1e-12));
+      expect(metrics.textScaleFor(40), closeTo(1.0, 1e-12));
+      // Nothing to grow, and nothing to divide by.
+      expect(metrics.textScaleFor(0), 1.0);
+      expect(Layout3dMetrics.standard.textScaleFor(14), 1.0);
     });
 
     test('dpSize leaves depth at zero unless asked', () {
@@ -39,7 +63,7 @@ void main() {
     test('dpInsets converts all six faces, and does not scale with type', () {
       const metrics = Layout3dMetrics(
         unitsPerLogicalPixel: 0.005,
-        textScaleFactor: 2,
+        textScaler: TextScaler.linear(2),
       );
       final insets = metrics.dpInsets(
         const EdgeInsets3d.only(
@@ -82,11 +106,11 @@ void main() {
     test('copyWith replaces one dial and keeps the rest', () {
       const metrics = Layout3dMetrics(
         unitsPerLogicalPixel: 0.02,
-        textScaleFactor: 1.3,
+        textScaler: TextScaler.linear(1.3),
       );
       final scaled = metrics.copyWith(density: VisualDensity3d.compact);
       expect(scaled.unitsPerLogicalPixel, 0.02);
-      expect(scaled.textScaleFactor, 1.3);
+      expect(scaled.textScaler, TextScaler.linear(1.3));
       expect(scaled.density, VisualDensity3d.compact);
     });
   });
@@ -221,4 +245,29 @@ void main() {
       expect(surface.owner!.basis, LayoutBasis3d.xy);
     });
   });
+}
+
+/// A scaler that grows small type and leaves large type alone.
+///
+/// Non-linear in the one way that matters: `scale(size) / size` is a
+/// different number for two different sizes.
+class _ClampedScaler extends TextScaler {
+  const _ClampedScaler(this.factor, {required this.upTo});
+
+  final double factor;
+  final double upTo;
+
+  @override
+  double scale(double fontSize) =>
+      fontSize <= upTo ? fontSize * factor : fontSize;
+
+  @override
+  double get textScaleFactor => factor;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _ClampedScaler && other.factor == factor && other.upTo == upTo;
+
+  @override
+  int get hashCode => Object.hash(factor, upTo);
 }

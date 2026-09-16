@@ -1,5 +1,51 @@
 ## Unreleased
 
+- **A screen knows how big it is, and the reader's own font setting reaches
+  it.** Two absences that were one: nothing in either package had ever read
+  `MediaQuery`, so a 3D screen could not be asked its size and could not be
+  enlarged by a person who needs larger type.
+  - **`Layout3dMetrics.textScaler` replaces `textScaleFactor`**, a `TextScaler`
+    where there was a `double`, because accessibility scaling is not linear
+    across sizes: a platform that grows 14dp body copy by 1.8 does not grow a
+    57dp display line by 1.8. `sp` asks the scaler; `textScaleFor(fontSize)` is
+    the same scaler stated as the multiplier a box applies to type it has
+    already measured. The scale lives here rather than on the screen data
+    because the *layout* measures with it, and a `performLayout` has no
+    `BuildContext` to look one up through.
+  - **`SceneLayout3d` reads the ambient setting** — `MediaQuery.textScalerOf` —
+    and writes it onto the surface's contract, so a label three boxes deep
+    grows without anything being threaded by hand. A `metrics` that states a
+    scaler of its own now asserts and says where to put it instead: the
+    alternative was silent, and a panel that states a scale to say it is a
+    smaller screen would have quietly opted its labels out of scaling.
+  - **A `Text3d` still measures at its style's own size** and multiplies, so
+    the prepared handle survives a change of scale and the font is never
+    consulted again. A `RichText3d` cannot — it holds spans of several sizes —
+    so its painter and its captured subtree take the scaler, and each span is
+    measured at its own scaled size. Its `logicalPixelScale` is now the unit
+    rate alone.
+  - **`Layout3dCameraBinding.update` takes a `Layout3dView`** in place of a
+    bare `viewSize`: the platform view as much of it as a binding derives from,
+    which is its size and the reader's font setting. `needsViewSize` is
+    `needsView`; the bindings' `textScaleFactor` is a nullable `textScaler`
+    where null means *the view's*.
+- **`MediaQuery3d`, `MediaQuery3dData` and `SceneSafeArea3d`**: what a `build`
+  method branches on, in logical pixels. `size` is the surface's own extent —
+  the view's, for a panel that stands in for it — and `orientation` comes off
+  it; an axis the surface was given no bound on reports infinity, because a
+  plane that shrink-wraps has no screen size yet.
+  - **A safe area belongs to the view, and only a surface that stands in for
+    the view inherits one.** `Layout3dCameraBinding.screenFilling` is what that
+    means — `standsInForTheView` says so — and every other surface reports a
+    zero padding, because a plane hanging in a room does not have a notch.
+    `SceneSafeArea3d` pads by it and republishes the data with what it consumed
+    removed, so a nested one pads nothing.
+  - It carries **no `devicePixelRatio` and no text scaler**, deliberately: the
+    first is a promise only a camera-bound surface could keep, and the second
+    belongs to the unit contract. There are no size classes either — that
+    question is the catalogue's, and this leaves it the extent to answer it
+    with.
+
 - **An item can keep its state after the window has left it.** A lazily built
   item used to be disposed once the window and its cache had moved past it, and
   everything it held went with it — the `State` of a stateful row, a scroll

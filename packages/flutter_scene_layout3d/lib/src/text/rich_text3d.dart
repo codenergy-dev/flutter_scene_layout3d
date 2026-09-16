@@ -150,13 +150,20 @@ class RichText3d extends Layout3d {
   /// What a truncated line ends with.
   static const String ellipsis = '…';
 
-  final TextPainter _painter = TextPainter(
-    // The accessibility scale is applied as a geometric scale on the way to
-    // world units, exactly as [Text3d] applies it, so the painter measures
-    // at the style's own size and a change of metrics costs no relayout of
-    // the paragraph itself.
-    textScaler: TextScaler.noScaling,
-  );
+  // The reader's font setting is the painter's business here, unlike in a
+  // [Text3d]: a paragraph holds spans of several sizes, and a `TextScaler`
+  // that is not linear across sizes grows each of them by a different
+  // factor, which no single multiplier applied on the way to world units can
+  // express. [_layoutPainter] writes it before every measurement.
+  final TextPainter _painter = TextPainter();
+
+  /// The scale the capture and the wall were built at.
+  ///
+  /// Null until the first layout. A change of it is a change of the picture,
+  /// not only of its size in the world, so the hosted subtree has to be built
+  /// and rasterized again — which is what separates it from a change of
+  /// `unitsPerLogicalPixel`, where the same capture is simply drawn bigger.
+  TextScaler? _capturedScaler;
 
   InlineSpan _text;
 
@@ -436,8 +443,11 @@ class RichText3d extends Layout3d {
   TextPainter get painter => _painter;
 
   /// What one logical pixel of the paragraph is worth in world units.
-  double get logicalPixelScale =>
-      metrics.unitsPerLogicalPixel * metrics.textScaleFactor;
+  ///
+  /// [Layout3dMetrics.unitsPerLogicalPixel] alone. The reader's font setting
+  /// is already in the painter's numbers, because the painter measured with
+  /// it; multiplying again here would apply it twice.
+  double get logicalPixelScale => metrics.unitsPerLogicalPixel;
 
   /// Whether the hosted subtree has produced a texture yet.
   bool get isDrawn => _hasCapture;
@@ -464,6 +474,7 @@ class RichText3d extends Layout3d {
   void _layoutPainter(double minWidth, double maxWidth) {
     _painter
       ..text = _text
+      ..textScaler = metrics.textScaler
       ..textAlign = _textAlign
       ..textDirection = _textDirection
       ..maxLines = _maxLines
@@ -534,6 +545,11 @@ class RichText3d extends Layout3d {
 
   @override
   void performLayout() {
+    final scaler = metrics.textScaler;
+    if (_capturedScaler != null && _capturedScaler != scaler) {
+      _releaseSurface();
+    }
+    _capturedScaler = scaler;
     _layoutFor(constraints);
     final scale = logicalPixelScale;
     size = constraints.constrain(
@@ -722,7 +738,9 @@ class RichText3d extends Layout3d {
         maxLines: _maxLines,
         strutStyle: _strutStyle,
         textWidthBasis: _textWidthBasis,
-        textScaler: TextScaler.noScaling,
+        // The same scaler the painter measured with, so the picture and the
+        // geometry it lands on are the same paragraph.
+        textScaler: metrics.textScaler,
       ),
     ),
   );

@@ -2,12 +2,14 @@ import 'dart:ui' show Size;
 
 import 'package:flutter/foundation.dart'
     show ValueListenable, VoidCallback, listEquals;
+import 'package:flutter/painting.dart' show TextScaler;
 import 'package:flutter/rendering.dart' show RenderBox, RenderObject;
 import 'package:flutter/scheduler.dart' show SchedulerBinding, SchedulerPhase;
 import 'package:flutter/widgets.dart'
     show
         BuildContext,
         InheritedWidget,
+        MediaQuery,
         ObjectKey,
         State,
         StatefulWidget,
@@ -22,6 +24,7 @@ import '../layout3d.dart';
 import '../overlay/modal_barrier.dart';
 import '../overlay/navigator.dart';
 import '../overlay/overlay.dart';
+import '../view.dart';
 import 'framework.dart';
 import 'input.dart';
 
@@ -199,6 +202,10 @@ class _SceneOverlay3dState extends State<SceneOverlay3d> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     _syncInputHost();
+    // Where the reader's font setting enters a detached entry: an entry with
+    // a binding of its own derives its own contract, and a binding takes the
+    // scale from the view it is handed.
+    _textScaler = MediaQuery.textScalerOf(context);
     final frames = SceneScope.maybeOf(context)?.elapsed;
     if (identical(frames, _frames)) return;
     _frames?.removeListener(_applyBindings);
@@ -208,6 +215,9 @@ class _SceneOverlay3dState extends State<SceneOverlay3d> {
 
   /// The input host this overlay's detached entries are routed through.
   Input3dHost? _input;
+
+  /// The reader's own font setting, read where a dependency belongs.
+  TextScaler _textScaler = TextScaler.noScaling;
 
   /// The camera this overlay reads: its own, or the enclosing
   /// [SceneInput3d]'s.
@@ -262,7 +272,13 @@ class _SceneOverlay3dState extends State<SceneOverlay3d> {
     if (!mounted) return;
     final camera = _camera;
     if (camera == null) return;
-    _overlay.updateCameraBindings(camera: camera, viewSize: _resolveViewSize());
+    final viewSize = _resolveViewSize();
+    _overlay.updateCameraBindings(
+      camera: camera,
+      view: viewSize == null
+          ? null
+          : Layout3dView(size: viewSize, textScaler: _textScaler),
+    );
   }
 
   Size? _resolveViewSize() {

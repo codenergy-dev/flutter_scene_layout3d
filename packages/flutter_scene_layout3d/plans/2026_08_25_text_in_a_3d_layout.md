@@ -429,7 +429,10 @@ of them has a caller.
   multiplies by `logicalPixelScale`, which is
   `metrics.unitsPerLogicalPixel * metrics.textScaleFactor`. A prepared handle
   therefore survives a change of metrics, which matters because a metrics
-  change relayouts the whole tree.
+  change relayouts the whole tree. (The scale is
+  `metrics.textScaleFor(style.fontSize)` now that the dial is a `TextScaler`,
+  resolved at this box's own style — which is what keeps the handle valid. See
+  [a screen that knows how big it is](2026_09_16_a_screen_that_knows_how_big_it_is.md).)
 - `Text3d.textLayout` is the last layout (null before the first), and
   `Text3d.prepared` the measured handle. Between them they carry every line,
   its runs, its width and its baseline, which is what

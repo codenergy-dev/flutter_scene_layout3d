@@ -56,7 +56,7 @@ goes in the changelog and the plans. This file stays a contract.**
 
 | Package | What it is |
 | --- | --- |
-| `packages/flutter_scene_layout3d` | The layout protocol. Constraints, intrinsics, baselines, flex, stack, wrap, reading direction, slivers, scrolling, text measurement and geometry, decoration with pictures and gradients, clipping, pointer dispatch, wheel and trackpad scrolling, focus and key bindings, overlays, animation, diagnostics — and `testing.dart`, the library an application tests its screens with. |
+| `packages/flutter_scene_layout3d` | The layout protocol. Constraints, intrinsics, baselines, flex, stack, wrap, reading direction, slivers, scrolling, text measurement and geometry, decoration with pictures and gradients, clipping, pointer dispatch, wheel and trackpad scrolling, focus and key bindings, overlays, animation, diagnostics, the unit contract and the screen a surface stands in for — and `testing.dart`, the library an application tests its screens with. |
 | `packages/flutter_scene_material3d` | Material Design 3 on that protocol: six token families, a theme both layers read, and the catalogue over one `Material3d` primitive — buttons, cards, rows, chips, the structure, the overlays, the selection controls and the press ripple. |
 | `examples/layout3d_gallery` | The example app, and the only place a person sees any of this drawn. A Material screen on an upright panel that turns — with a gradient header and a circular avatar on every row — the same catalogue flat on the ground, and a scrolling list of raw meshes beside them: all hit-testable, through one `SceneInput3d` around the view. |
 | `examples/render_probe` | Render tests. Draws the layout on a GPU and probes the frame at the pixels layout says to check, and photographs the gallery. Commits its platform scaffolding, unlike the gallery. |
@@ -78,7 +78,7 @@ Everything below runs from the repository root unless stated otherwise.
 
 ```sh
 flutter pub get                                      # resolves the workspace
-cd packages/flutter_scene_layout3d && flutter test   # 1191 today
+cd packages/flutter_scene_layout3d && flutter test   # 1212 today
 cd packages/flutter_scene_material3d && flutter test # 545 today
 cd examples/layout3d_gallery && flutter test         # 4 today
 dart analyze                                         # must be clean, everywhere

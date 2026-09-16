@@ -27,10 +27,10 @@ several files, guidance for using the engine underneath.
 ## The pages here
 
 - **[traps.md](traps.md)** — what costs real time and is not obvious from the
-  code. The unit contract, staying off the relayout path, the four transform
-  channels, why nothing draws by default, depth ordering, the clock a picture
-  arrives on, the pointer, drag and clipping edges, and what does and does not
-  mirror in right to left.
+  code. The unit contract and where the reader's font setting lives, staying
+  off the relayout path, the four transform channels, why nothing draws by
+  default, depth ordering, the clock a picture arrives on, the pointer, drag
+  and clipping edges, and what does and does not mirror in right to left.
   If you are about to write a component, read this first.
 - **[engine-rules.md](engine-rules.md)** — `flutter_scene` diverges from
   three.js, Godot and Unity in specific ways, and most first-attempt failures
@@ -192,6 +192,19 @@ Two entry points:
   a view asking whether it *has* a child manager asks the wrong question,
   because the element clears itself on the way out while the children it built
   are still on the books.
+  [A screen that knows how big it is](../packages/flutter_scene_layout3d/plans/2026_09_16_a_screen_that_knows_how_big_it_is.md)
+  is the seventh, and the last of the four a real port was expected to ask
+  for. It is the item that was a hole rather than an absence: the semantics
+  tree had been carefully built while the reader's own font setting had never
+  reached a 3D screen by any path, because nothing in either package had ever
+  read a `MediaQuery`. It settles three questions and the answers are worth
+  more than the code. The scale lives on `Layout3dMetrics`, as a `TextScaler`,
+  because the layout measures with it and a `performLayout` has no
+  `BuildContext`. A safe area belongs to the *view*, so only a surface bound by
+  `screenFilling` inherits one and every other panel reports zero — a plane in
+  a room does not have a notch. And a size class is left unanswered on
+  purpose: `MediaQuery3d` publishes the extent a screen would branch on, and
+  the breakpoints belong to whoever builds the components that need them.
 
 ## Keeping this true
 

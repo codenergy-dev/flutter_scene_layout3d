@@ -16,6 +16,7 @@ import 'package:flutter/widgets.dart'
         TextStyle,
         Widget;
 import 'package:flutter_scene/scene.dart' show Node;
+import 'package:flutter/painting.dart' show TextScaler;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
 import 'package:flutter_scene_layout3d/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -119,13 +120,47 @@ void main() {
       final text = Text3d('hello', style: style);
       final surface = panel(Center3d(child: text));
 
-      surface.metrics = const Layout3dMetrics(textScaleFactor: 1.5);
+      surface.metrics = const Layout3dMetrics(
+        textScaler: TextScaler.linear(1.5),
+      );
       surface.flush();
       expect(text.size.width, closeTo(0.75, 1e-9));
       expect(text.size.height, closeTo(0.15, 1e-9));
       // And it costs no re-measurement: the prepared handle is in logical
       // pixels at the style's own size, which the scale multiplies.
       expect(text.logicalPixelScale, closeTo(0.015, 1e-12));
+    });
+
+    test('a scaler that is not linear is resolved at this box\'s size', () {
+      // One box, one style, so the scaler still comes out as one multiplier —
+      // which is why a Text3d keeps the cheap path a RichText3d cannot.
+      const scaler = _ClampedScaler(1.5, upTo: 15);
+      final small = Text3d('hello', style: style);
+      final large = Text3d('hello', style: bigger);
+      final surface = laidOut(
+        Column3d(
+          children: [
+            Center3d(child: small),
+            Center3d(child: large),
+          ],
+        ),
+        constraints: Constraints3d.tight(const Size3d(4, 3, 0.5)),
+        metrics: const Layout3dMetrics(textScaler: scaler),
+      );
+      expect(small.size.width, closeTo(5 * 15 * 0.01, 1e-9));
+      expect(large.size.width, closeTo(5 * 20 * 0.01, 1e-9));
+      expect(small.logicalPixelScale, closeTo(0.015, 1e-12));
+      expect(large.logicalPixelScale, closeTo(0.01, 1e-12));
+
+      // And none of it consulted the font: the prepared handle is measured at
+      // the style's own size and survives a change of scale.
+      final before = debugTextParagraphCount;
+      surface.metrics = const Layout3dMetrics(
+        textScaler: _ClampedScaler(2, upTo: 15),
+      );
+      surface.flush();
+      expect(small.size.width, closeTo(5 * 20 * 0.01, 1e-9));
+      expect(debugTextParagraphCount, before);
     });
 
     test('a change to the metrics reaches a deep label', () {
@@ -470,4 +505,26 @@ void main() {
       expect(text.size.width, closeTo(1.0, 1e-9));
     });
   });
+}
+
+/// A scaler that grows small type and leaves large type alone.
+class _ClampedScaler extends TextScaler {
+  const _ClampedScaler(this.factor, {required this.upTo});
+
+  final double factor;
+  final double upTo;
+
+  @override
+  double scale(double fontSize) =>
+      fontSize <= upTo ? fontSize * factor : fontSize;
+
+  @override
+  double get textScaleFactor => factor;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _ClampedScaler && other.factor == factor && other.upTo == upTo;
+
+  @override
+  int get hashCode => Object.hash(factor, upTo);
 }

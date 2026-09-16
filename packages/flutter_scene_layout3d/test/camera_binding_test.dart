@@ -4,6 +4,8 @@
 import 'dart:math' as math;
 import 'dart:ui' show Size;
 
+import 'package:flutter/painting.dart' show TextScaler;
+
 import 'package:flutter/widgets.dart' show Widget;
 import 'package:flutter_scene/scene.dart'
     show Camera, CameraProjection, Node, PerspectiveCamera;
@@ -87,6 +89,10 @@ class TestLensCamera extends Camera {
   Matrix4 getViewMatrix() => _view.getViewMatrix();
 }
 
+/// The platform view a binding derives from, at [size].
+Layout3dView viewOf(Size size, {TextScaler? textScaler}) =>
+    Layout3dView(size: size, textScaler: textScaler ?? TextScaler.noScaling);
+
 /// Where a layout-space point on [surface] lands in the world.
 Vector3 worldOf(Layout3dSurface surface, Offset3d point) => surface
     .node
@@ -94,13 +100,13 @@ Vector3 worldOf(Layout3dSurface surface, Offset3d point) => surface
     .transformed3(Vector3(point.x, point.y, point.z));
 
 void main() {
-  const view = Size(800, 600);
+  const viewSize = Size(800, 600);
 
   group('screenFilling', () {
     test('derives the frustum extents at the plane\'s distance', () {
       final surface = Layout3dSurface();
       const binding = Layout3dCameraBinding.screenFilling(distance: 2);
-      binding.update(surface, camera: frontCamera(), viewSize: view);
+      binding.update(surface, camera: frontCamera(), view: viewOf(viewSize));
 
       // height = 2 * distance * tan(fov / 2), width = height * aspect.
       final height = 2 * 2 * math.tan(math.pi / 8);
@@ -119,8 +125,8 @@ void main() {
       final far = Layout3dSurface();
       const nearBinding = Layout3dCameraBinding.screenFilling(distance: 2);
       const farBinding = Layout3dCameraBinding.screenFilling(distance: 6);
-      nearBinding.update(near, camera: frontCamera(), viewSize: view);
-      farBinding.update(far, camera: frontCamera(), viewSize: view);
+      nearBinding.update(near, camera: frontCamera(), view: viewOf(viewSize));
+      farBinding.update(far, camera: frontCamera(), view: viewOf(viewSize));
       expect(
         far.configuration.maxHeight,
         closeTo(near.configuration.maxHeight * 3, 1e-3),
@@ -133,7 +139,7 @@ void main() {
         distance: 2,
         depth: 0.5,
       );
-      binding.update(surface, camera: frontCamera(), viewSize: view);
+      binding.update(surface, camera: frontCamera(), view: viewOf(viewSize));
       expect(surface.configuration.minDepth, 0.5);
       expect(surface.configuration.maxDepth, 0.5);
     });
@@ -142,17 +148,17 @@ void main() {
       final surface = Layout3dSurface(child: TestBox(const Size3d(1, 1, 0)));
       const binding = Layout3dCameraBinding.screenFilling(distance: 2);
       final camera = frontCamera();
-      binding.update(surface, camera: camera, viewSize: view);
+      binding.update(surface, camera: camera, view: viewOf(viewSize));
       surface.flush();
 
       final size = surface.size;
       final topLeft = camera.worldToScreen(
         worldOf(surface, Offset3d.zero),
-        view,
+        viewSize,
       )!;
       final bottomRight = camera.worldToScreen(
         worldOf(surface, Offset3d(size.width, size.height, 0)),
-        view,
+        viewSize,
       )!;
       expect(topLeft.dx, closeTo(0, 0.05));
       expect(topLeft.dy, closeTo(0, 0.05));
@@ -164,7 +170,7 @@ void main() {
       final surface = Layout3dSurface(child: TestBox(const Size3d(1, 1, 0)));
       const binding = Layout3dCameraBinding.screenFilling(distance: 3);
       final camera = frontCamera();
-      binding.update(surface, camera: camera, viewSize: view);
+      binding.update(surface, camera: camera, view: viewOf(viewSize));
       surface.flush();
 
       // The inversion this whole plan exists for: a component asks for 48dp
@@ -172,15 +178,15 @@ void main() {
       final extent = surface.metrics.dp(48);
       final left = camera.worldToScreen(
         worldOf(surface, const Offset3d(0.4, 0.4, 0)),
-        view,
+        viewSize,
       )!;
       final right = camera.worldToScreen(
         worldOf(surface, Offset3d(0.4 + extent, 0.4, 0)),
-        view,
+        viewSize,
       )!;
       final down = camera.worldToScreen(
         worldOf(surface, Offset3d(0.4, 0.4 + extent, 0)),
-        view,
+        viewSize,
       )!;
       expect(right.dx - left.dx, closeTo(48, 0.01));
       expect(down.dy - left.dy, closeTo(48, 0.01));
@@ -189,7 +195,7 @@ void main() {
     test('the metrics follow the view height, not the view width', () {
       final surface = Layout3dSurface();
       const binding = Layout3dCameraBinding.screenFilling(distance: 2);
-      binding.update(surface, camera: frontCamera(), viewSize: view);
+      binding.update(surface, camera: frontCamera(), view: viewOf(viewSize));
       final tall = surface.metrics.unitsPerLogicalPixel;
       expect(tall, closeTo(surface.configuration.maxHeight / 600, 1e-12));
 
@@ -198,7 +204,7 @@ void main() {
       binding.update(
         surface,
         camera: frontCamera(),
-        viewSize: const Size(1200, 600),
+        view: viewOf(const Size(1200, 600)),
       );
       expect(surface.metrics.unitsPerLogicalPixel, closeTo(tall, 1e-9));
       expect(
@@ -211,18 +217,18 @@ void main() {
       final surface = Layout3dSurface();
       const binding = Layout3dCameraBinding.screenFilling(
         distance: 2,
-        textScaleFactor: 1.4,
+        textScaler: TextScaler.linear(1.4),
         density: VisualDensity3d.compact,
       );
-      binding.update(surface, camera: frontCamera(), viewSize: view);
-      expect(surface.metrics.textScaleFactor, 1.4);
+      binding.update(surface, camera: frontCamera(), view: viewOf(viewSize));
+      expect(surface.metrics.textScaler, TextScaler.linear(1.4));
       expect(surface.metrics.density, VisualDensity3d.compact);
     });
 
     test('a degenerate view is a no-op rather than an error', () {
       final surface = Layout3dSurface();
       const binding = Layout3dCameraBinding.screenFilling(distance: 2);
-      binding.update(surface, camera: frontCamera(), viewSize: Size.zero);
+      binding.update(surface, camera: frontCamera(), view: viewOf(Size.zero));
       expect(surface.configuration, const Constraints3d());
       expect(surface.metrics, Layout3dMetrics.standard);
     });
@@ -237,7 +243,7 @@ void main() {
       Size viewSize = const Size(800, 600),
     }) {
       final surface = Layout3dSurface(child: TestBox(const Size3d(1, 1, 0)));
-      binding.update(surface, camera: camera, viewSize: viewSize);
+      binding.update(surface, camera: camera, view: viewOf(viewSize));
       surface.flush();
       return surface;
     }
@@ -250,7 +256,11 @@ void main() {
       // Turn the camera in place. The frustum at the plane's distance is the
       // same frustum, so the constraints are the same constraints.
       camera.target = Vector3(1, 0.5, 0);
-      binding.update(surface, camera: camera, viewSize: const Size(800, 600));
+      binding.update(
+        surface,
+        camera: camera,
+        view: viewOf(const Size(800, 600)),
+      );
       expect(surface.needsFlush, isFalse);
     });
 
@@ -266,7 +276,11 @@ void main() {
 
       camera.position = Vector3(0, 0, 9);
       camera.target = Vector3(0, 0, 4);
-      binding.update(surface, camera: camera, viewSize: const Size(800, 600));
+      binding.update(
+        surface,
+        camera: camera,
+        view: viewOf(const Size(800, 600)),
+      );
       expect(surface.needsFlush, isFalse);
 
       // The plane followed, though: it stays two units in front of the eye.
@@ -279,7 +293,11 @@ void main() {
       final camera = frontCamera();
       final surface = bound(camera);
       const binding = Layout3dCameraBinding.screenFilling(distance: 2);
-      binding.update(surface, camera: camera, viewSize: const Size(400, 600));
+      binding.update(
+        surface,
+        camera: camera,
+        view: viewOf(const Size(400, 600)),
+      );
       expect(surface.needsFlush, isTrue);
       surface.flush();
       expect(
@@ -293,7 +311,11 @@ void main() {
       final surface = bound(camera);
       const binding = Layout3dCameraBinding.screenFilling(distance: 2);
       final transform = surface.plane.localTransform;
-      binding.update(surface, camera: camera, viewSize: const Size(800, 600));
+      binding.update(
+        surface,
+        camera: camera,
+        view: viewOf(const Size(800, 600)),
+      );
       expect(surface.needsFlush, isFalse);
       // The same matrix object: the setter was never reached, so the node's
       // cached world transforms were never invalidated.
@@ -309,12 +331,20 @@ void main() {
       const binding = Layout3dCameraBinding.screenFilling(distance: 2);
 
       camera.fovRadiansY += 1e-5;
-      binding.update(surface, camera: camera, viewSize: const Size(800, 600));
+      binding.update(
+        surface,
+        camera: camera,
+        view: viewOf(const Size(800, 600)),
+      );
       expect(surface.needsFlush, isFalse);
 
       // A hundred times more is a real change, and does relayout.
       camera.fovRadiansY += 1e-3;
-      binding.update(surface, camera: camera, viewSize: const Size(800, 600));
+      binding.update(
+        surface,
+        camera: camera,
+        view: viewOf(const Size(800, 600)),
+      );
       expect(surface.needsFlush, isTrue);
     });
 
@@ -327,7 +357,11 @@ void main() {
       final surface = bound(camera, binding: binding);
 
       camera.fovRadiansY += 1e-5;
-      binding.update(surface, camera: camera, viewSize: const Size(800, 600));
+      binding.update(
+        surface,
+        camera: camera,
+        view: viewOf(const Size(800, 600)),
+      );
       expect(surface.needsFlush, isTrue);
     });
 
@@ -345,7 +379,7 @@ void main() {
       camera.fovRadiansY += 1e-5;
       const Layout3dCameraBinding.screenFilling(
         distance: 2,
-      ).update(surface, camera: camera, viewSize: const Size(800, 600));
+      ).update(surface, camera: camera, view: viewOf(const Size(800, 600)));
       expect(surface.configuration.maxHeight, settled);
     });
   });
@@ -429,11 +463,11 @@ void main() {
       final surface = Layout3dSurface();
       const binding = Layout3dCameraBinding.fixedDensity(
         0.005,
-        textScaleFactor: 1.2,
+        textScaler: TextScaler.linear(1.2),
         density: VisualDensity3d.comfortable,
       );
       binding.update(surface);
-      expect(surface.metrics.textScaleFactor, 1.2);
+      expect(surface.metrics.textScaler, TextScaler.linear(1.2));
       expect(surface.metrics.density, VisualDensity3d.comfortable);
     });
 
@@ -443,7 +477,7 @@ void main() {
       final derivedBox = DpBox(120, 44);
       final derived = Layout3dSurface(child: Center3d(child: derivedBox));
       const screen = Layout3dCameraBinding.screenFilling(distance: 3);
-      screen.update(derived, camera: frontCamera(), viewSize: view);
+      screen.update(derived, camera: frontCamera(), view: viewOf(viewSize));
       derived.flush();
 
       final authoredBox = DpBox(120, 44);
@@ -467,10 +501,10 @@ void main() {
       final far = Layout3dSurface();
       const Layout3dCameraBinding.screenFilling(
         distance: 1,
-      ).update(near, camera: camera, viewSize: view);
+      ).update(near, camera: camera, view: viewOf(viewSize));
       const Layout3dCameraBinding.screenFilling(
         distance: 8,
-      ).update(far, camera: camera, viewSize: view);
+      ).update(far, camera: camera, view: viewOf(viewSize));
 
       expect(near.configuration.maxHeight, closeTo(3, 1e-6));
       expect(near.configuration.maxWidth, closeTo(4, 1e-6));
@@ -493,7 +527,7 @@ void main() {
           parent: Node(),
           controller: controller,
           camera: frontCamera(),
-          viewSize: view,
+          viewSize: viewSize,
           binding: const Layout3dCameraBinding.screenFilling(
             distance: 2,
             depth: 0.5,
@@ -558,7 +592,7 @@ void main() {
         SceneLayout3d(
           parent: Node(),
           camera: frontCamera(),
-          viewSize: view,
+          viewSize: viewSize,
           size: const Size3d(4, 3, 0.5),
           binding: const Layout3dCameraBinding.screenFilling(distance: 2),
         ),

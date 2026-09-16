@@ -97,9 +97,10 @@ class SegmentGraphemes3d {
 /// only means anything to the measurement that produced it.
 ///
 /// Everything on it is in **logical pixels**. A [Text3d] multiplies by
-/// `metrics.unitsPerLogicalPixel * metrics.textScaleFactor` on the way out,
-/// which is exactly equivalent to having asked for a bigger font, because
-/// font metrics are linear in the size.
+/// `Text3d.logicalPixelScale` on the way out — the surface's unit rate times
+/// what the reader's font setting grows type of this style's size by — which
+/// is exactly equivalent to having asked for a bigger font, because font
+/// metrics are linear in the size.
 class PreparedText3d {
   /// Records a measured string. Called by a [TextMeasurement3d].
   PreparedText3d({

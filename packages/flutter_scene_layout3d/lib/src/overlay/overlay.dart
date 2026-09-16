@@ -1,5 +1,3 @@
-import 'dart:ui' show Size;
-
 import 'package:flutter/foundation.dart'
     show
         ChangeNotifier,
@@ -24,6 +22,7 @@ import '../input/shortcuts.dart';
 import '../layout3d.dart';
 import '../metrics.dart';
 import '../surface.dart';
+import '../view.dart';
 import 'modal_barrier.dart';
 
 /// Builds the content of an [Overlay3dEntry].
@@ -844,7 +843,7 @@ class Overlay3d extends Stack3d {
   /// plane's translation is set to where the panel anchored the entry, in
   /// world terms, so a [Layout3dCameraBinding.billboard] keeps the position
   /// the panel gave it and takes only its facing from the camera.
-  void updateCameraBindings({Camera? camera, Size? viewSize}) {
+  void updateCameraBindings({Camera? camera, Layout3dView? view}) {
     for (final entry in _entries) {
       final surface = entry._surface;
       final host = entry._host;
@@ -854,7 +853,7 @@ class Overlay3d extends Stack3d {
       final binding = layer.binding;
       if (binding == null) continue;
       if (binding.needsCamera && camera == null) continue;
-      if (binding.needsViewSize && viewSize == null) continue;
+      if (binding.needsView && view == null) continue;
       final anchor = host.node.globalTransform;
       final inverse = Matrix4.zero();
       if (inverse.copyInverse(anchor) == 0.0) continue;
@@ -868,7 +867,7 @@ class Overlay3d extends Stack3d {
       if (surface.plane.localTransform != placed) {
         surface.plane.localTransform = placed;
       }
-      binding.update(surface, camera: camera, viewSize: viewSize);
+      binding.update(surface, camera: camera, view: view);
       surface.flush();
     }
   }

@@ -42,13 +42,15 @@ import 'text_renderer.dart';
 /// **Sizes are in logical pixels, twice over.** [TextStyle.fontSize] is a
 /// logical-pixel figure, as it is everywhere else in Flutter, and the whole
 /// measurement is done in that frame; the box then multiplies by
-/// `metrics.unitsPerLogicalPixel * metrics.textScaleFactor` to reach world
-/// units. That is what makes a 14sp label 14sp on a surface bound to a camera
-/// and still 14sp on a panel whose scale the author picked. Because font
-/// metrics are linear in the size, applying the accessibility scale as a
-/// multiplier is exactly the same as having asked for a bigger font, and it
-/// costs no re-measurement — which matters, because changing the metrics
-/// relayouts the whole tree.
+/// [logicalPixelScale] to reach world units. That is what makes a 14sp label
+/// 14sp on a surface bound to a camera and still 14sp on a panel whose scale
+/// the author picked. Because font metrics are linear in the size, applying
+/// the reader's font setting as a multiplier is exactly the same as having
+/// asked for a bigger font, and it costs no re-measurement — which matters,
+/// because changing the metrics relayouts the whole tree. A box holds one
+/// [style], so a `TextScaler` that is not linear *across* sizes still resolves
+/// to one multiplier here; `RichText3d`, which holds many, cannot do this and
+/// hands its painter the scaler instead.
 ///
 /// **The box has no thickness.** Glyphs are flat, and the slab behind a label
 /// belongs to whatever draws the label's background. [depth] is there for the
@@ -308,11 +310,21 @@ class Text3d extends Layout3d {
 
   /// What one logical pixel of the layout is worth in world units.
   ///
-  /// `metrics.unitsPerLogicalPixel * metrics.textScaleFactor`: the whole of
-  /// the conversion, in one number, so a caller reading [textLayout] does not
-  /// have to reassemble it.
+  /// The whole of the conversion in one number, so a caller reading
+  /// [textLayout] does not have to reassemble it: the surface's
+  /// `unitsPerLogicalPixel`, times what the reader's font setting grows this
+  /// box's own type by ([Layout3dMetrics.textScaleFor] of the style's font
+  /// size, or of the 14 logical pixels the engine assumes when a style names
+  /// none).
   double get logicalPixelScale =>
-      metrics.unitsPerLogicalPixel * metrics.textScaleFactor;
+      metrics.unitsPerLogicalPixel *
+      metrics.textScaleFor(_style.fontSize ?? _assumedFontSize);
+
+  /// The font size a style that names none is measured at.
+  ///
+  /// `dart:ui`'s own default, and the same 14 the renderer falls back to when
+  /// it has to say how thick a glyph is, so the two never disagree.
+  static const double _assumedFontSize = 14.0;
 
   void _invalidatePrepared() {
     _prepared = null;

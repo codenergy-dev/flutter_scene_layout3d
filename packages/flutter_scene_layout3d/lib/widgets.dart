@@ -143,6 +143,8 @@ export 'src/overlay/overlay.dart'
         Overlay3dBuilder,
         Overlay3dEntry,
         OverlayLayer3d;
+export 'src/widgets/media_query.dart'
+    show MediaQuery3d, MediaQuery3dData, SceneSafeArea3d;
 export 'src/widgets/overlay.dart'
     show
         Overlay3dContentSlot3d,
@@ -178,6 +180,7 @@ export 'src/sliver/sliver_constraints.dart'
     show SliverConstraints3d, SliverGeometry3d;
 export 'src/slot.dart' show Layout3dSlot;
 export 'src/surface.dart' show Layout3dSurface;
+export 'src/view.dart' show Layout3dView;
 export 'src/text/atlas_text_renderer.dart' show AtlasText3dRenderer;
 export 'src/text/glyph_material.dart'
     show

@@ -80,6 +80,11 @@ class Layout3dMetrics {
 }
 ```
 
+> **Superseded in one field.** `textScaleFactor` is a `TextScaler` now, read
+> from the enclosing `MediaQuery` rather than authored, and the binding's own
+> is nullable for the same reason. See
+> [a screen that knows how big it is](2026_09_16_a_screen_that_knows_how_big_it_is.md).
+
 carried on `Layout3dOwner` beside `basis`, so both layers see it and a
 `Layout3d` reaches it with `owner?.metrics`. Not an `InheritedWidget`: the
 imperative layer has no `BuildContext`, and the basis already set the

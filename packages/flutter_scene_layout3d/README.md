@@ -164,8 +164,8 @@ class Button3d extends SingleChildLayout3d {
 ```
 
 `metrics.dp(x)` is logical pixels to world units, `metrics.sp(x)` is the same
-scaled by the text scale, and `metrics.toLogicalPixels(u)` goes back the other
-way — which is what a rasterizer wants when it has to decide how many real
+asked of the reader's `TextScaler`, and `metrics.toLogicalPixels(u)` goes back
+the other way — which is what a rasterizer wants when it has to decide how many real
 pixels a glyph is worth. `metrics.dpSize(200, 48)` and
 `metrics.dpInsets(EdgeInsets3d.all(16))` are the same conversion for the two
 shapes a component library writes constantly. Changing the metrics relayouts
@@ -191,6 +191,39 @@ A binding that derives the contract owns it, so `screenFilling` and
 `fixedDensity` refuse a `metrics` of their own, exactly as `screenFilling`
 refuses a `size`.
 
+### The reader's own font setting
+
+`Layout3dMetrics.textScaler` is the accessibility scale, and it is a
+`TextScaler` rather than a number for Flutter's own reason: the scaling is not
+linear across sizes, so a platform that grows 14dp body copy by 1.8 need not
+grow a 57dp display line at all. **You do not set it.** `SceneLayout3d` reads
+`MediaQuery.textScalerOf(context)` and writes it onto the surface, so a label
+three boxes deep grows when the person using the application has asked for
+larger type:
+
+```dart
+// Nothing here mentions the text scale. That is the point.
+SceneLayout3d(
+  size: const Size3d(4, 3, 0.2),
+  metrics: const Layout3dMetrics(unitsPerLogicalPixel: 0.005),
+  child: screen,
+)
+```
+
+A `metrics` that carries a scaler of its own asserts, and says where to put it
+instead — on a `MediaQuery` above the view, or on the binding
+(`Layout3dCameraBinding.fixedDensity(rate, textScaler: …)`) for a surface that
+should deliberately ignore the platform. The friction is on purpose: the
+alternative is a panel whose type cannot grow, and nothing telling you.
+
+Under the two text boxes it lands differently, and the split is worth knowing
+if you write a renderer. A `Text3d` holds one style, so the scaler still comes
+out as a single multiplier — `metrics.textScaleFor(style.fontSize)` — which it
+applies to a paragraph measured at the style's own size; the measurement
+survives a change of scale and the font is never consulted again. A
+`RichText3d` holds spans of several sizes and cannot do that, so its painter
+takes the scaler and each span is measured at its own scaled size.
+
 ### Reading the contract from a `build` method
 
 A `Layout3d` reads the metrics inside `performLayout` and a widget cannot, so
@@ -212,6 +245,50 @@ conversion happens once, in the build method that knows the figure is 16dp.
 Decorations are the exception that hides the problem: `BorderRadius3d`,
 `bevel`, `border` and `elevation` are converted by the painter at paint time,
 so a `SceneDecoratedBox3d` takes dp whether or not anything read the scope.
+
+### The screen a surface stands in for
+
+A `build` method asks how big its screen is through `MediaQuery3d`, the
+counterpart of Flutter's `MediaQuery`, published at the root of every surface:
+
+```dart
+final media = MediaQuery3d.of(context);          // logical pixels
+if (media.size.width >= 600) return wideLayout;
+return narrowLayout;
+```
+
+`size` is the surface's own extent in dp — the view's, for a panel bound to
+the camera, which by the binding's arithmetic is the same thing — and
+`orientation` comes off it. An axis the surface was given no bound on reports
+infinity, because a plane that shrink-wraps its content has no screen size
+until the content decides; `SceneLayoutBuilder3d` is what answers a question
+about the room a box actually got.
+
+`padding` is the part the platform has already spent: the notch, the status
+bar, the home indicator. **Only a surface that stands in for the view has
+one.** That is `Layout3dCameraBinding.screenFilling` and nothing else — a
+panel hanging on a wall in a room does not have a notch, and the question does
+not apply to it rather than answering zero by accident. Consume it with
+`SceneSafeArea3d`, which is Flutter's `SafeArea`: it pads by the inset,
+converted through the unit contract, and republishes the data with what it
+consumed removed, so a second one inside it pads nothing.
+
+```dart
+SceneSafeArea3d(
+  child: SceneColumn3d(children: [appBar, body]),
+)
+```
+
+Two things it deliberately does not carry. **The text scale is not here** —
+it is on `Layout3dMetrics`, because the layout measures with it and a
+`performLayout` has no `BuildContext`; that is the first place a reader coming
+from Flutter looks. And there is **no `devicePixelRatio`**, because a ratio of
+logical pixels to real ones is a promise only a camera-bound surface can keep:
+a panel the viewer can walk toward covers a different number of real pixels
+every frame, and `metrics.logicalPixelsPerUnit` is the number a rasterizer
+actually wants. There are no size classes either: what a breakpoint means for
+a surface floating in a room is a question the component library gets to
+answer, and this gives it the extent to answer it with.
 
 The scope is a report, not a setting. There is no public constructor: it says
 what the enclosing surface's owner actually measures with, and a second one
@@ -1032,7 +1109,8 @@ than none.
 | `CustomMultiChildLayout3d`, `MultiChildLayout3dDelegate`, `LayoutId3d` | `CustomMultiChildLayout`, `MultiChildLayoutDelegate`, `LayoutId` |
 | `Flow3d`, `Flow3dDelegate` | `Flow`, `FlowDelegate`, at node-transform cost rather than repaint cost |
 | `Layout3dCameraBinding` | what `View` does for a Flutter tree: the thing that bounds it |
-| `Layout3dMetrics`, `VisualDensity3d` | `MediaQuery`'s scale factors, `VisualDensity` |
+| `Layout3dMetrics`, `VisualDensity3d` | `MediaQuery.textScaler` and the unit rate a window does not need, `VisualDensity` |
+| `MediaQuery3d`, `MediaQuery3dData`, `SceneSafeArea3d` | `MediaQuery`, `MediaQueryData`, `SafeArea` |
 | `Viewport3d`, `ListView3d`, `GridView3d`, `Scroll3dController` | `SingleChildScrollView`, `ListView`, `GridView`, `ScrollController` |
 | `Scroll3dPhysics`, `ClampingScroll3dPhysics`, `BouncingScroll3dPhysics` | `ScrollPhysics` and its two familiar shapes |
 | `PageView3d`, `PageScroll3dPhysics` | `PageView`, `PageScrollPhysics` |
@@ -3232,16 +3310,19 @@ rather than a silently missing subtree; `Flex3d` and `UnconstrainedBox3d`
 report an overflow with the axis and the amount; `debugPaintLayout3dSize`
 hangs a wireframe of every box's extent under its node, with baselines and
 placement offsets behind a second flag; and `Semantics3d` publishes a control
-to assistive technology with the bounds layout gave it. See *Debugging what
-you cannot see* above. What is left is a visual inspector, which belongs to
-the Flutter Scene Editor rather than here.
+to assistive technology with the bounds layout gave it; and the reader's own
+font setting reaches a label on a plane, through
+`Layout3dMetrics.textScaler` and the ambient `MediaQuery` a `SceneLayout3d`
+reads. See *Debugging what you cannot see* and *The reader's own font setting*
+above. What is left is a visual inspector, which belongs to the Flutter Scene
+Editor rather than here.
 
 **What is next.** Nothing in this list depends on anything else in it any
 more, so the order is a matter of what a caller reaches for first: route
-transitions over `Route3dTransition`; a `MediaQuery3d` and the `TextScaler`
-that would carry a reader's own font setting onto a plane; a distance-field
-glyph atlas for type that stays sharp as a panel approaches; and a per-node
-opacity in the engine, which is what an `Opacity3d` is waiting on.
+transitions over `Route3dTransition`; text a person can type, which is the
+largest thing missing; a distance-field glyph atlas for type that stays sharp
+as a panel approaches; and a per-node opacity in the engine, which is what an
+`Opacity3d` is waiting on.
 
 ## License
 

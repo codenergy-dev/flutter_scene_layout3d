@@ -135,15 +135,38 @@ void main() {
       expect(text.logicalPixelScale, closeTo(0.005, 1e-12));
     });
 
-    test('the text scale multiplies type and nothing else', () {
+    test('the text scale grows the paragraph, in the painter', () {
       final text = RichText3d(span('hello'));
       panel(
         Center3d(child: text),
-        metrics: const Layout3dMetrics(textScaleFactor: 1.5),
+        metrics: const Layout3dMetrics(textScaler: TextScaler.linear(1.5)),
       );
       expect(text.size.width, closeTo(0.75, 1e-9));
-      // The paragraph itself was never re-measured: the scale is geometric.
-      expect(text.painter.width, closeTo(50.0, 1e-9));
+      // The scale is the painter's here, unlike in a Text3d: the paragraph is
+      // measured at the scaled sizes, so the logical-pixel numbers already
+      // carry it and the box multiplies by the unit rate alone.
+      expect(text.painter.width, closeTo(75.0, 1e-9));
+      expect(text.logicalPixelScale, closeTo(0.01, 1e-12));
+    });
+
+    test('a scaler that is not linear grows each span by its own factor', () {
+      // What no single multiplier can express, and the reason the painter
+      // owns the scale here: the same paragraph holds 10dp and 40dp type, and
+      // this scaler grows the small one and leaves the large one alone.
+      const scaler = _ClampedScaler(1.5, upTo: 20);
+      final mixed = TextSpan(
+        children: <TextSpan>[
+          span('aa', const TextStyle(fontSize: 10)),
+          span('bb', const TextStyle(fontSize: 40)),
+        ],
+      );
+      final text = RichText3d(mixed);
+      panel(
+        Center3d(child: text),
+        metrics: const Layout3dMetrics(textScaler: scaler),
+      );
+      // The test font is a square em, so a run is its font size per glyph.
+      expect(text.painter.width, closeTo(2 * 15 + 2 * 40, 1e-9));
     });
   });
 
@@ -434,4 +457,30 @@ void main() {
       expect(packed, isNotEmpty);
     });
   });
+}
+
+/// A scaler that grows small type and leaves large type alone.
+///
+/// Not a real platform curve — Flutter's own is a table — but it is
+/// non-linear in the one way that matters here: `scale(size) / size` is not
+/// the same number for two different sizes.
+class _ClampedScaler extends TextScaler {
+  const _ClampedScaler(this.factor, {required this.upTo});
+
+  final double factor;
+  final double upTo;
+
+  @override
+  double scale(double fontSize) =>
+      fontSize <= upTo ? fontSize * factor : fontSize;
+
+  @override
+  double get textScaleFactor => factor;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _ClampedScaler && other.factor == factor && other.upTo == upTo;
+
+  @override
+  int get hashCode => Object.hash(factor, upTo);
 }

@@ -14,6 +14,16 @@ component has no thickness in Flutter and must have one here, which is the
 token Material does not publish at all. The plan's middle section is where
 that reasoning lives.
 
+- **The catalogue's type follows the reader's own font setting.** Nothing here
+  changed to make it so: `Layout3dMetrics` carries a `TextScaler` now, a
+  `SceneLayout3d` writes the ambient `MediaQuery.textScalerOf` into it, and
+  every label in the catalogue is a `Text3d` that measures through it. What is
+  worth knowing is the component side of it — a control whose height is a
+  fixed dp figure does not grow with its label, exactly as in Flutter, so a
+  48dp row of 14sp text at a large setting is a row the text overflows.
+  `Scaffold3d` does not consume the safe area either: on a surface bound to
+  the camera, wrap the screen in `SceneSafeArea3d` yourself. Both belong to
+  the components plan rather than to the theme.
 - **The catalogue mirrors in a right-to-left application.** Its rows follow
   the ambient `Directionality` on their own now that the layout package's do,
   so what changed here is everything that would otherwise have been left on

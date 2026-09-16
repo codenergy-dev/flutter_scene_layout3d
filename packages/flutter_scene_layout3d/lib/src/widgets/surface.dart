@@ -2,11 +2,13 @@ import 'dart:ui' show Size;
 
 import 'package:flutter/foundation.dart'
     show DiagnosticPropertiesBuilder, DiagnosticsProperty, ValueListenable;
+import 'package:flutter/painting.dart' show EdgeInsets, TextScaler;
 import 'package:flutter/scheduler.dart' show SchedulerBinding, SchedulerPhase;
 import 'package:flutter/widgets.dart'
     show
         BuildContext,
         InheritedWidget,
+        MediaQuery,
         MultiChildRenderObjectWidget,
         State,
         StatefulWidget,
@@ -21,13 +23,16 @@ import '../camera_binding.dart';
 import '../geometry/alignment3d.dart';
 import '../geometry/basis3d.dart';
 import '../geometry/constraints3d.dart';
+import '../geometry/edge_insets3d.dart';
 import '../geometry/size3d.dart';
 import '../layout3d.dart';
 import '../metrics.dart';
 import '../slot.dart';
 import '../surface.dart';
+import '../view.dart';
 import 'framework.dart';
 import 'input.dart';
+import 'media_query.dart';
 
 /// Imperative access to the [Layout3dSurface] a [SceneLayout3d] owns.
 ///
@@ -131,6 +136,13 @@ class SceneLayout3d extends StatefulWidget {
   /// dropping the property on a rebuild puts the default contract back, the
   /// way dropping [basis] puts the plane back upright.
   ///
+  /// **It states the rate and the density, and never the text scale.** The
+  /// surface's [Layout3dMetrics.textScaler] is the reader's own setting, read
+  /// from the enclosing `MediaQuery` and written on top of whatever is stated
+  /// here — so a panel that says it is a smaller screen still grows its type
+  /// for a person who has asked for larger type. A value here that carries a
+  /// scaler asserts and says where to put one instead.
+  ///
   /// **A binding that derives the contract owns it.**
   /// [Layout3dCameraBinding.screenFilling] and
   /// [Layout3dCameraBinding.fixedDensity] both write the surface's metrics
@@ -172,6 +184,11 @@ class SceneLayout3d extends StatefulWidget {
   /// itself, so nothing has to be threaded by hand. Supply it when the layout
   /// is not mounted under the view it is bound to, or when the view renders
   /// into a sub-rectangle of its box.
+  ///
+  /// It is also the size a screen-filling surface publishes as
+  /// [MediaQuery3dData.size], where the fallback is the enclosing
+  /// `MediaQuery`'s rather than the ancestor box's — a build method cannot
+  /// read a box's size.
   final Size? viewSize;
 
   /// The node the plane attaches under.
@@ -256,6 +273,39 @@ class _SceneLayout3dState extends State<SceneLayout3d> {
     metrics: widget.metrics ?? Layout3dMetrics.standard,
     origin: widget.origin,
   );
+
+  /// The reader's own font setting, from the enclosing `MediaQuery`.
+  ///
+  /// Read in [didChangeDependencies] rather than where it is used, so the
+  /// dependency is registered where Flutter expects one and a change of the
+  /// platform's setting rebuilds this surface — and only its text scale does,
+  /// because `textScalerOf` depends on that aspect alone.
+  TextScaler _textScaler = TextScaler.noScaling;
+
+  /// The view's safe area, in logical pixels, from the enclosing
+  /// `MediaQuery`.
+  EdgeInsets _viewPadding = EdgeInsets.zero;
+
+  /// The view's logical size, from the enclosing `MediaQuery`.
+  ///
+  /// Used for the *published* screen size of a surface that stands in for the
+  /// view, where it is exact by the binding's own arithmetic and, unlike the
+  /// derived constraints, comes from something that rebuilds this widget when
+  /// it changes. The binding itself keeps taking the view's own box, which is
+  /// the more accurate number when the view is not the whole window.
+  Size? _mediaQuerySize;
+
+  /// The contract this widget states, with the reader's setting written into
+  /// it.
+  ///
+  /// [SceneLayout3d.metrics] carries the scale and the density; the text
+  /// scaler on a surface is never authored there (the assert in
+  /// [_debugCheckMetrics] says so), so composing the two here is the whole of
+  /// the rule.
+  Layout3dMetrics get _authoredMetrics =>
+      (widget.metrics ?? Layout3dMetrics.standard).copyWith(
+        textScaler: _textScaler,
+      );
 
   Constraints3d get _configuration {
     final size = widget.size;
@@ -374,6 +424,17 @@ class _SceneLayout3dState extends State<SceneLayout3d> {
     super.didChangeDependencies();
     _syncInputHost();
     assert(_debugCheckBinding());
+    assert(_debugCheckMetrics());
+    _viewPadding = MediaQuery.paddingOf(context);
+    _mediaQuerySize = MediaQuery.maybeSizeOf(context);
+    final scaler = MediaQuery.textScalerOf(context);
+    if (scaler != _textScaler) {
+      _textScaler = scaler;
+      if (!_bindingOwnsMetrics) _writeMetrics(_authoredMetrics);
+      // A binding that owns the contract takes the scaler from the view it is
+      // handed, so it has to run again to hear about this.
+      _scheduleBindingUpdate();
+    }
     // The ambient camera may have changed with the host, and a binding reads
     // it, so ask for a run whether or not the scene's clock moved.
     _scheduleBindingUpdate();
@@ -389,6 +450,7 @@ class _SceneLayout3dState extends State<SceneLayout3d> {
   void didUpdateWidget(SceneLayout3d oldWidget) {
     super.didUpdateWidget(oldWidget);
     assert(_debugCheckBinding());
+    assert(_debugCheckMetrics());
     if (!identical(widget.controller, oldWidget.controller)) {
       if (identical(oldWidget.controller?._surface, _surface)) {
         oldWidget.controller?._surface = null;
@@ -413,7 +475,7 @@ class _SceneLayout3dState extends State<SceneLayout3d> {
     // the widget's own props and their defaults, the way a dropped basis
     // does.
     if (!_bindingOwnsMetrics) {
-      _writeMetrics(widget.metrics ?? Layout3dMetrics.standard);
+      _writeMetrics(_authoredMetrics);
     }
     if (!_bindingOwnsConfiguration) {
       _surface.configuration = _configuration;
@@ -477,6 +539,21 @@ class _SceneLayout3dState extends State<SceneLayout3d> {
     return true;
   }
 
+  bool _debugCheckMetrics() {
+    assert(
+      widget.metrics == null ||
+          widget.metrics!.textScaler == TextScaler.noScaling,
+      'SceneLayout3d.metrics carries a TextScaler, and a surface does not '
+      'take its text scale from there: it takes the reader\'s own setting, '
+      'from the enclosing MediaQuery, because a screen nobody can enlarge is '
+      'the accessibility defect this contract exists to prevent. State the '
+      'scale you want on a MediaQuery above the view, or on the binding '
+      '(Layout3dCameraBinding.fixedDensity(rate, textScaler: ...)) for a '
+      'surface that should ignore the platform.',
+    );
+    return true;
+  }
+
   /// Runs the binding once, after this frame.
   ///
   /// The first application cannot happen during build or layout: it reads the
@@ -498,12 +575,63 @@ class _SceneLayout3dState extends State<SceneLayout3d> {
     if (binding == null) return;
     final camera = _camera;
     if (binding.needsCamera && camera == null) return;
+    // Only the binding that derives from the view's box reads one, and
+    // asking for it costs a walk up the render tree — so a binding that does
+    // not need a size is handed a view that carries only the text scale.
     Size? viewSize;
-    if (binding.needsViewSize) {
+    if (binding.needsView) {
       viewSize = _resolveViewSize();
       if (viewSize == null) return;
     }
-    binding.update(_surface, camera: camera, viewSize: viewSize);
+    binding.update(
+      _surface,
+      camera: camera,
+      view: Layout3dView(size: viewSize ?? Size.zero, textScaler: _textScaler),
+    );
+  }
+
+  /// What the surface below knows about itself.
+  ///
+  /// The size has two sources and the split is deliberate. A surface that
+  /// stands in for the view reports the *view's* size: the two are equal by
+  /// the binding's own arithmetic, and only the view's is published by
+  /// something that rebuilds this widget — a window widened but not
+  /// heightened changes the derived constraints without changing the derived
+  /// metrics, so a value read off the surface would have nothing to refresh
+  /// it. Every other surface reports what this widget itself stated, which
+  /// cannot go stale at all. The depth comes from the surface either way, and
+  /// reads zero for the one build before a binding has derived it.
+  MediaQuery3dData _screen() {
+    final metrics = _surface.metrics;
+    final binding = widget.binding;
+    if (binding != null && binding.standsInForTheView) {
+      final view = widget.viewSize ?? _mediaQuerySize ?? Size.zero;
+      final depth = _surface.configuration.maxDepth;
+      return MediaQuery3dData(
+        size: Size3d(
+          view.width,
+          view.height,
+          depth.isFinite ? metrics.toLogicalPixels(depth) : 0.0,
+        ),
+        // The panel covers the view exactly, and its unit contract is derived
+        // so that its own height spans the view's logical height: a 44dp
+        // inset is 44dp of panel, with no conversion in between.
+        padding: EdgeInsets3d.only(
+          left: _viewPadding.left,
+          top: _viewPadding.top,
+          right: _viewPadding.right,
+          bottom: _viewPadding.bottom,
+        ),
+      );
+    }
+    final configuration = _configuration;
+    return MediaQuery3dData(
+      size: Size3d(
+        metrics.toLogicalPixels(configuration.maxWidth),
+        metrics.toLogicalPixels(configuration.maxHeight),
+        metrics.toLogicalPixels(configuration.maxDepth),
+      ),
+    );
   }
 
   /// The logical size of the view the binding derives from.
@@ -554,7 +682,10 @@ class _SceneLayout3dState extends State<SceneLayout3d> {
       surface: _surface,
       children: <Widget>[
         if (child != null)
-          Layout3dMetricsScope._(metrics: _surface.metrics, child: child),
+          Layout3dMetricsScope._(
+            metrics: _surface.metrics,
+            child: MediaQuery3d(data: _screen(), child: child),
+          ),
         mount,
       ],
     );
@@ -605,6 +736,10 @@ class _SceneLayout3dState extends State<SceneLayout3d> {
 /// inserted by hand would change what [of] answers without changing what a
 /// single box measures — a divergence nothing would report. To give a
 /// subtree a different contract, give it a surface.
+///
+/// The other half of what a screen knows about itself — how big it is, and
+/// what the platform has already spent of it — is [MediaQuery3d], which *is*
+/// meant to be inserted, because an inset is consumed rather than reported.
 class Layout3dMetricsScope extends InheritedWidget {
   const Layout3dMetricsScope._({required this.metrics, required super.child});
 

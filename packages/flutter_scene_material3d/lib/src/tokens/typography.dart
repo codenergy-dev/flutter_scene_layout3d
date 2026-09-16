@@ -11,12 +11,13 @@ import 'package:flutter/painting.dart' show TextStyle;
 /// change the whole catalogue's voice at once.
 ///
 /// **Every figure is in logical pixels, and stays that way.** `Text3d` takes
-/// a `TextStyle` directly, measures in logical pixels, and multiplies by
-/// `metrics.unitsPerLogicalPixel * metrics.textScaleFactor` to reach world
-/// units — so a `labelLarge` is 14sp on a camera-bound surface and still 14sp
-/// on a panel hanging on a wall. Nothing here should ever be pre-multiplied
-/// by the metrics; that is the layer below's job, and doing it twice is a
-/// label the size of a door.
+/// a `TextStyle` directly, measures in logical pixels, and multiplies by its
+/// own `logicalPixelScale` — the surface's unit rate, times what the reader's
+/// `TextScaler` grows type of that size by — to reach world units. So a
+/// `labelLarge` is 14sp on a camera-bound surface and still 14sp on a panel
+/// hanging on a wall, and it grows when the reader has asked for larger type.
+/// Nothing here should ever be pre-multiplied by the metrics; that is the
+/// layer below's job, and doing it twice is a label the size of a door.
 ///
 /// ## Where these numbers come from, and where they differ from Flutter's
 ///

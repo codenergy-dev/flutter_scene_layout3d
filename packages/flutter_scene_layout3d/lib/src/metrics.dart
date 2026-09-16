@@ -1,5 +1,7 @@
 import 'dart:ui' show lerpDouble;
 
+import 'package:flutter/painting.dart' show TextScaler;
+
 import 'geometry/constraints3d.dart';
 import 'geometry/edge_insets3d.dart';
 import 'geometry/offset3d.dart';
@@ -155,10 +157,9 @@ class Layout3dMetrics {
   /// Creates a unit contract.
   const Layout3dMetrics({
     this.unitsPerLogicalPixel = defaultUnitsPerLogicalPixel,
-    this.textScaleFactor = 1.0,
+    this.textScaler = TextScaler.noScaling,
     this.density = VisualDensity3d.standard,
-  }) : assert(unitsPerLogicalPixel > 0.0),
-       assert(textScaleFactor > 0.0);
+  }) : assert(unitsPerLogicalPixel > 0.0);
 
   /// The default scale: one world unit is one hundred logical pixels.
   ///
@@ -180,11 +181,25 @@ class Layout3dMetrics {
   /// units ([dp]); divide units by it to get dp ([toLogicalPixels]).
   final double unitsPerLogicalPixel;
 
-  /// The accessibility text scale, the analogue of `MediaQuery.textScaler`.
+  /// The reader's own font setting, the analogue of `MediaQuery.textScaler`.
   ///
-  /// Applied by [sp] and by nothing else: it scales type, not the boxes
-  /// around it, which is why it is a separate dial from [density].
-  final double textScaleFactor;
+  /// It scales type and not the boxes around it, which is why it is a
+  /// separate dial from [density]. Applied by [sp], by [textScaleFor], and by
+  /// the two text boxes; nothing else in the package multiplies by it.
+  ///
+  /// **A scaler is not a number.** Flutter moved from a factor to a
+  /// [TextScaler] because accessibility scaling is not linear across sizes: a
+  /// platform that grows 14dp body copy by 1.8 does not grow a 57dp display
+  /// line by 1.8. Within one font size it still resolves to a single
+  /// multiplier, which is what [textScaleFor] answers and what keeps a
+  /// single-style measurement cheap.
+  ///
+  /// **This is where the reader's setting lives, and it is not on
+  /// `MediaQuery3dData`.** The layout measures with it — a `Text3d` reads it
+  /// inside `performLayout`, with no `BuildContext` to look one up through —
+  /// so it belongs to the contract the owner carries. `SceneLayout3d` writes
+  /// the ambient `MediaQuery.textScalerOf(context)` here for you.
+  final TextScaler textScaler;
 
   /// How tightly components pack themselves.
   final VisualDensity3d density;
@@ -202,12 +217,27 @@ class Layout3dMetrics {
   /// Material touch target, whatever scale the surface is drawn at.
   double dp(double logicalPixels) => logicalPixels * unitsPerLogicalPixel;
 
-  /// [logicalPixels] as world units, scaled by [textScaleFactor].
+  /// [logicalPixels] as world units, scaled by [textScaler].
   ///
   /// The type counterpart of [dp]. A 14sp label is `metrics.sp(14)` units
-  /// tall and grows when the platform's text scale does.
+  /// tall and grows when the reader's font setting does.
   double sp(double logicalPixels) =>
-      logicalPixels * textScaleFactor * unitsPerLogicalPixel;
+      textScaler.scale(logicalPixels) * unitsPerLogicalPixel;
+
+  /// What [textScaler] multiplies a run of [fontSize] type by.
+  ///
+  /// `scale(fontSize) / fontSize`: the scaler stated as the geometric factor
+  /// a box can apply to an already measured line, rather than as a size to
+  /// measure at. One for a scaler that does not scale, and one for a font
+  /// size of zero, which has nothing to grow.
+  ///
+  /// This is what makes a single-style measurement stay cheap. Font metrics
+  /// are linear *in* the size, so a `Text3d` measures at the style's own size
+  /// and multiplies — its prepared handle survives a change of scale and the
+  /// font is never consulted again. A paragraph of mixed sizes has no such
+  /// number and hands the scaler to its painter instead; see `RichText3d`.
+  double textScaleFor(double fontSize) =>
+      fontSize <= 0.0 ? 1.0 : textScaler.scale(fontSize) / fontSize;
 
   /// [units] as logical pixels, the inverse of [dp].
   double toLogicalPixels(double units) => units / unitsPerLogicalPixel;
@@ -234,7 +264,7 @@ class Layout3dMetrics {
   /// ```
   ///
   /// A padding is not type, so this scales by [unitsPerLogicalPixel] alone:
-  /// [textScaleFactor] belongs to [sp] and to nothing else.
+  /// [textScaler] belongs to [sp] and to the text boxes.
   ///
   /// Any kind of inset converts to the same kind, so an
   /// [EdgeInsetsDirectional3d] in dp comes back as one in world units, still
@@ -270,11 +300,11 @@ class Layout3dMetrics {
   /// A copy with the given fields replaced.
   Layout3dMetrics copyWith({
     double? unitsPerLogicalPixel,
-    double? textScaleFactor,
+    TextScaler? textScaler,
     VisualDensity3d? density,
   }) => Layout3dMetrics(
     unitsPerLogicalPixel: unitsPerLogicalPixel ?? this.unitsPerLogicalPixel,
-    textScaleFactor: textScaleFactor ?? this.textScaleFactor,
+    textScaler: textScaler ?? this.textScaler,
     density: density ?? this.density,
   );
 
@@ -282,15 +312,14 @@ class Layout3dMetrics {
   bool operator ==(Object other) =>
       other is Layout3dMetrics &&
       other.unitsPerLogicalPixel == unitsPerLogicalPixel &&
-      other.textScaleFactor == textScaleFactor &&
+      other.textScaler == textScaler &&
       other.density == density;
 
   @override
-  int get hashCode =>
-      Object.hash(unitsPerLogicalPixel, textScaleFactor, density);
+  int get hashCode => Object.hash(unitsPerLogicalPixel, textScaler, density);
 
   @override
   String toString() =>
       'Layout3dMetrics(1 unit = ${logicalPixelsPerUnit.toStringAsFixed(1)} dp, '
-      'textScaleFactor: $textScaleFactor, density: $density)';
+      'textScaler: $textScaler, density: $density)';
 }

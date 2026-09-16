@@ -387,3 +387,4 @@ export 'src/text/text_renderer.dart'
 export 'src/scroll/viewport.dart' show Viewport3d;
 export 'src/slot.dart' show Layout3dSlot, SlotProvider3d;
 export 'src/surface.dart' show Layout3dSurface;
+export 'src/view.dart' show Layout3dView;

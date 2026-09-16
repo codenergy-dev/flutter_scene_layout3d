@@ -814,11 +814,11 @@ TextMetrics3d measureString(String text, TextStyle style) {
 /// Builds a single-style paragraph over [text].
 ///
 /// The text scale is deliberately left at 1: everything in this layer is
-/// measured in logical pixels at the style's own font size, and
-/// [Layout3dMetrics.textScaleFactor] is applied once, as a scale, when the
-/// layout reaches world units. Font metrics are linear in the size, so the
-/// two are the same thing, and doing it this way keeps a prepared handle
-/// valid across a change of accessibility scale.
+/// measured in logical pixels at the style's own font size, and the reader's
+/// font setting is applied once, as a scale, when the layout reaches world
+/// units — [Layout3dMetrics.textScaleFor] of that size. Font metrics are
+/// linear in the size, so the two are the same thing, and doing it this way
+/// keeps a prepared handle valid across a change of accessibility scale.
 ui.Paragraph buildParagraph(
   String text,
   TextStyle style, {

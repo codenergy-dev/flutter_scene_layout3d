@@ -1,5 +1,5 @@
-import 'dart:ui' show Size;
-
+import 'package:flutter/foundation.dart' show protected;
+import 'package:flutter/painting.dart' show TextScaler;
 import 'package:flutter_scene/scene.dart' show Camera;
 import 'package:vector_math/vector_math.dart' show Matrix4;
 
@@ -7,6 +7,7 @@ import 'geometry/constraints3d.dart';
 import 'geometry/size3d.dart';
 import 'metrics.dart';
 import 'surface.dart';
+import 'view.dart';
 
 /// Ties a [Layout3dSurface] to a camera, and with it the unit contract.
 ///
@@ -47,8 +48,8 @@ import 'surface.dart';
 /// ```dart
 /// final binding = Layout3dCameraBinding.screenFilling(distance: 2);
 ///
-/// void onFrame(Size viewSize) {
-///   binding.update(surface, camera: camera, viewSize: viewSize);
+/// void onFrame(Layout3dView view) {
+///   binding.update(surface, camera: camera, view: view);
 ///   surface.flush();
 /// }
 /// ```
@@ -64,7 +65,7 @@ import 'surface.dart';
 /// case of this one.
 abstract class Layout3dCameraBinding {
   const Layout3dCameraBinding._({
-    this.textScaleFactor = 1.0,
+    this.textScaler,
     this.density = VisualDensity3d.standard,
   });
 
@@ -80,8 +81,8 @@ abstract class Layout3dCameraBinding {
   ///
   /// The metrics fall out of the same arithmetic: the derived world height
   /// covers the view's logical height, so `unitsPerLogicalPixel` is their
-  /// ratio. [textScaleFactor] and [density] are passed through, since neither
-  /// is derivable from a camera.
+  /// ratio. The text scale comes from the view, unless [textScaler] states
+  /// one; [density] is passed through, since no camera can derive it.
   ///
   /// [extentEpsilon] is the dead band around the extents already in force: a
   /// newly derived extent within it of the standing one is taken to be the
@@ -92,7 +93,7 @@ abstract class Layout3dCameraBinding {
     double distance,
     double depth,
     double extentEpsilon,
-    double textScaleFactor,
+    TextScaler? textScaler,
     VisualDensity3d density,
   }) = _ScreenFillingBinding;
 
@@ -123,9 +124,12 @@ abstract class Layout3dCameraBinding {
   /// screen, this is the honest answer: there is no frustum to derive the
   /// number from, and inventing one from the current viewing distance would
   /// change the layout every time the viewer walked toward it.
+  ///
+  /// Hand it a [Layout3dView] all the same. A panel on a wall has no frustum,
+  /// and it still has a reader with a font setting.
   const factory Layout3dCameraBinding.fixedDensity(
     double unitsPerLogicalPixel, {
-    double textScaleFactor,
+    TextScaler? textScaler,
     VisualDensity3d density,
   }) = _FixedDensityBinding;
 
@@ -143,8 +147,20 @@ abstract class Layout3dCameraBinding {
   /// still lands, one epsilon at a time.
   static const double defaultExtentEpsilon = 1e-4;
 
-  /// The accessibility text scale written into the surface's metrics.
-  final double textScaleFactor;
+  /// The text scale written into the surface's metrics, stated rather than
+  /// read.
+  ///
+  /// Null — the default, and what an application almost always wants — means
+  /// the reader's own setting, taken from the [Layout3dView] handed to
+  /// [update]. State one only to pin a surface to a scale of its own, and
+  /// remember what that opts out of: a panel whose type cannot grow is a panel
+  /// somebody cannot read.
+  ///
+  /// A binding with no view to read and nothing stated writes
+  /// `TextScaler.noScaling`, which is the same fallback
+  /// `MediaQuery.textScalerOf` gives a Flutter `Text` with no `MediaQuery`
+  /// above it.
+  final TextScaler? textScaler;
 
   /// The visual density written into the surface's metrics.
   final VisualDensity3d density;
@@ -156,13 +172,30 @@ abstract class Layout3dCameraBinding {
   /// camera.
   bool get needsCamera => true;
 
-  /// Whether [update] needs the view's logical size to do anything.
+  /// Whether [update] cannot do its job without a [Layout3dView].
   ///
   /// True only for [Layout3dCameraBinding.screenFilling], which is the only
   /// mode whose result depends on the aspect ratio and on how many logical
   /// pixels the view is tall. A billboard takes only a facing from the
-  /// camera, and an authored density takes nothing at all.
-  bool get needsViewSize => false;
+  /// camera, and an authored density takes only its scale.
+  ///
+  /// The other modes still *use* a view when they are given one — that is
+  /// where the reader's font setting comes from — so pass one whenever there
+  /// is one to pass.
+  bool get needsView => false;
+
+  /// Whether a surface bound this way stands in for the platform view.
+  ///
+  /// True only for [Layout3dCameraBinding.screenFilling]: that panel *is* the
+  /// screen, so the view's safe area — the notch, the status bar, the home
+  /// indicator — is spent out of its extent and not out of anything else's.
+  /// Every other surface is a plane in a room, and a notch is not a thing a
+  /// plane in a room has; `MediaQuery3d` publishes a zero padding for it.
+  ///
+  /// The widget layer reads this. Nothing [update] writes depends on it,
+  /// because an inset is consumed in a `build` method and a layout tree has
+  /// nowhere to scope one to a subtree.
+  bool get standsInForTheView => false;
 
   /// Whether this binding writes the surface's [Layout3dSurface.configuration].
   ///
@@ -177,18 +210,24 @@ abstract class Layout3dCameraBinding {
   /// Applies this binding to [surface].
   ///
   /// Call it once per frame, before flushing. [camera] is required by every
-  /// mode but [Layout3dCameraBinding.fixedDensity], and [viewSize] by
+  /// mode but [Layout3dCameraBinding.fixedDensity], and [view] by
   /// [Layout3dCameraBinding.screenFilling] alone; [needsCamera] and
-  /// [needsViewSize] say which. A degenerate view (zero area) or a singular
-  /// view matrix is a no-op rather than an error, because both happen
-  /// transiently while a view is being sized.
+  /// [needsView] say which. Pass the view anyway when there is one: it is
+  /// what carries the reader's font setting. A degenerate view (zero area) or
+  /// a singular view matrix is a no-op rather than an error, because both
+  /// happen transiently while a view is being sized.
   ///
   /// Cheap when nothing moved. The plane's transform is compared before it is
   /// written, and [Layout3dSurface.configuration] and
   /// [Layout3dSurface.metrics] both early-out on an equal value, so a still
   /// camera dirties nothing at all and a turning one dirties only a node
   /// transform.
-  void update(Layout3dSurface surface, {Camera? camera, Size? viewSize});
+  void update(Layout3dSurface surface, {Camera? camera, Layout3dView? view});
+
+  /// The scale to write: this binding's own, else the view's, else none.
+  @protected
+  TextScaler resolveTextScaler(Layout3dView? view) =>
+      textScaler ?? view?.textScaler ?? TextScaler.noScaling;
 }
 
 /// [value], unless it is within [epsilon] of the [standing] one, in which case
@@ -260,7 +299,7 @@ class _ScreenFillingBinding extends Layout3dCameraBinding {
     this.distance = 1.0,
     this.depth = 0.0,
     this.extentEpsilon = Layout3dCameraBinding.defaultExtentEpsilon,
-    super.textScaleFactor,
+    super.textScaler,
     super.density,
   }) : assert(
          distance > 0.0,
@@ -295,16 +334,20 @@ class _ScreenFillingBinding extends Layout3dCameraBinding {
   bool get derivesConstraints => true;
 
   @override
-  bool get needsViewSize => true;
+  bool get needsView => true;
 
   @override
-  void update(Layout3dSurface surface, {Camera? camera, Size? viewSize}) {
+  bool get standsInForTheView => true;
+
+  @override
+  void update(Layout3dSurface surface, {Camera? camera, Layout3dView? view}) {
     assert(
-      camera != null && viewSize != null,
+      camera != null && view != null,
       'Layout3dCameraBinding.screenFilling derives the surface from the view, '
-      'so it needs both a camera and a view size.',
+      'so it needs both a camera and a view.',
     );
-    if (camera == null || viewSize == null) return;
+    if (camera == null || view == null) return;
+    final viewSize = view.size;
     if (viewSize.isEmpty || !viewSize.isFinite) return;
 
     // The half-extents of the frustum at [distance], read out of the
@@ -338,7 +381,7 @@ class _ScreenFillingBinding extends Layout3dCameraBinding {
     // stable as the constraints are: a metrics change relayouts too.
     surface.metrics = Layout3dMetrics(
       unitsPerLogicalPixel: settledHeight / viewSize.height,
-      textScaleFactor: textScaleFactor,
+      textScaler: resolveTextScaler(view),
       density: density,
     );
     _setPlaneTransform(surface, _planeTransform(camera, distance));
@@ -352,7 +395,7 @@ class _BillboardBinding extends Layout3dCameraBinding {
   bool get derivesMetrics => false;
 
   @override
-  void update(Layout3dSurface surface, {Camera? camera, Size? viewSize}) {
+  void update(Layout3dSurface surface, {Camera? camera, Layout3dView? view}) {
     assert(
       camera != null,
       'Layout3dCameraBinding.billboard takes its facing from the camera, so '
@@ -372,7 +415,7 @@ class _BillboardBinding extends Layout3dCameraBinding {
 class _FixedDensityBinding extends Layout3dCameraBinding {
   const _FixedDensityBinding(
     this.unitsPerLogicalPixel, {
-    super.textScaleFactor,
+    super.textScaler,
     super.density,
   }) : assert(unitsPerLogicalPixel > 0.0),
        super._();
@@ -384,10 +427,10 @@ class _FixedDensityBinding extends Layout3dCameraBinding {
   bool get needsCamera => false;
 
   @override
-  void update(Layout3dSurface surface, {Camera? camera, Size? viewSize}) {
+  void update(Layout3dSurface surface, {Camera? camera, Layout3dView? view}) {
     surface.metrics = Layout3dMetrics(
       unitsPerLogicalPixel: unitsPerLogicalPixel,
-      textScaleFactor: textScaleFactor,
+      textScaler: resolveTextScaler(view),
       density: density,
     );
   }
