@@ -550,6 +550,55 @@ Material row — the child covers the background until it moves, so there is
 nothing to fight over — and the wrong one the moment either has depth. A small
 positive step pushes the backgrounds away from the viewer and the fight stops.
 
+### A picture arrives after the frame that asked for it
+
+**An `ImageProvider` resolves asynchronously, and the pixels have to reach the
+GPU**, so a `BoxDecoration3d.image` is not there on the frame the box was laid
+out on. What fills it in is not a relayout: `ImageTexture3d` tells its
+listeners, the painter binds the texture, and it asks the box to paint again
+through `Decoration3dPaintRequest.onChanged` — Flutter's own callback, and the
+seam any painter with a late resource should use. A painter that ignored it
+would draw the panel's colour for ever and nothing would say why.
+
+Four more, each of which has a reason that is not obvious:
+
+- **A picture is a decoration, not a quad, because there is no rounded clip.**
+  A photograph drawn as geometry of its own would sit square inside a rounded
+  card, and `Clip3dRegion` — an intersection of planes, and so convex — could
+  not cut it. Inside the panel shader it is in the same signed distance field
+  as the colour, so the radius, the border, the state layer, the ripple and
+  the clip planes all reach it. The consequence to remember is the other
+  direction: a picture in a box *inside* a rounded panel is still not clipped
+  by that panel.
+- **A box with no thickness is lit by a normal of nothing.** A slab scaled to
+  exactly zero on an axis has a singular transform, and the panel shader is
+  `lit`, so such a panel comes out **black** — which reads as a picture that
+  failed to bind rather than as geometry with no normal.
+  `BoxDecoration3dPainter.slabTransformFor` holds every axis to
+  `minimumSlabExtent` for that reason, and `Image3d` is the ordinary way to
+  meet it: a picture takes the depth its constraints allow, and a loose
+  surface allows none.
+- **`Image3d` moves its neighbours, once.** It has no size until the picture
+  has one, so a box with loose constraints is empty for a frame and then
+  pushes whatever is beside it aside. This is `RenderImage`'s behaviour and
+  Flutter's advice applies unchanged: give it a `SceneSizedBox3d` when the
+  layout must not move.
+- **An animated image draws its first frame and stands still**, and a
+  decoration cannot cross-fade between two different pictures — one sampler
+  holds one picture, so `BoxDecoration3d.lerp` changes it at the midpoint. A
+  picture appearing or disappearing does fade, because that is one picture at
+  a changing opacity.
+
+**A gradient is uniforms, and it interpolates in sRGB.** Skia interpolates a
+gradient's stops in sRGB with straight alpha, so the panel shader decodes to
+linear *after* the interpolation rather than before it — which is why the stop
+colours are the one parameter on that material deliberately not tagged
+`source_color`. A red-to-green gradient interpolated in linear light is a
+visibly different ramp from the one the same `LinearGradient` draws in two
+dimensions. The ceiling is **eight stops**, past which the ramp is resampled,
+and a `GradientTransform` or a focal radial gradient is refused; all three say
+so once in a debug build rather than drawing something else quietly.
+
 ### A shared glyph atlas repacks, and a panel that has stopped laying out
 loses its labels
 

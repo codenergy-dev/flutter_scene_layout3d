@@ -230,6 +230,7 @@ export 'src/widgets/layouts.dart'
         SceneCustomScrollView3d,
         SceneContainer3d,
         SceneDecoratedBox3d,
+        SceneImage3d,
         SceneDepth3d,
         SceneExpanded3d,
         SceneFittedBox3d,

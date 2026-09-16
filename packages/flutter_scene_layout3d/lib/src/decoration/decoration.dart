@@ -1,6 +1,7 @@
 import 'dart:math' as math;
-import 'dart:ui' show Color, lerpDouble;
+import 'dart:ui' show Color, VoidCallback, lerpDouble;
 
+import 'package:flutter/painting.dart' show ImageConfiguration;
 import 'package:flutter_scene/scene.dart' show Node;
 
 import '../clip.dart';
@@ -295,6 +296,8 @@ class Decoration3dPaintRequest {
     required this.clip,
     required this.basis,
     required this.metrics,
+    this.configuration = ImageConfiguration.empty,
+    this.onChanged,
   });
 
   /// The box's scene node, which the geometry hangs under.
@@ -348,6 +351,27 @@ class Decoration3dPaintRequest {
   /// units itself or wants [Layout3dMetrics.logicalPixelsPerUnit] as a
   /// rasterization resolution.
   final Layout3dMetrics metrics;
+
+  /// What an [ImageProvider] is resolved against, and the reading direction a
+  /// directional alignment is resolved in.
+  ///
+  /// [ImageConfiguration.empty] on the imperative layer unless a box is told
+  /// otherwise; the widget layer fills it from
+  /// `createLocalImageConfiguration`, so an asset picks its `2.0x` variant
+  /// from the window's own device pixel ratio.
+  final ImageConfiguration configuration;
+
+  /// Asks the box to paint again, or null when nothing can.
+  ///
+  /// **The seam for a resource that arrives after the layout that needed
+  /// it**, and it is Flutter's own: `Decoration.createBoxPainter` has taken
+  /// an `onChanged` since the beginning, for exactly this — an image whose
+  /// bytes are still being decoded when the box is painted.
+  ///
+  /// A painter calls it when its resource arrives, and is handed a fresh
+  /// request with the box's current size, state and clip in it. Nothing is
+  /// laid out again: the picture was never a layout input.
+  final VoidCallback? onChanged;
 }
 
 /// Owns the mesh and material behind a [Decoration3d], and keeps them in step

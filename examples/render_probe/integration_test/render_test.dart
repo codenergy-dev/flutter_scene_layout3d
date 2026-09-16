@@ -2343,6 +2343,211 @@ void main() {
       );
     });
   });
+
+  group('a picture on a panel', () {
+    // Which colour is where, always. A picture drawn mirrored, or a gradient
+    // running the wrong way, satisfies every claim of the form "these two
+    // points differ" — which is exactly how the panel shader once shipped
+    // with its border inside out.
+    testWidgets('a picture lands on the panel the way the fit says', (
+      tester,
+    ) async {
+      final capture = await _draw(
+        tester,
+        kProbeScenes.byId('picture_on_a_panel'),
+      );
+      final left = capture.frame.meanColorAt(
+        capture.pointOf('panel', const Offset3d(0.2, 0.5, 0)),
+        radius: 8,
+      );
+      final right = capture.frame.meanColorAt(
+        capture.pointOf('panel', const Offset3d(0.8, 0.5, 0)),
+        radius: 8,
+      );
+      expect(left, isNotNull, reason: 'nothing drew on the left of the panel');
+      expect(right, isNotNull, reason: 'nothing drew on the right');
+      expect(
+        left!.r,
+        greaterThan(left.b),
+        reason:
+            "the left of the panel is not the left of the picture: read $left, "
+            'so the picture is mirrored, or it never bound at all and this is '
+            'the placeholder',
+      );
+      expect(
+        right!.b,
+        greaterThan(right.r),
+        reason:
+            'the right of the panel is not the right of the picture: $right',
+      );
+      // And it is the picture rather than the fill, which is green: neither
+      // half may read as the colour underneath.
+      for (final ink in <ui.Color>[left, right]) {
+        expect(
+          ink.g,
+          lessThan(math.max(ink.r, ink.b)),
+          reason: 'the fill is showing through a covering picture: $ink',
+        );
+      }
+    });
+
+    testWidgets('a contained picture leaves the fill either side of it', (
+      tester,
+    ) async {
+      // The destination rectangle, as a picture rather than as arithmetic: a
+      // square picture in a panel twice as wide keeps its shape, so the
+      // panel's own colour is what a probe finds near the edges.
+      final capture = await _draw(
+        tester,
+        kProbeScenes.byId('picture_contained'),
+      );
+      final edge = capture.frame.meanColorAt(
+        capture.pointOf('panel', const Offset3d(0.04, 0.5, 0)),
+        radius: 5,
+      )!;
+      final middle = capture.frame.meanColorAt(
+        capture.pointOf('panel', const Offset3d(0.42, 0.5, 0)),
+        radius: 8,
+      )!;
+      expect(
+        edge.g,
+        greaterThan(math.max(edge.r, edge.b)),
+        reason:
+            'the picture reached the edge of a panel it was told to fit '
+            'inside: read $edge where the fill should be',
+      );
+      expect(
+        middle.r,
+        greaterThan(middle.g),
+        reason: "the contained picture is not in the panel's middle: $middle",
+      );
+    });
+
+    testWidgets('a corner radius carves the picture too', (tester) async {
+      // The whole reason a picture is a decoration here rather than a quad of
+      // its own: `Clip3dRegion` is convex and cannot express a radius, so the
+      // only thing that can cut a photograph to a rounded card is the shader
+      // that draws the card. The square picture is the control.
+      final square = await _draw(
+        tester,
+        kProbeScenes.byId('picture_on_a_panel'),
+      );
+      final rounded = await _draw(tester, kProbeScenes.byId('picture_rounded'));
+
+      double cornerCoverage(_Capture capture) => capture.frame.coverageAt(
+        capture.pointOf('panel', const Offset3d(0.02, 0.06, 0)),
+        radius: 4,
+      );
+
+      expect(
+        rounded.frame.coverageAt(rounded.centerOf('panel'), radius: 20),
+        greaterThan(0.95),
+        reason: 'the rounded picture did not draw in the middle',
+      );
+      expect(
+        cornerCoverage(square),
+        greaterThan(0.9),
+        reason: 'the square control is not solid at its corner',
+      );
+      expect(
+        cornerCoverage(rounded),
+        lessThan(cornerCoverage(square) - 0.5),
+        reason:
+            'the radius did not carve the picture away at the corner: square '
+            'read ${cornerCoverage(square)}, rounded '
+            '${cornerCoverage(rounded)}',
+      );
+    });
+
+    testWidgets('an Image3d comes out the shape of its picture', (
+      tester,
+    ) async {
+      // The box sized itself, and the layout tree is the oracle for it: the
+      // picture is square, so the box is, and the frame has ink inside its
+      // own edges and none just outside them.
+      final capture = await _draw(tester, kProbeScenes.byId('picture_box'));
+      final box = capture.state.content.probes['picture']!;
+      expect(
+        box.size.width,
+        closeTo(box.size.height, 1e-6),
+        reason: 'the box did not take the square picture\'s shape: ${box.size}',
+      );
+      expect(
+        capture.frame.coverageAt(capture.centerOf('picture'), radius: 12),
+        greaterThan(0.95),
+      );
+      expect(
+        capture.frame.coverageAt(
+          capture.pointOf('picture', const Offset3d(1.6, 0.5, 0)),
+          radius: 6,
+        ),
+        lessThan(0.1),
+        reason: 'something drew well outside the picture box',
+      );
+    });
+
+    testWidgets('a linear gradient runs the way it was written', (
+      tester,
+    ) async {
+      final capture = await _draw(
+        tester,
+        kProbeScenes.byId('linear_gradient_panel'),
+      );
+      final left = capture.frame.meanColorAt(
+        capture.pointOf('panel', const Offset3d(0.08, 0.5, 0)),
+        radius: 6,
+      )!;
+      final middle = capture.frame.meanColorAt(
+        capture.centerOf('panel'),
+        radius: 8,
+      )!;
+      final right = capture.frame.meanColorAt(
+        capture.pointOf('panel', const Offset3d(0.92, 0.5, 0)),
+        radius: 6,
+      )!;
+      expect(
+        left.r,
+        greaterThan(left.b),
+        reason: 'the gradient does not begin in its first colour: $left',
+      );
+      expect(
+        right.b,
+        greaterThan(right.r),
+        reason: 'the gradient does not end in its last colour: $right',
+      );
+      // And it is a ramp rather than two halves: the middle is between them
+      // on both channels, which no swapped or stepped gradient satisfies.
+      expect(middle.r, lessThan(left.r));
+      expect(middle.r, greaterThan(right.r));
+      expect(middle.b, greaterThan(left.b));
+      expect(middle.b, lessThan(right.b));
+    });
+
+    testWidgets('a radial gradient is pale in the middle', (tester) async {
+      final capture = await _draw(
+        tester,
+        kProbeScenes.byId('radial_gradient_panel'),
+      );
+      double luminance(ui.Color ink) =>
+          0.2126 * ink.r + 0.7152 * ink.g + 0.0722 * ink.b;
+      final middle = capture.frame.meanColorAt(
+        capture.centerOf('panel'),
+        radius: 8,
+      )!;
+      final rim = capture.frame.meanColorAt(
+        capture.pointOf('panel', const Offset3d(0.5, 0.04, 0)),
+        radius: 4,
+      )!;
+      expect(
+        luminance(middle),
+        greaterThan(luminance(rim) + 0.1),
+        reason:
+            'the radial gradient is not brighter at its centre than at its '
+            'rim: middle $middle, rim $rim — it may be inside out, or the '
+            'radius may be measured against the wrong side',
+      );
+    });
+  });
 }
 
 extension on List<ProbeScene> {

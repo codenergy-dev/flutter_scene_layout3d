@@ -46,8 +46,52 @@ void main() {
       ]),
     );
     expect(declared, containsAll(<String>['ripple_origin', 'ripple']));
+    expect(
+      declared,
+      containsAll(<String>[
+        'gradient',
+        'gradient_geometry',
+        'image_rect',
+        'image_source',
+        'image_opacity',
+      ]),
+    );
     for (var i = 0; i < Clip3dRegion.maxPlanes; i++) {
       expect(declared, contains('clip_plane_$i'));
+    }
+    for (var i = 0; i < 2; i++) {
+      expect(declared, contains('gradient_stops_$i'));
+    }
+    for (var i = 0; i < GradientUniforms3d.maxStops; i++) {
+      expect(declared, contains('gradient_color_$i'));
+    }
+  });
+
+  test('the picture is a sampler, and every panel has the same one', () {
+    // A picture reaches the panel as a texture on the *same* material rather
+    // than as a quad of its own, which is what puts it inside the signed
+    // distance field — so a corner radius cuts a photograph and a press
+    // ripples across it. One sampler, which is also why a decoration cannot
+    // cross-fade between two pictures.
+    final samplers = compiled.material.parameters
+        .where((parameter) => parameter.type == FmatType.sampler2d)
+        .map((parameter) => parameter.name);
+    expect(samplers, <String>['image_texture']);
+  });
+
+  test('a gradient stop is not tagged as a source colour', () {
+    // The one parameter shape that has to be wrong-looking to be right: these
+    // are interpolated in sRGB and decoded afterwards, as Skia does, so
+    // tagging them `source_color` — which decodes each stop as it is written
+    // — would draw a different ramp from the one the same gradient draws in
+    // two dimensions.
+    final byName = <String, FmatParameter>{
+      for (final parameter in compiled.material.parameters)
+        parameter.name: parameter,
+    };
+    expect(byName['color']!.hint, isNotNull);
+    for (var i = 0; i < GradientUniforms3d.maxStops; i++) {
+      expect(byName['gradient_color_$i']!.hint, isNull);
     }
   });
 

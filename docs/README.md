@@ -28,8 +28,9 @@ several files, guidance for using the engine underneath.
 
 - **[traps.md](traps.md)** — what costs real time and is not obvious from the
   code. The unit contract, staying off the relayout path, the four transform
-  channels, why nothing draws by default, depth ordering, the pointer, drag
-  and clipping edges, and what does and does not mirror in right to left.
+  channels, why nothing draws by default, depth ordering, the clock a picture
+  arrives on, the pointer, drag and clipping edges, and what does and does not
+  mirror in right to left.
   If you are about to write a component, read this first.
 - **[engine-rules.md](engine-rules.md)** — `flutter_scene` diverges from
   three.js, Godot and Unity in specific ways, and most first-attempt failures
@@ -171,6 +172,15 @@ Two entry points:
   viewer. Its most useful finding is about the catalogue: once the rows read
   the ambient direction, every physical padding and every hand-computed
   position in it was suddenly on the wrong side.
+  [A picture on a panel](../packages/flutter_scene_layout3d/plans/2026_09_15_a_picture_on_a_panel.md)
+  is the fifth. A picture and a gradient are parts of the *decoration* rather
+  than things drawn over it, and the reason is a wall this repository already
+  had: there is no rounded clip, so only the signed distance field that carves
+  a card's corners can carve a photograph's. `Image3d` is a box that wears such
+  a decoration and sizes itself to the picture. The asynchronous half is
+  Flutter's `onChanged` rather than a fourth revision counter — an atlas needs
+  counters because its one texture keeps changing under the meshes baked from
+  it, and a picture's arrival is a value anyone can compare.
 
 ## Keeping this true
 

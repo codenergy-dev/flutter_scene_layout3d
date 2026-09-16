@@ -1,8 +1,8 @@
 ---
 status: in progress
-reason: twelve of the seventeen items are open; the record of what shipped, the application widget, the wheel and the key, the test library, and right to left are closed
+reason: eleven of the seventeen items are open; the record of what shipped, the application widget, the wheel and the key, the test library, right to left and the picture are closed
 created_at: 2026-09-11T21:20:18Z
-updated_at: 2026-09-15T20:18:28Z
+updated_at: 2026-09-16T14:40:00Z
 commit: abc2469ce5c4ec4c41e2738fc5acf55bcf40640a
 ---
 
@@ -94,7 +94,7 @@ plan, which is the rule phase 0 established and every phase since has obeyed.
 | ~~[An application that does not wire its own rays](#an-application-that-does-not-wire-its-own-rays)~~ | layout3d | **done** — every application, ninety lines each |
 | ~~[A wheel, a trackpad and a key that reach a box](#a-wheel-a-trackpad-and-a-key-that-reach-a-box)~~ | layout3d | **done** — scrolling on desktop and web; a keyboard that gets into a scene, across it, and out |
 | ~~[A row that reads right to left](#a-row-that-reads-right-to-left)~~ | layout3d | **done** — every non-LTR locale, and the catalogue mirroring with it |
-| [A picture on a panel](#a-picture-on-a-panel) | layout3d | avatars, photographs, gradients, logos |
+| ~~[A picture on a panel](#a-picture-on-a-panel)~~ | layout3d | **done** — avatars, photographs, gradients, logos |
 | [A box that fades](#a-box-that-fades) | layout3d | `Opacity3d`, and every fade in the motion lane |
 | [A letter someone can type](#a-letter-someone-can-type) | layout3d | text fields, forms, search, pickers |
 | [An item that keeps its state](#an-item-that-keeps-its-state) | layout3d | forms in lists; the declarative forms still missing |
@@ -155,7 +155,8 @@ screens demand them:
 ~~[right to left](#a-row-that-reads-right-to-left)~~ — **done**, first of the
 four because the language item waits on it, see
 [its plan](2026_09_15_a_row_that_reads_right_to_left.md) —
-[a picture](#a-picture-on-a-panel),
+~~[a picture](#a-picture-on-a-panel)~~ — **done**, second, see
+[its plan](2026_09_15_a_picture_on_a_panel.md) —
 [an item that keeps its state](#an-item-that-keeps-its-state), and
 [a screen that knows how big it is](#a-screen-that-knows-how-big-it-is).
 
@@ -221,6 +222,14 @@ are where a first implementer's decision becomes someone else's constraint.
   [docs/traps.md](../../../docs/traps.md). An image on a panel arrives the same
   way. Whoever builds [a picture on a panel](#a-picture-on-a-panel) should read
   that trap first and generalize the counter rather than invent a fourth one.
+  **Settled, and the advice was half wrong:** the picture needs no counter at
+  all. An atlas has three because it is one texture whose contents keep
+  changing under meshes already baked from it; a picture's arrival is a value —
+  a texture that was null and now is not — that a consumer can simply compare.
+  What generalized instead is Flutter's own `onChanged`, now
+  `Decoration3dPaintRequest.onChanged`: the way anything that arrives late asks
+  to be drawn again without a relayout. The next asynchronous resource — a
+  video frame, a remote icon — uses that and adds no counter either.
 - **Motion and the relayout path.** The animation tiers exist and are the whole
   reason a ripple is affordable: repaint-only, node-only, and implicit for when
   a size really changed. Every item in the motion lane must land on the first
@@ -237,10 +246,16 @@ are where a first implementer's decision becomes someone else's constraint.
 - **A rounded clip still does not exist.** `Clip3dRegion` is an intersection of
   planes, so it is convex, and a corner radius is carved by the panel shader
   rather than clipped. Anything on this map that wants to cut a child to a
-  rounded container — a card's `clipBehavior`, an image filling a rounded
-  panel, a tab indicator inside a rounded bar — meets that wall. The first
-  plan that genuinely needs it owns carrying a *shape* into the clip contract,
-  and it is a real piece of work rather than a parameter.
+  rounded container — a card's `clipBehavior`, a tab indicator inside a rounded
+  bar — meets that wall. The first plan that genuinely needs it owns carrying a
+  *shape* into the clip contract, and it is a real piece of work rather than a
+  parameter. **One of the three cases listed here went around it instead:** an
+  image filling a rounded panel is drawn *by* the panel shader, inside the same
+  signed distance field that carves the corners, which is why
+  [a picture](#a-picture-on-a-panel) is a decoration rather than a quad. That
+  is the shape of the workaround for anything else that can be expressed as a
+  parameter of the surface it sits on — and it does nothing for a child
+  overflowing a rounded card, which is still the wall.
 - **A target reaches past its own extent and its parent does not.** Every new
   interactive component in the catalogue lane obeys the placement rule from
   [a tap target that delivers a press](2026_09_02_a_tap_target_that_delivers_a_press.md):
@@ -390,6 +405,20 @@ Consumed by
 
 **Package:** `flutter_scene_layout3d`.
 **Slug:** `a_picture_on_a_panel`.
+**Closed** by
+[its own plan](2026_09_15_a_picture_on_a_panel.md). The entry below is what it
+was reasoned from. What that reasoning got wrong, in short: the first of its
+three decisions was already settled by a wall this map names elsewhere — with
+no rounded clip, only the shader that carves a card's corners can carve a
+photograph's, so a picture had to be a decoration; the counter it asked for
+should not exist, because a picture's arrival is a value rather than a change
+inside a shared resource, and what generalized was Flutter's `onChanged`; and
+the gradient's real question was not the shader's cost but uniforms against a
+baked ramp, which turns on animation and on the fact that Skia interpolates in
+sRGB. The defect it found was in neither half: a slab with no thickness has a
+singular transform and no normal, so **every zero-depth panel has always been
+drawn black**, and a box that sizes itself to a picture is the first thing that
+ever had one.
 
 **There is no way to put an image in a layout.** No `Image3d`, no
 `ImageProvider` path anywhere, and `BoxDecoration3d` carries `color`,
@@ -693,8 +722,10 @@ should be grouped by what they actually need:
   interestingly, a design answer: what *is* a scrollbar beside a surface in a
   room, when the thing it measures is a plane the viewer may be looking at
   edge-on.
-- `CircleAvatar3d` and `DataTable3d` want
-  [a picture on a panel](#a-picture-on-a-panel).
+- `CircleAvatar3d` and `DataTable3d` wanted
+  [a picture on a panel](#a-picture-on-a-panel), which is **done**: a circular
+  avatar is an `Image3d` with a radius on it, and the gallery's inbox has five
+  of them.
 - `RangeSlider3d` is a second arena problem rather than a second thumb — two
   thumbs competing for one pointer — and phase 7 said so.
 - `AlertDialog3d` is a column and a row inside `Dialog3d` and phase 6

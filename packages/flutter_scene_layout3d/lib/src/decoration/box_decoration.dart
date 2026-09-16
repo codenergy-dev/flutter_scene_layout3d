@@ -1,5 +1,6 @@
-import 'dart:ui' show Color, lerpDouble;
+import 'dart:ui' show Color, Size, lerpDouble;
 
+import 'package:flutter/painting.dart' show Gradient, TextDirection;
 import 'package:flutter_scene/scene.dart' show MaterialParameters;
 import 'package:vector_math/vector_math.dart' show Vector2, Vector3, Vector4;
 
@@ -9,6 +10,8 @@ import '../geometry/offset3d.dart';
 import '../geometry/size3d.dart';
 import '../metrics.dart';
 import 'decoration.dart';
+import 'decoration_image.dart';
+import 'gradient.dart';
 
 /// A line drawn around the outside of a decoration.
 ///
@@ -84,6 +87,8 @@ class BoxDecoration3d extends Decoration3d implements Decoration3dElevation {
   /// Creates a panel decoration.
   const BoxDecoration3d({
     this.color = const Color(0xFFFFFFFF),
+    this.gradient,
+    this.image,
     this.borderRadius = BorderRadius3d.zero,
     this.bevel = 0.0,
     this.border = Border3d.none,
@@ -93,7 +98,30 @@ class BoxDecoration3d extends Decoration3d implements Decoration3dElevation {
        assert(elevation >= 0.0);
 
   /// The slab's colour.
+  ///
+  /// Ignored when there is a [gradient], exactly as `BoxDecoration.color` is.
   final Color color;
+
+  /// A gradient filling the slab in place of [color], or null for none.
+  ///
+  /// Flutter's own [LinearGradient], [RadialGradient] and [SweepGradient],
+  /// evaluated by the panel shader against the box's face — so it is exact at
+  /// any size and any aspect ratio, and animating one costs a parameter write
+  /// like everything else here.
+  ///
+  /// Two limits, both reported once in a debug build rather than ignored:
+  /// **eight stops** ([GradientUniforms3d.maxStops]), past which the ramp is
+  /// resampled, and no [Gradient.transform] or [RadialGradient.focal], which
+  /// the shader has no arithmetic for.
+  final Gradient? gradient;
+
+  /// A picture drawn over the fill, or null for none.
+  ///
+  /// Drawn *by the panel shader*, which is what makes the corner radius cut
+  /// it — there is no rounded clip in this package, so a photograph drawn any
+  /// other way would sit square inside a rounded card. It arrives on its own
+  /// clock; see [ImageTexture3d].
+  final DecorationImage3d? image;
 
   /// The four in-plane corner radii, in logical pixels.
   final BorderRadius3d borderRadius;
@@ -170,10 +198,13 @@ class BoxDecoration3d extends Decoration3d implements Decoration3dElevation {
 
   /// A copy with the given fields replaced.
   ///
-  /// [surfaceTint] cannot be cleared this way; construct a new decoration for
-  /// that, the way `copyWith` on a nullable field always has to be used.
+  /// [gradient], [image] and [surfaceTint] cannot be cleared this way;
+  /// construct a new decoration for that, the way `copyWith` on a nullable
+  /// field always has to be used.
   BoxDecoration3d copyWith({
     Color? color,
+    Gradient? gradient,
+    DecorationImage3d? image,
     BorderRadius3d? borderRadius,
     double? bevel,
     Border3d? border,
@@ -181,6 +212,8 @@ class BoxDecoration3d extends Decoration3d implements Decoration3dElevation {
     Color? surfaceTint,
   }) => BoxDecoration3d(
     color: color ?? this.color,
+    gradient: gradient ?? this.gradient,
+    image: image ?? this.image,
     borderRadius: borderRadius ?? this.borderRadius,
     bevel: bevel ?? this.bevel,
     border: border ?? this.border,
@@ -197,6 +230,8 @@ class BoxDecoration3d extends Decoration3d implements Decoration3dElevation {
   static BoxDecoration3d lerp(BoxDecoration3d a, BoxDecoration3d b, double t) =>
       BoxDecoration3d(
         color: Color.lerp(a.color, b.color, t)!,
+        gradient: Gradient.lerp(a.gradient, b.gradient, t),
+        image: DecorationImage3d.lerp(a.image, b.image, t),
         borderRadius: BorderRadius3d.lerp(a.borderRadius, b.borderRadius, t),
         bevel: lerpDouble(a.bevel, b.bevel, t)!.clamp(0.0, double.infinity),
         border: Border3d.lerp(a.border, b.border, t),
@@ -255,6 +290,8 @@ class BoxDecoration3d extends Decoration3d implements Decoration3dElevation {
   bool operator ==(Object other) =>
       other is BoxDecoration3d &&
       other.color == color &&
+      other.gradient == gradient &&
+      other.image == image &&
       other.borderRadius == borderRadius &&
       other.bevel == bevel &&
       other.border == border &&
@@ -262,8 +299,16 @@ class BoxDecoration3d extends Decoration3d implements Decoration3dElevation {
       other.surfaceTint == surfaceTint;
 
   @override
-  int get hashCode =>
-      Object.hash(color, borderRadius, bevel, border, elevation, surfaceTint);
+  int get hashCode => Object.hash(
+    color,
+    gradient,
+    image,
+    borderRadius,
+    bevel,
+    border,
+    elevation,
+    surfaceTint,
+  );
 
   @override
   String toString() =>
@@ -293,6 +338,8 @@ class BoxDecoration3dUniforms {
     required this.stateLayerColor,
     required this.surfaceTintColor,
     required this.clipPlanes,
+    this.gradient,
+    this.image = ImageUniforms3d.none,
     this.rippleOrigin = Offset3d.zero,
     this.rippleRadius = 0.0,
     this.rippleOpacity = 0.0,
@@ -317,6 +364,9 @@ class BoxDecoration3dUniforms {
     required Layout3dMetrics metrics,
     StateLayer3d stateLayer = StateLayer3d.none,
     Clip3dRegion clip = Clip3dRegion.none,
+    Size? imagePixelSize,
+    double imageScale = 1.0,
+    TextDirection? textDirection,
   }) {
     final radius = (decoration.borderRadius * metrics.unitsPerLogicalPixel)
         .resolve(size);
@@ -327,6 +377,8 @@ class BoxDecoration3dUniforms {
         : metrics.dp(decoration.border.width).clamp(0.0, halfFace);
     final tint = decoration.surfaceTint;
     final ripple = stateLayer.ripple;
+    final gradient = decoration.gradient;
+    final image = decoration.image;
     return BoxDecoration3dUniforms(
       halfExtent: size * 0.5,
       radius: radius,
@@ -345,6 +397,23 @@ class BoxDecoration3dUniforms {
                   BoxDecoration3d.surfaceTintOpacityFor(decoration.elevation),
             ),
       clipPlanes: clip.toPlaneBlock(),
+      gradient: gradient == null
+          ? null
+          : GradientUniforms3d.resolve(
+              gradient: gradient,
+              size: size,
+              textDirection: textDirection,
+            ),
+      image: image == null
+          ? ImageUniforms3d.none
+          : ImageUniforms3d.resolve(
+              image: image,
+              size: size,
+              metrics: metrics,
+              pixelSize: imagePixelSize,
+              imageScale: imageScale,
+              textDirection: textDirection,
+            ),
       rippleOrigin: ripple?.origin ?? Offset3d.zero,
       rippleRadius: ripple?.radius ?? 0.0,
       rippleOpacity: ripple == null ? 0.0 : stateLayer.color.a * ripple.opacity,
@@ -379,6 +448,18 @@ class BoxDecoration3dUniforms {
   /// The clip block, `xyz` a normal and `w` a distance, padded to
   /// [Clip3dRegion.maxPlanes] entries.
   final List<double> clipPlanes;
+
+  /// The gradient filling the slab, or null for none — including for a
+  /// gradient this package cannot draw, which is reported rather than
+  /// substituted.
+  final GradientUniforms3d? gradient;
+
+  /// Where the picture lands, and how much of it to draw.
+  ///
+  /// [ImageUniforms3d.none] when the decoration has no picture **and while it
+  /// has one that has not arrived**, which is what keeps a panel from drawing
+  /// the sampler's white placeholder over its own colour for a frame.
+  final ImageUniforms3d image;
 
   /// Where the press ripple is centred, in world units, in the box's own
   /// frame with the origin at its corner.
@@ -437,7 +518,65 @@ class BoxDecoration3dUniforms {
       ..setColor('state_layer', stateLayerColor)
       ..setVec2('ripple_origin', Vector2(rippleOrigin.x, rippleOrigin.y))
       ..setVec2('ripple', Vector2(rippleRadius, rippleOpacity))
-      ..setColor('surface_tint', surfaceTintColor);
+      ..setColor('surface_tint', surfaceTintColor)
+      ..setVec4(
+        'image_rect',
+        Vector4(
+          image.destination.left,
+          image.destination.top,
+          image.destination.width,
+          image.destination.height,
+        ),
+      )
+      ..setVec4(
+        'image_source',
+        Vector4(
+          image.source.left,
+          image.source.top,
+          image.source.right,
+          image.source.bottom,
+        ),
+      )
+      ..setFloat('image_opacity', image.opacity);
+    final gradient = this.gradient;
+    final descriptor = gradient?.descriptor ?? const <double>[0, 0, 0, 0];
+    parameters
+      ..setVec4(
+        'gradient',
+        Vector4(descriptor[0], descriptor[1], descriptor[2], descriptor[3]),
+      )
+      ..setVec4(
+        'gradient_geometry',
+        gradient == null
+            ? Vector4.zero()
+            : Vector4(
+                gradient.geometry[0],
+                gradient.geometry[1],
+                gradient.geometry[2],
+                gradient.geometry[3],
+              ),
+      );
+    for (var i = 0; i < 2; i++) {
+      final stops = gradient?.stopVector(i) ?? const <double>[0, 0, 0, 0];
+      parameters.setVec4(
+        'gradient_stops_$i',
+        Vector4(stops[0], stops[1], stops[2], stops[3]),
+      );
+    }
+    for (var i = 0; i < GradientUniforms3d.maxStops; i++) {
+      final colors = gradient?.colors;
+      final color = colors != null && i < colors.length
+          ? colors[i]
+          : const Color(0x00000000);
+      // **`setVec4`, not `setColor`.** These are the sRGB values the shader
+      // interpolates between before it decodes them, and `setColor` would
+      // decode each stop on its own — which is a different colour ramp, and
+      // not the one the same gradient draws in two dimensions.
+      parameters.setVec4(
+        'gradient_color_$i',
+        Vector4(color.r, color.g, color.b, color.a),
+      );
+    }
     for (var i = 0; i < Clip3dRegion.maxPlanes; i++) {
       parameters.setVec4(
         'clip_plane_$i',

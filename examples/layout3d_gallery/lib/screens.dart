@@ -1,3 +1,6 @@
+import 'dart:ui' as ui;
+
+import 'package:flutter/foundation.dart' show SynchronousFuture;
 import 'package:flutter/material.dart' show Icons;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_scene_layout3d/widgets.dart';
@@ -108,9 +111,46 @@ class _MaterialScreenState extends State<MaterialScreen> {
   /// the bar above it. A card in it stays `raised` all the same — the window
   /// cuts the face and leaves the depth alone.
   Widget _inbox(BuildContext context) {
+    final theme = Theme3d.of(context);
     return SceneColumn3d(
       crossAxisAlignment: CrossAxisAlignment3d.stretch,
       children: <Widget>[
+        // A gradient, because a brand has one and `BoxDecoration3d` now draws
+        // one: it is evaluated by the panel shader against the box's own face,
+        // so it is exact at this size and would be exact at any other.
+        ScenePadding3d(
+          padding: _insets(
+            context,
+            const EdgeInsets3d.symmetric(horizontal: 12, vertical: 8),
+          ),
+          child: SceneSizedBox3d(
+            height: _dp(context, 56),
+            depth: _dp(context, theme.thickness.raised),
+            child: SceneDecoratedBox3d(
+              decoration: BoxDecoration3d(
+                borderRadius: const BorderRadius3d.circular(16),
+                gradient: LinearGradient(
+                  begin: AlignmentDirectional.centerStart,
+                  end: AlignmentDirectional.centerEnd,
+                  colors: <Color>[
+                    theme.colorScheme.primaryContainer,
+                    theme.colorScheme.tertiaryContainer,
+                  ],
+                ),
+              ),
+              child: SceneAlign3d(
+                alignment: Alignment3d.frontCenter,
+                child: SceneText3d(
+                  '${_messages.length} messages',
+                  style: theme.textStyle(
+                    Typography3dToken.titleMedium,
+                    color: theme.colorScheme.onPrimaryContainer,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
         ScenePadding3d(
           padding: _insets(context, const EdgeInsets3d.all(8)),
           child: SceneRow3d(
@@ -141,7 +181,21 @@ class _MaterialScreenState extends State<MaterialScreen> {
                     onTap: () => _say(context, 'Opened ${_messages[index].$1}'),
                     semanticLabel: _messages[index].$1,
                     child: ListTile3d(
-                      leading: const Icon3d(Icons.person),
+                      // A photograph, cut to a circle by the panel that draws
+                      // it. There is no rounded clip in this package — a clip
+                      // region is an intersection of planes, and so convex —
+                      // so the only thing that can round a picture is the
+                      // signed distance field it is sampled inside, which is
+                      // why a picture is a decoration here.
+                      leading: SceneSizedBox3d(
+                        width: _dp(context, 40),
+                        height: _dp(context, 40),
+                        child: SceneImage3d(
+                          image: GalleryAvatar(index),
+                          fit: BoxFit.cover,
+                          borderRadius: const BorderRadius3d.circular(20),
+                        ),
+                      ),
                       title: SceneText3d(_messages[index].$1),
                       subtitle: SceneText3d(_messages[index].$2),
                       trailing: Checkbox3d(
@@ -356,6 +410,74 @@ class _TableScreenState extends State<TableScreen> {
   ];
 
   static const List<String> _tableLabels = <String>['Route', 'Break', 'Agenda'];
+}
+
+/// One sender's avatar, drawn in code rather than loaded from an asset.
+///
+/// The gallery commits no assets — it is generated with `flutter create` — so
+/// its pictures are painted into a `ui.Image` at startup, which is also the
+/// honest demonstration: an `ImageProvider` is an `ImageProvider`, and
+/// `SceneImage3d` neither knows nor cares where its pixels came from.
+class GalleryAvatar extends ImageProvider<GalleryAvatar> {
+  const GalleryAvatar(this.seed);
+
+  /// Which of the five avatars this is.
+  final int seed;
+
+  static const List<(Color, Color)> _palette = <(Color, Color)>[
+    (Color(0xFF6D8CFF), Color(0xFF3C1E7A)),
+    (Color(0xFF4FD1C5), Color(0xFF134E4A)),
+    (Color(0xFFF6A94A), Color(0xFF7A3B0F)),
+    (Color(0xFFE879A6), Color(0xFF6B1440)),
+    (Color(0xFF9CE37D), Color(0xFF1F5130)),
+  ];
+
+  @override
+  Future<GalleryAvatar> obtainKey(ImageConfiguration configuration) =>
+      SynchronousFuture<GalleryAvatar>(this);
+
+  @override
+  ImageStreamCompleter loadImage(
+    GalleryAvatar key,
+    ImageDecoderCallback decode,
+  ) => OneFrameImageStreamCompleter(_paint());
+
+  Future<ImageInfo> _paint() async {
+    const edge = 96.0;
+    final (from, to) = _palette[seed % _palette.length];
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder);
+    const bounds = Rect.fromLTWH(0, 0, edge, edge);
+    canvas.drawRect(
+      bounds,
+      Paint()
+        ..shader = ui.Gradient.linear(
+          bounds.topLeft,
+          bounds.bottomRight,
+          <Color>[from, to],
+        ),
+    );
+    canvas.drawCircle(
+      const Offset(edge * 0.5, edge * 0.38),
+      edge * 0.17,
+      Paint()..color = const Color(0x66FFFFFF),
+    );
+    canvas.drawOval(
+      const Rect.fromLTWH(edge * 0.2, edge * 0.6, edge * 0.6, edge * 0.5),
+      Paint()..color = const Color(0x66FFFFFF),
+    );
+    final picture = recorder.endRecording();
+    final image = await picture.toImage(edge.round(), edge.round());
+    picture.dispose();
+    return ImageInfo(image: image);
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is GalleryAvatar && other.seed == seed;
+
+  @override
+  int get hashCode => seed;
 }
 
 /// A dp figure as world units, read from the surface's unit contract.

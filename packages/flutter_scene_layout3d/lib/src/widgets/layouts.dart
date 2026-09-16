@@ -1,3 +1,5 @@
+import 'dart:typed_data' show Uint8List;
+
 import 'package:flutter/gestures.dart'
     show
         GestureDragCancelCallback,
@@ -12,14 +14,25 @@ import 'package:flutter/gestures.dart'
 import 'package:flutter/semantics.dart' show SemanticsProperties;
 import 'package:flutter/widgets.dart'
     show
+        Alignment,
+        AlignmentGeometry,
+        AssetBundle,
+        AssetImage,
+        BoxFit,
         BuildContext,
         Action,
         DefaultTextStyle,
         Directionality,
+        ExactAssetImage,
         FocusNode,
         FocusOnKeyEventCallback,
+        ImageConfiguration,
+        ImageErrorListener,
+        ImageProvider,
         IndexedWidgetBuilder,
         Intent,
+        MemoryImage,
+        NetworkImage,
         ShortcutActivator,
         TextAlign,
         TextDirection,
@@ -27,7 +40,8 @@ import 'package:flutter/widgets.dart'
         TextStyle,
         ValueChanged,
         VerticalDirection,
-        Widget;
+        Widget,
+        createLocalImageConfiguration;
 import 'package:flutter_scene/scene.dart' show Node;
 import 'package:vector_math/vector_math.dart' show Matrix4;
 
@@ -49,9 +63,12 @@ import '../boxes/stack.dart';
 import '../boxes/table.dart';
 import '../boxes/wrap.dart';
 import '../clip.dart';
+import '../decoration/box_decoration.dart';
 import '../decoration/decorated_box.dart';
 import '../decoration/decoration.dart';
+import '../decoration/image3d.dart';
 import '../geometry/alignment3d.dart';
+import '../geometry/border_radius3d.dart';
 import '../geometry/constraints3d.dart';
 import '../geometry/edge_insets3d.dart';
 import '../geometry/offset3d.dart';
@@ -926,15 +943,174 @@ class SceneDecoratedBox3d extends SingleChildLayout3dWidget {
   /// The hover, focus, press or drag overlay in force.
   final StateLayer3d stateLayer;
 
+  /// What a picture is resolved against, and what a directional alignment is
+  /// read in.
+  ///
+  /// Only worked out when the decoration has something that needs it, because
+  /// `createLocalImageConfiguration` makes this widget depend on the media
+  /// query, the locale and the asset bundle — which for a screen of panels
+  /// with nothing but colours on them is a rebuild every one of them would
+  /// take for no reason.
+  static ImageConfiguration configurationFor(
+    BuildContext context,
+    Decoration3d decoration,
+  ) {
+    if (decoration is! BoxDecoration3d) return ImageConfiguration.empty;
+    if (decoration.image != null) return createLocalImageConfiguration(context);
+    if (decoration.gradient != null) {
+      return ImageConfiguration(textDirection: Directionality.maybeOf(context));
+    }
+    return ImageConfiguration.empty;
+  }
+
   @override
-  DecoratedBox3d createLayout(BuildContext context) =>
-      DecoratedBox3d(decoration: decoration, stateLayer: stateLayer);
+  DecoratedBox3d createLayout(BuildContext context) => DecoratedBox3d(
+    decoration: decoration,
+    stateLayer: stateLayer,
+    configuration: configurationFor(context, decoration),
+  );
 
   @override
   void updateLayout(BuildContext context, DecoratedBox3d layout) {
     layout
       ..decoration = decoration
-      ..stateLayer = stateLayer;
+      ..stateLayer = stateLayer
+      ..configuration = configurationFor(context, decoration);
+  }
+}
+
+/// A picture, the widget form of [Image3d].
+///
+/// ```dart
+/// SceneImage3d.asset('assets/avatar.jpg', fit: BoxFit.cover,
+///     borderRadius: const BorderRadius3d.circular(999))
+/// ```
+///
+/// The provider is resolved against `createLocalImageConfiguration`, so an
+/// asset picks the variant the window's device pixel ratio asks for and a
+/// directional alignment reads the ambient [Directionality] — exactly as
+/// Flutter's own `Image` does.
+///
+/// **It sizes itself to the picture, and the picture arrives late**, so a box
+/// with loose constraints is empty for a frame or two and then pushes its
+/// neighbours aside once. Wrap it in a [SceneSizedBox3d] when the layout must
+/// not move.
+class SceneImage3d extends Layout3dWidget {
+  /// Creates a box drawing [image].
+  const SceneImage3d({
+    super.key,
+    required this.image,
+    this.fit,
+    this.alignment = Alignment.center,
+    this.opacity = 1.0,
+    this.matchTextDirection = false,
+    this.onError,
+    this.borderRadius = BorderRadius3d.zero,
+    this.border = Border3d.none,
+  });
+
+  /// Draws an image from the application's asset bundle, as `Image.asset`
+  /// does.
+  SceneImage3d.asset(
+    String name, {
+    super.key,
+    AssetBundle? bundle,
+    String? package,
+    double? scale,
+    this.fit,
+    this.alignment = Alignment.center,
+    this.opacity = 1.0,
+    this.matchTextDirection = false,
+    this.onError,
+    this.borderRadius = BorderRadius3d.zero,
+    this.border = Border3d.none,
+  }) : image = scale == null
+           ? AssetImage(name, bundle: bundle, package: package)
+           : ExactAssetImage(
+               name,
+               bundle: bundle,
+               package: package,
+               scale: scale,
+             );
+
+  /// Draws an image from the network, as `Image.network` does.
+  SceneImage3d.network(
+    String src, {
+    super.key,
+    double scale = 1.0,
+    Map<String, String>? headers,
+    this.fit,
+    this.alignment = Alignment.center,
+    this.opacity = 1.0,
+    this.matchTextDirection = false,
+    this.onError,
+    this.borderRadius = BorderRadius3d.zero,
+    this.border = Border3d.none,
+  }) : image = NetworkImage(src, scale: scale, headers: headers);
+
+  /// Draws an image from bytes already in memory, as `Image.memory` does.
+  SceneImage3d.memory(
+    Uint8List bytes, {
+    super.key,
+    double scale = 1.0,
+    this.fit,
+    this.alignment = Alignment.center,
+    this.opacity = 1.0,
+    this.matchTextDirection = false,
+    this.onError,
+    this.borderRadius = BorderRadius3d.zero,
+    this.border = Border3d.none,
+  }) : image = MemoryImage(bytes, scale: scale);
+
+  /// Where the pixels come from.
+  final ImageProvider image;
+
+  /// How the picture fills the box, or null for [BoxFit.scaleDown].
+  final BoxFit? fit;
+
+  /// Where the picture sits inside the box.
+  final AlignmentGeometry alignment;
+
+  /// How much of the picture to draw.
+  final double opacity;
+
+  /// Whether the picture is mirrored in a right-to-left reading.
+  final bool matchTextDirection;
+
+  /// Called when the picture cannot be loaded.
+  final ImageErrorListener? onError;
+
+  /// The corners the picture is cut to, in logical pixels.
+  final BorderRadius3d borderRadius;
+
+  /// A line drawn round the picture, inside its outline.
+  final Border3d border;
+
+  @override
+  Image3d createLayout(BuildContext context) => Image3d(
+    image: image,
+    fit: fit,
+    alignment: alignment,
+    opacity: opacity,
+    matchTextDirection: matchTextDirection,
+    onError: onError,
+    borderRadius: borderRadius,
+    border: border,
+    configuration: createLocalImageConfiguration(context),
+  );
+
+  @override
+  void updateLayout(BuildContext context, Image3d layout) {
+    layout
+      ..image = image
+      ..fit = fit
+      ..alignment = alignment
+      ..opacity = opacity
+      ..matchTextDirection = matchTextDirection
+      ..onError = onError
+      ..borderRadius = borderRadius
+      ..border = border
+      ..configuration = createLocalImageConfiguration(context);
   }
 }
 

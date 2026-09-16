@@ -1,9 +1,21 @@
+import 'dart:math' as math;
+import 'dart:ui' show VoidCallback;
+
+import 'package:flutter/painting.dart' show ImageErrorListener;
 import 'package:flutter_scene/scene.dart'
-    show GeometryBuilder, Mesh, MeshGeometry, Node, PreprocessedMaterial;
+    show
+        GeometryBuilder,
+        Mesh,
+        MeshGeometry,
+        Node,
+        PreprocessedMaterial,
+        TextureSource;
 import 'package:vector_math/vector_math.dart' show Matrix4, Vector3, Vector4;
 
+import '../geometry/size3d.dart';
 import 'box_decoration.dart';
 import 'decoration.dart';
+import 'decoration_image.dart';
 
 /// Draws every [BoxDecoration3d] in a tree with one mesh and one material per
 /// box.
@@ -59,11 +71,17 @@ class BoxDecoration3dPainter implements Decoration3dPainter {
   BoxDecoration3dPainter({
     required PreprocessedMaterial Function() createMaterial,
     MeshGeometry Function()? createGeometry,
+    ImageTexture3dCache? pictures,
   }) : _createMaterial = createMaterial,
-       _createGeometry = createGeometry ?? buildUnitSlab;
+       _createGeometry = createGeometry ?? buildUnitSlab,
+       _pictures = pictures ?? ImageTexture3dCache.shared;
 
   final PreprocessedMaterial Function() _createMaterial;
   final MeshGeometry Function() _createGeometry;
+
+  /// Where the pictures come from, shared with every other painter unless a
+  /// caller says otherwise.
+  final ImageTexture3dCache _pictures;
 
   MeshGeometry? _geometry;
   final Map<Node, _Slab> _slabs = <Node, _Slab>{};
@@ -92,12 +110,26 @@ class BoxDecoration3dPainter implements Decoration3dPainter {
     // that is the whole point — and a box that animates from a chip to a
     // sheet writes these sixteen floats and nothing else.
     final size = request.size;
-    final centre = size.center;
-    slab.node.localTransform = Matrix4.translationValues(
-      centre.x,
-      centre.y,
-      centre.z,
-    ).multiplied(Matrix4.diagonal3Values(size.width, size.height, size.depth));
+    slab.node.localTransform = slabTransformFor(size);
+
+    // The picture, which may not be here yet. Acquiring is synchronous and
+    // hands back an object with nothing in it; what fills it in is the
+    // listener below, which asks the box to paint again — the one thing a
+    // painter cannot do for itself.
+    slab.onChanged = request.onChanged;
+    final picture = _syncPicture(slab, request);
+    final texture = picture?.texture;
+    if (texture != null && !identical(texture, slab.bound)) {
+      final sampled = texture.sampledTexture;
+      if (sampled != null) {
+        slab.bound = texture;
+        slab.material.parameters.setTexture(
+          'image_texture',
+          sampled,
+          sampler: texture.sampledSampler,
+        );
+      }
+    }
 
     BoxDecoration3dUniforms.resolve(
       decoration: decoration,
@@ -105,23 +137,114 @@ class BoxDecoration3dPainter implements Decoration3dPainter {
       metrics: request.metrics,
       stateLayer: request.stateLayer,
       clip: request.clip,
+      // Only once the texture is actually bound. A picture whose size is
+      // known but whose pixels are not would otherwise be drawn as the
+      // sampler's white placeholder — the same defect a glyph mesh attached
+      // before its atlas shows as black rectangles where the letters go.
+      imagePixelSize: identical(slab.bound, texture)
+          ? picture?.pixelSize
+          : null,
+      imageScale: picture?.scale ?? 1.0,
+      textDirection: request.configuration.textDirection,
     ).applyTo(slab.material.parameters);
+  }
+
+  /// Points [slab] at the picture its decoration names, acquiring and
+  /// releasing as that changes.
+  ImageTexture3d? _syncPicture(_Slab slab, Decoration3dPaintRequest request) {
+    final image = (request.decoration as BoxDecoration3d).image;
+    final wanted = image?.image;
+    final held = slab.picture;
+    final configuration = ImageTexture3dCache.keyConfigurationOf(
+      request.configuration,
+    );
+    if (held != null &&
+        wanted == held.provider &&
+        configuration == held.configuration) {
+      // The same picture, and possibly a different listener for a failure to
+      // load it: a decoration can be rebuilt with a new `onError` without
+      // changing which pixels it wants.
+      final onError = image?.onError;
+      if (onError != slab.onError) {
+        final previous = slab.onError;
+        if (previous != null) held.removeErrorListener(previous);
+        slab.onError = onError;
+        if (onError != null) held.addErrorListener(onError);
+      }
+      return held;
+    }
+    _releasePicture(slab);
+    if (image == null) return null;
+    final picture = slab.picture = _pictures.acquire(
+      image.image,
+      request.configuration,
+    );
+    picture.addListener(slab.repaint);
+    final onError = slab.onError = image.onError;
+    if (onError != null) picture.addErrorListener(onError);
+    return picture;
+  }
+
+  void _releasePicture(_Slab slab) {
+    final picture = slab.picture;
+    if (picture == null) return;
+    picture.removeListener(slab.repaint);
+    final onError = slab.onError;
+    if (onError != null) picture.removeErrorListener(onError);
+    slab.onError = null;
+    slab.picture = null;
+    slab.bound = null;
+    _pictures.release(picture);
   }
 
   @override
   void release(Node node) {
     final slab = _slabs.remove(node);
     if (slab == null) return;
+    _releasePicture(slab);
     node.remove(slab.node);
   }
 
   @override
   void dispose() {
     for (final entry in _slabs.entries) {
+      _releasePicture(entry.value);
       entry.key.remove(entry.value.node);
     }
     _slabs.clear();
     _geometry = null;
+  }
+
+  /// The thinnest a slab is ever drawn, in world units.
+  ///
+  /// A hundredth of a logical pixel at the standard rate, which is invisible,
+  /// and the reason it is not zero is [slabTransformFor].
+  static const double minimumSlabExtent = 1e-4;
+
+  /// The transform that puts the shared unit slab onto a box of [size]: a
+  /// scale to the extent and a move to the box's centre.
+  ///
+  /// A scale is not a rebuild — that is the whole point — and a box that
+  /// animates from a chip to a sheet writes these sixteen floats and nothing
+  /// else.
+  ///
+  /// **No axis is ever scaled to exactly zero**, and that is not tidiness. A
+  /// singular transform has no normal matrix, so a slab with no thickness is
+  /// lit by a normal of nothing and comes out **black** — which looks like a
+  /// missing texture rather than like missing geometry, and is the one thing
+  /// about this shader that a colour probe cannot tell from a defect in the
+  /// picture. A box with no depth is not exotic either: [Image3d] takes the
+  /// depth its constraints allow, and in a loose surface that is none, so an
+  /// ordinary photograph on its own is exactly the case that meets it.
+  static Matrix4 slabTransformFor(Size3d size) {
+    final centre = size.center;
+    return Matrix4.translationValues(centre.x, centre.y, centre.z).multiplied(
+      Matrix4.diagonal3Values(
+        math.max(size.width, minimumSlabExtent),
+        math.max(size.height, minimumSlabExtent),
+        math.max(size.depth, minimumSlabExtent),
+      ),
+    );
   }
 
   /// The shared slab: a unit cube, centred on the origin, whose vertex
@@ -210,4 +333,18 @@ class _Slab {
 
   final Node node;
   final PreprocessedMaterial material;
+
+  /// The picture this box is waiting for or drawing, and the texture that
+  /// has actually been bound to the material — which is not the same
+  /// question, since a picture reports its size before its pixels.
+  ImageTexture3d? picture;
+  TextureSource? bound;
+  ImageErrorListener? onError;
+
+  /// The box's own way of asking for another paint. Kept per slab because a
+  /// painter is shared between boxes and the picture's listener has to wake
+  /// the right one.
+  VoidCallback? onChanged;
+
+  void repaint() => onChanged?.call();
 }

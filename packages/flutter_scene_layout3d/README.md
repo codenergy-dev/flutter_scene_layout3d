@@ -760,6 +760,96 @@ frame from a `Ticker` and nothing is laid out or rebuilt.
 `flutter_scene_material3d`'s `InkRipple3dRun` is that timeline with the
 `Ticker` taken out of it, and its `InkWell3d` is where a press turns into one.
 
+### A picture on a panel, and a gradient behind it
+
+An avatar, a photograph, a logo, a brand gradient behind a header: every
+application has them, and here they are **parts of the decoration** rather
+than things drawn over it.
+
+```dart
+DecoratedBox3d(
+  decoration: BoxDecoration3d(
+    borderRadius: const BorderRadius3d.circular(16),
+    gradient: const LinearGradient(
+      begin: AlignmentDirectional.centerStart,
+      end: AlignmentDirectional.centerEnd,
+      colors: <Color>[Color(0xFF6D8CFF), Color(0xFF4FD1C5)],
+    ),
+    image: DecorationImage3d(
+      image: const AssetImage('assets/cover.jpg'),
+      fit: BoxFit.cover,
+    ),
+  ),
+)
+```
+
+`Image3d` — `SceneImage3d`, with `.asset`, `.network` and `.memory`
+constructors — is a box that wears one of these and sizes itself to the
+picture, the way Flutter's `Image` does. It takes a `borderRadius` of its own,
+which is what a `ClipRRect` would have been:
+
+```dart
+SceneSizedBox3d(
+  width: metrics.dp(40),
+  height: metrics.dp(40),
+  child: SceneImage3d.asset(
+    'assets/avatar.jpg',
+    fit: BoxFit.cover,
+    borderRadius: const BorderRadius3d.circular(20),   // a circle
+  ),
+)
+```
+
+**Why a decoration rather than a textured quad**, which is the design decision
+worth knowing before you go looking for an `Image3d` that is a leaf: there is
+no rounded clip in this package. `Clip3dRegion` is an intersection of planes
+and so convex, and a corner radius is *carved by the panel shader* rather than
+clipped. A picture drawn as geometry of its own would sit square inside a
+rounded card and square inside a circular avatar, and nothing could cut it.
+Drawn by the panel shader, it is inside the same signed distance field as the
+colour — so the radius, the border, the surface tint, the state layer, the
+press ripple and the clip planes all apply to a photograph without a line
+written for any of them.
+
+The picture is Flutter's vocabulary throughout: an `ImageProvider`, a
+`BoxFit`, an `AlignmentGeometry`, a `scale`, an `opacity`, a
+`matchTextDirection` and an `onError`, and `paintImage`'s own arithmetic
+behind them — including its default, which is that **a null `fit` is
+`BoxFit.scaleDown`**. What `DecorationImage3d` does not have is what the
+shader cannot do: `repeat`, `centerSlice`, a colour filter, inverted colours
+and a filter quality. Nothing is silently ignored.
+
+A gradient is Flutter's own `LinearGradient`, `RadialGradient` or
+`SweepGradient`, evaluated as uniforms rather than baked into a texture — so
+it is exact at any size and aspect ratio, and animating between two of them is
+a parameter write like every other decoration change. Two limits, each
+reported once in a debug build rather than silently applied: **eight stops**,
+past which the ramp is resampled, and no `GradientTransform` or focal radial
+gradient.
+
+**A picture arrives after the frame that asked for it.** An `ImageProvider`
+resolves asynchronously and the pixels have to reach the GPU, so a decorated
+box draws its colour first and its picture a frame or two later.
+`ImageTexture3d` is the object in between — one per provider, shared through
+`ImageTexture3dCache.shared`, reference counted, with the GPU upload behind a
+seam so the whole path is testable headlessly — and
+`Decoration3dPaintRequest.onChanged` is how it asks to be drawn again. That
+callback is Flutter's (`Decoration.createBoxPainter` has taken one since the
+beginning) and it is the seam any painter with a late resource should use:
+nothing is laid out again, because a picture was never a layout input.
+
+The one place it *is* a layout input is `Image3d`, which has no size of its
+own until the picture has one — so a box with loose constraints is empty for a
+frame and then pushes its neighbours aside once. Give it a `SceneSizedBox3d`
+when the layout must not move, which is Flutter's advice for the same reason.
+
+Two costs worth knowing. A picture is uploaded with a mip chain, which is what
+keeps a photograph from shimmering as a panel recedes and is built on the CPU
+at upload — hand the provider to Flutter's `ResizeImage` when the picture is
+much larger than the panel. And an **animated image draws its first frame and
+stands still**: a texture upload per frame is the cost this whole design
+exists to avoid.
+
 ### Elevation is real here
 
 Material's elevation is a painted shadow standing in for a height. In a scene
@@ -978,6 +1068,7 @@ than none.
 | `Text3d`, `TextMeasurement3d` | `Text`, and the `TextPainter` behind it |
 | `AtlasText3dRenderer`, `RichText3d` | the two halves of `RenderParagraph.paint`: glyphs from an atlas, or Flutter's own raster |
 | `DecoratedBox3d`, `BoxDecoration3d`, `Border3d`, `BorderRadius3d` | `DecoratedBox`, `BoxDecoration`, `Border`, `BorderRadius` |
+| `Image3d`, `DecorationImage3d`, `ImageTexture3d` | `Image`, `DecorationImage`, the image stream behind both |
 | `Decoration3dPainter`, `Decoration3dPainterCache`, `StateLayer3d` | `BoxPainter`, and Material's state layers |
 | `ClipBox3d`, `Clip3dRegion`, `ClipPlane3d` | `ClipRect`, and the clip stack behind it |
 | `Visibility3d`, `Offstage3d` | `Visibility`, `Offstage` |
@@ -3073,8 +3164,11 @@ visible* and *The declarative layer* above. The shader ships as
 hook, so an application inherits it; `BoxDecoration3dPainter` drives it, and
 `examples/render_probe` checks, on a GPU, that a rounded panel loses its
 corners, that a lifted panel projects wider than a flat one, that a border
-draws in its own colour at the rim and not in the middle, and that a state
-layer lightens the panel it is on. Two things stay open, both of them the
+draws in its own colour at the rim and not in the middle, that a state
+layer lightens the panel it is on, that a picture lands the way its fit says
+and is carved by the corner radius, and that a gradient runs the way it was
+written. A picture and a gradient are parts of the same decoration — see
+*A picture on a panel* above. Two things stay open, both of them the
 engine's: a decorated panel casts no shadow
 at all — `blending: alpha` keeps it out of the shadow pass, and an opaque one
 would cast its whole rectangular slab because a shadow pass never runs the

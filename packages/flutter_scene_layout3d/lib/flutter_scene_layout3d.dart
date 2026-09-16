@@ -201,6 +201,17 @@ export 'src/decoration/decoration.dart'
         Decoration3dPaintRequest,
         Ripple3d,
         StateLayer3d;
+export 'src/decoration/decoration_image.dart'
+    show
+        DecorationImage3d,
+        ImageTexture3d,
+        ImageTexture3dCache,
+        ImageTexture3dPixels,
+        ImageTexture3dUpload,
+        ImageUniforms3d,
+        uploadImageTexture;
+export 'src/decoration/gradient.dart' show GradientKind3d, GradientUniforms3d;
+export 'src/decoration/image3d.dart' show Image3d;
 export 'src/geometry/alignment3d.dart'
     show Alignment3d, AlignmentDirectional3d, AlignmentGeometry3d;
 export 'src/geometry/basis3d.dart' show LayoutBasis3d;

@@ -172,6 +172,53 @@ class Constraints3d {
         constrainDepth(depth),
       );
 
+  /// The size closest to [size] that satisfies these constraints and keeps
+  /// its width-to-height ratio if it can.
+  ///
+  /// Flutter's `constrainSizeAndAttemptToPreserveAspectRatio`, and the box
+  /// that wants it is the one that has something of its own to show:
+  /// [Image3d] sizes itself this way, so a photograph in a column as wide as
+  /// the screen comes out the right shape rather than the shape of whatever
+  /// room was left.
+  ///
+  /// **The ratio is the one in the plane.** Depth is constrained on its own,
+  /// because a picture has none and a box that scaled its thickness with its
+  /// width would be a slab nobody asked for — the same asymmetry the depth
+  /// axis has everywhere else here.
+  Size3d constrainSizeAndAttemptToPreserveAspectRatio(Size3d size) {
+    final depth = constrainDepth(size.depth);
+    if (hasTightWidth && hasTightHeight) {
+      return Size3d(minWidth, minHeight, depth);
+    }
+    if (size.width <= 0.0 || size.height <= 0.0) {
+      return Size3d(
+        constrainWidth(size.width),
+        constrainHeight(size.height),
+        depth,
+      );
+    }
+    var width = size.width;
+    var height = size.height;
+    final ratio = width / height;
+    if (width > maxWidth) {
+      width = maxWidth;
+      height = width / ratio;
+    }
+    if (height > maxHeight) {
+      height = maxHeight;
+      width = height * ratio;
+    }
+    if (width < minWidth) {
+      width = minWidth;
+      height = width / ratio;
+    }
+    if (height < minHeight) {
+      height = minHeight;
+      width = height * ratio;
+    }
+    return Size3d(constrainWidth(width), constrainHeight(height), depth);
+  }
+
   /// Whether [size] satisfies these constraints.
   bool isSatisfiedBy(Size3d size) =>
       size.width >= minWidth &&

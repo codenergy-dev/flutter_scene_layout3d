@@ -1,5 +1,56 @@
 ## Unreleased
 
+- **A panel can hold a picture, and a gradient.** `BoxDecoration3d` carried one
+  colour and nothing else; every real screen has an avatar, a photograph, a
+  logo or a brand gradient on it, and the only way to draw one was to leave the
+  layout for a hand-built `NodeBox3d` with a textured material — losing the
+  corner radius, the border, the state layer, the ripple and the clip on the
+  way out.
+  - **`BoxDecoration3d.image`** takes a `DecorationImage3d`: an `ImageProvider`,
+    a `BoxFit`, an `AlignmentGeometry`, a scale, an opacity, `matchTextDirection`
+    and an `onError`, with `paintImage`'s own arithmetic behind them — including
+    Flutter's default that a null fit is `BoxFit.scaleDown`. What Flutter has
+    and this does not is what the shader cannot do: repeat, centre slicing,
+    colour filters, inverted colours, filter quality. Nothing is ignored
+    silently.
+  - **`BoxDecoration3d.gradient`** takes Flutter's own `LinearGradient`,
+    `RadialGradient` or `SweepGradient`, evaluated as uniforms rather than baked
+    into a texture, so it is exact at any aspect ratio and animating between two
+    gradients is a parameter write. Eight stops, past which the ramp is
+    resampled; a `GradientTransform` and a focal radial gradient are refused.
+    Both are reported once in a debug build.
+  - **The picture is drawn by the panel shader**, which is the decision the rest
+    follows from: there is no rounded clip here, so only the signed distance
+    field that carves a card's corners can carve a photograph's. A picture is
+    therefore inside the border, the surface tint, the state layer, the press
+    ripple and the clip planes for free.
+  - **`Image3d` and `SceneImage3d`** are a box that wears one and sizes itself
+    to the picture, the way `RenderImage` does, with `.asset`, `.network` and
+    `.memory` constructors and a `borderRadius` of its own — which is what a
+    `ClipRRect` around a Flutter `Image` would have been, and what makes a
+    circular avatar.
+  - **`ImageTexture3d` is the picture arriving**: one per provider, shared
+    through `ImageTexture3dCache.shared`, reference counted, reporting its size
+    as soon as the provider has one and its texture once the pixels are
+    uploaded — with the upload behind `ImageTexture3dUpload` so the whole path
+    runs in `flutter test`. An animated image draws its first frame and stands
+    still.
+  - **`Decoration3dPaintRequest.onChanged`** is the seam a late resource asks to
+    be drawn through, and `Decoration3dPaintRequest.configuration` is what a
+    provider is resolved against — filled by the widget layer from
+    `createLocalImageConfiguration`, so an asset picks its `2.0x` variant and a
+    directional alignment reads the ambient `Directionality`.
+  - **`Constraints3d.constrainSizeAndAttemptToPreserveAspectRatio`**, Flutter's,
+    with depth constrained on its own.
+
+- **A box with no thickness is no longer drawn black.** A slab scaled to exactly
+  zero on an axis has a singular transform and therefore no normal, and the
+  panel shader is lit — so a zero-depth `DecoratedBox3d` came out black rather
+  than in its own colour. `BoxDecoration3dPainter.slabTransformFor` holds every
+  axis to `minimumSlabExtent`, a hundredth of a logical pixel. A picture is the
+  ordinary way to meet this, since a box that sizes itself to one takes the
+  depth its constraints allow.
+
 - **A row reads right to left.** Reading direction used to reach the text and
   stop there: a `Row3d` arranged left to right around Arabic, no padding could
   say *start*, and there was no reversed `Column3d`. It is Flutter's contract

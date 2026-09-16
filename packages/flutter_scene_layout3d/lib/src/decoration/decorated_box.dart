@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart'
         DiagnosticsProperty,
         DoubleProperty,
         FlagProperty;
+import 'package:flutter/painting.dart' show ImageConfiguration;
 import 'package:vector_math/vector_math.dart' show Matrix4;
 
 import '../geometry/offset3d.dart';
@@ -54,10 +55,12 @@ class DecoratedBox3d extends SingleChildLayout3d
   DecoratedBox3d({
     required Decoration3d decoration,
     StateLayer3d stateLayer = StateLayer3d.none,
+    ImageConfiguration configuration = ImageConfiguration.empty,
     super.child,
     super.name,
   }) : _decoration = decoration,
-       _stateLayer = stateLayer;
+       _stateLayer = stateLayer,
+       _configuration = configuration;
 
   Decoration3d _decoration;
 
@@ -98,6 +101,23 @@ class DecoratedBox3d extends SingleChildLayout3d
   set stateLayer(StateLayer3d value) {
     if (_stateLayer == value) return;
     _stateLayer = value;
+    markNeedsRepaint();
+  }
+
+  ImageConfiguration _configuration;
+
+  /// What a picture on this box's decoration is resolved against.
+  ///
+  /// [ImageConfiguration.empty] unless it is set — which is what the widget
+  /// layer does, from `createLocalImageConfiguration`, so that an asset picks
+  /// the variant the window's device pixel ratio asks for and a directional
+  /// alignment knows which way the text runs. Setting it repaints and lays
+  /// nothing out.
+  ImageConfiguration get configuration => _configuration;
+
+  set configuration(ImageConfiguration value) {
+    if (_configuration == value) return;
+    _configuration = value;
     markNeedsRepaint();
   }
 
@@ -200,6 +220,8 @@ class DecoratedBox3d extends SingleChildLayout3d
         clip: clipRegion,
         basis: basis,
         metrics: metrics,
+        configuration: _configuration,
+        onChanged: markNeedsRepaint,
       ),
     );
   }

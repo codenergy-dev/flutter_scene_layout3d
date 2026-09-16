@@ -8,9 +8,29 @@ import 'package:flutter_scene/scene.dart'
         PerspectiveCamera,
         PhysicallyBasedMaterial,
         SphereGeometry;
+import 'dart:async' show Completer;
+import 'dart:typed_data' show Uint8List;
+import 'dart:ui' as ui;
+
+import 'package:flutter/foundation.dart' show SynchronousFuture;
 import 'package:flutter/material.dart' show Icons;
 import 'package:flutter/painting.dart'
-    show Color, InlineSpan, TextAlign, TextSpan, TextStyle;
+    show
+        Alignment,
+        BoxFit,
+        Color,
+        ImageConfiguration,
+        ImageDecoderCallback,
+        ImageInfo,
+        ImageProvider,
+        ImageStreamCompleter,
+        InlineSpan,
+        LinearGradient,
+        OneFrameImageStreamCompleter,
+        RadialGradient,
+        TextAlign,
+        TextSpan,
+        TextStyle;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
 import 'package:flutter_scene_material3d/flutter_scene_material3d.dart';
 import 'package:vector_math/vector_math.dart'
@@ -40,6 +60,89 @@ import 'probe_scene.dart';
 /// generated manifest. This app used to compile it through a symlink, and no
 /// longer has to.
 Future<void> installPanelPainter() => initializeMaterial3d();
+
+/// The picture the image scenes are drawn from: a square, red on its left
+/// half and blue on its right.
+///
+/// Generated in code like every other piece of geometry here, for the reason
+/// the README gives: a scene that loads an asset is a scene that can fail for
+/// a reason that has nothing to do with layout. The two halves are what makes
+/// a claim about a picture a *direction* — which colour is on which side —
+/// rather than a distance, and they are chosen so no exposure or tone mapping
+/// can reorder the channels.
+ImageProvider get kHalvesPicture => _halvesPicture!;
+ImageProvider? _halvesPicture;
+
+/// Installs the panel painter and gets the picture as far as the GPU.
+///
+/// A picture arrives on its own clock, and a probe scene is built once and
+/// flushed once — so the picture is *warmed* here, before any scene is built,
+/// and every scene below draws a panel whose texture is already bound. An
+/// application does not have to do this; it gets its picture a frame or two
+/// later and repaints, which is what `Decoration3dPaintRequest.onChanged` is
+/// for.
+Future<void> installPictures() async {
+  await installPanelPainter();
+  // Every scene preloads, so this runs once per scene and has to be idempotent
+  // — and the picture is deliberately kept between them, because warming it
+  // again would decode and upload the same texels for every scene below.
+  if (_halvesPicture != null) return;
+  final provider = _halvesPicture = _ProbePicture(await _halvesImage());
+  final picture = ImageTexture3dCache.shared.acquire(provider);
+  for (var i = 0; i < 200 && !picture.isReady; i++) {
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+  if (!picture.isReady) {
+    throw StateError('the probe picture never reached the GPU');
+  }
+}
+
+Future<ui.Image> _halvesImage({int edge = 64}) {
+  final pixels = Uint8List(edge * edge * 4);
+  for (var y = 0; y < edge; y++) {
+    for (var x = 0; x < edge; x++) {
+      final i = (y * edge + x) * 4;
+      final left = x < edge ~/ 2;
+      pixels[i] = left ? 0xE6 : 0x1E;
+      pixels[i + 1] = left ? 0x2A : 0x3C;
+      pixels[i + 2] = left ? 0x2A : 0xE6;
+      pixels[i + 3] = 0xFF;
+    }
+  }
+  final completer = Completer<ui.Image>();
+  ui.decodeImageFromPixels(
+    pixels,
+    edge,
+    edge,
+    ui.PixelFormat.rgba8888,
+    completer.complete,
+  );
+  return completer.future;
+}
+
+/// A provider over a picture this app made itself.
+class _ProbePicture extends ImageProvider<_ProbePicture> {
+  _ProbePicture(this.image);
+
+  final ui.Image image;
+
+  @override
+  Future<_ProbePicture> obtainKey(ImageConfiguration configuration) =>
+      SynchronousFuture<_ProbePicture>(this);
+
+  @override
+  ImageStreamCompleter loadImage(
+    _ProbePicture key,
+    ImageDecoderCallback decode,
+  ) => OneFrameImageStreamCompleter(
+    Future<ImageInfo>.value(ImageInfo(image: image.clone())),
+  );
+}
+
+/// The fill the picture scenes stand on: a green, so that "this pixel is the
+/// panel" and "this pixel is the picture" are a channel order apart from each
+/// other and from the clear colour.
+const Color _pictureFill = Color(0xFF1B6B3A);
 
 // Every NodeBox3d here uses BoxFit3d.contain rather than the default
 // BoxFit3d.none. It matters more than it looks: with `none` the content keeps
@@ -2716,6 +2819,114 @@ final List<ProbeScene> kProbeScenes = <ProbeScene>[
         probes: {'paragraph': paragraph},
       );
     }, minCoverage: 0.01),
+
+  // ── A picture on a panel ─────────────────────────────────────────────
+  //
+  // The picture is drawn *by the panel shader*, so these scenes are asking
+  // three different things about one sampler: does the picture land where the
+  // fit says, does the outline cut it, and is a gradient the ramp Flutter
+  // would have drawn. Every claim is a channel order — which colour is on
+  // which side — because a distance is satisfied just as well by a picture
+  // drawn backwards.
+  ProbeScene(
+    'picture_on_a_panel',
+    () => _panelScene(
+      BoxDecoration3d(
+        color: _pictureFill,
+        image: DecorationImage3d(image: kHalvesPicture, fit: BoxFit.cover),
+      ),
+    ),
+    preload: installPictures,
+  ),
+
+  ProbeScene(
+    'picture_contained',
+    // The same picture, contained rather than covering: it keeps its square
+    // shape in a panel twice as wide, so the fill shows either side of it and
+    // the destination rectangle is a claim a frame can check.
+    () => _panelScene(
+      BoxDecoration3d(
+        color: _pictureFill,
+        image: DecorationImage3d(image: kHalvesPicture, fit: BoxFit.contain),
+      ),
+    ),
+    preload: installPictures,
+  ),
+
+  ProbeScene(
+    'picture_rounded',
+    // A picture in a panel with a radius bigger than the panel is tall. The
+    // corner is the assertion, and `picture_on_a_panel` is its control: there
+    // is no rounded clip in this package, so a picture drawn as a quad of its
+    // own would sit square in this panel however round the panel is.
+    () => _panelScene(
+      BoxDecoration3d(
+        color: _pictureFill,
+        borderRadius: const BorderRadius3d.circular(90),
+        image: DecorationImage3d(image: kHalvesPicture, fit: BoxFit.cover),
+      ),
+    ),
+    preload: installPictures,
+  ),
+
+  ProbeScene(
+    'picture_box',
+    () {
+      // `Image3d`, which sizes itself to the picture rather than being told a
+      // size. The picture is square, so a box in a panel twice as wide as it is
+      // tall comes out square — which the frame checks by asking layout where
+      // the box's own edges are and finding ink inside them and none beside
+      // them.
+      final picture = Image3d(
+        image: kHalvesPicture,
+        fit: BoxFit.fill,
+        name: 'picture',
+      );
+      return ProbeSceneContent(
+        surfaces: [
+          Layout3dSurface(
+            constraints: Constraints3d.loose(const Size3d(3.6, 1.8, 0.1)),
+            child: Center3d(child: picture),
+          ),
+        ],
+        probes: {'picture': picture},
+      );
+    },
+    preload: installPictures,
+    minCoverage: 0.01,
+  ),
+
+  ProbeScene(
+    'linear_gradient_panel',
+    // Red at the leading edge, blue at the trailing one. A gradient is
+    // uniforms rather than a texture, so what this checks is the shader's own
+    // arithmetic: the same two colours, the same way round, at the same
+    // places Flutter would have put them.
+    () => _panelScene(
+      const BoxDecoration3d(
+        gradient: LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: <Color>[Color(0xFFE62A2A), Color(0xFF1E3CE6)],
+        ),
+      ),
+    ),
+    preload: installPanelPainter,
+  ),
+
+  ProbeScene(
+    'radial_gradient_panel',
+    // Pale in the middle, dark at the rim: a luminance order, which is the
+    // one comparison lighting and tone mapping cannot turn round.
+    () => _panelScene(
+      const BoxDecoration3d(
+        gradient: RadialGradient(
+          colors: <Color>[Color(0xFFF2F2F2), Color(0xFF101840)],
+        ),
+      ),
+    ),
+    preload: installPanelPainter,
+  ),
 ];
 
 /// One letter, small enough that three of them fit across a slab and big
