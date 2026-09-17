@@ -131,4 +131,35 @@ void main() {
     expect(surface.basis, LayoutBasis3d.xz);
     expect(find3d.bySubtype<Text3d>(), standsOnItsPanel3d);
   });
+  testWidgets('the overflow menu opens, and the dialog it opens arrives', (
+    tester,
+  ) async {
+    // The gallery is where a person sees an arrival, so this is the headless
+    // half of that: the menu and the dialog are wired, reachable, and gone
+    // when they are closed. Whether they *read* as arriving is a question
+    // only the window answers.
+    await pumpScreen(tester, const MaterialScreen());
+    expect(find3d.bySemanticsLabel('About'), findsNothing);
+
+    await tester.tap3d(find3d.bySemanticsLabel('More'));
+    // Settled, not pumped once: a menu is pressable where layout put it
+    // rather than where a growing menu is drawn.
+    await tester.pumpAndSettle();
+    expect(find3d.bySemanticsLabel('About'), isReachable3d);
+
+    await tester.tap3d(find3d.bySemanticsLabel('About'));
+    await tester.pumpAndSettle();
+    expect(find3d.bySemanticsLabel('About'), findsNothing);
+    expect(find3d.bySemanticsLabel('About this gallery'), findsOne);
+
+    // Popped rather than tapped on the scrim: a barrier's centre is behind
+    // the dialog it dims, so aiming a press there presses the dialog. That
+    // the scrim closes a dialog is the catalogue's own test to make.
+    final navigator = Navigator3d.of(
+      tester.layout3d<Layout3d>(find3d.bySubtype<ModalBarrier3d>()),
+    );
+    expect(navigator!.pop(), isTrue);
+    await tester.pumpAndSettle();
+    expect(find3d.bySemanticsLabel('About this gallery'), findsNothing);
+  });
 }

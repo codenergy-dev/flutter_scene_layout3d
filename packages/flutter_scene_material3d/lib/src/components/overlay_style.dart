@@ -1,8 +1,14 @@
 import 'dart:ui' show Color;
 
+import 'package:flutter/animation.dart' show Cubic, Curve;
 import 'package:flutter/foundation.dart' show immutable;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart'
-    show BorderRadius3d, EdgeInsets3d;
+    show
+        Alignment3d,
+        BorderRadius3d,
+        EdgeInsets3d,
+        Motion3d,
+        TimedRoute3dTransition;
 
 import '../theme/theme_data.dart';
 import '../tokens/typography.dart';
@@ -20,6 +26,135 @@ import '../tokens/typography.dart';
 // belongs where the screen's own depths are stated —
 // `Scaffold3d.overlayLift(theme.thickness.depthStep)` — rather than five
 // numbers that happen to agree today.
+
+/// How an overlay arrives, and how it leaves.
+///
+/// The five figures that turn a thing appearing into a thing arriving: where
+/// it starts, how long it takes each way, and on what curve. Every overlay
+/// style in this file carries one, resolved out of [Theme3dData.motion] — so
+/// an application that wants every dialog, menu and sheet in the catalogue to
+/// take its time slows them all down by replacing one token family.
+///
+/// ## The motion is not the clock
+///
+/// [motion] says *what moves* and the rest says *when*, and keeping those
+/// apart is the split the layout package's route work settled — for a reason
+/// this catalogue is the first thing to actually pay: a modal here builds its
+/// own scrim, so a transition that moved the whole of a route's content would
+/// slide the dim in with the dialog it dims. So [transition] goes on the
+/// route and [motion] goes on a `SceneMotionTransition3d` around the content
+/// *inside* the scrim.
+///
+/// The two overlays that are not routes — a tooltip and a snack bar — use the
+/// same value with an `AnimationController` of their own.
+@immutable
+class Arrival3d {
+  /// Creates an arrival.
+  const Arrival3d({
+    required this.motion,
+    required this.duration,
+    required this.reverseDuration,
+    required this.curve,
+    required this.reverseCurve,
+  });
+
+  /// An arrival for something that opens and closes the same way.
+  const Arrival3d.symmetric({
+    required Motion3d motion,
+    required Duration duration,
+    required Curve curve,
+    required Curve reverseCurve,
+  }) : this(
+         motion: motion,
+         duration: duration,
+         reverseDuration: duration,
+         curve: curve,
+         reverseCurve: reverseCurve,
+       );
+
+  /// Nothing moves and nothing waits: the overlay is simply there.
+  ///
+  /// What the whole catalogue did before this family existed, and still the
+  /// honest answer for a component that should not move — a style written
+  /// with this gets `Route3dTransition.none`'s synchronous removal path back,
+  /// entry and all, because [transition] with a zero duration finishes in the
+  /// same turn.
+  static const Arrival3d none = Arrival3d(
+    motion: Motion3d.none,
+    duration: Duration.zero,
+    reverseDuration: Duration.zero,
+    curve: _linear,
+    reverseCurve: _linear,
+  );
+
+  /// Where the content stands before it has arrived.
+  final Motion3d motion;
+
+  /// How long an arrival takes.
+  final Duration duration;
+
+  /// How long a departure takes.
+  final Duration reverseDuration;
+
+  /// The curve an arrival follows.
+  final Curve curve;
+
+  /// The curve a departure follows.
+  final Curve reverseCurve;
+
+  /// The clock a route winds this arrival with.
+  ///
+  /// Goes on `Route3d.transition` rather than on the navigator, because a
+  /// dialog and a bottom sheet open on the same navigator and disagree about
+  /// every number in it.
+  TimedRoute3dTransition get transition => TimedRoute3dTransition(
+    duration: duration,
+    reverseDuration: reverseDuration,
+    curve: curve,
+    reverseCurve: reverseCurve,
+  );
+
+  /// Whether this arrival takes no time at all, either way.
+  bool get isInstant =>
+      duration <= Duration.zero && reverseDuration <= Duration.zero;
+
+  /// A copy with the given figures replaced.
+  Arrival3d copyWith({
+    Motion3d? motion,
+    Duration? duration,
+    Duration? reverseDuration,
+    Curve? curve,
+    Curve? reverseCurve,
+  }) => Arrival3d(
+    motion: motion ?? this.motion,
+    duration: duration ?? this.duration,
+    reverseDuration: reverseDuration ?? this.reverseDuration,
+    curve: curve ?? this.curve,
+    reverseCurve: reverseCurve ?? this.reverseCurve,
+  );
+
+  @override
+  bool operator ==(Object other) =>
+      other is Arrival3d &&
+      other.motion == motion &&
+      other.duration == duration &&
+      other.reverseDuration == reverseDuration &&
+      other.curve == curve &&
+      other.reverseCurve == reverseCurve;
+
+  @override
+  int get hashCode =>
+      Object.hash(motion, duration, reverseDuration, curve, reverseCurve);
+
+  @override
+  String toString() =>
+      'Arrival3d(${duration.inMilliseconds}ms in, '
+      '${reverseDuration.inMilliseconds}ms out)';
+}
+
+/// [MotionScheme3d.linear], reached without importing the token family into
+/// a `const` context that cannot resolve a field.
+const Curve _linear = Cubic(0.0, 0.0, 1.0, 1.0);
 
 /// Everything a [Dialog3d] is made of.
 ///
@@ -50,6 +185,7 @@ class DialogStyle3d {
     required this.scrimColor,
     required this.scrimThickness,
     required this.textStyle,
+    required this.arrival,
   }) : assert(elevation >= 0.0),
        assert(thickness >= 0.0),
        assert(minWidth >= 0.0),
@@ -75,6 +211,15 @@ class DialogStyle3d {
       scrimColor: scheme.scrim.withValues(alpha: 0.32),
       scrimThickness: theme.thickness.thin,
       textStyle: Typography3dToken.bodyMedium,
+      // Flutter's own 150ms, which is `short3`; the curves are M3's rather
+      // than Flutter's `Curves.easeOut`, which predates the motion tokens.
+      // The dialog both grows and fades, as Flutter's does.
+      arrival: Arrival3d.symmetric(
+        motion: const Motion3d(scale: 0.85, opacity: 0.0),
+        duration: theme.motion.short3,
+        curve: theme.motion.emphasizedDecelerate,
+        reverseCurve: theme.motion.emphasizedAccelerate,
+      ),
     );
   }
 
@@ -119,6 +264,10 @@ class DialogStyle3d {
 
   /// The type the dialog's content inherits.
   final Typography3dToken textStyle;
+
+  /// How the dialog arrives and leaves: 150ms, growing from 85% and fading
+  /// in, on M3's emphasized curves.
+  final Arrival3d arrival;
 }
 
 /// Everything a [Menu3d] and its items are made of.
@@ -146,6 +295,7 @@ class MenuStyle3d {
     required this.itemThickness,
     required this.itemDepthStep,
     required this.itemTextStyle,
+    required this.arrival,
   }) : assert(elevation >= 0.0),
        assert(thickness >= 0.0),
        assert(maxWidth >= minWidth),
@@ -172,6 +322,16 @@ class MenuStyle3d {
       itemThickness: theme.thickness.thin,
       itemDepthStep: 2 * theme.thickness.thin,
       itemTextStyle: Typography3dToken.labelLarge,
+      // Flutter's `_kMenuDuration`, which is `medium2`. The menu grows out of
+      // its own top edge rather than out of the corner it hangs from: the
+      // corner is directional and mirrors in a right-to-left locale, while a
+      // `Motion3d.origin` is a plain [Alignment3d] and would not.
+      arrival: Arrival3d.symmetric(
+        motion: const Motion3d.grow(from: 0.8, origin: Alignment3d.topCenter),
+        duration: theme.motion.medium2,
+        curve: theme.motion.emphasizedDecelerate,
+        reverseCurve: theme.motion.emphasizedAccelerate,
+      ),
     );
   }
 
@@ -225,6 +385,10 @@ class MenuStyle3d {
 
   /// The type an item's label is drawn in.
   final Typography3dToken itemTextStyle;
+
+  /// How the menu arrives and leaves: 300ms, growing from 80% out of its own
+  /// top edge.
+  final Arrival3d arrival;
 }
 
 /// Everything a [SnackBar3d] is made of.
@@ -249,6 +413,7 @@ class SnackBarStyle3d {
     required this.maxWidth,
     required this.displayDuration,
     required this.textStyle,
+    required this.arrival,
   }) : assert(elevation >= 0.0),
        assert(thickness >= 0.0);
 
@@ -269,6 +434,16 @@ class SnackBarStyle3d {
       maxWidth: 600.0,
       displayDuration: const Duration(milliseconds: 4000),
       textStyle: Typography3dToken.bodyMedium,
+      // Flutter's `_snackBarTransitionDuration`, which is `medium1`. It rises
+      // by a *fraction* of its own height rather than by a figure, which is
+      // the case `Motion3d.fraction` exists for: a two-line bar is taller and
+      // still starts exactly off the edge.
+      arrival: Arrival3d.symmetric(
+        motion: Motion3d.fromBelow,
+        duration: theme.motion.medium1,
+        curve: theme.motion.emphasizedDecelerate,
+        reverseCurve: theme.motion.emphasizedAccelerate,
+      ),
     );
   }
 
@@ -316,6 +491,10 @@ class SnackBarStyle3d {
 
   /// The type the message is drawn in.
   final Typography3dToken textStyle;
+
+  /// How the bar arrives and leaves: 250ms, rising one whole height from
+  /// below the edge it sits on.
+  final Arrival3d arrival;
 }
 
 /// Everything a [Tooltip3d] is made of.
@@ -338,6 +517,7 @@ class TooltipStyle3d {
     required this.waitDuration,
     required this.showDuration,
     required this.textStyle,
+    required this.arrival,
   }) : assert(elevation >= 0.0),
        assert(thickness >= 0.0);
 
@@ -355,6 +535,20 @@ class TooltipStyle3d {
       waitDuration: const Duration(milliseconds: 500),
       showDuration: const Duration(milliseconds: 1500),
       textStyle: Typography3dToken.bodySmall,
+      // A plain fade, which is all Flutter's tooltip does. The 150ms in is
+      // `short3`; **the 75ms out is the one overlay figure in this catalogue
+      // with no token behind it** — M3's scale steps by 50ms and Flutter
+      // picked 75 anyway, because a tooltip leaving is the shortest motion
+      // here and 100ms reads as a lag on something that is only getting out
+      // of the way. Kept rather than rounded, and see `MotionScheme3d`: the
+      // family is a vocabulary, not a cage.
+      arrival: Arrival3d(
+        motion: const Motion3d.fade(),
+        duration: theme.motion.short3,
+        reverseDuration: const Duration(milliseconds: 75),
+        curve: theme.motion.emphasizedDecelerate,
+        reverseCurve: theme.motion.emphasizedAccelerate,
+      ),
     );
   }
 
@@ -390,6 +584,10 @@ class TooltipStyle3d {
 
   /// The type the label is drawn in.
   final Typography3dToken textStyle;
+
+  /// How the label arrives and leaves: a 150ms fade in and a 75ms fade out,
+  /// and nothing moves.
+  final Arrival3d arrival;
 }
 
 /// Everything a [BottomSheet3d] is made of.
@@ -409,6 +607,7 @@ class BottomSheetStyle3d {
     required this.scrimColor,
     required this.scrimThickness,
     required this.textStyle,
+    required this.arrival,
   }) : assert(elevation >= 0.0),
        assert(thickness >= 0.0);
 
@@ -429,6 +628,17 @@ class BottomSheetStyle3d {
       scrimColor: scheme.scrim.withValues(alpha: 0.32),
       scrimThickness: theme.thickness.thin,
       textStyle: Typography3dToken.bodyMedium,
+      // Flutter's `_kBottomSheetEnterDuration` and `_kBottomSheetExitDuration`
+      // — `medium1` in, `short4` out, and the one overlay here that is not
+      // symmetric. `Motion3d.fromBelow` is a whole height, which is why a
+      // sheet of any size starts exactly off the edge it comes from.
+      arrival: Arrival3d(
+        motion: Motion3d.fromBelow,
+        duration: theme.motion.medium1,
+        reverseDuration: theme.motion.short4,
+        curve: theme.motion.emphasizedDecelerate,
+        reverseCurve: theme.motion.emphasizedAccelerate,
+      ),
     );
   }
 
@@ -459,4 +669,8 @@ class BottomSheetStyle3d {
 
   /// The type the sheet's content inherits.
   final Typography3dToken textStyle;
+
+  /// How the sheet arrives and leaves: 250ms in and 200ms out, rising one
+  /// whole height from off the edge it comes from.
+  final Arrival3d arrival;
 }

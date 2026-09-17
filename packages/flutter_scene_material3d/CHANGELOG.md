@@ -1,5 +1,78 @@
 ## Unreleased
 
+- **The catalogue moves.** `MotionScheme3d` is the seventh token family —
+  Material 3's sixteen durations and nine easing curves, carried on
+  `Theme3dData.motion`, with `copyWith`, a `lerp` and a `MotionScheme3dTween`
+  beside the other six. Every figure is `Durations`' or `Easing`'s, which
+  Flutter generates straight from the Material token database, so
+  `test/motion_test.dart` compares value to value and a figure that moves
+  upstream fails on the next `flutter upgrade`. That is the strongest drift
+  lane in this package: nothing is rendered and nothing is reflected over.
+  - **The family stayed closed until there were customers, and now there are
+    six.** The plan refused it three times with the same sentence — *one
+    animation is not a scale* — and shipped the press ripple as
+    `InkRipple3dStyle` instead. Six overlays needing the same curve is the
+    case that was being waited for.
+  - **The durations interpolate and the curves snap at the midpoint.** A
+    `Curve` is a function and there is no value half way between two of them
+    that is itself a curve, which is what `TextStyle.lerp` does with every
+    discrete field it carries. And because `Cubic` has no value equality, two
+    schemes compare by identity — exactly right for `const` tokens, and a
+    reason to hold a computed curve in a `static const`.
+  - **It is a vocabulary, not a cage.** A style may carry any duration it can
+    defend: `InkRipple3dStyle` holds 75, 225 and 375 and none of those is a
+    token, and neither is the tooltip's 75ms fade out.
+
+- **Every overlay arrives instead of appearing.** A dialog grows from 85% and
+  fades in over its own scrim; a menu grows out of its top edge; a sheet rises
+  one whole height from off the edge it is pinned to; a snack bar rises the
+  same way; a tooltip fades. `Arrival3d` is the value each of the five overlay
+  styles now carries — a `Motion3d`, two durations and two curves — and
+  `Arrival3d.transition` is the clock a route runs on.
+  - **The durations are Flutter's own** and all but one land on an M3 duration
+    token: 150ms for a dialog, 300ms for a menu, 250ms in and 200ms out for a
+    sheet, 250ms for a snack bar, 150ms in and 75ms out for a tooltip. **The
+    curves deliberately are not.** Flutter opens a dialog on `Curves.easeOut`
+    and a modal sheet on `Easing.legacyDecelerate`, both of which predate the
+    motion tokens — the second says so in its own name — so the catalogue
+    arrives on `emphasizedDecelerate` and leaves on `emphasizedAccelerate`,
+    which is what the family exists to adopt. Every one is a field on a public
+    style.
+  - **The motion goes inside the scrim and the scrim fades on its own.** A
+    catalogue modal builds its own barrier through `modalFrame3d`, so a
+    transition around the whole of a route's content would slide the dim in
+    with the dialog it dims. `modalFrame3d` takes a `scrimFade` instead.
+  - **The two overlays that are not routes keep their own clock.** A tooltip
+    and a snack bar are bare overlay entries and should stay that way — a
+    route would give them a barrier, a focus trap and a result future they
+    have no use for — so each drives an `AnimationController` of its own and
+    removes its entry when the reverse finishes. The messenger's queue had to
+    be taught the difference: a bar on its way out is **still in the overlay**,
+    so the next one waits for it rather than arriving on top of it.
+  - **A bar or a label that is leaving is still pressable where layout put
+    it**, not where it is drawn. That is the node tier's contract everywhere
+    in this stack, and an arrival is the first thing in the catalogue to make
+    it visible: a test that presses an overlay now settles first, as a person
+    waits.
+
+- **A popup menu's button could not be pressed.** `PopupMenuButton3d` had no
+  outer `TapTarget3d` at all, where `Button3d` has had one since phase 2, so
+  its whole reach was its child — and its child is usually an `Icon3d`, which
+  is a 24dp glyph. It also put the align that shrink-wraps that child
+  *outside* its ink well, which handed the well loose constraints and left the
+  target with a glyph's depth, which is none: a slab with no thickness is
+  degenerate and no ray intersects it. An overflow button in an app bar laid
+  out, drew, announced itself to a screen reader and did nothing. Both are
+  fixed, and `test/menu_test.dart` states each as its own case.
+
+- **`PopupMenuButton3d` takes `menuCorner` and `anchorCorner`**, the pair
+  `showMenu3d` already had. A button against the trailing edge of a panel
+  needs them: a menu opening the usual way runs off the surface, where a ray
+  finds nothing at all. **Nothing chooses them for you**, and that is the
+  deferral this catalogue has now made twice — what "off the edge" means for a
+  surface at any angle, which may be looked at from behind, is a design
+  question and not a parameter.
+
 The first contents of this package, and they are the whole catalogue: ten
 phases from an empty package to a screen a person can look at, all of them
 `completed` in [the plan](plans/2026_09_01_flutter_scene_material3d.md). Every

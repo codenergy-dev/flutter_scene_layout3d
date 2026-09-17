@@ -1,6 +1,7 @@
 // The pieces every overlay in this catalogue shares: the depth it sits at,
 // the modal frame around it, and the way it finds somewhere to be put.
 
+import 'package:flutter/animation.dart' show Animation;
 import 'package:flutter/foundation.dart' show VoidCallback;
 import 'package:flutter/widgets.dart' show BuildContext, Widget;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart'
@@ -13,7 +14,12 @@ import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart'
         OverlayLayer3d,
         StackFit3d;
 import 'package:flutter_scene_layout3d/widgets.dart'
-    show SceneDecoratedBox3d, SceneModalBarrier3d, SceneOverlay3d, SceneStack3d;
+    show
+        SceneDecoratedBox3d,
+        SceneFadeTransition3d,
+        SceneModalBarrier3d,
+        SceneOverlay3d,
+        SceneStack3d;
 
 import 'package:flutter/painting.dart' show Color;
 
@@ -64,6 +70,16 @@ Overlay3d overlayOf3d(BuildContext context) => SceneOverlay3d.of(context);
 ///
 /// [scrimThickness] and [depthStep] are in world units; [scrimColor] is a
 /// colour with Material's own alpha in it, which the panel shader blends.
+///
+/// ## The scrim fades, and it fades on its own
+///
+/// Give [scrimFade] a route's animation and the dim comes up with the route
+/// instead of snapping to full strength on the first frame. It is applied
+/// **here**, to the scrim alone, and never to the frame as a whole — which is
+/// the same rule that keeps `PageRoute3d.motion` out of a catalogue modal:
+/// *a dim must not slide in with the thing it dims.* So the content's own
+/// motion goes around [child], one level down, and the two animations share a
+/// clock without sharing a transform.
 Widget modalFrame3d({
   required Widget child,
   required Color? scrimColor,
@@ -72,6 +88,7 @@ Widget modalFrame3d({
   required bool dismissible,
   required VoidCallback onDismiss,
   Alignment3d alignment = Alignment3d.center,
+  Animation<double>? scrimFade,
 }) => SceneStack3d(
   alignment: alignment,
   // The stack takes the barrier's size, which is the whole overlay, so the
@@ -89,7 +106,12 @@ Widget modalFrame3d({
       // nothing at all, which is exactly what `ModalBarrier3d` documents.
       child: scrimColor == null
           ? null
-          : SceneDecoratedBox3d(decoration: BoxDecoration3d(color: scrimColor)),
+          : SceneFadeTransition3d(
+              opacity: scrimFade,
+              child: SceneDecoratedBox3d(
+                decoration: BoxDecoration3d(color: scrimColor),
+              ),
+            ),
     ),
     child,
   ],

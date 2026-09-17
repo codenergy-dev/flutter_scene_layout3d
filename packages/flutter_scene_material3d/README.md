@@ -91,9 +91,9 @@ covers the same setup in more detail, including how a component of your own
 reads the theme from `performLayout`, where there is no `BuildContext`.
 
 
-## The six families, and why two of them are invented
+## The seven families, and why two of them are invented
 
-Four of the families are Material's, transcribed:
+Five of the families are Material's, transcribed:
 
 - **`ColorScheme3d`** — the colour roles, all forty-six of them, in a
   hand-written light and dark baseline. A role is a *job* rather than a
@@ -106,8 +106,15 @@ Four of the families are Material's, transcribed:
   way; `Text3d` multiplies by the metrics to reach world units.
 - **`ShapeScale3d`** — the corner radii, `none` through `full`.
 - **`Elevation3d`** — the six levels, 0 to 12dp.
+- **`MotionScheme3d`** — sixteen durations, from 50ms to a second, and nine
+  easing curves. Every figure is one of Flutter's own `Durations` and
+  `Easing`, which are generated straight from the Material token database, so
+  a drift test here compares value to value with nothing rendered — the
+  strongest such lane in the package. It is what makes the overlays *arrive*
+  rather than appear, and it is a **vocabulary rather than a cage**: a
+  component style may carry any duration it can defend, and two of them do.
 
-The fifth has no Material counterpart at all:
+The sixth has no Material counterpart at all:
 
 - **`Thickness3d`** — how deep a component is. Material publishes nothing
   about thickness because on a screen there is none. A `Card3d` here is *how
@@ -115,7 +122,7 @@ The fifth has no Material counterpart at all:
   component: 1dp for a divider or a chip, 2dp for a button or a list tile, 4dp
   for a card or a dialog, 8dp for an app bar or a sheet.
 
-The sixth is Material's, and it needed a name because every interactive
+The seventh is Material's, and it needed a name because every interactive
 component resolves it the same way:
 
 - **`StateLayerOpacity3d`** — 8% for a hover, 10% for a focus or a press, 16%
@@ -1005,7 +1012,21 @@ that no longer exists cannot be followed.
 
 What it does not do is reflow to stay inside the panel. Flutter shifts a menu
 against the screen edges; what that should mean for a surface hanging at an
-angle in a room is a real design question rather than an oversight.
+angle in a room — one you may be standing behind — is a real design question
+rather than an oversight. What you get instead is the pair `showMenu3d` has
+always taken, now on the button too: `menuCorner` and `anchorCorner`. A button
+against the trailing edge of a panel needs them, because a menu opening the
+usual way runs off the surface and a ray finds nothing out there at all.
+
+```dart
+PopupMenuButton3d<String>(
+  // An overflow button in an app bar: hang the menu by its trailing corner.
+  menuCorner: AlignmentDirectional3d.topEnd,
+  anchorCorner: AlignmentDirectional3d.bottomEnd,
+  itemBuilder: ...,
+  child: const Icon3d(Icons.more_vert),
+)
+```
 
 ### The messenger queues, and waiting costs nothing
 
@@ -1023,9 +1044,11 @@ if (await shown.closed == SnackBar3dClosedReason.timeout) _commit();
 A second `show` while one is up queues rather than replacing, and a queued bar
 closed before its turn is dropped without ever being shown — its future
 completes all the same, as does every bar still waiting when the messenger
-leaves the tree. Nothing animates: `Route3dTransition.none` is what the layout
-package ships and this package has no motion tokens yet, so a bar appears,
-waits and goes. The waiting is one `Timer` and it touches no layout at all.
+leaves the tree. A bar rises a quarter of a second, waits four, and sinks; the
+**waiting is still one `Timer`** and it touches no layout at all, so a bar on
+screen asks for no frames between the two ends. The queue knows one thing
+about that: a bar on its way out is still in the overlay, so the next one
+waits for it rather than arriving on top of it.
 
 `Tooltip3d` keeps the same promise where it matters most, because a hover is a
 per-pointer path: a pointer entering starts a `Timer` and a pointer leaving
@@ -1033,6 +1056,54 @@ cancels it, and neither calls `setState`, marks anything dirty, or rebuilds the
 control underneath. Only the timer firing does anything. Its label absorbs no
 ray either — a tooltip that took the pointer would dismiss itself the instant
 it appeared.
+
+### Every overlay arrives, and the clock is a token
+
+A dialog grows from 85% and fades in, a menu grows out of its own top edge, a
+sheet rises one whole height from off the edge it is pinned to, a snack bar
+does the same, a tooltip fades. Each is one `Arrival3d` on the overlay's
+style — a `Motion3d` saying *what moves*, two durations and two curves saying
+*when* — and the durations and curves come out of `theme.motion`.
+
+```dart
+// Every overlay in the catalogue, twice as slow.
+SceneTheme3d(
+  data: Theme3dData.light.copyWith(
+    motion: MotionScheme3d.baseline.copyWith(
+      short3: const Duration(milliseconds: 300),   // the dialog
+      medium1: const Duration(milliseconds: 500),  // the sheet, the snack bar
+      medium2: const Duration(milliseconds: 600),  // the menu
+    ),
+  ),
+  child: screen,
+)
+```
+
+Three things about it are worth knowing before you build on it.
+
+**The motion is not the clock, and the split is load-bearing here.** A route
+carries a `Route3dTransition` and the content carries a `MotionTransition3d`,
+and this catalogue is the first thing to pay for keeping them apart: a modal
+here builds its own scrim, so a transition wrapped around the whole of a
+route's content would slide the dim in with the dialog it dims. The motion
+goes *inside* the barrier, around the content only, and the scrim fades on a
+box of its own.
+
+**The curves are M3's and not Flutter's, on purpose.** Flutter opens a dialog
+on `Curves.easeOut` and a modal sheet on `Easing.legacyDecelerate`, both of
+which predate the motion tokens — the second says so in its own name — so the
+catalogue arrives on `emphasizedDecelerate` and leaves on
+`emphasizedAccelerate`. The durations *are* Flutter's. Every one of them is a
+field on a public style, so writing `Curves.easeOut` back is one `copyWith`.
+
+**An arriving box is pressable where layout put it, not where it is drawn.**
+Arrivals are on the node tier — one matrix a frame, nothing laid out again —
+and the node tier does not move the hit test. For the two hundred
+milliseconds an arrival lasts that is the right trade: a press lands where the
+dialog is about to be. It has one consequence for tests, and it is the one
+thing that will catch you out: **settle before you press.** A test that
+`tap3d`s a menu item one frame after the menu opened is aiming at a menu still
+at 80%, and the press lands on the item above.
 
 ### A sheet is structure, and it has an edge
 
@@ -1205,10 +1276,14 @@ real Flutter control with `tester.getSize`, and the rest are transcriptions
 that say so in the test.
 
 Two deliberate departures. A switch's thumb is **one size**, Material's
-selected 24dp, where Material grows it from 16dp as it crosses: that growth is
-an animation and this package has no motion tokens, and a thumb that jumped
-between two sizes would put a size change on the interaction path where every
-other state here is a colour. And the slider is Material's **round-thumb** one
+selected 24dp, where Material grows it from 16dp as it crosses. The tokens for
+that growth exist now — it is one of `MotionScheme3d`'s customers in waiting —
+but landing them was never the whole of it: a size that changes every frame is
+a relayout every frame, which is the one tier this catalogue keeps off the
+interaction path, and a thumb that *jumped* between two sizes would be worse
+than one that does not move. It wants a thumb drawn at one size and scaled on
+the node tier, which is a change to how the control is built rather than a
+duration. And the slider is Material's **round-thumb** one
 (a 4dp track and a 20dp thumb) rather than the 2024 bar-handle one, because a
 thumb standing proud of a track is what this catalogue's third dimension is
 for, while a handle inset into a track of its own height is a picture a 3D
@@ -1520,14 +1595,16 @@ being told, and `IconButton3d` and `FloatingActionButton3d` state their own
 Six the overlays left, each with a reason in the plan's *What phase 6
 deliberately left out*: there is no **`AlertDialog3d`** (a column and a row
 inside a `Dialog3d`, and nothing about that arrangement is three-dimensional);
-a menu does not **reflow** to stay inside the panel; a tooltip has no
+a menu does not **reflow** to stay inside the panel, though it can now be
+*told* which way to open, through `menuCorner` and `anchorCorner`; a tooltip
+has no
 **long-press** trigger, because the innermost recognizer wins the arena and a
 tooltip around a button would take the button's own long press; a snack bar has
-no **swipe to dismiss** and no second line; a sheet has no **drag handle** and
-cannot be dragged to a height, and `showBottomSheet3d` does not shorten the
-screen the way Flutter's `Scaffold.showBottomSheet` does — an overlay is not a
-scaffold slot, by design. And **nothing animates**: `Navigator3d.transition` is
-the seam, one hook away, whenever the motion tokens land.
+no **swipe to dismiss** and no second line; and a sheet has no **drag handle**
+and cannot be dragged to a height, while `showBottomSheet3d` does not shorten
+the screen the way Flutter's `Scaffold.showBottomSheet` does — an overlay is
+not a scaffold slot, by design. What is no longer on that list is animation:
+every one of the six arrives now, out of `theme.motion`.
 
 Five the selection controls left. A checkbox has no **tristate**: Material's
 third value is an `Icons.remove` in place of the tick and a `mixed` semantic
@@ -1538,8 +1615,9 @@ migration is an inherited widget plus a registry, and it belongs beside a
 `FormField3d` rather than inside a leaf control. A slider has no **tick marks**
 for its divisions and no **value indicator** above the thumb, both of which are
 ornament on the component whose design question here was the drag. A switch has
-no **growing thumb** and nothing else animates either, for the reason the whole
-catalogue does not. And a slider takes an explicit **width** rather than
+no **growing thumb**, and neither it nor the chip that should lift under a
+press moves yet: both want a node-tier answer rather than a token, and the
+tokens are the only half that has landed. And a slider takes an explicit **width** rather than
 filling its parent, because the thumb's position is written before layout
 rather than after it.
 

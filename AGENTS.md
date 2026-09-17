@@ -57,8 +57,8 @@ goes in the changelog and the plans. This file stays a contract.**
 | Package | What it is |
 | --- | --- |
 | `packages/flutter_scene_layout3d` | The layout protocol. Constraints, intrinsics, baselines, flex, stack, wrap, reading direction, slivers, scrolling, text measurement and geometry, decoration with pictures and gradients, clipping, pointer dispatch, wheel and trackpad scrolling, focus and key bindings, overlays, animation, diagnostics, the unit contract and the screen a surface stands in for — and `testing.dart`, the library an application tests its screens with. |
-| `packages/flutter_scene_material3d` | Material Design 3 on that protocol: six token families, a theme both layers read, and the catalogue over one `Material3d` primitive — buttons, cards, rows, chips, the structure, the overlays, the selection controls and the press ripple. |
-| `examples/layout3d_gallery` | The example app, and the only place a person sees any of this drawn. A Material screen on an upright panel that turns — with a gradient header and a circular avatar on every row — the same catalogue flat on the ground, and a scrolling list of raw meshes beside them: all hit-testable, through one `SceneInput3d` around the view. |
+| `packages/flutter_scene_material3d` | Material Design 3 on that protocol: seven token families, a theme both layers read, and the catalogue over one `Material3d` primitive — buttons, cards, rows, chips, the structure, the overlays that arrive rather than appear, the selection controls and the press ripple. |
+| `examples/layout3d_gallery` | The example app, and the only place a person sees any of this drawn. A Material screen on an upright panel that turns — with a gradient header, a circular avatar on every row, and an overflow menu that opens a dialog and a sheet so that an arrival has somewhere to be looked at — the same catalogue flat on the ground, and a scrolling list of raw meshes beside them: all hit-testable, through one `SceneInput3d` around the view. |
 | `examples/render_probe` | Render tests. Draws the layout on a GPU and probes the frame at the pixels layout says to check, and photographs the gallery. Commits its platform scaffolding, unlike the gallery. |
 
 `flutter_scene_material3d` is the reason the layout package exists: a Material
@@ -78,9 +78,9 @@ Everything below runs from the repository root unless stated otherwise.
 
 ```sh
 flutter pub get                                      # resolves the workspace
-cd packages/flutter_scene_layout3d && flutter test   # 1250 today
-cd packages/flutter_scene_material3d && flutter test # 545 today
-cd examples/layout3d_gallery && flutter test         # 4 today
+cd packages/flutter_scene_layout3d && flutter test   # 1254 today
+cd packages/flutter_scene_material3d && flutter test # 566 today
+cd examples/layout3d_gallery && flutter test         # 5 today
 dart analyze                                         # must be clean, everywhere
 dart format .                                        # before every commit
 ```

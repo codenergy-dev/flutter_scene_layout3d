@@ -104,7 +104,8 @@ void main() {
       );
       expect(pumped.messenger.length, 2);
 
-      await tester.pump();
+      // Settled: a bar rises a quarter of a second before it is up.
+      await tester.pumpAndSettle();
       expect(pumped.overlay.entries, hasLength(1));
       expect(pumped.announced, contains('Saved'));
       expect(pumped.announced, isNot(contains('Deleted')));
@@ -116,14 +117,17 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
       expect(await first.closed, SnackBar3dClosedReason.timeout);
 
-      await tester.pump();
+      // The handover is two animations end to end: the first sinks, its
+      // entry comes out, and only then does the second rise. That is why
+      // `_present` refuses to run while an entry is still in the overlay.
+      await tester.pumpAndSettle();
       expect(pumped.overlay.entries, hasLength(1));
       expect(pumped.announced, contains('Deleted'));
       expect(pumped.announced, isNot(contains('Saved')));
 
       await tester.pump(style.displayDuration);
       expect(await second.closed, SnackBar3dClosedReason.timeout);
-      await tester.pump();
+      await tester.pumpAndSettle();
       expect(pumped.overlay.entries, isEmpty);
     });
 
@@ -143,7 +147,7 @@ void main() {
 
       await tester.pump(const Duration(milliseconds: 2));
       expect(await controller.closed, SnackBar3dClosedReason.timeout);
-      await tester.pump();
+      await tester.pumpAndSettle();
       expect(pumped.overlay.entries, isEmpty);
     });
 
@@ -162,6 +166,7 @@ void main() {
       // The first is untouched: closing a queued bar takes nothing down.
       expect(pumped.announced, contains('First'));
       await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
       expect(pumped.overlay.entries, isEmpty);
     });
 
@@ -176,7 +181,7 @@ void main() {
 
       pumped.messenger.removeCurrent();
       expect(await first.closed, SnackBar3dClosedReason.remove);
-      await tester.pump();
+      await tester.pumpAndSettle();
       expect(pumped.announced, contains('Second'));
     });
 
@@ -194,7 +199,7 @@ void main() {
       expect(await second.closed, SnackBar3dClosedReason.remove);
       expect(await third.closed, SnackBar3dClosedReason.remove);
       expect(pumped.messenger.length, 0);
-      await tester.pump();
+      await tester.pumpAndSettle();
       expect(pumped.overlay.entries, isEmpty);
     });
 
@@ -225,7 +230,11 @@ void main() {
           onAction: () => undone++,
         ),
       );
-      await tester.pump();
+      // Settled before the press: the bar is aimed at where it is *drawn*,
+      // and a rising bar is drawn somewhere a ray does not find it — the node
+      // tier's contract, which the arrival is the catalogue's first customer
+      // for.
+      await tester.pumpAndSettle();
 
       final action = boxesOf<Semantics3d>(
         pumped.surface,
@@ -243,7 +252,7 @@ void main() {
         ),
       );
       pointer.up();
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       expect(undone, 1);
       expect(await controller.closed, SnackBar3dClosedReason.action);

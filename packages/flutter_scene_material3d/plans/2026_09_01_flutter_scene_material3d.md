@@ -1205,8 +1205,13 @@ by hand. It comes out at 60dp against `Overlay3d.defaultLift`'s 8, which is the
 size of the mistake a component picking the default would have made.
 
 **A snack bar's queue is one `Timer` and no animation at all, and saying so is
-the honest version.** `Route3dTransition.none` is what the layout package
-ships, this package has no motion tokens yet, and a messenger that pretended
+the honest version.** *Since closed:* a bar now rises and sinks, and the
+sentence that mattered survived — **the waiting is still one `Timer`** and
+still touches nothing. What the queue had to learn is that a bar on its way
+out is still in the overlay, so the next one waits for it instead of arriving
+on top of it.
+ `Route3dTransition.none` is what the layout package
+shipped, this package had no motion tokens yet, and a messenger that pretended
 otherwise would be a lie in the API. What the queue does have is the shape
 Flutter's `ScaffoldMessenger` has: one bar at a time, a duration per bar, a
 future per bar carrying **why** it went away, and a bar closed before its turn
@@ -1654,7 +1659,11 @@ whole thing on a plane that turns.
 
 **Neither screen animates between tabs.** `Navigator3d.transition` is the seam
 and nothing in the catalogue moves yet, which is phase 6's deferral rather than
-this one's.
+this one's. *Since closed, in part:*
+[the motion tokens](2026_09_17_the_motion_tokens.md) made every **overlay**
+arrive, and the gallery now has a menu, a dialog and a sheet on it to show
+that. A tab swap is still a rebuild with nothing between the two frames: that
+is a `TabBarView3d`, which the catalogue does not have.
 
 ~~**There is no committed way to photograph it.**~~ **There is now**: the
 render probe app photographs the gallery on every CI run, through
@@ -1795,6 +1804,12 @@ reader will look for and not find:
   change on the interaction path where every other state in this catalogue is
   a colour. The thumb is one size; what moves is where it is. When the motion
   tokens land, the slide is already on the tier that can animate for free.
+  *Since closed, half:* [the motion tokens](2026_09_17_the_motion_tokens.md)
+  landed and the thumb still does not grow — **the tokens were never its
+  gate.** A size that changes every frame is a relayout every frame, which is
+  the tier this sentence was already protecting; the thumb wants to be drawn
+  at one size and *scaled* on the node tier, which is a change to how the
+  control is built.
 - **A slider that fills its parent.** `Slider3d` takes a `width` in logical
   pixels, defaulting to Material's narrowest 144dp, where Flutter's fills
   whatever room it is given. That is the price of the node tier: the thumb's
@@ -1830,6 +1845,13 @@ reader will look for and not find:
   is a surface that may be at any angle in a room, and what "off the edge"
   should mean for it is a real design question rather than an oversight — the
   same question `docs/traps.md` records for M3's window size classes.
+  *Still deferred, and now met head on:*
+  [the motion tokens](2026_09_17_the_motion_tokens.md) put an overflow menu in
+  the gallery and it opened straight off the trailing edge of the panel, where
+  a ray finds no surface at all. Nothing chooses a corner yet; what was an
+  oversight rather than a deferral is that `PopupMenuButton3d` could not be
+  *told* which way to open, and it now takes the `menuCorner` and
+  `anchorCorner` that `showMenu3d` has always had.
 - **A tooltip on a long press.** Material shows one on a touch screen after a
   long press. That needs a gesture arena entry beside whatever the child
   already has, and the innermost recognizer wins the arena — so a tooltip
@@ -1848,7 +1870,11 @@ reader will look for and not find:
   `Route3dTransition.none` is the layout package's honest default and this
   package has no motion tokens; a dialog appears and disappears. The seam is
   `Navigator3d.transition`, and it is one hook away whenever the motion tokens
-  land.
+  land. *Since closed:*
+  [the motion tokens](2026_09_17_the_motion_tokens.md) made all six overlays
+  arrive. The seam was one hook and the hook was in the wrong place — a
+  navigator holds one transition and reads it again at pop time, so it became
+  `Route3d.transition`, per route, in the layout package.
 
 ## What phase 4 deliberately left out
 
@@ -1956,7 +1982,13 @@ The final tally: **505** headless tests here, **944** in the layout package,
   is the first component that animates at all, and it deliberately did **not**
   open the family: `InkRipple3dStyle` is a component style like
   `ButtonStyle3d`, replaceable per controller, and it holds Flutter's own
-  `InkRipple` figures. One animation is not a scale.
+  `InkRipple` figures. One animation is not a scale. *Since closed:*
+  [the motion tokens](2026_09_17_the_motion_tokens.md) opened the family when
+  six overlays needed the same curve, which is the case this paragraph was
+  waiting for. The refusal was right for as long as it held, and the sentence
+  it was refused with survived into the family's own doc — except that
+  `InkRipple3dStyle` keeping its non-token figures turned out to be the
+  *point* rather than an exception: the family is a vocabulary, not a cage.
 - **Adaptive layouts.** M3's window size classes assume a rectangular window;
   what a size class means for a surface floating in a scene is a genuine design
   question and not one this plan should answer in passing.

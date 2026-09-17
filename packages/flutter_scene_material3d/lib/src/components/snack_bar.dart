@@ -2,12 +2,15 @@ import 'dart:async' show Completer, Timer;
 import 'dart:collection' show Queue;
 import 'dart:ui' show Color;
 
+import 'package:flutter/animation.dart'
+    show AnimationController, AnimationStatus;
 import 'package:flutter/foundation.dart' show VoidCallback;
 import 'package:flutter/semantics.dart' show SemanticsProperties;
 import 'package:flutter/widgets.dart'
     show
         BuildContext,
         InheritedWidget,
+        SingleTickerProviderStateMixin,
         State,
         StatefulWidget,
         StatelessWidget,
@@ -27,6 +30,7 @@ import 'package:flutter_scene_layout3d/widgets.dart'
         SceneAlign3d,
         SceneConstrainedBox3d,
         SceneIgnorePointer3d,
+        SceneMotionTransition3d,
         SceneOverlay3d,
         ScenePadding3d,
         SceneRow3d,
@@ -123,13 +127,19 @@ class SnackBar3dController {
 /// its future completes all the same. So does every bar still waiting when
 /// the messenger leaves the tree.
 ///
-/// ## The timing is a `Timer`, and nothing else
+/// ## The waiting is a `Timer` and the moving is a clock
 ///
-/// There is no animation here — this package has no motion tokens yet, and
-/// `Route3dTransition.none` is the honest default the layout package ships.
-/// A bar appears, waits and goes. The waiting is one `Timer`, which touches
-/// no layout at all: showing and hiding a bar inserts and removes an overlay
-/// entry, and the four seconds in between cost nothing.
+/// A bar rises, waits four seconds and sinks. **The waiting is still one
+/// `Timer` and still touches nothing**: the arrival and the departure are a
+/// quarter of a second each at either end, and for the whole of the middle
+/// there is no ticker running and no frame asked for. That split is the point
+/// — an animation that has stopped changing must stop asking, or
+/// `pumpAndSettle` never returns.
+///
+/// The queue has one thing to know about it: **a bar that is on its way out
+/// is still in the overlay**, so the next one waits for the entry to come out
+/// rather than arriving on top of it. See [SnackBarStyle3d.arrival] for the
+/// figures, which are Flutter's own 250ms either way.
 class ScaffoldMessenger3d extends StatefulWidget {
   /// Creates a messenger over [child].
   const ScaffoldMessenger3d({super.key, required this.child});
@@ -162,12 +172,18 @@ class ScaffoldMessenger3d extends StatefulWidget {
 }
 
 /// The queue behind a [ScaffoldMessenger3d].
-class ScaffoldMessenger3dState extends State<ScaffoldMessenger3d> {
+class ScaffoldMessenger3dState extends State<ScaffoldMessenger3d>
+    with SingleTickerProviderStateMixin {
   final Queue<SnackBar3dController> _queue = Queue<SnackBar3dController>();
 
   Overlay3d? _overlay;
   WidgetOverlay3dEntry? _entry;
   Timer? _timer;
+  late final AnimationController _arrival = AnimationController(vsync: this)
+    ..addStatusListener(_handleArrival);
+
+  /// Whether the bar on screen is on its way out.
+  bool _leaving = false;
 
   /// The bar on screen, or null when there is none.
   SnackBar3dController? get current => _queue.isEmpty ? null : _queue.first;
@@ -185,6 +201,8 @@ class ScaffoldMessenger3dState extends State<ScaffoldMessenger3d> {
   void dispose() {
     _timer?.cancel();
     _timer = null;
+    // Nothing sinks on the way out of the tree: there is no clock left.
+    _arrival.dispose();
     _entry?.remove();
     _entry = null;
     for (final controller in _queue) {
@@ -229,17 +247,42 @@ class ScaffoldMessenger3dState extends State<ScaffoldMessenger3d> {
     // A bar closed before its turn is dropped from the queue and nothing
     // else happens; only the one on screen has anything to take down.
     if (!wasCurrent) return;
+    // No `_present()` here: the bar on screen has to finish leaving first,
+    // and `_handleArrival` is what puts the next one up when it has.
     _dismiss();
+    if (_entry == null) _present();
+  }
+
+  /// Takes the entry out once the bar has finished sinking, and puts the
+  /// next one up.
+  ///
+  /// The chaining is the whole of what animating cost this queue: [_present]
+  /// refuses to show anything while an entry is still in the overlay, so the
+  /// departure has to hand over rather than run beside the next arrival.
+  void _handleArrival(AnimationStatus status) {
+    if (status != AnimationStatus.dismissed || !_leaving) return;
+    _leaving = false;
+    _entry?.remove();
+    _entry = null;
     _present();
   }
 
-  /// Takes whatever is on screen off it.
+  /// Starts whatever is on screen on its way out.
   void _dismiss() {
     _timer?.cancel();
     _timer = null;
-    _entry?.remove();
-    _entry = null;
+    if (_entry == null) return;
+    if (_style.arrival.isInstant) {
+      _leaving = false;
+      _entry?.remove();
+      _entry = null;
+      return;
+    }
+    _leaving = true;
+    _arrival.reverse();
   }
+
+  SnackBarStyle3d get _style => SnackBarStyle3d.of(Theme3d.of(context));
 
   /// Puts the head of the queue up, if there is one and nothing is up.
   void _present() {
@@ -248,6 +291,10 @@ class ScaffoldMessenger3dState extends State<ScaffoldMessenger3d> {
     final overlay = _overlay;
     if (controller == null || overlay == null) return;
 
+    final style = _style;
+    _arrival
+      ..duration = style.arrival.duration
+      ..reverseDuration = style.arrival.reverseDuration;
     final entry = _entry = WidgetOverlay3dEntry(
       layer: overlayLayer3d(
         Theme3d.of(context),
@@ -259,20 +306,26 @@ class ScaffoldMessenger3dState extends State<ScaffoldMessenger3d> {
         // centres in depth as well, which would put the bar inside the lift
         // that was meant to carry it in front of the screen.
         alignment: const Alignment3d(0, 1, -1),
-        child: _SnackBar3dFrame(
-          bar: controller.bar,
-          onAction: () {
-            controller.bar.onAction?.call();
-            _closeController(controller, SnackBar3dClosedReason.action);
-          },
+        child: SceneMotionTransition3d(
+          animation: _arrival,
+          // One whole height, so a two-line bar starts as far off the edge as
+          // a one-line one does.
+          motion: style.arrival.motion,
+          child: _SnackBar3dFrame(
+            bar: controller.bar,
+            onAction: () {
+              controller.bar.onAction?.call();
+              _closeController(controller, SnackBar3dClosedReason.action);
+            },
+          ),
         ),
       ),
     );
     overlay.insertEntry(entry);
+    _leaving = false;
+    _arrival.forward(from: 0.0);
 
-    final duration =
-        controller.bar.duration ??
-        SnackBarStyle3d.of(Theme3d.of(context)).displayDuration;
+    final duration = controller.bar.duration ?? style.displayDuration;
     _timer = Timer(duration, () {
       _timer = null;
       _closeController(controller, SnackBar3dClosedReason.timeout);

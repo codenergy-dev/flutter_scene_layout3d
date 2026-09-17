@@ -459,4 +459,156 @@ void main() {
       expect(overlay.entries, isEmpty);
     });
   });
+
+  group('a route that carries its own clock', () {
+    ({Layout3dSurface surface, Overlay3d overlay}) panel() {
+      final overlay = Overlay3d(
+        children: <Layout3d>[TestBox(const Size3d(4, 3, 0), pointable: true)],
+      );
+      final surface = laidOut(
+        overlay,
+        constraints: Constraints3d.tight(const Size3d(4, 3, 0)),
+      );
+      addTearDown(surface.dispose);
+      return (surface: surface, overlay: overlay);
+    }
+
+    testWidgets('a route runs its own transition, not the navigator\'s', (
+      tester,
+    ) async {
+      final host = panel();
+      final vsync = _Vsync();
+      final navigator = Navigator3d(
+        host.overlay,
+        vsync: vsync,
+        transition: const TimedRoute3dTransition(
+          duration: Duration(milliseconds: 400),
+          curve: Curves.linear,
+        ),
+      );
+      final route = PageRoute3d<void>(
+        // A quarter of what the navigator would have given it.
+        transition: const TimedRoute3dTransition(
+          duration: Duration(milliseconds: 100),
+          curve: Curves.linear,
+        ),
+        builder: (_) => TestBox(const Size3d(2, 1, 0)),
+      );
+      unawaited(navigator.push(route));
+      host.surface.flush();
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(
+        route.animation.value,
+        1.0,
+        reason: 'the route\'s own 100ms, not the navigator\'s 400ms',
+      );
+
+      navigator.pop();
+      await tester.pumpAndSettle();
+      expect(host.overlay.entries, isEmpty);
+      expect(
+        vsync.tickers.every((ticker) => !ticker.isActive),
+        isTrue,
+        reason: 'an animation that has stopped changing stops asking',
+      );
+    });
+
+    testWidgets('two routes on one navigator keep their own clocks', (
+      tester,
+    ) async {
+      // The defect this field exists to close: a sheet already open when a
+      // dialog is pushed used to leave on whichever transition the navigator
+      // last held, because `removeRoute` reads that field at pop time.
+      final host = panel();
+      final vsync = _Vsync();
+      final navigator = Navigator3d(host.overlay, vsync: vsync);
+
+      final sheet = PageRoute3d<void>(
+        transition: const TimedRoute3dTransition(
+          duration: Duration(milliseconds: 400),
+          curve: Curves.linear,
+        ),
+        builder: (_) => TestBox(const Size3d(2, 1, 0)),
+      );
+      final dialog = PageRoute3d<void>(
+        transition: const TimedRoute3dTransition(
+          duration: Duration(milliseconds: 100),
+          curve: Curves.linear,
+        ),
+        builder: (_) => TestBox(const Size3d(1, 1, 0)),
+      );
+      unawaited(navigator.push(sheet));
+      unawaited(navigator.push(dialog));
+      host.surface.flush();
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(dialog.animation.value, 1.0);
+      expect(sheet.animation.value, closeTo(0.25, 0.05));
+
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(sheet.animation.value, 1.0);
+
+      // Now take the sheet out from under the dialog. It leaves on 400ms,
+      // which is the point: the last thing pushed was the 100ms dialog.
+      expect(navigator.removeRoute(sheet), isTrue);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(
+        host.overlay.entries,
+        hasLength(2),
+        reason: 'a quarter of the way out, both entries are still in',
+      );
+      expect(sheet.animation.value, closeTo(0.75, 0.05));
+
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(host.overlay.entries, hasLength(1));
+
+      navigator.pop();
+      await tester.pumpAndSettle();
+      expect(host.overlay.entries, isEmpty);
+    });
+
+    test('a route with none leaves at once on an animating navigator', () {
+      final host = panel();
+      final navigator = Navigator3d(
+        host.overlay,
+        transition: const TimedRoute3dTransition(
+          duration: Duration(milliseconds: 400),
+        ),
+      );
+      final route = PageRoute3d<int>(
+        transition: Route3dTransition.none,
+        builder: (_) => TestBox(const Size3d(2, 1, 0)),
+      );
+      unawaited(navigator.push(route));
+      host.surface.flush();
+      expect(route.animation.value, 1.0);
+
+      expect(navigator.pop(7), isTrue);
+      expect(
+        host.overlay.entries,
+        isEmpty,
+        reason: 'the synchronous removal path survives a per-route none',
+      );
+    });
+
+    test('a route with no transition of its own gets the navigator\'s', () {
+      final host = panel();
+      final navigator = Navigator3d(
+        host.overlay,
+        transition: const TimedRoute3dTransition(duration: Duration.zero),
+      );
+      final route = PageRoute3d<void>(
+        builder: (_) => TestBox(const Size3d(2, 1, 0)),
+      );
+      expect(route.transition, isNull);
+      unawaited(navigator.push(route));
+      host.surface.flush();
+      expect(navigator.pop(), isTrue);
+      expect(host.overlay.entries, isEmpty);
+    });
+  });
 }

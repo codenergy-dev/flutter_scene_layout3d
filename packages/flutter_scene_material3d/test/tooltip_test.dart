@@ -169,7 +169,9 @@ void main() {
       expect(pumped.overlay.entries, hasLength(1));
 
       away(pumped.surface, pointer);
-      await tester.pump();
+      // The label fades out over seventy-five milliseconds and its entry is
+      // in the overlay for the whole of it.
+      await tester.pumpAndSettle();
       expect(pumped.overlay.entries, isEmpty);
     });
 
@@ -184,7 +186,7 @@ void main() {
       expect(pumped.overlay.entries, hasLength(1));
 
       await tester.pump(style.showDuration);
-      await tester.pump();
+      await tester.pumpAndSettle();
       expect(pumped.overlay.entries, isEmpty);
     });
 

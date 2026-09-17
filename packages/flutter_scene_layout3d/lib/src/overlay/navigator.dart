@@ -140,7 +140,25 @@ class TimedRoute3dTransition extends Route3dTransition {
 /// is the common case: a builder, a barrier, and a pop on an outside tap.
 abstract class Route3d<T> {
   /// Creates a route.
-  Route3d();
+  Route3d({this.transition});
+
+  /// What runs while this route arrives or leaves, or null for the
+  /// navigator's own [Navigator3d.transition].
+  ///
+  /// **A transition belongs to what is arriving, not to the stack it arrives
+  /// on**, and a catalogue is what makes that obvious: Material gives a
+  /// dialog 150ms, a menu 300ms and a bottom sheet 250ms in and 200ms out,
+  /// and all three open on the same navigator.
+  ///
+  /// It is here rather than only on the navigator because the navigator's
+  /// field is read *twice* per route — once by [Navigator3d.push] and once by
+  /// [Navigator3d.removeRoute], arbitrarily later — so a caller writing it
+  /// before each push closes an already-open route on whatever the last push
+  /// happened to set. The failure only shows when two overlays overlap, which
+  /// is the case nobody tries by hand.
+  ///
+  /// Null is the default and the existing behaviour: the navigator decides.
+  Route3dTransition? transition;
 
   final Completer<T?> _completer = Completer<T?>();
 
@@ -163,9 +181,9 @@ abstract class Route3d<T> {
   ///
   /// What a [MotionTransition3d] inside the route's content reads, and what a
   /// [Route3dTransition] winds. The route owns it because the route is the
-  /// object with the right lifetime: a transition is held on the navigator
-  /// and shared by every route on it, while this is created on first use and
-  /// disposed when the route finishes.
+  /// object with the right lifetime: a transition may be shared by every
+  /// route on a navigator, while this is created on first use and disposed
+  /// when the route finishes.
   ///
   /// **It rests at 1, which is arrival.** A route pushed with
   /// [Route3dTransition.none] — the default — is never wound at all, and
@@ -265,6 +283,7 @@ class PageRoute3d<T> extends Route3d<T> {
   /// Creates a route over [builder].
   PageRoute3d({
     required this.builder,
+    super.transition,
     this.motion,
     this.layer = const OverlayLayer3d.inPlane(),
     this.modal = true,
@@ -287,9 +306,10 @@ class PageRoute3d<T> extends Route3d<T> {
   /// and what content that wants the box somewhere else (inside its own
   /// scrim, rather than around it) should do by hand instead.
   ///
-  /// It moves nothing on its own: the navigator's [Navigator3d.transition]
-  /// is what winds the clock, and under [Route3dTransition.none] a route with
-  /// a motion is simply at rest.
+  /// It moves nothing on its own: this route's [Route3d.transition], or the
+  /// navigator's [Navigator3d.transition] where it has none, is what winds
+  /// the clock — and under [Route3dTransition.none] a route with a motion is
+  /// simply at rest.
   final Motion3d? motion;
 
   /// Which surface the route lives on, and how far in front.
@@ -371,7 +391,12 @@ class Navigator3d {
   /// The overlay this navigator pushes into.
   final Overlay3d overlay;
 
-  /// What runs while a route arrives or leaves.
+  /// What runs while a route arrives or leaves, unless the route says
+  /// otherwise.
+  ///
+  /// The default for the stack. A route carrying its own
+  /// [Route3d.transition] uses that instead, which is how a dialog and a
+  /// bottom sheet open on the same navigator with different clocks.
   Route3dTransition transition;
 
   /// The ticker provider the routes' animations run on.
@@ -422,7 +447,7 @@ class Navigator3d {
     _routes.add(route);
     overlay.insertEntry(entry);
     route.didPush();
-    unawaited(transition.forward(route));
+    unawaited(_transitionFor(route).forward(route));
     return route.popped;
   }
 
@@ -447,7 +472,7 @@ class Navigator3d {
     if (!_routes.remove(route)) return false;
     route._popping = true;
     final entry = route._entry;
-    final reverse = transition.reverse(route);
+    final reverse = _transitionFor(route).reverse(route);
     if (reverse is SynchronousFuture<void>) {
       _finish(route, entry, result);
     } else {
@@ -469,6 +494,15 @@ class Navigator3d {
       removeRoute(_routes.last, result);
     }
   }
+
+  /// The transition [route] runs on: its own if it has one, this
+  /// navigator's otherwise.
+  ///
+  /// One place rather than two, so that the read in [push] and the read in
+  /// [removeRoute] cannot answer differently for the same route — which is
+  /// the whole defect a per-route transition exists to close.
+  Route3dTransition _transitionFor(Route3d<Object?> route) =>
+      route.transition ?? transition;
 
   void _finish(Route3d<Object?> route, Overlay3dEntry? entry, Object? result) {
     entry?.remove();

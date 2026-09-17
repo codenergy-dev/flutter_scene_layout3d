@@ -1182,7 +1182,7 @@ asserts in debug when it is inside a faded subtree without one.
 | `ReorderableList3d`, `SliverReorderableList3d`, `Reorder3dCallback` | `ReorderableListView`, `SliverReorderableList`, `ReorderCallback` — with `newIndex` meaning where the item ends up |
 | `Overlay3d`, `Overlay3dEntry`, `OverlayLayer3d` | `Overlay`, `OverlayEntry`, and the 3D question Flutter does not have |
 | `ModalBarrier3d`, `Navigator3d`, `Route3d` | `ModalBarrier`, `Navigator`, `Route` |
-| `Route3dTransition`, `TimedRoute3dTransition`, `Route3d.animation` | `TransitionRoute`'s controller and the duration-and-curve half of `PageRouteBuilder` |
+| `Route3dTransition`, `TimedRoute3dTransition`, `Route3d.transition`, `Route3d.animation` | `TransitionRoute`'s controller and the duration-and-curve half of `PageRouteBuilder` |
 | `Motion3d`, `MotionTransition3d`, `SceneMotionTransition3d` | `SlideTransition`, `ScaleTransition`, `RotationTransition` and `FadeTransition`, as one value and one box |
 | `WidgetOverlay3dEntry`, `WidgetPageRoute3d` | an entry and a route whose content is a widget subtree |
 | `Layout3d.anchorOffsetTo` | `CompositedTransformTarget` and `CompositedTransformFollower`, as one call on the node tier |
@@ -2836,6 +2836,18 @@ what a motion says is a fraction of a size, and the size arrives late: a
 ticker's first tick lands before the frame's layout, and a widget-built
 overlay entry's subtree does not exist until the build after the insertion.
 Without that, a route would show one frame at rest and then jump.
+
+**A transition belongs to the route, not to the stack.** `Navigator3d` takes
+one for the whole stack, and `Route3d.transition` overrides it per route —
+which is what a catalogue needs the moment it has more than one kind of
+overlay, because Material gives a dialog 150ms, a menu 300ms and a sheet 250ms
+in and 200ms out, and all three open on the same navigator. Writing the
+navigator's field before each push is not a substitute and is quietly wrong:
+the navigator reads it again in `removeRoute`, arbitrarily later, so an
+already-open route leaves on whatever the last push happened to set. It is
+also how a route opts *out* — `Route3dTransition.none` on a route whose
+anchor has left the tree takes it away at once, on a navigator that otherwise
+animates.
 
 **Place the box inside a scrim, not around it.** `PageRoute3d.motion` and
 `WidgetPageRoute3d.motion` wrap the whole of what the route built, which is

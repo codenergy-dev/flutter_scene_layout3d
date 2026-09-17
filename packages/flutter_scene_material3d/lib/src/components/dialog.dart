@@ -10,6 +10,7 @@ import 'package:flutter_scene_layout3d/widgets.dart'
         Layout3dMetricsScope,
         SceneAlign3d,
         SceneConstrainedBox3d,
+        SceneMotionTransition3d,
         ScenePadding3d,
         SceneSemantics3d,
         WidgetPageRoute3d;
@@ -198,6 +199,10 @@ Future<T?> showDialog3d<T>({
   late final WidgetPageRoute3d<T> route;
   route = WidgetPageRoute3d<T>(
     layer: overlayLayer3d(theme, metrics),
+    // The clock goes on the route rather than on the navigator, because a
+    // dialog and a bottom sheet open on the same navigator and disagree about
+    // every figure in it. What *moves* is chosen below, inside the scrim.
+    transition: resolved.arrival.transition,
     // The barrier is built inside the content, not by the entry: the entry's
     // own modal stack has no depth step between the scrim and what it covers.
     modal: false,
@@ -214,7 +219,13 @@ Future<T?> showDialog3d<T>({
       depthStep: metrics.dp(theme.thickness.depthStep),
       dismissible: barrierDismissible,
       onDismiss: route.pop,
-      child: builder(context),
+      // The dim comes up with the dialog and does not travel with it.
+      scrimFade: route.animation,
+      child: SceneMotionTransition3d(
+        animation: route.animation,
+        motion: resolved.arrival.motion,
+        child: builder(context),
+      ),
     ),
   );
   return navigator.push(route);

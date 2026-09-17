@@ -1,10 +1,13 @@
 import 'dart:async' show Timer;
 import 'dart:ui' show Color;
 
+import 'package:flutter/animation.dart'
+    show AnimationController, AnimationStatus;
 import 'package:flutter/semantics.dart' show SemanticsProperties;
 import 'package:flutter/widgets.dart'
     show
         BuildContext,
+        SingleTickerProviderStateMixin,
         State,
         StatefulWidget,
         StatelessWidget,
@@ -18,6 +21,7 @@ import 'package:flutter_scene_layout3d/widgets.dart'
         SceneAlign3d,
         SceneIgnorePointer3d,
         SceneListener3d,
+        SceneMotionTransition3d,
         SceneOverlay3d,
         ScenePadding3d,
         SceneSemantics3d,
@@ -118,13 +122,21 @@ class Tooltip3d extends StatefulWidget {
   State<Tooltip3d> createState() => _Tooltip3dState();
 }
 
-class _Tooltip3dState extends State<Tooltip3d> {
+class _Tooltip3dState extends State<Tooltip3d>
+    with SingleTickerProviderStateMixin {
   Anchor3d? _anchor;
   Overlay3d? _overlay;
   WidgetOverlay3dEntry? _entry;
   Timer? _timer;
+  late final AnimationController _fade = AnimationController(vsync: this)
+    ..addStatusListener(_handleFade);
 
-  /// Whether the label is up.
+  /// Whether the label is leaving, and its entry is only still there because
+  /// the fade has not finished.
+  bool _leaving = false;
+
+  /// Whether the label is up. True through the fade out as well, because the
+  /// entry is still in the overlay for the whole of it.
   bool get isShowing => _entry != null;
 
   @override
@@ -137,9 +149,19 @@ class _Tooltip3dState extends State<Tooltip3d> {
   void dispose() {
     _timer?.cancel();
     _timer = null;
+    // No fade on the way out of the tree: there is nothing left to fade with.
+    _fade.dispose();
     _entry?.remove();
     _entry = null;
     super.dispose();
+  }
+
+  /// Takes the entry out once the fade has actually reached nothing.
+  void _handleFade(AnimationStatus status) {
+    if (status != AnimationStatus.dismissed || !_leaving) return;
+    _leaving = false;
+    _entry?.remove();
+    _entry = null;
   }
 
   TooltipStyle3d get _style =>
@@ -150,7 +172,17 @@ class _Tooltip3dState extends State<Tooltip3d> {
   /// No `setState` here, deliberately: a hover that never matures into a
   /// tooltip must cost exactly one `Timer`.
   void _handleEnter() {
-    if (!widget.enabled || isShowing) return;
+    if (!widget.enabled) return;
+    if (isShowing) {
+      // A pointer that comes back during the seventy-five milliseconds of the
+      // fade out catches the label on its way down rather than watching it go
+      // and waiting half a second for it to come back.
+      if (_leaving) {
+        _leaving = false;
+        _fade.forward();
+      }
+      return;
+    }
     _timer?.cancel();
     _timer = Timer(_style.waitDuration, _show);
   }
@@ -170,12 +202,18 @@ class _Tooltip3dState extends State<Tooltip3d> {
 
     final style = _style;
     final metrics = Layout3dMetricsScope.of(context);
+    _fade
+      ..duration = style.arrival.duration
+      ..reverseDuration = style.arrival.reverseDuration;
     final entry = _entry = WidgetOverlay3dEntry(
       layer: overlayLayer3d(Theme3d.of(context), metrics),
       debugLabel: 'Tooltip3d',
       // A tooltip is not a route and blocks nothing: no barrier, no focus
       // trap, and the label itself lets every ray through.
       contentBuilder: (context, _) => SceneIgnorePointer3d(
+        // The fade is inside the follower for the same reason the menu's
+        // growth is: the anchoring is one corner on another, and a label that
+        // is arriving is still hung where it belongs.
         child: Follower3dWidget(
           anchor: anchor,
           self: Alignment3d.topCenter,
@@ -187,22 +225,41 @@ class _Tooltip3dState extends State<Tooltip3d> {
             padding: metrics.dpInsets(
               EdgeInsets3d.only(top: style.verticalOffset),
             ),
-            child: _Tooltip3dLabel(message: widget.message, style: style),
+            child: SceneMotionTransition3d(
+              animation: _fade,
+              motion: style.arrival.motion,
+              child: _Tooltip3dLabel(message: widget.message, style: style),
+            ),
           ),
         ),
       ),
     );
     overlay.insertEntry(entry);
+    _leaving = false;
+    _fade.forward(from: 0.0);
 
     // A tooltip that outstays its welcome is worse than one that never came.
     _timer = Timer(style.showDuration, _hide);
   }
 
+  /// Starts the label on its way out, and takes the entry out when it has
+  /// finished going.
+  ///
+  /// The entry stays in the overlay for the whole of the fade, which is the
+  /// same bargain `Navigator3d.removeRoute` makes for a route — and it is why
+  /// [isShowing] is still true while a label is leaving.
   void _hide() {
     _timer?.cancel();
     _timer = null;
-    _entry?.remove();
-    _entry = null;
+    if (_entry == null) return;
+    if (_style.arrival.isInstant) {
+      _leaving = false;
+      _entry?.remove();
+      _entry = null;
+      return;
+    }
+    _leaving = true;
+    _fade.reverse();
   }
 
   @override

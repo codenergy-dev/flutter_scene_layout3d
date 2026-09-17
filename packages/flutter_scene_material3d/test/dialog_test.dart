@@ -107,7 +107,7 @@ void main() {
       expect(result, isA<Future<String?>>());
 
       Navigator3d.of(pumped.overlay)!.pop('deleted');
-      await tester.pump();
+      await tester.pumpAndSettle();
       expect(await result, 'deleted');
       expect(pumped.overlay.entries, isEmpty);
     });
@@ -118,7 +118,7 @@ void main() {
         context: pumped.context,
         builder: (context) => const Dialog3d(child: SceneSizedBox3d.cube(0.4)),
       );
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       final barrier = oneOf<ModalBarrier3d>(pumped.surface);
       final scrim = boxesOf<DecoratedBox3d>(
@@ -155,13 +155,13 @@ void main() {
         context: pumped.context,
         builder: (context) => const Dialog3d(child: SceneSizedBox3d.cube(0.4)),
       );
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       // Well outside the dialog, which is centred.
       final ray = rayAt(pumped.surface, const Offset3d(0.1, 0.1, 0));
       pumped.pointer.down(ray);
       pumped.pointer.up();
-      await tester.pump();
+      await tester.pumpAndSettle();
       expect(await dismissed, isNull);
       expect(pumped.overlay.entries, isEmpty);
 
@@ -170,15 +170,15 @@ void main() {
         barrierDismissible: false,
         builder: (context) => const Dialog3d(child: SceneSizedBox3d.cube(0.4)),
       );
-      await tester.pump();
+      await tester.pumpAndSettle();
       final second = Layout3dPointer(pumped.surface);
       second.down(rayAt(pumped.surface, const Offset3d(0.1, 0.1, 0)));
       second.up();
-      await tester.pump();
+      await tester.pumpAndSettle();
       expect(pumped.overlay.entries, hasLength(1));
 
       Navigator3d.of(pumped.overlay)!.pop('kept');
-      await tester.pump();
+      await tester.pumpAndSettle();
       expect(await held, 'kept');
     });
 
@@ -201,7 +201,7 @@ void main() {
       }
 
       tapAtCorner();
-      await tester.pump();
+      await tester.pumpAndSettle();
       expect(taps, 1);
 
       showDialog3d<void>(
@@ -209,10 +209,10 @@ void main() {
         barrierDismissible: false,
         builder: (context) => const Dialog3d(child: SceneSizedBox3d.cube(0.4)),
       );
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       tapAtCorner();
-      await tester.pump();
+      await tester.pumpAndSettle();
       // The press landed on the barrier and went no further.
       expect(taps, 1);
       expect(pumped.overlay.entries, hasLength(1));
@@ -224,12 +224,12 @@ void main() {
         context: pumped.context,
         builder: (context) => const Dialog3d(child: SceneSizedBox3d.cube(0.4)),
       );
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       // The dialog took the focus when it opened, so Escape reaches it with
       // nothing inside focused.
       expect(await tester.sendKeyEvent(LogicalKeyboardKey.escape), isTrue);
-      await tester.pump();
+      await tester.pumpAndSettle();
       expect(await dismissed, isNull);
       expect(pumped.overlay.entries, isEmpty);
 
@@ -238,14 +238,14 @@ void main() {
         barrierDismissible: false,
         builder: (context) => const Dialog3d(child: SceneSizedBox3d.cube(0.4)),
       );
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       expect(await tester.sendKeyEvent(LogicalKeyboardKey.escape), isFalse);
-      await tester.pump();
+      await tester.pumpAndSettle();
       expect(pumped.overlay.entries, hasLength(1));
 
       Navigator3d.of(pumped.overlay)!.pop('kept');
-      await tester.pump();
+      await tester.pumpAndSettle();
       expect(await held, 'kept');
     });
 
@@ -255,7 +255,7 @@ void main() {
         context: pumped.context,
         builder: (context) => const Dialog3d(child: SceneSizedBox3d.cube(0.4)),
       );
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       final entry = pumped.overlay.entries.single;
       expect(entry.focusScope, isNotNull);
@@ -273,7 +273,7 @@ void main() {
           child: SceneSizedBox3d(width: 0.5, height: 0.3, depth: 0.02),
         ),
       );
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       final dialog = boxesOf<DecoratedBox3d>(
         pumped.surface,
@@ -296,13 +296,13 @@ void main() {
         context: pumped.context,
         builder: (context) => const Dialog3d(child: SceneSizedBox3d.cube(0.4)),
       );
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       expect(pumped.overlay.entries, hasLength(2));
       final navigator = Navigator3d.of(pumped.overlay)!;
       expect(navigator.routes, hasLength(2));
       navigator.pop();
-      await tester.pump();
+      await tester.pumpAndSettle();
       expect(pumped.overlay.entries, hasLength(1));
     });
   });

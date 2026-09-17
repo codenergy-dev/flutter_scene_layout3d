@@ -18,6 +18,7 @@ import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart'
         Constraints3d,
         CrossAxisAlignment3d,
         MainAxisSize3d,
+        Route3dTransition,
         Size3d;
 import 'package:flutter_scene_layout3d/widgets.dart'
     show
@@ -27,10 +28,12 @@ import 'package:flutter_scene_layout3d/widgets.dart'
         SceneConstrainedBox3d,
         SceneIgnorePointer3d,
         SceneIntrinsicWidth3d,
+        SceneMotionTransition3d,
         ScenePadding3d,
         SceneRow3d,
         SceneSemantics3d,
         SceneSizedBox3d,
+        SceneTapTarget3d,
         SceneText3d,
         WidgetPageRoute3d;
 
@@ -293,6 +296,8 @@ class PopupMenuButton3d<T> extends StatefulWidget {
     this.onSelected,
     this.onCanceled,
     this.enabled = true,
+    this.menuCorner = AlignmentDirectional3d.topStart,
+    this.anchorCorner = AlignmentDirectional3d.bottomStart,
     this.semanticLabel,
     this.textDirection,
     this.style,
@@ -300,6 +305,26 @@ class PopupMenuButton3d<T> extends StatefulWidget {
 
   /// Builds the items, each carrying the value it stands for.
   final List<MenuItem3dEntry<T>> Function(BuildContext context) itemBuilder;
+
+  /// The menu's own corner that is hung on the button.
+  ///
+  /// The pair [menuCorner] and [anchorCorner] are the two [showMenu3d]
+  /// already takes, forwarded so that a button near an edge can hang its menu
+  /// the other way: an overflow button in an app bar wants
+  /// `AlignmentDirectional3d.topEnd` on `bottomEnd`, or the menu opens off
+  /// the trailing edge of the panel and a ray finds no surface there at all.
+  ///
+  /// **Nothing chooses this for you**, and that is deliberate rather than
+  /// unfinished. What "off the edge" *means* for a surface that may be at any
+  /// angle — and may be looked at from behind — is an open design question
+  /// this catalogue has declined twice to answer in passing; a menu on a
+  /// panel has no window to be pushed back inside. Until it is answered, the
+  /// caller says which way the menu opens, in the same vocabulary
+  /// `Follower3d` uses, and the reading direction mirrors it.
+  final AlignmentGeometry3d menuCorner;
+
+  /// The button's corner the menu's [menuCorner] is hung on.
+  final AlignmentGeometry3d anchorCorner;
 
   /// The trigger: whatever is tapped to open the menu.
   final Widget child;
@@ -333,7 +358,14 @@ class _PopupMenuButton3dState<T> extends State<PopupMenuButton3d<T>> {
   @override
   void dispose() {
     // An anchor that has left the tree cannot be followed, so the menu goes
-    // with the button rather than hanging where the button used to be.
+    // with the button rather than hanging where the button used to be — and
+    // it goes **at once**, whatever the style says. A menu shrinking away
+    // over three hundred milliseconds would be shrinking away from an anchor
+    // that no longer exists, on a tree that is already leaving, and its
+    // ticker would outlive both. This is what a per-route transition is for:
+    // one route opts out without touching the navigator every other overlay
+    // shares.
+    _open?.transition = Route3dTransition.none;
     _open?.pop();
     _open = null;
     super.dispose();
@@ -342,11 +374,11 @@ class _PopupMenuButton3dState<T> extends State<PopupMenuButton3d<T>> {
   Future<void> _open3d() async {
     final anchor = _anchor;
     if (anchor == null || _open != null) return;
+    final theme = Theme3d.of(context);
+    final arrival = (widget.style ?? MenuStyle3d.of(theme)).arrival;
     final route = WidgetPageRoute3d<T>(
-      layer: overlayLayer3d(
-        Theme3d.of(context),
-        Layout3dMetricsScope.of(context),
-      ),
+      layer: overlayLayer3d(theme, Layout3dMetricsScope.of(context)),
+      transition: arrival.transition,
       modal: false,
       trapFocus: true,
       debugLabel: 'PopupMenuButton3d',
@@ -360,22 +392,31 @@ class _PopupMenuButton3dState<T> extends State<PopupMenuButton3d<T>> {
         ).dp(Theme3d.of(context).thickness.depthStep),
         dismissible: true,
         onDismiss: self.pop,
+        // Inside the follower, not around it: the anchoring stays one corner
+        // on another and only the menu grows, so a menu that is arriving is
+        // still hung where it belongs.
         child: Follower3dWidget(
           anchor: anchor,
-          child: Menu3d(
-            style: widget.style,
-            semanticLabel: widget.semanticLabel,
-            children: <Widget>[
-              for (final item in widget.itemBuilder(context))
-                MenuItem3d(
-                  label: item.label,
-                  leading: item.leading,
-                  trailing: item.trailing,
-                  enabled: item.enabled,
-                  style: widget.style,
-                  onPressed: () => self.pop(item.value),
-                ),
-            ],
+          self: widget.menuCorner,
+          target: widget.anchorCorner,
+          child: SceneMotionTransition3d(
+            animation: self.animation,
+            motion: arrival.motion,
+            child: Menu3d(
+              style: widget.style,
+              semanticLabel: widget.semanticLabel,
+              children: <Widget>[
+                for (final item in widget.itemBuilder(context))
+                  MenuItem3d(
+                    label: item.label,
+                    leading: item.leading,
+                    trailing: item.trailing,
+                    enabled: item.enabled,
+                    style: widget.style,
+                    onPressed: () => self.pop(item.value),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -391,31 +432,58 @@ class _PopupMenuButton3dState<T> extends State<PopupMenuButton3d<T>> {
   }
 
   @override
-  Widget build(BuildContext context) => SceneSemantics3d(
-    properties: SemanticsProperties(
-      button: true,
-      enabled: widget.enabled,
-      label: widget.semanticLabel,
-      textDirection: readingDirection3d(context, widget.textDirection),
-      onTap: widget.enabled ? _open3d : null,
-    ),
-    child: Anchor3dWidget(
-      onCreated: (anchor) => _anchor = anchor,
-      child: Material3d(
-        color: const Color(0x00000000),
-        shape: Theme3d.of(context).shape.full,
-        thickness: Theme3d.of(context).thickness.thin,
-        surfaceTint: const Color(0x00000000),
-        alignment: null,
-        child: SceneAlign3d(
-          alignment: Alignment3d.frontCenter,
-          widthFactor: 1.0,
-          heightFactor: 1.0,
+  Widget build(BuildContext context) => SceneTapTarget3d(
+    // The outermost box, and it has to be, for the reason `Button3d`'s says
+    // in the same words: a target reaches past its own extent, every
+    // *ancestor* gates a ray on its own extent, and the semantics box below
+    // is exactly the button's size.
+    //
+    // **It was missing entirely**, and the cost was a component that laid
+    // out, drew, announced itself to a screen reader and could not be
+    // pressed. `Button3d` gets Material's 48dp minimum from this box while
+    // its ink well asks for none; this button asked for none *and* had no
+    // outer target, so its whole reach was its child — a 24dp icon. A 24dp
+    // slab at the top corner of a panel is small enough that a ray from a
+    // camera looking at the panel straight on, which arrives at an angle
+    // everywhere except the middle, misses it and lands on the app bar
+    // behind. A null minimum is Material's 48dp, resolved through the
+    // surface's metrics at hit-test time.
+    child: SceneSemantics3d(
+      properties: SemanticsProperties(
+        button: true,
+        enabled: widget.enabled,
+        label: widget.semanticLabel,
+        textDirection: readingDirection3d(context, widget.textDirection),
+        onTap: widget.enabled ? _open3d : null,
+      ),
+      child: Anchor3dWidget(
+        onCreated: (anchor) => _anchor = anchor,
+        child: Material3d(
+          color: const Color(0x00000000),
+          shape: Theme3d.of(context).shape.full,
+          thickness: Theme3d.of(context).thickness.thin,
+          surfaceTint: const Color(0x00000000),
+          alignment: null,
+          // The align goes **inside** the ink well, exactly as `Button3d`'s
+          // does, and the order is not cosmetic. Outside it, the well is handed
+          // the *loose* constraints an align passes down and shrink-wraps its
+          // child's depth — and this button's child is usually an `Icon3d`,
+          // which is a glyph and has none. A tap target with no thickness is a
+          // degenerate slab that no ray intersects, so an overflow menu in an
+          // app bar laid out, drew, announced itself to a screen reader and
+          // could not be pressed. Inside, the well gets the surface's own
+          // constraints, depth included.
           child: InkWell3d(
+            // One target, and it is the one outside this panel.
             minimumSize: Size3d.zero,
             enabled: widget.enabled,
             onTap: widget.enabled ? _open3d : null,
-            child: widget.child,
+            child: SceneAlign3d(
+              alignment: Alignment3d.frontCenter,
+              widthFactor: 1.0,
+              heightFactor: 1.0,
+              child: widget.child,
+            ),
           ),
         ),
       ),
@@ -469,9 +537,11 @@ Future<T?> showMenu3d<T>({
 }) {
   final theme = Theme3d.of(context);
   final metrics = Layout3dMetricsScope.of(context);
+  final arrival = (style ?? MenuStyle3d.of(theme)).arrival;
   late final WidgetPageRoute3d<T> route;
   route = WidgetPageRoute3d<T>(
     layer: overlayLayer3d(theme, metrics),
+    transition: arrival.transition,
     modal: false,
     trapFocus: true,
     debugLabel: debugLabel ?? 'Menu3d',
@@ -485,10 +555,14 @@ Future<T?> showMenu3d<T>({
         anchor: anchor,
         self: menuCorner,
         target: anchorCorner,
-        child: Menu3d(
-          style: style,
-          semanticLabel: semanticLabel,
-          children: children,
+        child: SceneMotionTransition3d(
+          animation: route.animation,
+          motion: arrival.motion,
+          child: Menu3d(
+            style: style,
+            semanticLabel: semanticLabel,
+            children: children,
+          ),
         ),
       ),
     ),

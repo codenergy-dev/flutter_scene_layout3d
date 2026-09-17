@@ -92,7 +92,9 @@ void main() {
           child: SceneSizedBox3d(width: 2, height: 0.8, depth: 0.02),
         ),
       );
-      await tester.pump();
+      // Settled: a sheet rises one whole height over two hundred and fifty
+      // milliseconds, and this test is about where it comes to rest.
+      await tester.pumpAndSettle();
 
       expect(boxesOf<ModalBarrier3d>(pumped.surface), hasLength(1));
       final sheet = boxesOf<DecoratedBox3d>(
@@ -109,7 +111,7 @@ void main() {
       expect(at.z + sheet.size.depth, lessThan(scrim.drawnOffsetInSurface.z));
 
       Navigator3d.of(pumped.overlay)!.pop('picked');
-      await tester.pump();
+      await tester.pumpAndSettle();
       expect(await result, 'picked');
     });
 
@@ -120,12 +122,12 @@ void main() {
         builder: (context) =>
             const BottomSheet3d(child: SceneSizedBox3d.cube(0.4)),
       );
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       // High on the panel, well clear of a bottom sheet.
       pumped.pointer.down(rayAt(pumped.surface, const Offset3d(4, 0.3, 0)));
       pumped.pointer.up();
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       expect(await result, isNull);
       expect(pumped.overlay.entries, isEmpty);
@@ -141,7 +143,7 @@ void main() {
           child: SceneSizedBox3d(width: 1.5, height: 2, depth: 0.02),
         ),
       );
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       final sheet = boxesOf<DecoratedBox3d>(
         pumped.surface,
@@ -170,7 +172,7 @@ void main() {
           child: SceneSizedBox3d(width: 2, height: 0.8, depth: 0.02),
         ),
       );
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       // No barrier, no scrim: the persistent form is part of the screen.
       expect(boxesOf<ModalBarrier3d>(pumped.surface), isEmpty);
@@ -184,7 +186,7 @@ void main() {
       expect(taps, 1);
 
       Navigator3d.of(pumped.overlay)!.pop('done');
-      await tester.pump();
+      await tester.pumpAndSettle();
       expect(await result, 'done');
       expect(pumped.overlay.entries, isEmpty);
     });
@@ -196,7 +198,7 @@ void main() {
         builder: (context) =>
             const BottomSheet3d(child: SceneSizedBox3d.cube(0.4)),
       );
-      await tester.pump();
+      await tester.pumpAndSettle();
       final entry = pumped.overlay.entries.single;
       expect(entry.trapFocus, isFalse);
       expect(entry.focusScope, isNull);

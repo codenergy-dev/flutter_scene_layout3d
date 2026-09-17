@@ -1,5 +1,20 @@
 ## Unreleased
 
+- **A route carries its own clock.** `Route3d.transition` is a transition on
+  the route rather than on the navigator, consulted before
+  `Navigator3d.transition` and null by default, so every route built today is
+  unaffected. `PageRoute3d` and `WidgetPageRoute3d` take it as an argument.
+  - **The navigator's single field was not merely inconvenient, it was
+    wrong.** A navigator reads it twice per route — once in `push` and once
+    in `removeRoute`, arbitrarily later — so a caller writing it before each
+    push closes an already-open route on whatever the *last* push set.
+    A dialog opened over a sheet used to give the sheet the dialog's timing on
+    the way out. The failure only appears when two overlays overlap, which is the
+    case nobody tries by hand.
+  - It is also how a route opts **out**: a menu whose button leaves the tree
+    sets `Route3dTransition.none` and goes at once, rather than shrinking away
+    from an anchor that no longer exists on a tree that is already leaving.
+
 - **A box fades.** `Opacity3d` draws everything below it at a fraction of its
   strength, and it reaches all three of the things this package draws with: a
   panel, a label's glyphs, and the wall around those glyphs. The item had been

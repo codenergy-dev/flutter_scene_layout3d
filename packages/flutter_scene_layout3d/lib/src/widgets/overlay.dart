@@ -627,6 +627,7 @@ class WidgetPageRoute3d<T> extends Route3d<T> {
   /// Creates a route over [builder].
   WidgetPageRoute3d({
     required this.builder,
+    super.transition,
     this.motion,
     this.layer = const OverlayLayer3d.inPlane(),
     this.modal = true,
@@ -650,8 +651,8 @@ class WidgetPageRoute3d<T> extends Route3d<T> {
   /// wants the box *inside* the scrim instead — a dim that slides in with the
   /// dialog it dims is wrong — and writes the widget by hand there.
   ///
-  /// It moves nothing on its own: [Navigator3d.transition] is what winds the
-  /// clock.
+  /// It moves nothing on its own: this route's [Route3d.transition], or
+  /// [Navigator3d.transition] where it has none, is what winds the clock.
   final Motion3d? motion;
 
   /// Which surface the route lives on, and how far in front.

@@ -137,8 +137,8 @@ Two entry points:
 - **What is being built next** is
   [what a real application still needs](../packages/flutter_scene_layout3d/plans/2026_09_11_what_a_real_application_still_needs.md),
   the index of the seventeen plans between a finished catalogue and an
-  application people use. It is a map rather than a work item: each row
-  becomes a plan of its own when it is picked up.
+  application people use — **ten closed, seven open**. It is a map rather than
+  a work item: each row becomes a plan of its own when it is picked up.
   [An application that does not wire its own rays](../packages/flutter_scene_layout3d/plans/2026_09_11_an_application_that_does_not_wire_its_own_rays.md)
   is the first of them, and it led for the reason the map gave: it is the item
   every other item is consumed through. `SceneInput3d` wraps the `SceneView`
@@ -242,6 +242,30 @@ Two entry points:
   package ships a third shader for it. The experiment was retired with the
   plan: it generated its variants by patching the shaders this work has now
   patched.
+- **The motion tokens** are
+  [the tenth](../packages/flutter_scene_material3d/plans/2026_09_17_the_motion_tokens.md),
+  the first plan in the Material package since its own ten phases, and the
+  one that makes the catalogue move: `MotionScheme3d` is Material's sixteen
+  durations and nine easings on `Theme3dData`, checked value for value against
+  Flutter's `Durations` and `Easing`, and all six overlays arrive on it. The
+  family had been refused three times with the same sentence — *one animation
+  is not a scale* — and six overlays wanting the same curve is the case that
+  was being waited for. It needed one change to the layout protocol, planned
+  here as
+  [a route that carries its own clock](../packages/flutter_scene_layout3d/plans/2026_09_17_a_route_that_carries_its_own_clock.md):
+  a navigator's single transition is read again at pop time, so a caller
+  writing it per push closes an already-open route on the last push's timing.
+  What the work actually cost was elsewhere. `pumpAndSettle` turned out to be
+  doing two different jobs in the existing suites — *let the entry build*,
+  which must stay one frame, and *let the thing finish arriving* — so they
+  could not be converted mechanically. A moving box is pressable **where
+  layout put it**, not where it is drawn, and the test library aims where a
+  person aims, so a press at a growing menu lands on the item above. And
+  putting a menu in the gallery, so that a person could see one arrive, found
+  a `PopupMenuButton3d` with no tap target at all: it laid out, drew,
+  announced itself to a screen reader and did nothing, and its own suite
+  passed the whole time because that suite's trigger was a sized box rather
+  than the `Icon3d` every caller passes.
 
 ## Keeping this true
 

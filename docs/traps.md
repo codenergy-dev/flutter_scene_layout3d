@@ -843,6 +843,18 @@ remains a reservation of space and `glyphDepth` is the figure that draws.
   `SceneTapTarget3d` > `Material3d` > `InkWell3d`, with the ink well's own
   `minimumSize: Size3d.zero` so there is one target rather than two nested
   ones disagreeing about where the control is.
+- **A tap target with no depth is a slab no ray intersects.** The companion to
+  the rule above, and the one that gets you when the outer target is right.
+  A target shrink-wraps what is inside it, and half the things a component
+  puts there have no depth of their own: an `Icon3d` is a glyph, and a glyph
+  is a flat quad. So an align that sits *above* the ink well hands it the
+  loose constraints an align passes down, the well wraps a zero-depth child,
+  and the target comes out as a rectangle with no volume — which lays out,
+  draws, announces itself to a screen reader, and answers nothing. Put the
+  align **inside** the well, where the well still has the surface's own
+  constraints, depth included. `flutter_scene_material3d`'s
+  `PopupMenuButton3d` had it the other way round and its overflow menu could
+  not be opened at all.
 - **A second affordance *inside* a component gets neither a reach nor a wash.**
   A chip's delete icon is the case: a `TapTarget3d` there is gated by the
   chip's own panel, so its 48dp would be silently inert, and an `InkWell3d`
@@ -1172,6 +1184,15 @@ Things that cost time, in phase 5 and since, and are invisible from the code.
   keyboard went elsewhere" and then asks the scene to take it back finds the
   *first* box, not the last one. Move the focus to a real node outside the
   scene instead.
+- **Settle before you press something that is arriving.** An arrival is on the
+  node tier, and the node tier does not move the hit test: a box is pressable
+  where layout put it, not where the motion has carried it. `tap3d` and
+  `isReachable3d` aim at where the box is **drawn**, because that is where a
+  person aims. The two agree at rest and disagree for the couple of hundred
+  milliseconds in between, so a test that presses a menu item one frame after
+  the menu opened is aiming at a menu still at 80% and lands on the item
+  above. `await tester.pumpAndSettle()` first, which is also what a person
+  does.
 - **A component has two `TapTarget3d`s per control, not one.** The outer one
   carries the 48dp reach and the `InkWell3d`'s own sits inside it at
   `Size3d.zero` — one target rather than two nested ones disagreeing about

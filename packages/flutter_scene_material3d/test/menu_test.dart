@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart' show Icons;
 import 'package:flutter/widgets.dart'
     show BuildContext, StatefulBuilder, Widget;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
@@ -78,6 +79,7 @@ void main() {
           itemThickness: 1,
           itemDepthStep: 1,
           itemTextStyle: Typography3dToken.labelLarge,
+          arrival: Arrival3d.none,
         ),
         throwsAssertionError,
       );
@@ -174,7 +176,12 @@ void main() {
       expect(find3d.bySubtype<Follower3d>(), findsNothing);
 
       await tester.tap3d(find3d.bySemanticsLabel('More'));
-      await tester.pump();
+      // Settled, not pumped once: a menu grows over three hundred
+      // milliseconds, and **an arriving box is pressable where layout put it
+      // rather than where it is drawn** — the node tier's contract. A press
+      // aimed at the drawn centre of a menu still at 80% lands on the item
+      // above. A person waits for the menu; so does the test.
+      await tester.pumpAndSettle();
 
       final follower = tester.layout3d<Follower3d>(
         find3d.bySubtype<Follower3d>(),
@@ -183,7 +190,7 @@ void main() {
       expect(find3d.bySemanticsLabel('Delete'), isReachable3d);
 
       await tester.tap3d(find3d.bySemanticsLabel('Delete'));
-      await tester.pump();
+      await tester.pumpAndSettle();
 
       expect(chosen, <String>['delete']);
       expect(find3d.bySemanticsLabel('Delete'), findsNothing);
@@ -313,6 +320,87 @@ void main() {
       final semantics = boxesOf<Semantics3d>(pumped.surface).first;
       expect(semantics.properties.button, isTrue);
       expect(semantics.properties.label, 'More');
+    });
+  });
+  group('the button a menu hangs from', () {
+    // Everything here is about the trigger rather than the menu, and both
+    // cases are regressions: an overflow button in an app bar laid out, drew,
+    // announced itself to a screen reader and could not be pressed.
+
+    Future<Layout3dSurface> pumpButton(
+      WidgetTester tester, {
+      bool trailing = false,
+    }) => tester.pumpSurface3d(
+      SceneTheme3d(
+        data: Theme3dData.light,
+        child: SceneOverlay3d(
+          child: SceneStack3d(
+            children: <Widget>[
+              ScenePositioned3d(
+                left: trailing ? null : 0,
+                right: trailing ? 0 : null,
+                top: 0,
+                front: 0,
+                child: PopupMenuButton3d<String>(
+                  semanticLabel: 'More',
+                  menuCorner: trailing
+                      ? AlignmentDirectional3d.topEnd
+                      : AlignmentDirectional3d.topStart,
+                  anchorCorner: trailing
+                      ? AlignmentDirectional3d.bottomEnd
+                      : AlignmentDirectional3d.bottomStart,
+                  itemBuilder: twoItems,
+                  child: const Icon3d(Icons.more_vert),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    testWidgets('an icon trigger has depth, and Material\'s reach', (
+      tester,
+    ) async {
+      final surface = await pumpButton(tester);
+
+      for (final target in boxesOf<TapTarget3d>(surface)) {
+        expect(
+          target.size.depth,
+          greaterThan(0.0),
+          reason:
+              'a target with no thickness is a slab no ray intersects, and an '
+              'Icon3d is a glyph with no depth of its own — so the align that '
+              'shrink-wraps it has to sit inside the ink well, not above it',
+        );
+      }
+      expect(
+        boxesOf<TapTarget3d>(surface),
+        isNotEmpty,
+        reason:
+            'the outermost box of the button is a target, as Button3d\'s '
+            'is: there was none at all, so the whole reach was the 24dp icon',
+      );
+      expect(find3d.bySemanticsLabel('More'), isReachable3d);
+    });
+
+    testWidgets('it can be hung by its trailing corner instead', (
+      tester,
+    ) async {
+      // The answer for a button against the trailing edge of a panel, where a
+      // menu opening the usual way runs off the surface and a ray finds
+      // nothing at all. Nothing chooses it: the caller does.
+      final surface = await pumpButton(tester, trailing: true);
+
+      await tester.tap3d(find3d.bySemanticsLabel('More'));
+      await tester.pumpAndSettle();
+
+      final menu = tester.layout3d<Follower3d>(find3d.bySubtype<Follower3d>());
+      // Hung by its own trailing edge, so it stays on the panel: its trailing
+      // edge is the button's, not a menu's width further out.
+      final right = menu.drawnOffsetInSurface.x + menu.size.width;
+      expect(right, lessThanOrEqualTo(surface.child!.size.width + 1e-6));
+      expect(find3d.bySemanticsLabel('Rename'), isReachable3d);
     });
   });
 }

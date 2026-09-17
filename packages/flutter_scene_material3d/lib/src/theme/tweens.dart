@@ -2,6 +2,7 @@ import 'package:flutter/animation.dart' show Tween;
 
 import '../tokens/color_scheme.dart';
 import '../tokens/depth.dart';
+import '../tokens/motion.dart';
 import '../tokens/shape.dart';
 import '../tokens/state_layer.dart';
 import '../tokens/typography.dart';
@@ -63,6 +64,18 @@ class StateLayerOpacity3dTween extends Tween<StateLayerOpacity3d> {
   @override
   StateLayerOpacity3d lerp(double t) =>
       StateLayerOpacity3d.lerp(begin!, end!, t);
+}
+
+/// Interpolates between two motion schemes.
+///
+/// **The durations interpolate and the curves snap at the midpoint**, which
+/// is what [MotionScheme3d.lerp] does and why.
+class MotionScheme3dTween extends Tween<MotionScheme3d> {
+  /// Creates a tween between two motion schemes.
+  MotionScheme3dTween({super.begin, super.end});
+
+  @override
+  MotionScheme3d lerp(double t) => MotionScheme3d.lerp(begin!, end!, t);
 }
 
 /// Interpolates between two thickness scales.

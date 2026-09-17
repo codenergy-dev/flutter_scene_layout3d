@@ -11,13 +11,14 @@ import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart'
 
 import '../tokens/color_scheme.dart';
 import '../tokens/depth.dart';
+import '../tokens/motion.dart';
 import '../tokens/shape.dart';
 import '../tokens/state_layer.dart';
 import '../tokens/typography.dart';
 
 /// Every token a component reads, in one value.
 ///
-/// Six families and a density. A component asks the theme for a token and
+/// Seven families and a density. A component asks the theme for a token and
 /// the metrics for a conversion, in that order and never the other way round:
 ///
 /// ```dart
@@ -73,6 +74,7 @@ class Theme3dData {
     this.elevation = Elevation3d.baseline,
     this.thickness = Thickness3d.baseline,
     this.stateLayer = StateLayerOpacity3d.baseline,
+    this.motion = MotionScheme3d.baseline,
     this.density = VisualDensity3d.standard,
   });
 
@@ -123,6 +125,15 @@ class Theme3dData {
   /// from here and the colour comes from whatever the component is drawn on.
   final StateLayerOpacity3d stateLayer;
 
+  /// How long a thing takes, and on what curve.
+  ///
+  /// The seventh family, and the only one nothing *measures* with: every
+  /// other token here decides a size, a colour or a depth, and this one
+  /// decides a clock. It is read in `build`, where a route's transition and a
+  /// component's controller are made — never inside `performLayout`, which
+  /// has no time in it at all.
+  final MotionScheme3d motion;
+
   /// How tightly components pack themselves.
   ///
   /// See the class doc: this is the authority, not `metrics.density`.
@@ -165,6 +176,7 @@ class Theme3dData {
     Elevation3d? elevation,
     Thickness3d? thickness,
     StateLayerOpacity3d? stateLayer,
+    MotionScheme3d? motion,
     VisualDensity3d? density,
   }) => Theme3dData(
     colorScheme: colorScheme ?? this.colorScheme,
@@ -173,6 +185,7 @@ class Theme3dData {
     elevation: elevation ?? this.elevation,
     thickness: thickness ?? this.thickness,
     stateLayer: stateLayer ?? this.stateLayer,
+    motion: motion ?? this.motion,
     density: density ?? this.density,
   );
 
@@ -193,6 +206,7 @@ class Theme3dData {
         elevation: Elevation3d.lerp(a.elevation, b.elevation, t),
         thickness: Thickness3d.lerp(a.thickness, b.thickness, t),
         stateLayer: StateLayerOpacity3d.lerp(a.stateLayer, b.stateLayer, t),
+        motion: MotionScheme3d.lerp(a.motion, b.motion, t),
         density: VisualDensity3d.lerp(a.density, b.density, t),
       );
 
@@ -205,6 +219,7 @@ class Theme3dData {
       other.elevation == elevation &&
       other.thickness == thickness &&
       other.stateLayer == stateLayer &&
+      other.motion == motion &&
       other.density == density;
 
   @override
@@ -215,6 +230,7 @@ class Theme3dData {
     elevation,
     thickness,
     stateLayer,
+    motion,
     density,
   );
 

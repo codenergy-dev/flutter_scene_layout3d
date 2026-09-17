@@ -1,8 +1,8 @@
 ---
 status: in progress
-reason: eight of the seventeen items are open; the record of what shipped, the application widget, the wheel and the key, the test library, right to left, the picture, the item that keeps its state, the screen that knows how big it is and the box that fades are closed, and the route is closed but for its Hero3d
+reason: seven of the seventeen items are open; the record of what shipped, the application widget, the wheel and the key, the test library, right to left, the picture, the item that keeps its state, the screen that knows how big it is, the box that fades and the motion tokens are closed, and the route is closed but for its Hero3d
 created_at: 2026-09-11T21:20:18Z
-updated_at: 2026-09-17T11:50:00Z
+updated_at: 2026-09-17T15:50:00Z
 commit: abc2469ce5c4ec4c41e2738fc5acf55bcf40640a
 ---
 
@@ -105,7 +105,7 @@ plan, which is the rule phase 0 established and every phase since has obeyed.
 | [A route that arrives instead of appearing](#a-route-that-arrives-instead-of-appearing) | layout3d | **the transitions are done**; `Hero3d` is what the row is still open for |
 | [An application with more than one screen](#an-application-with-more-than-one-screen) | layout3d | named routes, deep links, the system back button |
 | ~~[A way to test a screen someone else built](#a-way-to-test-a-screen-someone-else-built)~~ | layout3d | **done** — anyone building on this, including us |
-| [The motion tokens](#the-motion-tokens) | material3d | every animating component |
+| ~~[The motion tokens](#the-motion-tokens)~~ | material3d | **done** — every overlay in the catalogue arrives instead of appearing |
 | [The components a screen still needs](#the-components-a-screen-still-needs) | material3d | the two thirds of M3 not yet here |
 | [A scheme from one colour](#a-scheme-from-one-colour) | material3d | any application with a brand |
 | [The controls that wait on a keyboard](#the-controls-that-wait-on-a-keyboard) | material3d | search, dropdowns, date and time entry |
@@ -169,25 +169,31 @@ first real port would demand are all closed**, which makes the port itself the
 next thing worth doing: it is the oracle this whole map is measured against,
 and everything below it is now a choice rather than a queue.
 
-Then motion, as a pair:
+~~Then motion, as a pair:
 [a route that arrives](#a-route-that-arrives-instead-of-appearing) here and
-[the motion tokens](#the-motion-tokens) in the catalogue. **The layout half
-has landed** — see
-[its plan](2026_09_16_a_route_that_arrives_instead_of_appearing.md) — which
-makes the catalogue half the ripe one: a route now carries a clock and a
-`Motion3d` says what an arrival looks like, and what is missing is the
-duration and the curve each component should use, which is what the token
-family is. Nothing in the catalogue moves until it is taken, so **this is the
-first item on the map whose result cannot be seen by running the gallery**.
+[the motion tokens](#the-motion-tokens) in the catalogue.~~ **Both halves have
+landed** — see
+[the route's plan](2026_09_16_a_route_that_arrives_instead_of_appearing.md) and
+[the tokens'](../../flutter_scene_material3d/plans/2026_09_17_the_motion_tokens.md)
+— and the row above stays open for `Hero3d` alone. The reasoning here said the
+catalogue half was the ripe one and it was, but for a reason it got
+backwards: it called this "the first item on the map whose result cannot be
+seen by running the gallery", and the *opposite* turned out to be the
+problem. The gallery had only a snack bar, so five of the six arrivals had
+nowhere a person could look at them — and putting a menu in it to fix that is
+what found a `PopupMenuButton3d` that laid out, drew, announced itself to a
+screen reader and could not be pressed at all. **The lane was not missing; it
+was pointed at a screen with nothing on it.**
 ~~[A box that fades](#a-box-that-fades) belongs with them~~ — **done**, see
 [its plan](2026_09_16_a_box_that_fades.md), and it was the reversal it looked
 like: the engine still has no per-node opacity at `flutter_scene 0.23.0`, and
 that was never the gate. `Opacity3d` fades a panel, a label and the wall
 around that label's letters by screen-door coverage, and `Motion3d.opacity`
-is what finishes an arrival. **That leaves the motion lane's remaining work
-entirely in the catalogue**: the layout half is finished but for `Hero3d`, and
-nothing in the catalogue moves until the token family says with what duration
-and what curve.
+is what finishes an arrival. **That left the motion lane's remaining work
+entirely in the catalogue**, and
+[the motion tokens](../../flutter_scene_material3d/plans/2026_09_17_the_motion_tokens.md)
+have since taken it: every overlay in the catalogue arrives, and the whole
+lane is now closed but for `Hero3d`.
 
 Then [the catalogue batch](#the-components-a-screen-still-needs), which is
 broad and shallow, and
@@ -289,7 +295,15 @@ are where a first implementer's decision becomes someone else's constraint.
   package does not own cannot be reached by it at all, which is why
   `NodeBox3d` takes an `onFade` and asserts without one. Anything that later
   wants to publish a second ambient *drawing* value should copy that shape
-  rather than pushing it down.
+  rather than pushing it down. **And the catalogue half closed it with two
+  additions of its own.** A transition belongs to *what is arriving*, not to
+  the stack it arrives on: `Navigator3d.transition` is one field read twice
+  per route, at push and again at pop, so a caller writing it per push closes
+  an already-open route on whatever the last push set, and
+  `Route3d.transition` is the fix. And **a moving box is pressable where
+  layout put it, not where it is drawn** — the node tier's contract, now
+  met by the test library, which aims where a person aims. Anything on this
+  map that moves and can be pressed inherits both.
 - **`Decoration3dPainterCache` is what makes a screen of panels affordable**,
   and it keys on `Decoration3d.cacheKey`. Two plans here compute colours that
   did not exist before — [a scheme from one colour](#a-scheme-from-one-colour)
@@ -313,7 +327,15 @@ are where a first implementer's decision becomes someone else's constraint.
   interactive component in the catalogue lane obeys the placement rule from
   [a tap target that delivers a press](2026_09_02_a_tap_target_that_delivers_a_press.md):
   the target sits outside every box the size of the control, the panel and the
-  semantics box included.
+  semantics box included. **A shipped component was breaking it the whole
+  time**, and the motion work found it by putting a menu in the gallery:
+  `PopupMenuButton3d` had no outer target at all, so its reach was its 24dp
+  icon, and it put the align that shrink-wraps that icon *outside* its ink
+  well, which left the target with a glyph's depth — which is none. Both are
+  now traps in [docs/traps.md](../../../docs/traps.md). The lesson for
+  everything still to be built is narrower than the rule: **the component's
+  own suite passed**, because its test built a trigger out of a sized box
+  with a depth. The defect needed the `Icon3d` every real caller passes.
 - **The depth axis is not symmetric with the other two**, and two of the
   gallery's four visual defects came from forgetting it. A lift written into a
   child's *position* takes that child out of reach of a ray; depth separation
@@ -792,6 +814,19 @@ no job enters `examples/layout3d_gallery`.
 
 **Package:** `flutter_scene_material3d`.
 **Slug:** `the_motion_tokens`.
+**Closed** by
+[its own plan](../../flutter_scene_material3d/plans/2026_09_17_the_motion_tokens.md),
+with
+[a route that carries its own clock](2026_09_17_a_route_that_carries_its_own_clock.md)
+as its phase 0 here. The entry below is what it was reasoned from. What that
+reasoning got wrong, in short: the family was the easy half and shipped as
+described, while the work was in the six overlays and in what making them move
+exposed — `pumpAndSettle` doing two different jobs in the existing suites, a
+moving box being pressable where layout put it rather than where it is drawn,
+and a `PopupMenuButton3d` that had no tap target at all. One of its own
+figures was wrong on the first pass, too: the tooltip's 75ms fade out is not
+an M3 duration token and never was, which is what turned the family into a
+vocabulary rather than a cage.
 
 M3's easing and duration sets, as a seventh token family beside
 `ColorScheme3d`, `Typography3d`, `ShapeScale3d`, `Elevation3d`,
@@ -815,6 +850,14 @@ Its first customers, all currently deferred for want of it: the switch thumb
 that should grow from 16dp to 24dp as it crosses, the chip that lifts under a
 press, and every overlay that should arrive rather than appear.
 
+*Since closed:* the overlays all six arrive. **The other two did not, and the
+tokens were never their gate** — a growing thumb is a size that changes every
+frame, which is a relayout every frame, and a chip's lift is a distance on the
+node tier. Both want a change to how the control is built rather than a
+duration, so they moved to
+[the components a screen still needs](#the-components-a-screen-still-needs)
+with their tokens now in hand.
+
 ## The components a screen still needs
 
 **Package:** `flutter_scene_material3d`.
@@ -837,7 +880,9 @@ is the one mechanism the whole catalogue uses and the reason this work is
 broad rather than deep. The ones that are *not* mere composition, and which
 should be grouped by what they actually need:
 
-- `ProgressIndicator3d` and `RefreshIndicator3d` want the motion lane.
+- `ProgressIndicator3d` and `RefreshIndicator3d` want the motion lane, which
+  is **done**: `MotionScheme3d` is on the theme and every overlay already
+  reads it.
 - `TabBar3d` wants an indicator that slides (node tier, free) and a rounded
   clip it cannot have (see the seams).
 - `Carousel3d`, and any horizontal list in a right-to-left application, want a
@@ -856,6 +901,18 @@ should be grouped by what they actually need:
   of them.
 - `RangeSlider3d` is a second arena problem rather than a second thumb — two
   thumbs competing for one pointer — and phase 7 said so.
+- **The switch's growing thumb and the chip's press lift moved here**, from
+  [the motion tokens](#the-motion-tokens), which found that it was never the
+  tokens gating them. A thumb growing from 16dp to 24dp is a size that changes
+  every frame, which is a relayout every frame — the one tier this catalogue
+  has kept off the interaction path throughout — so it wants a thumb drawn at
+  one size and *scaled* on the node tier. A chip's lift is an elevation, which
+  here is a distance, so it is node-tier too. Both are changes to how the
+  control is built, with a duration in them.
+- **`PopupMenuButton3d` cannot put its menu back on the panel**, only be told
+  which way to open it: `menuCorner` and `anchorCorner` are forwarded now, and
+  *choosing* them is the `off the edge` question this map excludes. Whoever
+  answers that question owns this component.
 - **`Scaffold3d` does not consume the safe area**, and Flutter's does.
   [A screen that knows how big it is](#a-screen-that-knows-how-big-it-is)
   built `MediaQuery3d.padding` and `SceneSafeArea3d` and left the catalogue

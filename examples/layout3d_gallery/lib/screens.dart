@@ -61,10 +61,36 @@ class _MaterialScreenState extends State<MaterialScreen> {
             title: _tab == 0 ? 'Inbox' : 'Settings',
             variant: AppBarVariant3d.small,
             actions: <Widget>[
-              IconButton3d(
-                icon: Icons.search,
-                semanticLabel: 'Search',
-                onPressed: () => _say(context, 'Nothing to search yet'),
+              // A tooltip, because a hover is the only arrival in the
+              // catalogue that needs no press at all: rest a pointer here and
+              // the label fades up under it.
+              Tooltip3d(
+                message: 'Search the inbox',
+                child: IconButton3d(
+                  icon: Icons.search,
+                  semanticLabel: 'Search',
+                  onPressed: () => _say(context, 'Nothing to search yet'),
+                ),
+              ),
+              // The overflow menu is how a person sees the other three
+              // arrivals. There is no probe for whether a dialog *reads* as
+              // arriving; looking at one is the lane, and this is what there
+              // is to look at.
+              PopupMenuButton3d<String>(
+                semanticLabel: 'More',
+                // Hung by its trailing corner: this button is against the
+                // trailing edge of the panel, and a menu opening the usual way
+                // would run off the surface, where there is nothing for a ray
+                // to hit. See the note on `menuCorner`.
+                menuCorner: AlignmentDirectional3d.topEnd,
+                anchorCorner: AlignmentDirectional3d.bottomEnd,
+                child: const Icon3d(Icons.more_vert),
+                itemBuilder: (context) => const <MenuItem3dEntry<String>>[
+                  MenuItem3dEntry<String>(value: 'about', label: 'About'),
+                  MenuItem3dEntry<String>(value: 'sort', label: 'Sort by'),
+                ],
+                onSelected: (value) =>
+                    value == 'about' ? _about(context) : _sort(context),
               ),
             ],
           ),
@@ -91,6 +117,61 @@ class _MaterialScreenState extends State<MaterialScreen> {
         ),
       ),
     );
+  }
+
+  /// A dialog, which grows and fades in over its own scrim.
+  Future<void> _about(BuildContext context) async {
+    final theme = Theme3d.of(context);
+    await showDialog3d<void>(
+      context: context,
+      builder: (context) => Dialog3d(
+        semanticLabel: 'About this gallery',
+        child: SceneColumn3d(
+          mainAxisSize: MainAxisSize3d.min,
+          crossAxisAlignment: CrossAxisAlignment3d.start,
+          children: <Widget>[
+            SceneText3d(
+              'Material, as geometry',
+              style: theme.textStyle(
+                Typography3dToken.headlineSmall,
+                color: theme.colorScheme.onSurface,
+              ),
+            ),
+            SceneSizedBox3d(height: _dp(context, 12)),
+            SceneText3d(
+              'Every panel here is a slab with a thickness, and every '
+              'arrival is one duration and one curve out of the theme.',
+              style: theme.textStyle(
+                Typography3dToken.bodyMedium,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// A bottom sheet, which rises one whole height from off the edge.
+  Future<void> _sort(BuildContext context) async {
+    final picked = await showModalBottomSheet3d<String>(
+      context: context,
+      builder: (context) => BottomSheet3d(
+        semanticLabel: 'Sort by',
+        child: SceneColumn3d(
+          mainAxisSize: MainAxisSize3d.min,
+          children: <Widget>[
+            for (final by in const <String>['Newest', 'Oldest', 'Sender'])
+              ListTile3d.text(
+                title: by,
+                onTap: () =>
+                    Navigator3d.of(SceneOverlay3d.of(context))?.pop(by),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked != null && context.mounted) _say(context, 'Sorted by $picked');
   }
 
   void _say(BuildContext context, String message) {

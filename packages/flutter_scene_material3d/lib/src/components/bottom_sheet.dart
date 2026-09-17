@@ -4,12 +4,13 @@ import 'package:flutter/semantics.dart' show SemanticsProperties;
 import 'package:flutter/widgets.dart'
     show BuildContext, StatelessWidget, TextDirection, Widget;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart'
-    show Alignment3d, BorderRadius3d, Constraints3d;
+    show Alignment3d, BorderRadius3d, Constraints3d, Motion3d, Offset3d;
 import 'package:flutter_scene_layout3d/widgets.dart'
     show
         Layout3dMetricsScope,
         SceneAlign3d,
         SceneConstrainedBox3d,
+        SceneMotionTransition3d,
         SceneSemantics3d,
         WidgetPageRoute3d;
 
@@ -68,6 +69,22 @@ enum Sheet3dEdge {
   /// Whether the sheet runs across the screen rather than down it.
   bool get isHorizontal =>
       this == Sheet3dEdge.bottom || this == Sheet3dEdge.top;
+
+  /// Where a sheet on this edge stands before it has arrived: one whole
+  /// extent off the edge it comes from.
+  ///
+  /// **The style says how long and the edge says which way**, which is the
+  /// one place a sheet's arrival is not read straight off
+  /// `BottomSheetStyle3d.arrival` — a side sheet that rose from below would
+  /// be a bottom sheet in the wrong place. It is a fraction rather than a
+  /// figure so that a sheet of any height starts exactly off the screen; see
+  /// `Motion3d.fraction`.
+  Motion3d get offscreen => switch (this) {
+    Sheet3dEdge.bottom => Motion3d.fromBelow,
+    Sheet3dEdge.top => const Motion3d(fraction: Offset3d(0, -1, 0)),
+    Sheet3dEdge.left => const Motion3d(fraction: Offset3d(-1, 0, 0)),
+    Sheet3dEdge.right => const Motion3d(fraction: Offset3d(1, 0, 0)),
+  };
 }
 
 /// A Material sheet: a surface pinned to one edge of the screen.
@@ -198,9 +215,12 @@ Future<T?> showModalBottomSheet3d<T>({
   final resolved = style ?? BottomSheetStyle3d.of(theme);
   final navigator = navigatorOf3d(context);
 
+  final arrival = resolved.arrival.copyWith(motion: edge.offscreen);
+
   late final WidgetPageRoute3d<T> route;
   route = WidgetPageRoute3d<T>(
     layer: overlayLayer3d(theme, metrics),
+    transition: arrival.transition,
     modal: false,
     trapFocus: true,
     // The route's too, not only the barrier's: it is what Escape asks.
@@ -215,7 +235,12 @@ Future<T?> showModalBottomSheet3d<T>({
       depthStep: metrics.dp(theme.thickness.depthStep),
       dismissible: barrierDismissible,
       onDismiss: route.pop,
-      child: builder(context),
+      scrimFade: route.animation,
+      child: SceneMotionTransition3d(
+        animation: route.animation,
+        motion: arrival.motion,
+        child: builder(context),
+      ),
     ),
   );
   return navigator.push(route);
@@ -243,15 +268,28 @@ Future<T?> showBottomSheet3d<T>({
   final theme = Theme3d.of(context);
   final metrics = Layout3dMetricsScope.of(context);
   final navigator = navigatorOf3d(context);
+  final arrival = (style ?? BottomSheetStyle3d.of(theme)).arrival.copyWith(
+    motion: edge.offscreen,
+  );
 
-  final route = WidgetPageRoute3d<T>(
+  late final WidgetPageRoute3d<T> route;
+  route = WidgetPageRoute3d<T>(
     layer: overlayLayer3d(theme, metrics),
+    transition: arrival.transition,
     modal: false,
     trapFocus: false,
     alignment: edge.alignment,
     debugLabel: debugLabel ?? 'BottomSheet3d.persistent',
-    builder: (context, self) =>
-        SceneAlign3d(alignment: edge.alignment, child: builder(context)),
+    // No scrim here and so no `modalFrame3d`: the motion wraps the aligned
+    // sheet directly, and there is nothing behind it that must stay still.
+    builder: (context, self) => SceneAlign3d(
+      alignment: edge.alignment,
+      child: SceneMotionTransition3d(
+        animation: route.animation,
+        motion: arrival.motion,
+        child: builder(context),
+      ),
+    ),
   );
   return navigator.push(route);
 }

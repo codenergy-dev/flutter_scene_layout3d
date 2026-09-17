@@ -8,8 +8,8 @@
 /// the token Material does not publish at all.
 ///
 /// The library is in two halves. The **tokens** — [ColorScheme3d],
-/// [Typography3d], [ShapeScale3d], [Elevation3d], [Thickness3d] and
-/// [StateLayerOpacity3d] — are held by a [Theme3dData], installed by
+/// [Typography3d], [ShapeScale3d], [Elevation3d], [Thickness3d],
+/// [StateLayerOpacity3d] and [MotionScheme3d] — are held by a [Theme3dData], installed by
 /// [SceneTheme3d], and read by `Theme3d.of(context)` in the widget layer or
 /// `theme3d` inside a `Layout3d`'s `performLayout`. The **primitive** is
 /// [Material3d], a decorated box with those tokens resolved into it, with
@@ -115,6 +115,7 @@ export 'src/components/snack_bar.dart'
         SnackBar3dController;
 export 'src/components/overlay_style.dart'
     show
+        Arrival3d,
         BottomSheetStyle3d,
         DialogStyle3d,
         MenuStyle3d,
@@ -142,6 +143,7 @@ export 'src/theme/tweens.dart'
     show
         ColorScheme3dTween,
         Elevation3dTween,
+        MotionScheme3dTween,
         ShapeScale3dTween,
         StateLayerOpacity3dTween,
         Theme3dDataTween,
@@ -149,6 +151,7 @@ export 'src/theme/tweens.dart'
         Typography3dTween;
 export 'src/tokens/color_scheme.dart' show ColorScheme3d;
 export 'src/tokens/depth.dart' show Elevation3d, Thickness3d;
+export 'src/tokens/motion.dart' show MotionScheme3d;
 export 'src/tokens/shape.dart' show ShapeScale3d;
 export 'src/tokens/state_layer.dart' show Material3dState, StateLayerOpacity3d;
 export 'src/tokens/typography.dart' show Typography3d, Typography3dToken;
