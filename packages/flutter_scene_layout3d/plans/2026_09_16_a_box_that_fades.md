@@ -1,7 +1,7 @@
 ---
 status: pending
 created_at: 2026-09-16T23:10:00Z
-updated_at: 2026-09-16T23:10:00Z
+updated_at: 2026-09-17T00:05:00Z
 commit: d029f849eeaa63d2bc3a4192f5cb1955b0f0addb
 ---
 
@@ -49,12 +49,18 @@ Checked at `d029f84`, against a green 1230/545/4 and 103 render probes.
 - **The engine still has no per-node opacity**, at the `flutter_scene 0.23.0`
   that `pubspec.lock` resolves. `Node` carries `visible`, `highlightColor`,
   layer and light masks, shadow flags, and nothing else that would do.
-- **It has something adjacent, and it is out of reach.** `Material.lodFade` is
-  a real per-draw fade — screen-door coverage, driven by
-  `shaders/lod_fade.glsl` — but it is `@internal` and its own dartdoc says
-  *only the built-in lit and unlit materials honor it*. A `.fmat` material
-  gets no `fade` uniform unless it declares one. So the mechanism exists,
-  upstream, and a consumer cannot reach it.
+- **It has something adjacent, and it is out of reach in two ways.**
+  `Material.lodFade` is a real per-draw fade — screen-door coverage, driven by
+  `shaders/lod_fade.glsl` — and neither of its barriers is the annotation on
+  it. First, only the built-in lit and unlit materials honour it, so a `.fmat`
+  gets no `fade` uniform unless it declares one. Second, and this is the one
+  that settles it: **it is an output rather than an input.**
+  `scene_encoder.dart` assigns `material.lodFade = fade` immediately before
+  every `bind`, and that `fade` comes from `LodComponent.resolve(screenSize)`
+  — a function of the draw's projected size against distance thresholds. A
+  value written from outside is overwritten on the next frame, every frame.
+  Making it public would change nothing; the upstream ask would be for a
+  per-draw fade *input* that does not exist.
 - **And alpha was never the problem.** `box_decoration3d.fmat` takes a
   `vec4 color` and ends on `base.a *= coverage`; `text_glyph3d.fmat` computes
   `sampled.a * color.a`. `BoxDecoration3dUniforms` already folds an opacity
@@ -180,12 +186,25 @@ gradient colours, and `image_opacity` — all of them, correctly, or a fade
 leaves a border at full strength. Screen door folds nothing. One uniform,
 every colour untouched, and the arithmetic below it unchanged.
 
-**The wall needs its own answer, and there are two.** Either it gets a
-compiled `.fmat` like the other two — consistent, and the third shader this
-package ships — or `Material.lodFade` becomes public upstream, at which point
-an `UnlitMaterial` fades for free and the ask is a one-word change to an
-annotation. **Write down which, and if it is the second, open the issue.**
-That decision is the one piece of this plan that is genuinely open.
+**The wall gets a shader of its own**, and this is settled rather than open.
+The first draft of this plan offered a second option — let `Material.lodFade`
+go public upstream and an `UnlitMaterial` fades for free — and that option does
+not exist, for the reason recorded above: the encoder assigns `lodFade` from
+the LOD system before every bind, so it is not writable from outside at any
+visibility. So `assets/text_glyph_wall3d.fmat` is the third shader this
+package ships: unlit, opaque, base colour from `GetVertexColor()`, and the same
+screen-door block as the other two.
+
+Two things about it are worth knowing before writing it. **The vertex colour is
+being read as a colour**, which nothing here has done before — the panel shader
+reads `GetVertexColor()` as a *position* — so whether it arrives linear or sRGB
+is a question for a frame rather than for a reading of the source, and a wall
+that comes back the wrong brightness is exactly what
+[a letter with a side to it](2026_09_11_a_letter_with_a_side_to_it.md)'s probe
+pair is already shaped to catch. And **the three primitives agree for free**:
+face, back face and wall all threshold the same screen-space matrix against the
+same `fade`, so at any given pixel they make the same keep-or-discard decision
+and the letter dissolves coherently instead of tearing along its own rim.
 
 **What the widget layer is called.** `FadeTransition3d` and
 `AnimatedOpacity3d` are honest names for what this builds. `Opacity3d` is the
@@ -206,7 +225,9 @@ own dartdoc rather than in a plan nobody reads.
   build it as nothing.
 - **A runtime depth-write flag.** Still the right upstream ask for the *other*
   half of the 09-10 plan, and this plan does not need it. Do not let it become
-  a blocker here.
+  a blocker here. It is also the **only** upstream ask this work generates:
+  `Material.lodFade` looked like a second one until the encoder was read, and
+  it is not.
 - **Material's disabled treatment.** The catalogue substitutes a colour because
   there was no opacity. There is one now, and revisiting that is the
   catalogue's call and its plan's entry, not this one's.
@@ -217,9 +238,10 @@ own dartdoc rather than in a plan nobody reads.
    `assets/box_decoration3d.fmat` and `assets/text_glyph3d.fmat`. Copy the
    experiment's blocks; they compile and are photographed.
    `examples/render_probe/tool/make_opacity_variants.dart` is where they live.
-2. Decide the glyph wall (a third `.fmat`, or the upstream ask) and do it.
-   **A label that fades to an outline is the defect this plan exists to
-   avoid.**
+2. Ship `assets/text_glyph_wall3d.fmat` and draw the wall with it. **A label
+   that fades to an outline is the defect this plan exists to avoid**, and the
+   wall is the only one of the three seams that cannot be reached by a uniform
+   today. Put it on the probe pair that already photographs a letter's side.
 3. Inherit opacity on `Layout3d` the way `clipRegion` is inherited, with the
    refresh hook, and an `Opacity3d` box that imposes it.
 4. Carry it on `Decoration3dPaintRequest` and write it in
