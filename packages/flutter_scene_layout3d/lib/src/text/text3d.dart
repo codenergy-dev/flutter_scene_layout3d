@@ -444,6 +444,24 @@ class Text3d extends Layout3d {
     size = constraints.constrain(
       Size3d(layout.width * scale, layout.height * scale, _depth),
     );
+    _render(layout, scale);
+  }
+
+  /// Republishes the opacity in force, which is what actually fades this
+  /// label.
+  ///
+  /// A second [Text3dRenderer.render] with the same layout, the same style and
+  /// the same atlas, and a different opacity in it. Nothing is laid out and no
+  /// string is re-shaped: the line breaking is already cached against these
+  /// constraints, so this costs the two uniform writes the renderer spends on
+  /// a glyph's faces and its wall. See [Layout3d.inheritedOpacity].
+  @override
+  void refreshOpacity() {
+    if (!hasSize || _renderer == null) return;
+    _render(_layoutFor(constraints), logicalPixelScale);
+  }
+
+  void _render(TextLayout3d layout, double scale) {
     _renderer?.render(
       Text3dRenderRequest(
         node: node,
@@ -453,6 +471,7 @@ class Text3d extends Layout3d {
         basis: basis,
         unitsPerLogicalPixel: scale,
         logicalPixelsPerUnit: metrics.logicalPixelsPerUnit,
+        opacity: inheritedOpacity,
       ),
     );
   }

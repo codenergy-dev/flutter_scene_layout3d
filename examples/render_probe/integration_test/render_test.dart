@@ -1750,6 +1750,192 @@ void main() {
     });
   });
 
+  group('a box that fades', () {
+    // Where a reading of the *panel* is taken: low on the card, clear of the
+    // label at the top of it and clear of the pin at the bottom corner.
+    const onThePanel = Offset3d(0.35, 0.72, 0.0);
+
+    testWidgets('a faded panel lets the panel behind it through', (
+      tester,
+    ) async {
+      // The claim the whole approach rests on: **fading stops depending on
+      // the ordering**. The scene draws the same faded card twice, once in
+      // the arrangement where a blended draw behaves and once in the
+      // arrangement where it erases what is behind it, and the two have to
+      // read the same. An opacity folded into the alpha fails this: the right
+      // half's backdrop is gone and the scene's clear colour shows through a
+      // card-shaped rectangle.
+      final capture = await _draw(
+        tester,
+        kProbeScenes.byId('faded_panel_lets_the_backdrop_through'),
+      );
+
+      // Nothing was erased. A hole is clear pixels, and nothing else in this
+      // scene looks like one.
+      expect(
+        capture.frame.coverageAt(
+          capture.pointOf('fadeRight', onThePanel),
+          radius: 10,
+        ),
+        greaterThan(0.98),
+        reason:
+            'the frame is the clear colour over the faded panel, so the '
+            'panel wrote depth across its whole rectangle and the backdrop '
+            'behind it never drew',
+      );
+
+      final benign = capture.frame.meanColorAt(
+        capture.pointOf('fadeLeft', onThePanel),
+        radius: 10,
+      );
+      final erasing = capture.frame.meanColorAt(
+        capture.pointOf('fadeRight', onThePanel),
+        radius: 10,
+      );
+      expect(benign, isNotNull);
+      expect(erasing, isNotNull);
+      expect(
+        FrameProbe.colorDistance(benign!, erasing!),
+        lessThan(0.06),
+        reason:
+            'the same faded card reads differently in the two orderings, so '
+            'the fade is still at the mercy of the translucent sort: '
+            '$benign where the ordering is benign, $erasing where it is not',
+      );
+
+      // And the backdrop is genuinely showing through rather than the card
+      // simply having been drawn thinner: a faded blue card over a warm
+      // backdrop has to read warmer than the same card unfaded.
+      final unfaded = await _draw(
+        tester,
+        kProbeScenes.byId('faded_panel_at_full_opacity'),
+      );
+      final solid = unfaded.frame.meanColorAt(
+        unfaded.pointOf('fadeLeft', onThePanel),
+        radius: 10,
+      );
+      expect(solid, isNotNull);
+      expect(
+        benign.r - benign.b,
+        greaterThan(solid!.r - solid.b),
+        reason:
+            'the faded card is no warmer than the unfaded one, so nothing of '
+            'the backdrop is coming through it: $benign faded, $solid solid',
+      );
+    });
+
+    testWidgets('a label inside a faded subtree is still type', (tester) async {
+      // The sharp half of the hazard, one level below the panel. A label
+      // faded through the tint's alpha falls under `alpha_cutoff` in one step
+      // and its faces vanish, while the wall around its letters — an opaque
+      // material coloured by its own vertices — stays at full strength. What
+      // is left is a hollow outline of the word, which is worse than not
+      // fading at all.
+      //
+      // The claim is that there is still **white ink** where the label is:
+      // the label reads lighter than the bare panel beside it, at the faded
+      // opacity as at full. A label whose faces were discarded would read as
+      // the panel exactly. The threshold is a magnitude and it has to be,
+      // because a label is ink over gaps and the mean over a disc is mostly
+      // gaps — so it is set where a mean of a hundred-odd pixels leaves the
+      // dither's own noise, and calibrated by the second reading rather than
+      // by a guess: the faded label must be lighter than its panel, and less
+      // so than the unfaded one is.
+      double luma(ui.Color c) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+
+      Future<double> inkOver(String id) async {
+        final capture = await _draw(tester, kProbeScenes.byId(id));
+        final ink = capture.frame.meanColorAt(
+          capture.centerOf('label'),
+          radius: 6,
+        );
+        final panel = capture.frame.meanColorAt(
+          capture.pointOf('fadeLeft', onThePanel),
+          radius: 10,
+        );
+        expect(ink, isNotNull);
+        expect(panel, isNotNull);
+        return luma(ink!) - luma(panel!);
+      }
+
+      final faded = await inkOver('faded_panel_lets_the_backdrop_through');
+      final solid = await inkOver('faded_panel_at_full_opacity');
+
+      expect(
+        faded,
+        greaterThan(0.02),
+        reason:
+            'the faded label is no lighter than the panel it is written on, '
+            'so its glyphs were discarded rather than faded: $faded against '
+            '$solid unfaded',
+      );
+      expect(
+        faded,
+        lessThan(solid),
+        reason:
+            'the label is as strong faded as unfaded, so the fade did not '
+            'reach it at all: $faded against $solid',
+      );
+    });
+
+    testWidgets('a fade at full opacity draws what no fade draws', (
+      tester,
+    ) async {
+      // **The probe that would have caught two of the five approaches this
+      // one was chosen over**, and both of them failed here rather than
+      // anywhere a fade is visible: one let the backdrop paint over the panel
+      // in front of it, the other buried whatever stood in front of the faded
+      // subtree under a composited texture. Neither is a fade going wrong;
+      // both are nothing-is-happening going wrong.
+      final capture = await _draw(
+        tester,
+        kProbeScenes.byId('faded_panel_at_full_opacity'),
+      );
+
+      // The two orderings still agree, and now they agree on the card's own
+      // colour rather than on a blend.
+      final benign = capture.frame.meanColorAt(
+        capture.pointOf('fadeLeft', onThePanel),
+        radius: 10,
+      );
+      final erasing = capture.frame.meanColorAt(
+        capture.pointOf('fadeRight', onThePanel),
+        radius: 10,
+      );
+      expect(benign, isNotNull);
+      expect(erasing, isNotNull);
+      expect(
+        FrameProbe.colorDistance(benign!, erasing!),
+        lessThan(0.06),
+        reason:
+            'a subtree at opacity 1.0 reads differently in the two '
+            'orderings, so the fade is doing something when it should be '
+            'doing nothing: $benign, $erasing',
+      );
+      expect(
+        benign.b,
+        greaterThan(benign.r),
+        reason:
+            'the card at opacity 1.0 is not its own blue any more, so the '
+            'screen door let the warm backdrop through when it should have '
+            'kept every fragment: $benign',
+      );
+
+      // And the pin, which stands in front of the faded card and outside the
+      // faded subtree, is still in front of it. Green-dominant, so this is a
+      // channel order rather than a brightness.
+      final pin = capture.frame.meanColorAt(capture.centerOf('pin'), radius: 6);
+      expect(pin, isNotNull);
+      expect(
+        pin!.g,
+        greaterThan(pin.b),
+        reason:
+            'the pin in front of the faded card is not green any more, so '
+            'the faded subtree was composited over it: $pin',
+      );
+    });
+  });
+
   group('the overlays', () {
     double luma(ui.Color c) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
 

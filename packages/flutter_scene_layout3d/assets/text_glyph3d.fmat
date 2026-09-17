@@ -40,6 +40,22 @@ material {
     // decodes sRGB to linear, which is what the engine's own unlit material
     // does to its base colour factor.
     { type: vec4, name: color, hint: source_color, default: [1, 1, 1, 1] },
+    // How much of this label survives, from 0 to 1: the opacity in force,
+    // written by `GlyphMaterial3d.fade`.
+    //
+    // **Coverage, not alpha**, and here the reason is sharper than it is for
+    // a panel. `alpha_cutoff` below throws away a fragment whose coverage is
+    // too low, so folding an opacity into `color.a` walks every glyph's
+    // whole silhouette under the cutoff at once: at 30% a label does not
+    // fade, it *vanishes* — and its wall, which is opaque and coloured by
+    // its vertices, stays at full strength, leaving a hollow outline where
+    // the type was. That is the defect this uniform exists to avoid, and it
+    // was photographed; see `plans/2026_09_16_a_box_that_fades.md`.
+    //
+    // Leaving the tint alone and discarding whole fragments instead means
+    // the cutoff never sees a faded value and the type keeps its shape all
+    // the way down.
+    { type: float, name: fade, default: 1.0 },
     // Below this coverage a fragment is thrown away rather than blended.
     //
     // The dial between two evils, and neither is the one it looks like. Too
@@ -58,7 +74,34 @@ material {
 }
 
 fragment {
+  // Screen-door coverage. The canonical copy of this block, with the
+  // reasoning for the matrix and for the `+ 0.5`, is in
+  // `box_decoration3d.fmat`; it is inlined rather than shared because a
+  // `.fmat`'s fragment block is composed into the emitted shader by the
+  // engine's own emitter, which chooses the includes.
+  //
+  // **The three primitives a label is made of must agree**, and they do: the
+  // faces and their back faces run this block, the wall runs the identical
+  // one in `text_glyph_wall3d.fmat`, and the threshold depends on
+  // `gl_FragCoord` alone — so at any pixel all three keep or discard
+  // together and a letter dissolves whole instead of tearing along its rim.
+  void ScreenDoor(float fade) {
+    if (fade >= 1.0) {
+      return;
+    }
+    const float kBayer4x4[16] = float[16](
+         0.0,  8.0,  2.0, 10.0,
+        12.0,  4.0, 14.0,  6.0,
+         3.0, 11.0,  1.0,  9.0,
+        15.0,  7.0, 13.0,  5.0);
+    ivec2 cell = ivec2(mod(gl_FragCoord.xy, 4.0));
+    if ((kBayer4x4[cell.y * 4 + cell.x] + 0.5) / 16.0 >= fade) {
+      discard;
+    }
+  }
+
   void Surface(inout MaterialInputs material) {
+    ScreenDoor(material_params.fade);
     vec4 sampled = texture(atlas, GetUV(0));
     float alpha = sampled.a * material_params.color.a;
     if (alpha < material_params.alpha_cutoff) {

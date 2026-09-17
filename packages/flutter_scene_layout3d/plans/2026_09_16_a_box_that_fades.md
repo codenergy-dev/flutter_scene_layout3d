@@ -1,7 +1,7 @@
 ---
-status: pending
+status: completed
 created_at: 2026-09-16T23:10:00Z
-updated_at: 2026-09-17T00:05:00Z
+updated_at: 2026-09-17T11:40:00Z
 commit: d029f849eeaa63d2bc3a4192f5cb1955b0f0addb
 ---
 
@@ -24,18 +24,17 @@ the materials it draws with and both of them already multiply alpha. What
 stands in the way is **`depth_write`** — and there is a way through it that
 costs one uniform.
 
-The experiment is committed, in `examples/render_probe`, behind its own target:
-
-```sh
-cd examples/render_probe
-flutter drive --driver=test_driver/photograph.dart \
-  --target=integration_test/opacity_poc_test.dart \
-  -d macos --enable-flutter-gpu
-```
-
-Its README section says how it is built and what each capture shows. **Read it
-before starting**, and look at the PNGs; the whole argument below is downstream
-of five pictures.
+The experiment was committed in `examples/render_probe`, behind a target of
+its own, and the whole argument below is downstream of its five pictures.
+**It has since been retired**, in the commit that shipped this plan: it worked
+by generating patched copies of the package's two shaders, and the package's
+shaders now carry the patch, so the generator would produce a shader that will
+not compile. A page describing a target that is not there is worse than no
+page. What stands in its place is
+`examples/render_probe`'s *What the opacity experiment settled*, which keeps
+the findings, and two probe scenes that assert rather than photograph —
+`faded_panel_lets_the_backdrop_through` and `faded_panel_at_full_opacity`.
+The table below is the record.
 
 ## What is actually missing
 
@@ -234,27 +233,39 @@ own dartdoc rather than in a plan nobody reads.
 
 ## The work
 
-1. Add a `fade` uniform and an ordered Bayer screen-door discard to
-   `assets/box_decoration3d.fmat` and `assets/text_glyph3d.fmat`. Copy the
-   experiment's blocks; they compile and are photographed.
-   `examples/render_probe/tool/make_opacity_variants.dart` is where they live.
-2. Ship `assets/text_glyph_wall3d.fmat` and draw the wall with it. **A label
-   that fades to an outline is the defect this plan exists to avoid**, and the
-   wall is the only one of the three seams that cannot be reached by a uniform
-   today. Put it on the probe pair that already photographs a letter's side.
-3. Inherit opacity on `Layout3d` the way `clipRegion` is inherited, with the
-   refresh hook, and an `Opacity3d` box that imposes it.
-4. Carry it on `Decoration3dPaintRequest` and write it in
-   `BoxDecoration3dPainter`; carry it to `GlyphMaterial3d`.
-5. Give `NodeBox3d`'s content a way to say it can fade, and assert in debug
-   when a faded subtree contains something that cannot.
-6. `FadeTransition3d` and `AnimatedOpacity3d`, and an opacity field on
-   `Motion3d` — which is the thing the route plan left out and the reason this
-   item is in the motion lane at all.
-7. Probes: promote the experiment's two halves into `kProbeScenes` as real
-   assertions — a faded panel lets the panel behind it through, and the same
-   scene in both orderings reads the same — and a headless test that the
-   inherited value composes down a subtree.
+All seven done, in this order.
+
+1. ~~Add a `fade` uniform and an ordered Bayer screen-door discard to
+   `assets/box_decoration3d.fmat` and `assets/text_glyph3d.fmat`.~~ Done. The
+   block is a `ScreenDoor(float fade)` function rather than an inlined body,
+   with the canonical explanation in the panel shader and the other two
+   pointing at it; the guard is `fade >= 1.0` returns, so a fade at 1.0
+   executes nothing at all.
+2. ~~Ship `assets/text_glyph_wall3d.fmat` and draw the wall with it.~~ Done,
+   and it grew a seam rather than a call: `GlyphWallMaterial3d` with a
+   factory, `UnlitGlyphWallMaterial3d` as the fallback and
+   `FmatGlyphWallMaterial3d` as the compiled one, because the fade is a
+   per-label parameter and a shared material would collapse every label onto
+   whichever drew last. `AtlasText3dRenderer.buildWallMaterial()` is gone.
+   `installGlyphMaterial3d` loads both shaders and skips each independently.
+3. ~~Inherit opacity on `Layout3d`.~~ Done: `inheritedOpacity`,
+   `opacityForChild`, `refreshOpacity` and `refreshOpacitySubtree`, with
+   `Layout3dOpacityMixin` for the boxes that impose one and `Opacity3d` and
+   `FadeTransition3d` over it.
+4. ~~Carry it to the materials.~~ Done: `Decoration3dPaintRequest.opacity`,
+   `BoxDecoration3dUniforms.opacity` writing `fade`, `GlyphMaterial3d.fade`
+   and `GlyphWallMaterial3d.fade`, with `DecoratedBox3d`, `Text3d` and
+   `RichText3d` republishing from `refreshOpacity`.
+5. ~~Give `NodeBox3d`'s content a way to say it can fade.~~ Done:
+   `NodeBox3d.onFade`, and a `FlutterError` assert naming the box when there
+   is none and something above it fades.
+6. ~~`FadeTransition3d` and `AnimatedOpacity3d`, and an opacity field on
+   `Motion3d`.~~ Done, as `SceneFadeTransition3d` and
+   `SceneAnimatedOpacity3d` (the package's own naming), plus `SceneOpacity3d`,
+   `Motion3d.opacity` and `Motion3d.fade()`.
+7. ~~Probes and a headless test.~~ Done: `faded_panel_lets_the_backdrop_through`
+   and `faded_panel_at_full_opacity` in `kProbeScenes`, three assertions over
+   them, and nineteen headless tests in `test/opacity_test.dart`.
 
 ## The traps this one has to respect
 
@@ -291,3 +302,45 @@ And the map lists this item as gated while
 are ripe. It is not gated. It is takeable, it is roughly a shader block and an
 inherited value, and the expensive half — deciding which of five ways to do it
 — has been spent.
+
+## What this plan's own reasoning got wrong
+
+Less than usual, because it was written after the experiment rather than
+before it — which is the finding worth carrying forward. Four things:
+
+- **The three seams were three and a half.** The plan named the panel, the
+  glyph faces and the wall, and treated `NodeBox3d` as a fourth that only
+  needed an assert. The half it did not count is that a label's fade has to
+  *survive a rebuild*: the atlas repacks under someone else's glyph, the
+  renderer rebuilds its mesh and makes fresh materials, and a fade written on
+  the old ones is gone. The renderer keeps the value and re-applies it on
+  every attach, which is two lines and would have been a defect visible only
+  in a scene with two surfaces in it.
+- **Republishing a label is a second `render`, not a second uniform.** The
+  plan assumed a fade reaches a label the way it reaches a panel. It does not:
+  a renderer is handed a request and nothing else, so `Text3d.refreshOpacity`
+  calls `render` again with the same layout, the same style and a different
+  opacity — and `AtlasText3dRenderer` had to spend it *before* its "nothing
+  changed" early return, which is exactly where a reader would not look.
+- **A constructor must not republish.** `Opacity3d(opacity: 0.3, child: box)`
+  running the setter in its body walks a subtree that has never drawn, and for
+  a `NodeBox3d` with no `onFade` it fires the assert before anything is laid
+  out. `initialOpacity` is the protected way in, and the rule is worth
+  generalizing: an inherited value's constructor sets the field, its setter
+  republishes.
+- **The wall's vertex colour was the one open question and it was a
+  non-event.** The plan said whether it arrives linear or sRGB is a question
+  for a frame rather than for a reading of the source. It was answerable from
+  the source after all — `buildGlyphWallGeometry` runs each segment's colour
+  through `linearColor()` before baking it, and the `UnlitMaterial` it
+  replaced consumed that unchanged — so the shader reads `GetVertexColor()`
+  and does no decode. The frame confirms it rather than deciding it.
+
+And one thing outside the plan: **the experiment could not survive its own
+conclusion.** `tool/make_opacity_variants.dart` generated its variants by
+patching the package's shaders in exactly the places this work has now
+patched them, so the day the approach shipped the generator became a producer
+of shaders that will not compile. It was retired with the plan, its findings
+moved into `examples/render_probe/README.md` and its two halves promoted into
+`kProbeScenes` as assertions. A plan that is written after an experiment
+should say what becomes of the experiment; this one did not.

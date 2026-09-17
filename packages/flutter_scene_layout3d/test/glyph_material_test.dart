@@ -21,6 +21,18 @@ class _NeverBuilt implements GlyphMaterial3d {
 
   @override
   void tint(Object color) {}
+
+  @override
+  void fade(double opacity) {}
+}
+
+/// The same, for the wall around a glyph.
+class _NeverBuiltWall implements GlyphWallMaterial3d {
+  @override
+  Never get material => throw UnimplementedError();
+
+  @override
+  void fade(double opacity) {}
 }
 
 void main() {
@@ -28,6 +40,7 @@ void main() {
     'a label draws with the unlit fallback until something installs one',
     () {
       expect(GlyphMaterial3d.factory, same(UnlitGlyphMaterial3d.new));
+      expect(GlyphWallMaterial3d.factory, same(UnlitGlyphWallMaterial3d.new));
     },
   );
 
@@ -35,14 +48,23 @@ void main() {
     'installing the compiled material leaves a chosen factory alone',
     () async {
       final original = GlyphMaterial3d.factory;
-      addTearDown(() => GlyphMaterial3d.factory = original);
+      final originalWall = GlyphWallMaterial3d.factory;
+      addTearDown(() {
+        GlyphMaterial3d.factory = original;
+        GlyphWallMaterial3d.factory = originalWall;
+      });
 
+      // **Both**, because the installer loads two shaders now and each is
+      // skipped on its own. Leaving the wall at its default here would send
+      // the installer off to load a `.fmat` in a test with no GPU.
       GlyphMaterial3d.factory = _NeverBuilt.new;
+      GlyphWallMaterial3d.factory = _NeverBuiltWall.new;
       // Returns before it loads anything, which is what makes this callable
       // without a GPU — and is the behaviour an application with a glyph
       // material of its own depends on.
       await installGlyphMaterial3d();
       expect(GlyphMaterial3d.factory, same(_NeverBuilt.new));
+      expect(GlyphWallMaterial3d.factory, same(_NeverBuiltWall.new));
     },
   );
 }

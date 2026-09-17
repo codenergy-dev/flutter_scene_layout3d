@@ -1,13 +1,6 @@
 import 'package:flutter/painting.dart' show Color, TextStyle;
 import 'package:flutter_scene/scene.dart'
-    show
-        AlphaMode,
-        GeometryBuilder,
-        Mesh,
-        MeshPrimitive,
-        Node,
-        TextureSource,
-        UnlitMaterial;
+    show GeometryBuilder, Mesh, MeshPrimitive, Node, TextureSource;
 import 'package:vector_math/vector_math.dart'
     show Matrix4, Vector2, Vector3, Vector4;
 
@@ -142,12 +135,14 @@ class AtlasText3dRenderer extends Text3dRenderer {
   GlyphAtlas3d? _atlas;
   Node? _mesh;
   GlyphMaterial3d? _material;
+  GlyphWallMaterial3d? _wall;
   Node? _parent;
 
   TextLayout3d? _layout;
   double _scale = 0.0;
   double _units = 0.0;
   TextStyle? _style;
+  double _opacity = 1.0;
   int _generation = -1;
   int _outlineRevision = -1;
   int _quadCount = 0;
@@ -183,6 +178,15 @@ class AtlasText3dRenderer extends Text3dRenderer {
       _atlas = atlas;
       _generation = -1;
     }
+    // **Before the early return, and deliberately outside it.** The opacity
+    // is the one thing on a request that changes without a layout: a box in a
+    // fading subtree calls `render` again with the same layout object, the
+    // same style and the same atlas, and everything below would decide that
+    // nothing had changed. Spending it here costs two uniform writes and no
+    // geometry, which is the tier a fade has to stay on.
+    _opacity = request.opacity;
+    _material?.fade(_opacity);
+    _wall?.fade(_opacity);
     if (identical(request.layout, _layout) &&
         _scale == scale &&
         _units == request.unitsPerLogicalPixel &&
@@ -242,7 +246,9 @@ class AtlasText3dRenderer extends Text3dRenderer {
     _detach();
     if (quads.isEmpty) return;
     final color = style.color ?? const Color(0xFFFFFFFF);
-    final material = _material = GlyphMaterial3d.factory()..tint(color);
+    final material = _material = GlyphMaterial3d.factory()
+      ..tint(color)
+      ..fade(_opacity);
     _bindTexture(_atlas?.texture);
     final thickness = resolveDepth(style) * units;
     _wallSegmentCount = thickness > 0.0 ? walls.length : 0;
@@ -273,7 +279,7 @@ class AtlasText3dRenderer extends Text3dRenderer {
         primitives.add(
           MeshPrimitive(
             buildGlyphWallGeometry(walls, units, thickness, color).build(),
-            buildWallMaterial(),
+            (_wall = GlyphWallMaterial3d.factory()..fade(_opacity)).material,
           ),
         );
       }
@@ -308,6 +314,7 @@ class AtlasText3dRenderer extends Text3dRenderer {
     if (mesh != null) _parent?.remove(mesh);
     _mesh = null;
     _material = null;
+    _wall = null;
     _wallSegmentCount = 0;
   }
 
@@ -473,10 +480,15 @@ class AtlasText3dRenderer extends Text3dRenderer {
   /// `z = -thickness`, which is toward the viewer.
   ///
   /// The shading is baked into the vertex colours rather than computed by a
-  /// shader, which is what lets the wall be drawn with the engine's own
-  /// `UnlitMaterial` and adds no second `.fmat` to the package. Vertex
-  /// colours are multiplied in linearly by that shader, so the colour is
-  /// decoded here.
+  /// shader: a half-Lambert per segment, multiplied into a colour already
+  /// decoded to linear here, because that is the space a material multiplies
+  /// a vertex colour in. [GlyphWallMaterial3d] reads it back unchanged — the
+  /// wall shader does no decode of its own, and the fallback `UnlitMaterial`
+  /// never did either.
+  ///
+  /// It is also the reason the wall needed a material seam at all: a colour
+  /// in a vertex buffer cannot be changed without rebuilding the mesh, so a
+  /// wall cannot be faded by editing it. See [GlyphWallMaterial3d.fade].
   ///
   /// [color] is the wall's colour for every segment that does not state one.
   /// A glyph out of an atlas never does — a label is one colour — and a
@@ -547,19 +559,6 @@ class AtlasText3dRenderer extends Text3dRenderer {
     Vector3(segment.x1 * units, segment.y1 * units, -thickness),
     Vector3(segment.x0 * units, segment.y0 * units, -thickness),
   ];
-
-  /// The material a glyph's wall is drawn with.
-  ///
-  /// Opaque, so it goes through the opaque pass and writes depth there rather
-  /// than joining the back-to-front sort the *faces* have to survive — the
-  /// wall has no soft edge and nothing to blend, so there is no reason to put
-  /// it at the mercy of one number per draw. The colour comes entirely from
-  /// the vertex colours [buildGlyphWallGeometry] baked, which is why the base
-  /// factor is left white.
-  static UnlitMaterial buildWallMaterial() => UnlitMaterial()
-    ..alphaMode = AlphaMode.opaque
-    ..vertexColorWeight = 1.0
-    ..baseColorFactor = Vector4(1.0, 1.0, 1.0, 1.0);
 
   /// A glyph quad's four corners in world units and layout axes, in the
   /// order [buildGlyphGeometry] indexes them: top-left, bottom-left,

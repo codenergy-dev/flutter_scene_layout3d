@@ -619,6 +619,43 @@ Material row — the child covers the background until it moves, so there is
 nothing to fight over — and the wrong one the moment either has depth. A small
 positive step pushes the backgrounds away from the viewer and the fight stops.
 
+### An opacity is coverage, and three things have to agree about it
+
+`Opacity3d` fades a subtree by **discarding fragments**, not by multiplying an
+alpha. A faded box keeps roughly `opacity` of its pixels, chosen by an ordered
+4x4 matrix over `gl_FragCoord`, and the survivors draw at full strength and
+write depth exactly as an unfaded box's do. Three consequences are worth
+knowing before you meet them.
+
+**Group opacity is approximated, and the error peaks in the middle.** A label
+on a faded card keeps its own share of pixels over a card that kept its own
+share, where Flutter would composite the pair and fade the result once.
+Measured, the label comes out about half again as strong as Flutter's at 30%,
+and exactly right at 0 and 1. If a component's disabled or ghosted state needs
+the contrast between two layers to fall linearly, substitute colours instead —
+which is what `flutter_scene_material3d` does for disabled, and why it still
+does after this shipped.
+
+**Anything drawn with a material this package does not own will not fade.**
+The three that do are the panel (`box_decoration3d.fmat`), a glyph's faces
+(`text_glyph3d.fmat`) and the wall around those glyphs
+(`text_glyph_wall3d.fmat`). A `NodeBox3d` holds geometry the application
+brought, so it takes an `onFade` callback and **asserts in debug** when it is
+inside a faded subtree without one. A custom `Decoration3d` painter or
+`GlyphMaterial3d` has the same obligation, through
+`Decoration3dPaintRequest.opacity` and `GlyphMaterial3d.fade`.
+
+**And a custom implementation must fade the same way the shipped ones do.**
+The three shipped shaders agree at every pixel because they threshold the same
+matrix against the same screen position, which is what makes a fading letter
+dissolve as one solid rather than tear along its own rim. Fading one part of a
+label by alpha and another by coverage produces exactly that tear. Fading a
+glyph by alpha alone is worse: `text_glyph3d.fmat` discards below
+`alpha_cutoff`, so the faces walk under the cutoff in one step while the
+opaque wall stays at full strength, and a 30% label reads as a hollow outline
+of itself. That was photographed; see
+`packages/flutter_scene_layout3d/plans/2026_09_16_a_box_that_fades.md`.
+
 ### A picture arrives after the frame that asked for it
 
 **An `ImageProvider` resolves asynchronously, and the pixels have to reach the

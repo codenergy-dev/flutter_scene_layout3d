@@ -1800,6 +1800,20 @@ final List<ProbeScene> kProbeScenes = <ProbeScene>[
     );
   }, preload: installPanelPainter),
 
+  // ── Fading a subtree ─────────────────────────────────────────────────
+  //
+  // Two scenes from one builder, and they are a pair: the first asks whether
+  // a faded panel lets what is behind it through, and the second asks whether
+  // a panel faded to **1.0** draws what an unfaded one draws. The second is
+  // not a formality. Two of the five approaches this design was chosen from
+  // failed exactly there, and both failures were invisible until something
+  // stood in front of a faded box.
+  for (final (String id, double opacity) in <(String, double)>[
+    ('faded_panel_lets_the_backdrop_through', 0.30),
+    ('faded_panel_at_full_opacity', 1.0),
+  ])
+    ProbeScene(id, () => _fadedPanels(opacity), preload: installPanelPainter),
+
   // ── The overlays ─────────────────────────────────────────────────────
   //
   // Phase 6's two claims. The first is the one the catalogue plan named
@@ -2968,4 +2982,145 @@ class _BarHeader3dDelegate extends SliverPersistentHeader3dDelegate {
   @override
   bool shouldRebuild(_BarHeader3dDelegate oldDelegate) =>
       !identical(oldDelegate.content, content);
+}
+
+/// The scene both fade probes draw, at [opacity].
+///
+/// **Two halves, because the defect lives in only one of them.** A blended
+/// draw erases only what is drawn *after* it, and the translucent pass sorts
+/// back to front by the world-space centre of each draw's bounds — so a faded
+/// card standing plainly in front of a backdrop is drawn second and behaves
+/// perfectly however it was faded. That is the trap
+/// `2026_09_10_a_transparent_slab_that_does_not_erase.md` fell into and
+/// recorded, and it is why this scene has a right half at all.
+///
+/// The left half is the benign ordering: the card stands a third of a unit
+/// proud of its backdrop, so the backdrop is drawn first and the card blends
+/// over something already there. The right half is the arrangement a
+/// navigation bar produced — the faded panel's bounds centre is **further**
+/// from the camera than the backdrop's while its front face is **nearer**, so
+/// the sort draws it first, and anything that writes depth across its whole
+/// rectangle erases the backdrop behind it.
+///
+/// So the claim is a **comparison between the two halves**, and it carries no
+/// absolute colour: screen-door coverage is right exactly when fading stops
+/// depending on the ordering, which is when the two halves read the same.
+///
+/// The `pin` is a small opaque panel standing in front of the left card and
+/// **outside** the faded subtree. It is there for the failure nothing else in
+/// the scene can show: an approach that composites the faded subtree as one
+/// image buries whatever is in front of it, at every opacity including 1.0.
+///
+/// The label is inside the faded subtree, and it is the other half of the
+/// hazard: a label faded by alpha falls under `text_glyph3d.fmat`'s
+/// `alpha_cutoff` in one step and disappears, leaving the opaque wall around
+/// its letters behind as a hollow outline.
+ProbeSceneContent _fadedPanels(double opacity) {
+  // Warm and red-dominant against cold and blue-dominant: a channel order
+  // rather than a pair of luminances, which is the rule this file states for
+  // any probe comparing colours.
+  const backdropColor = Color(0xFFC85A16);
+  const cardColor = Color(0xFF1B3A6B);
+  const pinColor = Color(0xFF6FBF3A);
+  const inkColor = Color(0xFFF5F5F5);
+
+  DecoratedBox3d panel(Color color, String name) => DecoratedBox3d(
+    decoration: BoxDecoration3d(color: color),
+    name: name,
+  );
+
+  final backLeft = panel(backdropColor, 'backLeft');
+  final backRight = panel(backdropColor, 'backRight');
+  final fadeLeft = panel(cardColor, 'fadeLeft');
+  final fadeRight = panel(cardColor, 'fadeRight');
+  final pin = panel(pinColor, 'pin');
+  final label = Text3d(
+    'Ag',
+    style: const TextStyle(fontSize: 64, color: inkColor),
+    renderer: AtlasText3dRenderer(),
+    name: 'label',
+  );
+
+  // The one box under test. Everything inside it fades; the backdrops and the
+  // pin are outside it and must be drawn exactly as they always are.
+  Layout3d faded(Layout3d child) => Opacity3d(opacity: opacity, child: child);
+
+  return ProbeSceneContent(
+    surfaces: <Layout3dSurface>[
+      Layout3dSurface(
+        constraints: Constraints3d.tight(const Size3d(4.0, 2.0, 1.2)),
+        child: Stack3d(
+          children: <Layout3d>[
+            // The benign ordering.
+            Positioned3d(
+              left: 0.10,
+              top: 0.15,
+              front: 0.50,
+              width: 1.70,
+              height: 1.70,
+              depth: 0.10,
+              child: backLeft,
+            ),
+            Positioned3d(
+              left: 0.30,
+              top: 0.35,
+              front: 0.15,
+              width: 1.30,
+              height: 1.30,
+              depth: 0.08,
+              child: faded(fadeLeft),
+            ),
+            // Near the top of the card and small, so a reading taken low on
+            // the card is of the panel alone.
+            Positioned3d(
+              left: 0.45,
+              top: 0.45,
+              front: 0.13,
+              child: faded(label),
+            ),
+            Positioned3d(
+              left: 1.25,
+              top: 1.25,
+              front: 0.05,
+              width: 0.50,
+              height: 0.50,
+              depth: 0.04,
+              child: pin,
+            ),
+
+            // The ordering that erases. A hundredth of a unit of separation
+            // rather than the co-centring a navigation bar actually produces:
+            // a tie in that sort is not an ordering at all, and a probe needs
+            // the pathological order to be the one that happens every run.
+            Positioned3d(
+              left: 2.20,
+              top: 0.15,
+              front: 0.50,
+              width: 1.70,
+              height: 1.70,
+              depth: 0.10,
+              child: backRight,
+            ),
+            Positioned3d(
+              left: 2.45,
+              top: 0.40,
+              front: 0.45,
+              width: 1.20,
+              height: 1.20,
+              depth: 0.22,
+              child: faded(fadeRight),
+            ),
+          ],
+        ),
+      ),
+    ],
+    probes: <String, Layout3d>{
+      'backLeft': backLeft,
+      'backRight': backRight,
+      'fadeLeft': fadeLeft,
+      'fadeRight': fadeRight,
+      'label': label,
+      'pin': pin,
+    },
+  );
 }

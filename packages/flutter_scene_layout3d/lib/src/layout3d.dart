@@ -1034,6 +1034,63 @@ abstract class Layout3d with DiagnosticableTreeMixin {
     return inFrame.shifted(-child.offset);
   }
 
+  // --------------------------------------------------------------- opacity
+
+  /// How much of this box is drawn, from 0 to 1.
+  ///
+  /// One unless some ancestor is an [Opacity3d] — or anything else mixing in
+  /// [Layout3dOpacityMixin], which is how a [MotionTransition3d] fades an
+  /// arrival. Computed by walking up rather than pushed down, exactly as
+  /// [clipRegion] is and for the same reason: the walk is O(depth) and
+  /// happens only when something that draws asks, while pushing would cost
+  /// every box on every layout whether or not anything in the tree fades.
+  ///
+  /// **It is coverage, not alpha.** A box at 30% draws roughly a third of its
+  /// fragments and throws the rest away, so what survives blends and orders
+  /// itself exactly as an unfaded box's does. That is what makes fading a
+  /// subtree possible here at all: the alternative — folding the opacity into
+  /// every colour — makes a partly transparent slab that writes depth, which
+  /// hides what is behind it instead of showing it through. See
+  /// `assets/box_decoration3d.fmat`'s `ScreenDoor`, and [Opacity3d] for what
+  /// the difference from Flutter's own `Opacity` costs in the picture.
+  ///
+  /// Read by the three things this package draws with — a decoration's
+  /// painter, a label's glyph material, and the wall around its letters — and
+  /// by nothing else. A box that draws geometry of its own has to consume it
+  /// itself; see [NodeBox3d.onFade].
+  double get inheritedOpacity => _parent?.opacityForChild(this) ?? 1.0;
+
+  /// Calls [refreshOpacity] on this box and everything under it.
+  ///
+  /// What a box imposing an opacity calls when its own value changes. Unlike
+  /// the clip's equivalent this is *only* for changes: an opacity is known
+  /// before the subtree below it is laid out, so a box laid out inside a
+  /// faded subtree reads the right value the first time it draws and needs no
+  /// second pass to be told.
+  @protected
+  void refreshOpacitySubtree() {
+    refreshOpacity();
+    visitChildren((child) => child.refreshOpacitySubtree());
+  }
+
+  /// Re-reads [inheritedOpacity] and republishes whatever this box did with
+  /// it.
+  ///
+  /// Nothing by default, because most boxes draw nothing. The three that do
+  /// override it to write one uniform and ask for a frame — **not** to lay
+  /// anything out and not to rebuild geometry, which is the tier a fade has
+  /// to stay on. An animating opacity calls this over a subtree on every
+  /// tick, so anything it reaches must be a parameter write.
+  void refreshOpacity() {}
+
+  /// The opacity this box imposes on [child].
+  ///
+  /// The default passes down what this box inherits. [Layout3dOpacityMixin]
+  /// multiplies its own in, which is what makes two nested [Opacity3d] boxes
+  /// compose the way two nested `Opacity` widgets do.
+  @protected
+  double opacityForChild(Layout3d child) => inheritedOpacity;
+
   // ------------------------------------------------------------ hit testing
 
   /// The layout-space transform between this box's own frame and the frame

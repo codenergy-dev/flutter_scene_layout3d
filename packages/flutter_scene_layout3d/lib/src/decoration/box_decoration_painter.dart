@@ -137,6 +137,7 @@ class BoxDecoration3dPainter implements Decoration3dPainter {
       metrics: request.metrics,
       stateLayer: request.stateLayer,
       clip: request.clip,
+      opacity: request.opacity,
       // Only once the texture is actually bound. A picture whose size is
       // known but whose pixels are not would otherwise be drawn as the
       // sampler's white placeholder — the same defect a glyph mesh attached

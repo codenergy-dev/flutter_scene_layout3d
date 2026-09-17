@@ -597,8 +597,11 @@ anywhere says why.
 
 The way out is for the glyph mesh to write depth, so the depth buffer settles
 the order whichever draw comes first. `flutter_scene`'s `UnlitMaterial` cannot
-be made to, so this package ships `assets/text_glyph3d.fmat` and one call to
-install it:
+be made to, so this package ships `assets/text_glyph3d.fmat` — and
+`assets/text_glyph_wall3d.fmat` beside it, for the wall around each letter,
+which needs a shader for a different reason: its colour is baked into its
+vertex colours, so nothing but a uniform of its own can fade it. One call
+installs both:
 
 ```dart
 await Scene.initializeStaticResources();
@@ -608,7 +611,9 @@ await installGlyphMaterial3d();      // type that survives a turning panel
 `initializeMaterial3d()` in `flutter_scene_material3d` does it for you, so an
 application using the catalogue has nothing to add. Without it, type still
 draws exactly as it always did — `GlyphMaterial3d.factory` falls back to
-`UnlitGlyphMaterial3d` — and loses letters whenever a panel it is on turns.
+`UnlitGlyphMaterial3d` and `GlyphWallMaterial3d.factory` to
+`UnlitGlyphWallMaterial3d` — and loses letters whenever a panel it is on
+turns.
 Install a factory of your own if you want different rules; it is called once
 per label, because the colour and the atlas are per-label.
 
@@ -1083,11 +1088,51 @@ invisible box is unpointable as well as unseen. Toggling a `Visibility3d` does
 not relayout; toggling an `Offstage3d` does, because the size it reports
 depends on it.
 
-There is deliberately no `Opacity3d`. Flutter's is a `saveLayer`, and a scene
-has no such thing; fading a subtree means multiplying an alpha into every
-material under it, which needs an engine-side per-node opacity that does not
-exist yet. A wrapper that silently only faded `BoxDecoration3d` would be worse
-than none.
+### Fading a subtree
+
+`Opacity3d` draws everything below it at a fraction of its strength, and the
+value composes the way two nested `Opacity` widgets do:
+
+```dart
+Opacity3d(
+  opacity: enabled ? 1.0 : 0.38,
+  child: Column3d(children: controls),
+)
+```
+
+It reaches everything this package draws — a panel, a label's glyphs, and the
+wall around those glyphs — through `Layout3d.inheritedOpacity`, which is
+computed by walking up exactly as `clipRegion` is. Changing it lays nothing
+out and rebuilds no geometry: it walks the subtree writing one `fade` uniform
+per box that draws, which is what makes `FadeTransition3d`,
+`SceneAnimatedOpacity3d` and `Motion3d.opacity` affordable.
+
+**It is coverage, not alpha, and you should know that before you use it.**
+A faded box keeps roughly `opacity` of its fragments, chosen by an ordered
+4x4 matrix over the fragment's screen position, and throws the rest away. The
+survivors draw at full strength and write depth exactly as an unfaded box's
+do. What that buys is **ordering**: fading stops depending on the
+back-to-front sort, which is one number per draw and which a panel and the
+label written on it routinely tie in. What it costs is **group opacity**: a
+label on a faded card keeps its own share of pixels over a card that kept its
+own share, where Flutter would composite the pair and fade the result once.
+Measured, the label comes out about half again as strong as Flutter's would at
+30% — zero error at either end, largest in the middle.
+
+That trade is the conclusion of an experiment rather than a guess. Five
+approaches were built and photographed, and the two that get group opacity
+right both fail at **opacity 1.0**: one lets a backdrop paint over the panel
+in front of it, the other buries whatever stands in front of the faded
+subtree. A fade that is wrong when nothing is being faded is worse than one
+that is a little generous in the middle. The pictures and the numbers are in
+`plans/2026_09_16_a_box_that_fades.md`.
+
+Two things it does not do. **It does not take anything out of reach** — a
+subtree at zero opacity still answers a ray, exactly as Flutter's `Opacity`
+does; wrap it in an `IgnorePointer3d` if it should stop being pressable. And
+**it cannot fade geometry the package did not build**: a `NodeBox3d` holds
+content with materials of its own, so it takes an `onFade` callback and
+asserts in debug when it is inside a faded subtree without one.
 
 ## What is in the box
 
@@ -1138,7 +1183,7 @@ than none.
 | `Overlay3d`, `Overlay3dEntry`, `OverlayLayer3d` | `Overlay`, `OverlayEntry`, and the 3D question Flutter does not have |
 | `ModalBarrier3d`, `Navigator3d`, `Route3d` | `ModalBarrier`, `Navigator`, `Route` |
 | `Route3dTransition`, `TimedRoute3dTransition`, `Route3d.animation` | `TransitionRoute`'s controller and the duration-and-curve half of `PageRouteBuilder` |
-| `Motion3d`, `MotionTransition3d`, `SceneMotionTransition3d` | `SlideTransition`, `ScaleTransition` and `RotationTransition`, as one value and one box on the node tier |
+| `Motion3d`, `MotionTransition3d`, `SceneMotionTransition3d` | `SlideTransition`, `ScaleTransition`, `RotationTransition` and `FadeTransition`, as one value and one box |
 | `WidgetOverlay3dEntry`, `WidgetPageRoute3d` | an entry and a route whose content is a widget subtree |
 | `Layout3d.anchorOffsetTo` | `CompositedTransformTarget` and `CompositedTransformFollower`, as one call on the node tier |
 | `Layout3dPointerGroup` | routing a ray across surfaces, which a screen does not need |
@@ -1152,6 +1197,7 @@ than none.
 | `Decoration3dPainter`, `Decoration3dPainterCache`, `StateLayer3d` | `BoxPainter`, and Material's state layers |
 | `ClipBox3d`, `Clip3dRegion`, `ClipPlane3d` | `ClipRect`, and the clip stack behind it |
 | `Visibility3d`, `Offstage3d` | `Visibility`, `Offstage` |
+| `Opacity3d`, `FadeTransition3d`, `SceneAnimatedOpacity3d` | `Opacity`, `FadeTransition`, `AnimatedOpacity` — as coverage rather than a `saveLayer` |
 | `Size3dTween` and its siblings | `SizeTween`, `EdgeInsetsTween`, `AlignmentTween`, `DecorationTween` |
 | `ImplicitlyAnimatedLayout3dWidget`, `SceneAnimatedContainer3d` | `ImplicitlyAnimatedWidget`, `AnimatedContainer` |
 | `Layout3d.nodeOffset`, `NodeTransform3d`, `SceneAnimatedSlide3d` | geometry that moves with no layout behind it, which Flutter has no cheap answer for |
@@ -2735,6 +2781,14 @@ This is the same distinction `ParentData3d.sceneOffset` draws for
 `sceneOffset` for an animation: `sceneOffset` belongs to the parent, and a
 stack rewrites it on every placement.
 
+**A fade is on this tier too, by a different route.** It is not a node
+transform — there is no such thing as a node opacity in the engine, and there
+never needed to be — it is an *inherited value*, republished down the subtree
+as one `fade` uniform per box that draws. `FadeTransition3d` drives it from an
+`Animation` and `SceneAnimatedOpacity3d` is its declarative front, with the
+same bargain: a target change costs one rebuild, and the run rebuilds nothing
+and lays nothing out. See *Fading a subtree* for what it costs in the picture.
+
 ### A route that arrives
 
 A route has a clock of its own, `Route3d.animation`, which reads 0 while the
@@ -2790,10 +2844,13 @@ content carries its own — a dim that slides in with the dialog it dims is not
 a transition anyone asked for. Content of that shape writes the
 `SceneMotionTransition3d` by hand, around the dialog and inside the scrim.
 
-There is no fade. Fading a subtree needs a per-node opacity in `flutter_scene`
-and there is none — `Node` carries `visible` and nothing else — so `Motion3d`
-has no opacity field rather than one that fades a panel and leaves its label
-opaque.
+**And `Motion3d.opacity` fades the subtree as it arrives**, which is the one
+part of a motion that is not the node tier: the transition imposes an
+`Opacity3d` on what it carries, so the panel, the label on it and the wall
+around that label's letters all fade together. `Motion3d.fade()` is the
+plainest arrival there is, and `Motion3d(scale: 0.85, opacity: 0)` is a
+dialog. Read *Fading a subtree* for what that costs — it is coverage rather
+than a `saveLayer`, exact at both ends and a little generous in the middle.
 
 ### Implicit: a size, a padding, an alignment
 
@@ -3363,12 +3420,14 @@ them), and `ImplicitlyAnimatedLayout3dWidget` with `SceneAnimatedContainer3d`
 and its siblings for the animations that really do relayout. On the scroll side,
 `Scroll3dPhysics` with clamping and bouncing, a release that flings from a
 velocity `Layout3dPointer` tracks on the grabbed view's plane, and
-`animateTo`, `fling` and `ensureVisible3d` on the controller. See *Animation*
-and *Physics, flings, and going somewhere* above. What is left is
-`AnimatedOpacity3d`, which waits on a per-node opacity in the engine, and the
-overscroll effects a scene could have instead of a glow — bending, tilting or
-compressing the content — which `Scroll3dController.overscroll` exposes the
-number for but nothing here builds.
+`animateTo`, `fling` and `ensureVisible3d` on the controller, and
+`Opacity3d` with `FadeTransition3d` and `SceneAnimatedOpacity3d` over it —
+one `fade` uniform per box that draws, and no relayout. See *Animation*,
+*Fading a subtree* and *Physics, flings, and going somewhere* above. What is
+left is the overscroll effects a scene could have instead of a glow —
+bending, tilting or compressing the content — which
+`Scroll3dController.overscroll` exposes the number for but nothing here
+builds.
 
 **9. Diagnostics and accessibility.** ~~Done~~: every box is a
 `DiagnosticableTree`, so `toStringDeep` and `debugDumpLayout3dTree` print what
@@ -3386,11 +3445,13 @@ above. What is left is a visual inspector, which belongs to the Flutter Scene
 Editor rather than here.
 
 **What is next.** Nothing in this list depends on anything else in it any
-more, so the order is a matter of what a caller reaches for first: route
-transitions over `Route3dTransition`; text a person can type, which is the
-largest thing missing; a distance-field glyph atlas for type that stays sharp
-as a panel approaches; and a per-node opacity in the engine, which is what an
-`Opacity3d` is waiting on.
+more, so the order is a matter of what a caller reaches for first: a `Hero3d`;
+text a person can type, which is the largest thing missing; a distance-field
+glyph atlas for type that stays sharp as a panel approaches; and a runtime
+depth-write flag in the engine, which is the one upstream ask this package
+still has — it is what a *fully* general transparent slab needs, and it is
+not what `Opacity3d` needed, which is a story in
+`plans/2026_09_16_a_box_that_fades.md`.
 
 ## License
 

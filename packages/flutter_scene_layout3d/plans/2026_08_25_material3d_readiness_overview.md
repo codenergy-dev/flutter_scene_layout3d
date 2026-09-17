@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-08-25T20:31:04Z
-updated_at: 2026-09-10T13:40:00Z
+updated_at: 2026-09-17T12:20:00Z
 commit: 657eef80eb8dc8085c3b3a84a8069273495506be
 ---
 
@@ -184,12 +184,16 @@ Also open, each for a stated reason rather than for lack of time:
   target's plane on the node tier — is written up in the drag plan rather than
   half-built here.
 - **Keep-alive** for lazily built children, deferred by that plan's own text.
-- **Subtree opacity**, which needs a per-node opacity in `flutter_scene` that
-  the materials honour, and there is none in 0.23.0: `Node` carries `visible`,
-  a selection-outline `highlightColor`, layer and light masks and shadow
-  flags, and no opacity or tint of any kind. Shipping an `Opacity3d` that
-  faded only `BoxDecoration3d` is the thing that plan told its implementer not
-  to do.
+- ~~**Subtree opacity**, which needs a per-node opacity in `flutter_scene`
+  that the materials honour, and there is none in 0.23.0.~~ **Shipped on
+  2026-09-17 as `Opacity3d`, and this entry's diagnosis was wrong.** The
+  engine still has no node opacity and it never mattered: this package draws
+  with materials it owns, and what stood in the way was `depth_write`. The
+  second sentence held, though, and is what made the work worth doing
+  carefully — a fade that reached only `BoxDecoration3d` would have been worse
+  than none, and the sharp version is one level finer still, in the opaque
+  wall around a glyph. See
+  [a box that fades](2026_09_16_a_box_that_fades.md).
 - **A decorated panel casts no shadow.** Not "the shadow of its whole slab",
   which is what this list said while it was a guess: `box_decoration3d.fmat`
   declares `blending: alpha` and `ShadowEncoder` drops every non-opaque
@@ -247,8 +251,10 @@ In the order I would take them:
    shader drawing its border inside out, which sixty-two headless tests had
    passed over. The shadow item is answered rather than open: the engine will
    not cast a shadow from that material at all, and the plan records both the
-   gate and what a catalogue does instead. Subtree opacity stays unshipped for
-   the reason above, which is the plan's own rule and not a shortcut.
+   gate and what a catalogue does instead. Subtree opacity stayed unshipped
+   for the reason above, which is the plan's own rule and not a shortcut —
+   and has since shipped, with that reason intact and its diagnosis
+   corrected.
 4. ~~**[`flutter_scene_material3d`](../../flutter_scene_material3d/plans/2026_09_01_flutter_scene_material3d.md)**,
    the catalogue this whole map was drawn for.~~ **Done — it shipped.** All
    ten phases of it, from the tokens to the gallery: `Material3d` and the

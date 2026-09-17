@@ -1419,19 +1419,25 @@ its own vocabulary.
 
 ## Disabled is a colour, not a filter
 
-Flutter draws a disabled control by compositing it at 38% opacity. There is no
-subtree opacity in this stack and there cannot be until `flutter_scene` grows
-a per-node opacity the materials honour — `Node` has `visible`, a
-selection-outline colour, layer and light masks, and no opacity or tint of any
-kind.
+Flutter draws a disabled control by compositing it at 38% opacity. This
+catalogue substitutes colours instead, and it did so originally because there
+was no subtree opacity in this stack at all.
+
+There is one now — `Opacity3d`, in the layout package — and the substitution
+stays, for a better reason than the absence was. Flutter's 38% is a
+`saveLayer`: the control is composited and *then* faded, so its label keeps
+its contrast against its own slab. `Opacity3d` is screen-door coverage, which
+fades the label and the slab independently, so a disabled button drawn that
+way would have a label a little too strong against a container a little too
+weak — the exact place the approximation is widest. The token substitution has
+no such error, and the figures it uses are the ones Material's specification
+states as the *result* of the 38%.
 
 So a disabled control here is expressed by *substituting tokens*:
 `colorScheme.disabledContent` (`onSurface` at 38%) for the label and the icon,
 `colorScheme.disabledContainer` (`onSurface` at 12%) for the slab behind them.
-Those are the figures Material's own specification states as the *result*, so
-this is the more faithful spelling as well as the only available one. What it
-cannot do is fade an arbitrary child subtree; a component does not need that,
-and an application that does has to build it out of colours too.
+What it cannot do is fade an arbitrary child subtree; a component does not
+need that, and an application that does now has `Opacity3d` for it.
 
 `ButtonStyle3d.resolve` is where the rule is implemented for the buttons —
 disabled wins every other state, the elevation goes to zero, and the outline

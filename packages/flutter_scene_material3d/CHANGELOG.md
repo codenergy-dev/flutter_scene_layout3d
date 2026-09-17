@@ -9,10 +9,22 @@ state**; there is no second mechanism anywhere in the catalogue.
 Material 3 is a specification for a flat surface, so every token in it that
 stands in for depth is re-derived here. An elevation is a shadow in Flutter
 and a distance here. A disabled control is 38% opacity in Flutter and a
-substituted colour here, because there is no opacity in this stack. A
+substituted colour here — originally because there was no opacity in this
+stack at all, and still now that there is one, because `Opacity3d` is
+screen-door coverage and fades a label and the slab under it independently,
+where Material's 38% composites the pair first. A
 component has no thickness in Flutter and must have one here, which is the
 token Material does not publish at all. The plan's middle section is where
 that reasoning lives.
+
+- **Disabled is still a colour, and now it is a choice rather than an
+  absence.** `flutter_scene_layout3d` has an `Opacity3d`, so a catalogue could
+  fade a disabled control the way Flutter does. It does not, and the README
+  says why in its own section: the fade this stack can do is coverage, which
+  fades a label and its container on their own and is at its least faithful
+  exactly in the middle — while the tokens this catalogue substitutes are the
+  figures Material's specification states as the *result* of its 38%. What
+  changed is the reasoning, not a line of code.
 
 - **The catalogue's type follows the reader's own font setting.** Nothing here
   changed to make it so: `Layout3dMetrics` carries a `TextScaler` now, a

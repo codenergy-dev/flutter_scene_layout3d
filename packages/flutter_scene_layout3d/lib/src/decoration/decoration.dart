@@ -296,6 +296,7 @@ class Decoration3dPaintRequest {
     required this.clip,
     required this.basis,
     required this.metrics,
+    this.opacity = 1.0,
     this.configuration = ImageConfiguration.empty,
     this.onChanged,
   });
@@ -346,6 +347,19 @@ class Decoration3dPaintRequest {
   /// model — has to undo this the way `NodeBox3d` does. Geometry generated in
   /// layout axes does not.
   final LayoutBasis3d basis;
+
+  /// How much of this box is drawn, from 0 to 1, from
+  /// [Layout3d.inheritedOpacity].
+  ///
+  /// One unless an [Opacity3d] is above the box. **It is coverage rather
+  /// than alpha**: a painter honours it by discarding that share of its
+  /// fragments, not by multiplying it into a colour — which is what keeps a
+  /// faded panel from becoming a partly transparent slab that writes depth
+  /// and hides what is behind it. The package's own shader has the block and
+  /// the reasoning; a painter whose material cannot do it should leave it
+  /// alone rather than approximate it, because the approximation is the
+  /// defect.
+  final double opacity;
 
   /// The unit contract, for a painter that needs to turn a spec figure into
   /// units itself or wants [Layout3dMetrics.logicalPixelsPerUnit] as a

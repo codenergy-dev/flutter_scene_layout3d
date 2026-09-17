@@ -9,10 +9,13 @@ import 'package:hooks/hooks.dart';
 /// symlink — so an application that added this package got panels that drew
 /// nothing and no error saying why.
 ///
-/// `assets/text_glyph3d.fmat` is the one a line of type is drawn with. It is
-/// here rather than in an application because the reason it exists is a
-/// rendering rule rather than a style: a glyph mesh has to write depth, or the
-/// translucent sort erases it off the panel it is written on.
+/// `assets/text_glyph3d.fmat` is the one a line of type is drawn with, and
+/// `assets/text_glyph_wall3d.fmat` the one the side of a letter is drawn
+/// with. Both are here rather than in an application because the reason they
+/// exist is a rendering rule rather than a style: a glyph mesh has to write
+/// depth, or the translucent sort erases it off the panel it is written on;
+/// and a wall has to be able to fade with the face it belongs to, which a
+/// colour baked into its vertices cannot do.
 ///
 /// A package's `hook/build.dart` runs when the package is a dependency, not
 /// only when it is the root, and `buildMaterials` resolves its paths against
@@ -32,7 +35,11 @@ void main(List<String> args) {
     await buildMaterials(
       buildInput: input,
       buildOutput: output,
-      materials: ['assets/box_decoration3d.fmat', 'assets/text_glyph3d.fmat'],
+      materials: [
+        'assets/box_decoration3d.fmat',
+        'assets/text_glyph3d.fmat',
+        'assets/text_glyph_wall3d.fmat',
+      ],
     );
   });
 }

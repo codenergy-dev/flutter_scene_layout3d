@@ -48,7 +48,7 @@ import '../geometry/offset3d.dart';
 import '../geometry/size3d.dart';
 import '../layout3d.dart';
 import 'atlas_text_renderer.dart' show AtlasText3dRenderer;
-import 'glyph_material.dart' show GlyphMaterial3d;
+import 'glyph_material.dart' show GlyphMaterial3d, GlyphWallMaterial3d;
 import 'glyph_outline.dart';
 import 'text_geometry.dart' show GlyphWallSegment3d;
 
@@ -422,6 +422,7 @@ class RichText3d extends Layout3d {
 
   Node? _quad;
   GlyphMaterial3d? _material;
+  GlyphWallMaterial3d? _wall;
 
   /// Whether a capture has reached the material, which is what [isDrawn]
   /// answers: a [GlyphMaterial3d] deliberately hides what it is bound to, so
@@ -556,6 +557,20 @@ class RichText3d extends Layout3d {
       Size3d(_painter.width * scale, _painter.height * scale, _depth),
     );
     _updateSurface();
+  }
+
+  /// Republishes the opacity in force, which is what actually fades this
+  /// paragraph.
+  ///
+  /// Two uniforms — the captured quad's and its wall's — and nothing else. A
+  /// paragraph is the expensive box in this package: it rasterizes a real
+  /// `RichText` through a widget component and traces its silhouette, and
+  /// none of that is touched here. See [Layout3d.inheritedOpacity].
+  @override
+  void refreshOpacity() {
+    final opacity = inheritedOpacity;
+    _material?.fade(opacity);
+    _wall?.fade(opacity);
   }
 
   /// Rebuilds the hosted subtree and the quad it lands on, when the size or
@@ -712,7 +727,8 @@ class RichText3d extends Layout3d {
             // not be sampled.
             _text.style?.color ?? const Color(0xFF808080),
           ).build(),
-          AtlasText3dRenderer.buildWallMaterial(),
+          (_wall = GlyphWallMaterial3d.factory()..fade(inheritedOpacity))
+              .material,
         ),
       );
     }
@@ -752,7 +768,8 @@ class RichText3d extends Layout3d {
     // colours the span asked for, so the tint is white and the material
     // multiplies by one.
     final material = _material ??= GlyphMaterial3d.factory()
-      ..tint(const Color(0xFFFFFFFF));
+      ..tint(const Color(0xFFFFFFFF))
+      ..fade(inheritedOpacity);
     material.bindAtlas(GpuTextureSource(texture));
     _hasCapture = true;
     _syncQuad();
@@ -768,6 +785,7 @@ class RichText3d extends Layout3d {
     if (quad != null) node.remove(quad);
     _quad = null;
     _material = null;
+    _wall = null;
     _hasCapture = false;
     _quadSize = Size3d.zero;
     _builtSize = null;

@@ -20,6 +20,7 @@ class Text3dRenderRequest {
     required this.basis,
     required this.unitsPerLogicalPixel,
     required this.logicalPixelsPerUnit,
+    this.opacity = 1.0,
   });
 
   /// The box's scene node, which the geometry hangs under.
@@ -64,6 +65,21 @@ class Text3dRenderRequest {
   /// different number of real pixels every frame, and a renderer that cares
   /// needs a level-of-detail story of its own on top of this.
   final double logicalPixelsPerUnit;
+
+  /// How much of the label is drawn, from 0 to 1, from
+  /// [Layout3d.inheritedOpacity].
+  ///
+  /// One unless an [Opacity3d] is above the box. **It is coverage rather than
+  /// alpha**, and a renderer must not spend it on the style's colour: see
+  /// [GlyphMaterial3d.fade] for what that does to a glyph's silhouette, and
+  /// [GlyphWallMaterial3d.fade] for the third primitive a label is made of
+  /// that a colour cannot reach at all.
+  ///
+  /// It is the one field on this request that changes **without a layout**: a
+  /// box republishes its opacity by calling [Text3dRenderer.render] again with
+  /// everything else unchanged, so a renderer that early-returns on "nothing
+  /// changed" has to count this among the things that can have.
+  final double opacity;
 }
 
 /// Makes a [Text3dRenderer] for one box.

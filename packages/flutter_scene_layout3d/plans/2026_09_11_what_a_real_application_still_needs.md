@@ -1,8 +1,8 @@
 ---
 status: in progress
-reason: nine of the seventeen items are open, one of them now planned; the record of what shipped, the application widget, the wheel and the key, the test library, right to left, the picture, the item that keeps its state and the screen that knows how big it is are closed
+reason: eight of the seventeen items are open; the record of what shipped, the application widget, the wheel and the key, the test library, right to left, the picture, the item that keeps its state, the screen that knows how big it is and the box that fades are closed, and the route is closed but for its Hero3d
 created_at: 2026-09-11T21:20:18Z
-updated_at: 2026-09-16T23:20:00Z
+updated_at: 2026-09-17T11:50:00Z
 commit: abc2469ce5c4ec4c41e2738fc5acf55bcf40640a
 ---
 
@@ -98,7 +98,7 @@ plan, which is the rule phase 0 established and every phase since has obeyed.
 | ~~[A wheel, a trackpad and a key that reach a box](#a-wheel-a-trackpad-and-a-key-that-reach-a-box)~~ | layout3d | **done** — scrolling on desktop and web; a keyboard that gets into a scene, across it, and out |
 | ~~[A row that reads right to left](#a-row-that-reads-right-to-left)~~ | layout3d | **done** — every non-LTR locale, and the catalogue mirroring with it |
 | ~~[A picture on a panel](#a-picture-on-a-panel)~~ | layout3d | **done** — avatars, photographs, gradients, logos |
-| [A box that fades](#a-box-that-fades) | layout3d | **planned** — `Opacity3d`, and every fade in the motion lane |
+| ~~[A box that fades](#a-box-that-fades)~~ | layout3d | **done** — `Opacity3d`, and every fade in the motion lane |
 | [A letter someone can type](#a-letter-someone-can-type) | layout3d | text fields, forms, search, pickers |
 | ~~[An item that keeps its state](#an-item-that-keeps-its-state)~~ | layout3d | **done** — forms in lists, and the declarative layer complete |
 | ~~[A screen that knows how big it is](#a-screen-that-knows-how-big-it-is)~~ | layout3d | **done** — the reader's font setting, the safe area, and something to branch on |
@@ -179,12 +179,15 @@ makes the catalogue half the ripe one: a route now carries a clock and a
 duration and the curve each component should use, which is what the token
 family is. Nothing in the catalogue moves until it is taken, so **this is the
 first item on the map whose result cannot be seen by running the gallery**.
-[A box that fades](#a-box-that-fades) belongs with them and **is now
-takeable**, which is a reversal: the engine still has no per-node opacity at
-`flutter_scene 0.23.0`, and that turned out to be the wrong thing to have been
-checking. Its [plan](2026_09_16_a_box_that_fades.md) is written and the
-expensive half — choosing between five ways of doing it, four of them
-photographed failing — is spent.
+~~[A box that fades](#a-box-that-fades) belongs with them~~ — **done**, see
+[its plan](2026_09_16_a_box_that_fades.md), and it was the reversal it looked
+like: the engine still has no per-node opacity at `flutter_scene 0.23.0`, and
+that was never the gate. `Opacity3d` fades a panel, a label and the wall
+around that label's letters by screen-door coverage, and `Motion3d.opacity`
+is what finishes an arrival. **That leaves the motion lane's remaining work
+entirely in the catalogue**: the layout half is finished but for `Hero3d`, and
+nothing in the catalogue moves until the token family says with what duration
+and what curve.
 
 Then [the catalogue batch](#the-components-a-screen-still-needs), which is
 broad and shallow, and
@@ -277,7 +280,16 @@ are where a first implementer's decision becomes someone else's constraint.
   own size has to re-apply from `performLayout` — the first tick lands before
   the layout that would give it a size, and a widget-built entry has no subtree
   at all until the build after the insertion. Anything else that arrives late
-  and moves meets the same ordering.
+  and moves meets the same ordering. **And [a box that
+  fades](#a-box-that-fades) added a third tier to the two**: an opacity is
+  neither a repaint of one box nor a node transform, it is an *inherited
+  value*, republished down a subtree as one uniform per box that draws. It
+  lays nothing out and rebuilds no geometry, so it belongs beside the other
+  two rather than above them — but a box that draws with a material this
+  package does not own cannot be reached by it at all, which is why
+  `NodeBox3d` takes an `onFade` and asserts without one. Anything that later
+  wants to publish a second ambient *drawing* value should copy that shape
+  rather than pushing it down.
 - **`Decoration3dPainterCache` is what makes a screen of panels affordable**,
   and it keys on `Decoration3d.cacheKey`. Two plans here compute colours that
   did not exist before — [a scheme from one colour](#a-scheme-from-one-colour)
@@ -494,7 +506,7 @@ Three decisions the plan owns:
 
 **Package:** `flutter_scene_layout3d`.
 **Slug:** `a_box_that_fades`.
-**Planned**, not yet built, by
+**Closed** by
 [its own plan](2026_09_16_a_box_that_fades.md) — which was written *after* an
 experiment rather than before one, because this entry had sent two
 investigations to ask the wrong question.
@@ -506,9 +518,17 @@ What stands in the way is `depth_write`, which makes this the *partly*
 transparent case that
 [a transparent slab that does not erase](2026_09_10_a_transparent_slab_that_does_not_erase.md)
 left open — and screen-door coverage goes around it for the cost of one
-uniform. Five approaches were built and photographed in
-`examples/render_probe`'s `opacity_poc` target; two of them fail at opacity
-1.0, where nothing is supposed to be happening. The item is **takeable**.
+uniform. Five approaches were built and photographed; two of them fail at
+opacity 1.0, where nothing is supposed to be happening.
+
+What shipped: `Opacity3d` and `FadeTransition3d` over an inherited
+`Layout3d.inheritedOpacity`, `Motion3d.opacity`, a `fade` uniform on both
+shipped shaders and **a third shader** — `assets/text_glyph_wall3d.fmat` —
+because a glyph's wall is an opaque material coloured by its own vertices and
+nothing a uniform could say would fade it. The cost of the approach is group
+opacity: a label on a faded card is about half again as strong as Flutter
+would draw it at 30%, and exactly right at either end. The two approaches
+that get that right both fail at 1.0, which is a worse place to be wrong.
 
 **There is no `Opacity3d`, and it may not be buildable here.** This is the one
 item on the map with an upstream gate, and it was already investigated once:
@@ -699,8 +719,9 @@ phase 6's. And the tier that should carry it is the cheap one — an entry
 sliding, turning or scaling toward the viewer is `nodeOffset`/`nodeTransform`
 and `NodeShift3d`, one matrix a frame, nothing laid out again.
 
-What the plan owns: the transitions themselves; the fades, which are gated on
-[a box that fades](#a-box-that-fades) and may have to ship without them; a
+What the plan owns: the transitions themselves; the fades, which were gated on
+[a box that fades](#a-box-that-fades) and did ship without them — that item is
+now closed and `Motion3d.opacity` is where they landed; a
 `Hero3d`, which is `Layout3d.anchorOffsetTo` plus a route's clock and is
 genuinely interesting in three dimensions because the flight can go *through*
 the scene; and above all the `Ticker` discipline — an animation that has

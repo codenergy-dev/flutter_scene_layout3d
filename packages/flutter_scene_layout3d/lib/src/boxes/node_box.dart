@@ -3,8 +3,13 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart'
     show
         DiagnosticPropertiesBuilder,
+        DiagnosticsNode,
         DiagnosticsProperty,
         EnumProperty,
+        ErrorDescription,
+        ErrorHint,
+        ErrorSummary,
+        FlutterError,
         protected,
         StringProperty;
 import 'package:flutter/painting.dart' show TextDirection;
@@ -58,6 +63,7 @@ class NodeBox3d extends Layout3d {
     TextDirection? textDirection,
     Size3d? explicitSize,
     Size3d fallbackSize = Size3d.zero,
+    this.onFade,
     super.name,
   }) : _content = content,
        _fit = fit,
@@ -129,6 +135,31 @@ class NodeBox3d extends Layout3d {
     _explicitSize = value;
     markParentNeedsLayout();
   }
+
+  /// How this box's content fades, or null for content that cannot.
+  ///
+  /// **The one place in this package where a caller has to answer for an
+  /// opacity.** Everything else a tree draws — a panel, a label, the wall
+  /// around its letters — is drawn with a material this package owns and can
+  /// give a `fade` uniform to. The content of a [NodeBox3d] is geometry the
+  /// application brought, with materials of its own, and the package has no
+  /// way to fade it and no business guessing how.
+  ///
+  /// So an [Opacity3d] over a `NodeBox3d` calls this, with the opacity in
+  /// force, whenever it changes and once per layout. What to do with it
+  /// depends on the content: write a uniform on a `.fmat` of your own, scale
+  /// a `baseColorFactor`'s alpha, or — for a model that genuinely cannot —
+  /// hide the node below some threshold. The package's own answer is a
+  /// screen-door discard, and it is worth copying if the content is
+  /// something a fading interface will stand next to, because two things
+  /// fading by different rules at the same time do not look like one thing
+  /// fading.
+  ///
+  /// **Leaving it null is fine, and asserts if it turns out not to be.** A
+  /// box with no [onFade] inside a faded subtree is a box that will draw at
+  /// full strength while everything around it fades, so it says so in debug
+  /// rather than looking like a rendering defect.
+  final void Function(double opacity)? onFade;
 
   Size3d _fallbackSize;
 
@@ -238,6 +269,48 @@ class NodeBox3d extends Layout3d {
               ),
             )
             .multiplied(basis.toLayoutMatrix);
+
+    // A box laid out inside a faded subtree is born faded, so the content
+    // finds out here as well as when the value changes.
+    refreshOpacity();
+  }
+
+  /// Hands the opacity in force to [onFade], or complains that nothing can
+  /// take it.
+  ///
+  /// The package's only honest answer for geometry it did not build. See
+  /// [onFade] for what a caller does with it, and
+  /// [Layout3d.inheritedOpacity] for why it is coverage rather than alpha.
+  @override
+  void refreshOpacity() {
+    final opacity = inheritedOpacity;
+    final fade = onFade;
+    if (fade != null) {
+      fade(opacity);
+      return;
+    }
+    assert(() {
+      if (opacity >= 1.0) return true;
+      throw FlutterError.fromParts(<DiagnosticsNode>[
+        ErrorSummary(
+          'A NodeBox3d inside a faded subtree has no way to fade its '
+          'content.',
+        ),
+        ErrorDescription(
+          'Something above ${node.name} imposes an opacity of '
+          '${opacity.toStringAsFixed(3)}, and a NodeBox3d holds geometry this '
+          'package did not build: it has no material of its own to write a '
+          'fade onto, so the content will keep drawing at full strength while '
+          'everything around it fades.',
+        ),
+        ErrorHint(
+          'Give the box an onFade callback that spends the opacity on '
+          'whatever the content is drawn with, or move it out of the faded '
+          'subtree. Wrapping it in an Offstage3d or a Visibility3d is the '
+          'answer when the content only has to disappear rather than fade.',
+        ),
+      ]);
+    }());
   }
 
   /// The leaf answers hits on its own account: it is the box that stands for

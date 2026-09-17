@@ -123,6 +123,25 @@ material {
     // panel without one is given.
     { type: float, name: image_opacity, default: 0.0 },
 
+    // **How much of this box survives, from 0 to 1** — the opacity in force,
+    // from `Layout3d.inheritedOpacity`, written by
+    // `BoxDecoration3dUniforms.applyTo`.
+    //
+    // It is **coverage, not alpha**, and that is the whole design of fading
+    // in this package. Folding an opacity into the alpha would mean folding
+    // it into every colour below — `color`, `border_color`, `state_layer`,
+    // `surface_tint`, the eight gradient stops and `image_opacity` — and,
+    // worse, it would make a faded panel a *partly* transparent slab that
+    // writes depth, which is the case the `depth_write` note above leaves
+    // open: it hides what is behind it instead of showing it through.
+    // Turning depth write off instead is worse again, and fails at opacity
+    // 1.0, where nothing is supposed to be happening. Both were photographed
+    // failing; see `plans/2026_09_16_a_box_that_fades.md`.
+    //
+    // So a fragment either draws in full or is thrown away, and the ones
+    // that survive blend and order themselves exactly as an unfaded panel's
+    // do. See `ScreenDoor` in the fragment block for which ones survive.
+    { type: float, name: fade, default: 1.0 },
     { type: float, name: metallic, hint: range(0, 1, 0.01), default: 0.0 },
     { type: float, name: roughness, hint: range(0, 1, 0.01), default: 0.5 },
 
@@ -146,6 +165,47 @@ material {
 }
 
 fragment {
+  // Throws this fragment away unless it is one of the `fade`-th of them that
+  // a subtree at that opacity keeps: **screen-door coverage**.
+  //
+  // The canonical copy of this block. `text_glyph3d.fmat` and
+  // `text_glyph_wall3d.fmat` carry the same four lines, because the three
+  // primitives a faded label is made of — the glyph faces, their back faces
+  // and the wall around them — have to agree at every pixel or a letter
+  // tears along its own rim. They agree for free: the threshold is a
+  // function of `gl_FragCoord` alone, so at a given pixel all three make the
+  // same keep-or-discard decision.
+  //
+  // **The matrix is an ordered 4x4 Bayer one, not a hash.** The engine's own
+  // `shaders/lod_fade.glsl` thresholds against a Weyl hash, which is tuned
+  // for what it fades: foliage, far away, small on screen and resolved by
+  // temporal anti-aliasing. A panel is the opposite case — hundreds of
+  // pixels across, still, with no TAA in this stack — and the hash has
+  // enough low-frequency structure at that scale to photograph as diagonal
+  // hatching. The ordered matrix photographed as nothing at all. Both were
+  // built and compared; the pictures are in
+  // `plans/2026_09_16_a_box_that_fades.md`.
+  //
+  // `+ 0.5` puts the sixteen thresholds at the centres of their cells, so
+  // the lowest is 1/32 rather than 0 and **a fade of exactly 0 keeps
+  // nothing**. At the other end the guard above it means a fade of exactly
+  // 1.0 does not execute at all, which is the property every probe on this
+  // checks: a faded box at full opacity must draw what an unfaded one draws.
+  void ScreenDoor(float fade) {
+    if (fade >= 1.0) {
+      return;
+    }
+    const float kBayer4x4[16] = float[16](
+         0.0,  8.0,  2.0, 10.0,
+        12.0,  4.0, 14.0,  6.0,
+         3.0, 11.0,  1.0,  9.0,
+        15.0,  7.0, 13.0,  5.0);
+    ivec2 cell = ivec2(mod(gl_FragCoord.xy, 4.0));
+    if ((kBayer4x4[cell.y * 4 + cell.x] + 0.5) / 16.0 >= fade) {
+      discard;
+    }
+  }
+
   // The radius in force at p, picked from the four corners by which quadrant
   // of the face p is in. Written the way every rounded-box SDF is written, so
   // it reads the same as its source.
@@ -227,6 +287,10 @@ fragment {
   }
 
   void Surface(inout MaterialInputs material) {
+    // Before anything else: a fragment this box's opacity throws away costs
+    // nothing further, and must not write depth.
+    ScreenDoor(material_params.fade);
+
     // The object-space position, recovered from the vertex colour the painter
     // baked in. Centre of the box is the origin.
     vec3 p = (GetVertexColor().rgb - 0.5) * 2.0 * material_params.half_extent;

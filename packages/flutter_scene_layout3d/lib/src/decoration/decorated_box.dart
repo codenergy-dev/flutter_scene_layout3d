@@ -190,6 +190,19 @@ class DecoratedBox3d extends SingleChildLayout3d
     repaint();
   }
 
+  /// Republishes the opacity in force, which is what actually fades this
+  /// panel.
+  ///
+  /// One `fade` uniform, written by [repaint]. It is the whole cost of a
+  /// frame of a fade over this box: nothing is laid out, no geometry is
+  /// rebuilt, and no colour on the decoration is touched. See
+  /// [Layout3d.inheritedOpacity].
+  @override
+  void refreshOpacity() {
+    if (!hasSize) return;
+    repaint();
+  }
+
   /// Repaints and asks the host for a frame.
   ///
   /// The counterpart of [markNeedsLayout] for everything a decoration owns.
@@ -218,6 +231,7 @@ class DecoratedBox3d extends SingleChildLayout3d
         elevation: elevationUnits,
         stateLayer: _stateLayer,
         clip: clipRegion,
+        opacity: inheritedOpacity,
         basis: basis,
         metrics: metrics,
         configuration: _configuration,

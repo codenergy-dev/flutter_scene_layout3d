@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-09-01T19:15:00Z
-updated_at: 2026-09-15T16:45:54Z
+updated_at: 2026-09-17T12:15:00Z
 commit: 52a2ca7b6a176cf70b5bef6b6b92ff7e7cbf82bd
 ---
 
@@ -191,7 +191,15 @@ a selection-outline `highlightColor`, layer and light masks and shadow flags,
 and no opacity or tint of any kind. The size-driven geometry plan's own rule is
 not to ship an `Opacity3d` that only works on `BoxDecoration3d`.
 
-*Shipped as written, and phase 3 built the buttons on it.*
+*Shipped as written, and phase 3 built the buttons on it.* **And the premise
+above is now false without changing the conclusion**: `Opacity3d` exists in
+the layout package since 2026-09-17, and the engine's missing node opacity
+turned out to be irrelevant — it fades by screen-door coverage instead. The
+substitution stays, for a better reason than the absence was: coverage fades a
+label and the slab under it independently, which is exactly where the
+approximation is widest, while Material's 38% composites the pair first. See
+`flutter_scene_layout3d`'s
+[a box that fades](../../flutter_scene_layout3d/plans/2026_09_16_a_box_that_fades.md).
 `ColorScheme3d.disabledContent` and `.disabledContainer` are the two figures,
 `ButtonStyle3d.resolve` is the rule (disabled wins every other state, the
 elevation goes to zero, and the outline dims to the *container* figure rather

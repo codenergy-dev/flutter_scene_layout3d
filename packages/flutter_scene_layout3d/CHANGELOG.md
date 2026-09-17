@@ -1,5 +1,57 @@
 ## Unreleased
 
+- **A box fades.** `Opacity3d` draws everything below it at a fraction of its
+  strength, and it reaches all three of the things this package draws with: a
+  panel, a label's glyphs, and the wall around those glyphs. The item had been
+  parked twice on an upstream gate — `flutter_scene` has no opacity on `Node`
+  — and that gate was never the one: this package draws with materials it owns
+  and both of them already multiplied alpha. What stood in the way was
+  `depth_write`, and a fading subtree is the *partly* transparent slab the
+  transparent-slab work left open, everywhere at once.
+  - **It is coverage, not alpha, and that is the whole design.** A faded box
+    keeps roughly `opacity` of its fragments, chosen by an ordered 4x4 matrix
+    over the fragment's screen position, and throws the rest away; the
+    survivors draw at full strength and write depth exactly as an unfaded
+    box's do. So fading stops depending on the translucent pass's
+    back-to-front sort, which is one number per draw and which a panel and the
+    label on it routinely tie in. The price is group opacity: a label on a
+    faded card is about half again as strong as Flutter would draw it at 30%,
+    and exactly right at either end. Five approaches were built and
+    photographed before this one was chosen, and the two that get group
+    opacity right both fail at opacity **1.0**.
+  - **`Layout3d.inheritedOpacity`** is the value in force on a box, computed
+    by walking up exactly as `clipRegion` is, with `refreshOpacity` and
+    `refreshOpacitySubtree` as the republish hooks and `opacityForChild` as
+    the override a box imposing one uses. `Layout3dOpacityMixin` is that
+    behaviour; `Opacity3d` and `MotionTransition3d` are what mix it in.
+    Changing an opacity lays **nothing** out and rebuilds no geometry: it
+    walks the subtree writing one uniform per box that draws.
+  - **`FadeTransition3d`, `SceneOpacity3d`, `SceneFadeTransition3d` and
+    `SceneAnimatedOpacity3d`** are the rest of the lane — Flutter's
+    `FadeTransition` and `AnimatedOpacity`, on the tier where a run rebuilds
+    no widget and marks no box dirty.
+  - **`Motion3d.opacity`** finishes an arrival, and `Motion3d.fade()` is the
+    plainest one there is. The field was left out when `Motion3d` shipped, for
+    a reason this work found to be aimed at the wrong thing.
+  - **`assets/text_glyph_wall3d.fmat`** is a third shader, and the find behind
+    this work. A glyph is three primitives, not one: the faces, their back
+    faces, and the **wall** around each letter's silhouette — and the wall was
+    drawn with an opaque `UnlitMaterial` whose colour is baked into its vertex
+    colours, so nothing a uniform could say would fade it. Fading a label
+    naively therefore did not leave it behind, it *dissolved the letter and
+    kept its outline*. `GlyphWallMaterial3d` is the seam,
+    `installGlyphMaterial3d` installs both shaders now, and
+    `AtlasText3dRenderer.buildWallMaterial()` is gone in its favour.
+  - **`Decoration3dPaintRequest.opacity`, `BoxDecoration3dUniforms.opacity`
+    and `GlyphMaterial3d.fade`** carry it to the materials. The panel shader
+    and the glyph shader each declare a new `fade` parameter, which a caller
+    with a `.fmat` of its own has to declare too — `applyTo` writes exactly
+    the parameters this package's shader declares, and that set has grown by
+    one.
+  - **`NodeBox3d.onFade`** is how geometry an application brought says it can
+    fade, and a `NodeBox3d` inside a faded subtree without one **asserts** in
+    debug rather than drawing at full strength next to everything that faded.
+
 - **A route arrives instead of appearing.** `Route3dTransition.none` was the
   only implementation that shipped, so a dialog, a menu and a sheet each
   existed between one frame and the next. The clock now exists, and it is on
@@ -22,9 +74,11 @@
     scale, and a turn about an axis with a pivot both of the last two use.
     `Motion3d.fromBelow` is a sheet, `Motion3d.grow()` a dialog,
     `Motion3d.fromBehind` an arrival through the plane, and `Motion3d.turn()`
-    the one with no two-dimensional analogue. It deliberately carries **no
-    opacity**: `flutter_scene` has no per-node opacity, and a dialog whose
-    panel fades while its label does not is worse than one that does not fade.
+    the one with no two-dimensional analogue. It shipped with **no opacity**,
+    on the reasoning that `flutter_scene` has none on `Node` and a dialog
+    whose panel fades while its label does not is worse than one that does not
+    fade. The second half was right and the first was beside the point; the
+    entry above is where the fade landed.
   - **`MotionTransition3d`** and **`SceneMotionTransition3d`** apply it —
     Flutter's `SlideTransition`, `ScaleTransition` and `RotationTransition` in
     one box, writing `nodeOffset` and `nodeTransform` and never marking

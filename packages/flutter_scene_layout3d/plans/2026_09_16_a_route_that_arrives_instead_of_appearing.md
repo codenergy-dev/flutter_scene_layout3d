@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-09-16T19:40:00Z
-updated_at: 2026-09-16T21:15:00Z
+updated_at: 2026-09-17T12:10:00Z
 commit: 503dbae1329ae1e73f0f31304a6720ae0a56ae15
 ---
 
@@ -129,6 +129,17 @@ is still gated where its entry says it is, and `Motion3d` deliberately has no
 `opacity` field: adding one that faded only the decoration is the thing the
 earlier plan told its implementer not to do, because a dialog whose panel
 fades and whose label does not is worse than a dialog that does not fade.
+
+> **Superseded on 2026-09-17, and the grep above is the reason it was.**
+> [A box that fades](2026_09_16_a_box_that_fades.md) has shipped, and the gate
+> this paragraph checked was never the gate: the engine's missing node opacity
+> does not matter, because this package draws with materials it owns. What
+> stood in the way was `depth_write`, and screen-door coverage goes around it.
+> `Motion3d.opacity` exists now, it fades the panel, the label *and* the wall
+> around the label's letters, and `Motion3d.fade()` is the arrival this
+> paragraph said could not be built. The second half of the reasoning held
+> exactly — a fade that reached only the decoration would have been worse than
+> none — and it is what made the third seam worth finding.
 
 **`Hero3d`.** Deferred to a plan of its own, and the reason is a design
 question rather than an afternoon's work. A hero flight has to draw the thing

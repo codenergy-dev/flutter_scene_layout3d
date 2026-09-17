@@ -338,6 +338,7 @@ class BoxDecoration3dUniforms {
     required this.stateLayerColor,
     required this.surfaceTintColor,
     required this.clipPlanes,
+    this.opacity = 1.0,
     this.gradient,
     this.image = ImageUniforms3d.none,
     this.rippleOrigin = Offset3d.zero,
@@ -364,6 +365,7 @@ class BoxDecoration3dUniforms {
     required Layout3dMetrics metrics,
     StateLayer3d stateLayer = StateLayer3d.none,
     Clip3dRegion clip = Clip3dRegion.none,
+    double opacity = 1.0,
     Size? imagePixelSize,
     double imageScale = 1.0,
     TextDirection? textDirection,
@@ -397,6 +399,7 @@ class BoxDecoration3dUniforms {
                   BoxDecoration3d.surfaceTintOpacityFor(decoration.elevation),
             ),
       clipPlanes: clip.toPlaneBlock(),
+      opacity: opacity,
       gradient: gradient == null
           ? null
           : GradientUniforms3d.resolve(
@@ -448,6 +451,20 @@ class BoxDecoration3dUniforms {
   /// The clip block, `xyz` a normal and `w` a distance, padded to
   /// [Clip3dRegion.maxPlanes] entries.
   final List<double> clipPlanes;
+
+  /// How much of the panel is drawn, from 0 to 1.
+  ///
+  /// **The one figure here that is not folded into anything.** Every other
+  /// value on this object has had its opacity, its density or its elevation
+  /// resolved into it; this one is written straight through to the shader's
+  /// `fade`, because it is *coverage* and not alpha. Folding it into the
+  /// alphas instead would mean folding it into [color], [borderColor],
+  /// [stateLayerColor], [surfaceTintColor], every gradient stop and the
+  /// picture's opacity — all of them, correctly, or a faded panel keeps its
+  /// border at full strength — and would still leave a partly transparent
+  /// slab writing depth over what is behind it. See
+  /// [Layout3d.inheritedOpacity].
+  final double opacity;
 
   /// The gradient filling the slab, or null for none — including for a
   /// gradient this package cannot draw, which is reported rather than
@@ -537,7 +554,8 @@ class BoxDecoration3dUniforms {
           image.source.bottom,
         ),
       )
-      ..setFloat('image_opacity', image.opacity);
+      ..setFloat('image_opacity', image.opacity)
+      ..setFloat('fade', opacity);
     final gradient = this.gradient;
     final descriptor = gradient?.descriptor ?? const <double>[0, 0, 0, 0];
     parameters

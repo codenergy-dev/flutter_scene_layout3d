@@ -1,0 +1,97 @@
+// The side of a letter: the strip of geometry that runs from a glyph's front
+// face back to its back face, all the way around its silhouette.
+//
+// It exists for one reason, and it is the same one `text_glyph3d.fmat` exists
+// for — a uniform the engine's own materials cannot be given. The wall used
+// to be drawn with an `UnlitMaterial` in `AlphaMode.opaque` and
+// `vertexColorWeight = 1.0`, which is exactly right for what it is: an opaque
+// strip whose colour was baked into its vertices by
+// `AtlasText3dRenderer.buildGlyphWallGeometry`, already shaded per segment
+// and already in linear space. Nothing about it needed a shader.
+//
+// **Until a label had to fade.** A colour baked into vertices cannot be
+// changed without rebuilding the mesh, and rebuilding geometry is the one
+// thing the animation tiers forbid — so a faded label kept its wall at full
+// strength while its faces dissolved, and a 30% label came out as a hollow
+// outline of itself rather than as faint type. That was photographed, and it
+// is the sharpest version of the hazard the plan for this work was written
+// around: see `plans/2026_09_16_a_box_that_fades.md`.
+//
+// So the wall gets a shader, and the shader's whole job is to carry a `fade`
+// uniform and throw fragments away against it, in step with the faces.
+
+material {
+  name: "TextGlyphWall3d",
+  shading_model: unlit,
+
+  // **Opaque, exactly as the `UnlitMaterial` it replaces was.** A wall has no
+  // soft edge and nothing to blend, so there is no reason to put it at the
+  // mercy of the translucent pass's sort — one number per draw, the distance
+  // to the centre of the object's bounds — when the opaque pass and the depth
+  // buffer will order it exactly. `depth_write` is therefore not stated: it
+  // only means anything for a translucent material, and an opaque one writes
+  // depth as a matter of course.
+  //
+  // One consequence worth knowing, and it is not a defect here. An opaque
+  // material takes part in the engine's depth prepass, and that prepass draws
+  // with a depth-only shader that has no `Surface` and therefore does not run
+  // the discard below — so with ambient occlusion, reflections, depth of
+  // field or temporal anti-aliasing switched on, the *auxiliary* depth
+  // texture carries a faded wall's discarded pixels at full coverage. None of
+  // those passes is on in this stack, and none of them is what a frame is
+  // composed from; the colour pass has a depth attachment of its own.
+  blending: opaque,
+
+  // A wall is a closed strip around a letter with an inside and an outside,
+  // wound counter-clockwise around its outward normal, so the inside is
+  // culled. This is the engine's default and is stated to say it is meant.
+  culling: back,
+
+  parameters: [
+    // How much of this label survives, from 0 to 1: the opacity in force,
+    // written by `GlyphWallMaterial3d.fade` from the same value the faces
+    // get. See `ScreenDoor`.
+    { type: float, name: fade, default: 1.0 },
+  ],
+}
+
+fragment {
+  // Screen-door coverage. The canonical copy of this block, with the
+  // reasoning for the matrix and for the `+ 0.5`, is in
+  // `box_decoration3d.fmat`.
+  //
+  // **This is the copy that has to agree with another one.** The faces run
+  // the identical block in `text_glyph3d.fmat`, and because the threshold is
+  // a function of `gl_FragCoord` alone, the wall and the face meeting at a
+  // pixel make the same keep-or-discard decision. That is what makes a fading
+  // letter dissolve as one solid rather than tear along its own rim.
+  void ScreenDoor(float fade) {
+    if (fade >= 1.0) {
+      return;
+    }
+    const float kBayer4x4[16] = float[16](
+         0.0,  8.0,  2.0, 10.0,
+        12.0,  4.0, 14.0,  6.0,
+         3.0, 11.0,  1.0,  9.0,
+        15.0,  7.0, 13.0,  5.0);
+    ivec2 cell = ivec2(mod(gl_FragCoord.xy, 4.0));
+    if ((kBayer4x4[cell.y * 4 + cell.x] + 0.5) / 16.0 >= fade) {
+      discard;
+    }
+  }
+
+  void Surface(inout MaterialInputs material) {
+    ScreenDoor(material_params.fade);
+
+    // **The vertex colour is read as a colour, and it is already linear.**
+    // Nothing else in this package does that — the panel shader reads
+    // `GetVertexColor()` as a *position* — so it is worth saying where the
+    // value comes from: `buildGlyphWallGeometry` runs each segment's colour
+    // through `linearColor()` and multiplies in its own half-Lambert shade
+    // before baking it, which is the arithmetic the `UnlitMaterial` this
+    // replaces consumed unchanged through `vertexColorWeight = 1.0`. So
+    // there is no decode to do here, and doing one would wash every letter's
+    // side out.
+    material.base_color = GetVertexColor();
+  }
+}

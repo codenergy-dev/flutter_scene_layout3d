@@ -271,6 +271,8 @@ export 'src/layout3d.dart'
         SingleChildLayout3d;
 export 'src/layout_pass.dart' show Layout3dLayoutPassMixin;
 export 'src/metrics.dart' show Layout3dMetrics, VisualDensity3d;
+export 'src/opacity.dart'
+    show FadeTransition3d, Layout3dOpacityMixin, Opacity3d;
 export 'src/overlay/modal_barrier.dart' show ModalBarrier3d;
 export 'src/overlay/navigator.dart'
     show
@@ -334,10 +336,14 @@ export 'src/text/atlas_text_renderer.dart' show AtlasText3dRenderer;
 export 'src/text/glyph_material.dart'
     show
         FmatGlyphMaterial3d,
+        FmatGlyphWallMaterial3d,
         GlyphMaterial3d,
+        GlyphWallMaterial3d,
         UnlitGlyphMaterial3d,
+        UnlitGlyphWallMaterial3d,
         installGlyphMaterial3d,
         kGlyphMaterialSource,
+        kGlyphWallMaterialSource,
         linearColor;
 export 'src/text/break_rules.dart'
     show OverflowWrap3d, TextBreakRules3d, TextWhitespace3d, WordBreak3d;

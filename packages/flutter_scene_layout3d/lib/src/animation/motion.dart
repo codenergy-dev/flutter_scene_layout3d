@@ -6,6 +6,7 @@ import '../geometry/offset3d.dart';
 import '../geometry/size3d.dart';
 import '../layout3d.dart';
 import '../metrics.dart';
+import '../opacity.dart';
 
 /// Where a subtree stands before it has arrived — and where it goes as it
 /// leaves.
@@ -34,13 +35,21 @@ import '../metrics.dart';
 /// to be. They add, so a sheet that rises from just off its own bottom edge
 /// is both.
 ///
-/// ## What it deliberately does not carry
+/// ## The fade
 ///
-/// **Opacity.** There is no per-node opacity in `flutter_scene` — `Node`
-/// carries `visible` and nothing that fades a subtree — so a fade here could
-/// only fade a decoration, leaving a dialog whose panel dims and whose label
-/// does not. That is worse than not fading, and it is written down as such in
-/// the overlay plans. When the engine grows one, this is where it lands.
+/// [opacity] is where a dialog's own arrival is finished: everything else
+/// here moves the content, and this is what makes it appear. It was left out
+/// when this class was written, on the reasoning that there is no per-node
+/// opacity in `flutter_scene` and a fade could therefore only reach a
+/// decoration — a dialog whose panel dims and whose label does not, which is
+/// worse than no fade at all.
+///
+/// **That reasoning was aimed at the wrong thing.** The engine's missing
+/// `Node.opacity` never mattered, because this package draws with materials
+/// it owns; what stood in the way was `depth_write`, and screen-door
+/// coverage goes around it. So the fade reaches the panel, the label and the
+/// wall around the label's letters alike. See [Opacity3d], which is what a
+/// [MotionTransition3d] imposes on the subtree below it.
 class Motion3d {
   /// Creates a motion from its parts; everything left out is at rest.
   const Motion3d({
@@ -48,9 +57,10 @@ class Motion3d {
     this.fraction = Offset3d.zero,
     this.scale = 1.0,
     this.turn = 0.0,
+    this.opacity = 1.0,
     this.axis = const Offset3d(0, 1, 0),
     this.origin = Alignment3d.center,
-  });
+  }) : assert(opacity >= 0.0 && opacity <= 1.0);
 
   /// Grows from [from] of its size, about [origin].
   ///
@@ -72,7 +82,18 @@ class Motion3d {
     Alignment3d origin = Alignment3d.center,
   }) : this(turn: radians, axis: axis, origin: origin);
 
-  /// Arrival itself: nothing moved, nothing scaled, nothing turned.
+  /// Fades in from [from], moving nothing.
+  ///
+  /// Flutter's `FadeTransition`, and the plainest arrival there is. It
+  /// composes with the others through the ordinary constructor — a dialog
+  /// that grows *and* fades is
+  /// `Motion3d(scale: 0.85, opacity: 0.0)` — and it is here on its own
+  /// because a scrim, a tooltip and a snack bar want exactly this and nothing
+  /// else.
+  const Motion3d.fade({double from = 0.0}) : this(opacity: from);
+
+  /// Arrival itself: nothing moved, nothing scaled, nothing turned, nothing
+  /// faded.
   static const Motion3d none = Motion3d();
 
   /// Comes up from one whole height below where it belongs: a bottom sheet.
@@ -107,6 +128,22 @@ class Motion3d {
   /// How far the content starts turned, in radians about [axis].
   final double turn;
 
+  /// How much of the content is drawn at the start of its arrival, from 0
+  /// to 1.
+  ///
+  /// One is no fade, which is the default: a motion says what it does and
+  /// nothing else. Zero is the ordinary dialog, appearing out of nothing.
+  ///
+  /// **It is coverage rather than alpha**, which is what makes it reach a
+  /// whole subtree instead of one decoration — a faded panel, its label and
+  /// the wall around that label's letters all discard the same fragments.
+  /// [Opacity3d] has what that costs in the picture, and it is not free:
+  /// group opacity is approximated, and the approximation is largest exactly
+  /// in the middle of an arrival. It is also invisible at both ends, which
+  /// for something that lasts two hundred milliseconds is the trade worth
+  /// making.
+  final double opacity;
+
   /// The axis [turn] turns about, in layout space.
   final Offset3d axis;
 
@@ -118,7 +155,8 @@ class Motion3d {
       offset == Offset3d.zero &&
       fraction == Offset3d.zero &&
       scale == 1.0 &&
-      turn == 0.0;
+      turn == 0.0 &&
+      opacity == 1.0;
 
   /// The node offset this motion asks for, for content of [size] at
   /// [metrics].
@@ -176,6 +214,7 @@ class Motion3d {
     fraction: Offset3d.lerp(a.fraction, b.fraction, t),
     scale: a.scale + (b.scale - a.scale) * t,
     turn: a.turn + (b.turn - a.turn) * t,
+    opacity: (a.opacity + (b.opacity - a.opacity) * t).clamp(0.0, 1.0),
     axis: Offset3d.lerp(a.axis, b.axis, t),
     origin: Alignment3d.lerp(a.origin, b.origin, t),
   );
@@ -194,11 +233,13 @@ class Motion3d {
       other.fraction == fraction &&
       other.scale == scale &&
       other.turn == turn &&
+      other.opacity == opacity &&
       other.axis == axis &&
       other.origin == origin;
 
   @override
-  int get hashCode => Object.hash(offset, fraction, scale, turn, axis, origin);
+  int get hashCode =>
+      Object.hash(offset, fraction, scale, turn, opacity, axis, origin);
 
   @override
   String toString() {
@@ -208,6 +249,7 @@ class Motion3d {
       if (fraction != Offset3d.zero) 'fraction: $fraction',
       if (scale != 1.0) 'scale: $scale',
       if (turn != 0.0) 'turn: $turn about $axis',
+      if (opacity != 1.0) 'opacity: $opacity',
     ];
     return 'Motion3d(${parts.join(', ')}, from $origin)';
   }
@@ -216,9 +258,10 @@ class Motion3d {
 /// Moves its child from a [Motion3d] to rest as an animation runs, without
 /// laying anything out.
 ///
-/// Flutter's `SlideTransition`, `ScaleTransition` and `RotationTransition` in
-/// one box, on the node tier: the whole run costs one matrix a frame, no box
-/// is marked dirty, and no text is re-shaped. It is what a route's content is
+/// Flutter's `SlideTransition`, `ScaleTransition`, `RotationTransition` and
+/// `FadeTransition` in one box: the whole run costs one matrix a frame plus
+/// one uniform per box below that draws, no box is marked dirty, and no text
+/// is re-shaped. It is what a route's content is
 /// wrapped in, and what anything else that arrives — a snack bar, a tooltip,
 /// a panel a component slides in — can use on its own.
 ///
@@ -252,7 +295,7 @@ class Motion3d {
 /// the node tier's contract everywhere in this package, and for the couple of
 /// hundred milliseconds an arrival lasts it is the right trade: a press lands
 /// where the dialog is about to be.
-class MotionTransition3d extends ProxyLayout3d {
+class MotionTransition3d extends ProxyLayout3d with Layout3dOpacityMixin {
   /// Creates a box that moves [child] from [motion] to rest as [animation]
   /// runs.
   MotionTransition3d({
@@ -310,6 +353,11 @@ class MotionTransition3d extends ProxyLayout3d {
         ? Offset3d.zero
         : placed.offsetIn(size, metrics);
     nodeTransform = placed.isAtRest ? null : placed.transformFor(size);
+    // The one part of a motion that is not the node tier. It is still not a
+    // relayout: writing it walks the subtree handing each box that draws one
+    // uniform, and does nothing at all while the motion carries no fade,
+    // because the setter compares first.
+    imposedOpacity = placed.opacity;
   }
 
   @override

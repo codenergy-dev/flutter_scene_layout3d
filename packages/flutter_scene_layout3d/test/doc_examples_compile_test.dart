@@ -9,6 +9,7 @@ import 'package:flutter/widgets.dart'
     show
         Animation,
         BuildContext,
+        Curves,
         FontWeight,
         InlineSpan,
         TextSpan,
@@ -105,7 +106,41 @@ Future<bool?> pushExample(Overlay3d overlay, TickerProvider vsync) {
   );
 }
 
+/// The fade examples: the widget ones from `SceneOpacity3d`,
+/// `SceneFadeTransition3d` and `SceneAnimatedOpacity3d`, and the README's
+/// *Fading a subtree*.
+Widget fadeExamples(
+  bool enabled,
+  bool selected,
+  Animation<double> animation,
+  Widget dialog,
+  Widget badge,
+  List<Widget> controls,
+) => SceneColumn3d(
+  children: <Widget>[
+    SceneOpacity3d(
+      opacity: enabled ? 1.0 : 0.38,
+      child: const SceneContainer3d(width: 1, height: 0.3),
+    ),
+    SceneFadeTransition3d(opacity: animation, child: dialog),
+    SceneAnimatedOpacity3d(
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOut,
+      opacity: selected ? 1.0 : 0.0,
+      child: badge,
+    ),
+    SceneOpacity3d(
+      opacity: enabled ? 1.0 : 0.38,
+      child: SceneColumn3d(children: controls),
+    ),
+  ],
+);
+
 void main() {
+  test('the fade dartdoc and README examples compile as written', () {
+    expect(fadeExamples, isNotNull);
+  });
+
   test('the arrival dartdoc and README examples compile as written', () {
     expect(motionExample, isNotNull);
     expect(pushExample, isNotNull);

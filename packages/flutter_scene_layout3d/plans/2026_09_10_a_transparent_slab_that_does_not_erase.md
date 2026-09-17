@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-09-10T14:20:00Z
-updated_at: 2026-09-11T00:00:00Z
+updated_at: 2026-09-17T12:25:00Z
 commit: a29484bca4b1b60ce78d58b061a88bab04de3a6c
 ---
 
@@ -123,6 +123,20 @@ fork's master does not add one either — what it adds in this area is a
 runtime depth-write flag, that is the rule to encode**, and this plan is where
 it is written down. It is a genuine engine gap rather than a workaround this
 side, which is what `docs/engine-rules.md` asks be said.
+
+**One customer of that open case has since gone around it rather than waited.**
+[A box that fades](2026_09_16_a_box_that_fades.md) is this exact problem in
+every box at once — a whole subtree at 30% is partly transparent everywhere —
+and it ships without a depth-write flag by not being transparent at all:
+`Opacity3d` fades by *discarding* fragments against a screen-door matrix, so
+the ones that survive are fully opaque and order themselves exactly as an
+unfaded panel does. It photographed `depth_write: false` failing again, at
+opacity **1.0**, which is the finding this section's rule was written from.
+
+So the rule above still stands for the case screen door cannot serve — a slab
+that must genuinely be *seen through* rather than sparsely drawn, which is
+Material's scrim — and the upstream ask is unchanged. It is just no longer the
+only way to fade something.
 
 ## The probe
 
