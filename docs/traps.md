@@ -387,6 +387,19 @@ wrong when you want the box and the geometry to be the same thing.
 
 ### Depth ordering
 
+**An overlay's lift is measured from the panel's front face**, and it had to be
+made so. An entry used to be placed by the overlay's `Stack3d.alignment`, and
+an `Alignment3d` centres in **depth** as well as across — so a thin entry in a
+panel 0.6 deep started at `z = 0.26` and a 60dp lift landed it 30dp short. A
+dialog's scrim sat behind the app bar and behind the floating action button and
+dimmed neither, and two modals whose frames differed in depth were centred on
+different remainders and so dimmed the same screen differently. An in-plane
+entry is pinned to the front face now, and so is the barrier inside
+`flutter_scene_material3d`'s `modalFrame3d`. Anything else that computes a
+distance from a face should say **which face**, and check: 1825 headless tests
+and 108 render probes passed over this one, and two of them asserted it as the
+contract.
+
 `Stack3d.depthStep` steps each child toward the viewer, but **it does not
 separate children thicker than the step**. A 1.6-deep slab centred on the plane
 reaches further toward the viewer than a 0.8-deep child stepped 0.35, so the
@@ -843,6 +856,18 @@ remains a reservation of space and `glyphDepth` is the figure that draws.
   `SceneTapTarget3d` > `Material3d` > `InkWell3d`, with the ink well's own
   `minimumSize: Size3d.zero` so there is one target rather than two nested
   ones disagreeing about where the control is.
+- **An overlay is pressed where it was laid out, not where it is drawn.** An
+  entry's lift is on the node tier, and `Layout3d.worldTransform` discards a
+  `sceneOffset` on purpose, so a ray finds an entry at its *layout* depth while
+  a person presses it where they can see it. The two are the same point in the
+  middle of the view and drift apart toward the edges, in proportion to the
+  lift — which for a catalogue overlay is 60dp. A dialog or a menu near the
+  middle of a panel is fine; one hung in the far corner draws in one place and
+  answers in another. It cannot be closed by shifting the ray: a box gates its
+  children on its own extent and hands them only the stretch of the ray inside
+  it, and a surface clamps every ray to its own box before anything below sees
+  it — so **geometry drawn in front of a surface is out of reach of a ray by
+  construction**, which an overlay lifted out of its panel is.
 - **A tap target with no depth is a slab no ray intersects.** The companion to
   the rule above, and the one that gets you when the outer target is right.
   A target shrink-wraps what is inside it, and half the things a component

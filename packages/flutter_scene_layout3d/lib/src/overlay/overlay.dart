@@ -478,6 +478,10 @@ class Overlay3dEntry {
 
   /// How far toward the viewer this entry's *geometry* is pulled, in the
   /// host's layout space.
+  ///
+  /// Measured from the overlay's **front face**, which is where
+  /// [_Overlay3dEntryHost] pins an in-plane entry — see there for why it has
+  /// to be pinned rather than aligned.
   Offset3d _sceneLift(Layout3dMetrics metrics) =>
       layer is DetachedOverlayLayer3d
       ? Offset3d.zero
@@ -523,8 +527,42 @@ class _DismissEntryAction extends DismissAction {
 /// the box stays where the stack put it, a [Positioned3d] inside the entry
 /// still pins to the face it named, and a ray still finds the entry by its
 /// place in the stack rather than by how far it was lifted.
-class _Overlay3dEntryHost extends ProxyLayout3d {
-  _Overlay3dEntryHost(this.entry) : super(name: 'Overlay3dEntry');
+///
+/// ## Why it pins itself to the front face
+///
+/// An in-plane host is a [Positioned3d] with `front: 0` and nothing else, so
+/// the overlay's alignment still places it across and no longer places it in
+/// **depth**. That is the half of this box that cost real time.
+///
+/// A lift is a distance from a face, and every caller computing one — a
+/// catalogue working out how far in front of a screen's frontmost slot a
+/// dialog must sit — assumes the face is the panel's. It was not. An
+/// [Alignment3d] centres in depth as well as across, so a thin entry in a
+/// panel 0.6 deep was placed at `z = 0.26` and a 60dp lift landed it 30dp
+/// short: **a dialog's scrim sat behind the app bar and behind the floating
+/// action button and dimmed neither**, and the button drew over the dialog.
+/// Two modals whose frames differed in depth were centred on different
+/// remainders, so each dimmed the screen differently. `docs/traps.md` records
+/// the alignment half of that trap; this is the lift half.
+///
+/// **Pinned in layout rather than cancelled in the node offset**, and the
+/// difference is not tidiness. Either would draw the entry in the right
+/// place, but the node tier is invisible to hit testing by design — the
+/// sentence above says so — and cancelling the centring there would have
+/// widened the gap between where an entry is *drawn* and where it answers a
+/// ray from 60dp to 86dp. A press aimed at a menu item near the edge of the
+/// panel already misses at 60; it fails outright at 86. Pinning moves the
+/// geometry and leaves that gap exactly where it was.
+///
+/// A detached entry is not pinned: it has a surface of its own, placed from
+/// the anchor the overlay gives it, and [DetachedOverlayLayer3d.offset] is
+/// how a caller moves that.
+class _Overlay3dEntryHost extends Positioned3d {
+  _Overlay3dEntryHost(this.entry)
+    : super(
+        front: entry.layer is DetachedOverlayLayer3d ? null : 0.0,
+        name: 'Overlay3dEntry',
+      );
 
   final Overlay3dEntry entry;
 

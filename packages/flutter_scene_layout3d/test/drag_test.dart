@@ -810,13 +810,23 @@ void main() {
       pointer.move(rayAt(surface, const Offset3d(1.6, 1.0, 0)));
       surface.flush();
 
-      // Depth is the layer's, so the feedback stands a full lift in front of
-      // the row it came off.
-      expect(
-        scenePositionOf(feedback.node).z - scenePositionOf(row.node).z,
-        closeTo(0.5, 1e-6),
-        reason: 'the correction cancelled the lift',
-      );
+      // Depth is the layer's, so the feedback stands **at least** a full lift
+      // in front of the row it came off.
+      //
+      // At least, rather than exactly. This used to read `closeTo(0.5)`, and
+      // that figure was a coincidence: both boxes were centred in the
+      // overlay's depth by the same alignment, so the centring cancelled out
+      // of the difference. An entry is pinned to the overlay's front face
+      // now — a lift is a distance from a face — so the gap is the lift plus
+      // however far into the panel the row's own centring put it. What the
+      // test is for is unchanged: the correction must not cancel the lift and
+      // leave the card coplanar with the row.
+      final gap =
+          scenePositionOf(feedback.node).z - scenePositionOf(row.node).z;
+      expect(gap, greaterThanOrEqualTo(0.5), reason: 'the lift was cancelled');
+      // And it is the lift plus the row's own centring, which for a 0.05-deep
+      // row in a 1.0-deep panel is 0.475.
+      expect(gap, closeTo(0.5 + (1.0 - 0.05) / 2, 1e-6));
       // And the plane correction still did its job: the feedback tracks the
       // pointer rather than sitting where the overlay's alignment put it.
       expect(source.travel.x, closeTo(0.6, 1e-6));

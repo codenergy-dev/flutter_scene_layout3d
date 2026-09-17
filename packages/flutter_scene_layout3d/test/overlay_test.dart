@@ -167,15 +167,63 @@ void main() {
       final entryHost = dialog.parent!;
       final lift = Layout3dMetrics.standard.dp(Overlay3d.defaultLift);
 
-      // The box is where a centred stack child goes, inside the overlay.
+      // Centred across and **pinned to the front face** in depth. This test
+      // used to assert `z: 0.25` — the middle of the panel — and that was the
+      // defect rather than the contract: a lift is a distance from a face, and
+      // measured from the middle of a 0.5-deep panel it lands 0.25 short.
       expect(entryHost.size, const Size3d(1, 1, 0));
-      expect(entryHost.offset, const Offset3d(1.5, 1, 0.25));
-      // The node is that, pulled toward the viewer.
+      expect(entryHost.offset, const Offset3d(1.5, 1, 0));
+      // The node is that, pulled toward the viewer by exactly the lift.
       expect(
         rounded(translationOf(entryHost)),
-        rounded(Offset3d(1.5, 1, 0.25 - lift)),
+        rounded(Offset3d(1.5, 1, -lift)),
       );
       expect(lift, greaterThan(0));
+    });
+
+    test('a thick entry is lifted from the same face as a thin one', () {
+      // The defect this pin exists to close, stated as the thing that made it
+      // visible: two modals whose frames differed in depth were centred on
+      // different remainders, so each one dimmed the screen from a different
+      // distance. Pinned, the depth of what is inside an entry cannot move
+      // where the entry starts.
+      final host = panel();
+      final thin = TestBox(const Size3d(1, 1, 0));
+      final thick = TestBox(const Size3d(1, 1, 0.3));
+      host.overlay
+        ..insertEntry(Overlay3dEntry(builder: (_) => thin))
+        ..insertEntry(Overlay3dEntry(builder: (_) => thick));
+      host.surface.flush();
+
+      expect(thin.parent!.offset.z, 0.0);
+      expect(thick.parent!.offset.z, 0.0);
+    });
+
+    test('the alignment no longer decides how far the lift reaches', () {
+      // A centred overlay and a front-aligned one put an entry in the same
+      // place, because a lift is measured from the overlay's front face and
+      // not from wherever an alignment left the box. Before this, the two
+      // differed by half the panel's depth.
+      Offset3d liftedIn(Alignment3d alignment) {
+        final overlay = Overlay3d(
+          alignment: alignment,
+          children: <Layout3d>[TestBox(const Size3d(4, 3, 0.5))],
+        );
+        final surface = laidOut(
+          overlay,
+          constraints: Constraints3d.tight(const Size3d(4, 3, 0.5)),
+        );
+        addTearDown(surface.dispose);
+        final dialog = TestBox(const Size3d(1, 1, 0));
+        overlay.insertEntry(Overlay3dEntry(builder: (_) => dialog));
+        surface.flush();
+        return translationOf(dialog.parent!);
+      }
+
+      final centred = liftedIn(Alignment3d.center);
+      final front = liftedIn(Alignment3d.frontCenter);
+      expect(rounded(centred).z, rounded(front).z);
+      expect(centred.z, lessThan(0.0), reason: 'in front of the panel');
     });
 
     test('an explicit lift overrides the one taken from the metrics', () {
@@ -188,7 +236,10 @@ void main() {
       host.overlay.insertEntry(entry);
       host.surface.flush();
 
-      expect(translationOf(dialog.parent!).z, closeTo(0.05, 1e-9));
+      // The lift itself, from the overlay's front face, and nothing else.
+      // The tolerance is loose because the figure makes a round trip through
+      // the scene node's transform, which is single precision.
+      expect(translationOf(dialog.parent!).z, closeTo(-0.2, 1e-6));
     });
 
     test('a pin inside a lifted entry still lands where it was pinned', () {

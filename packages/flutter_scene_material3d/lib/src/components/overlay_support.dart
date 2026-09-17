@@ -90,7 +90,14 @@ Widget modalFrame3d({
   Alignment3d alignment = Alignment3d.center,
   Animation<double>? scrimFade,
 }) => SceneStack3d(
-  alignment: alignment,
+  // The caller's alignment across, and the **front** face in depth, whatever
+  // it said. A scrim is the backmost thing in this frame and still has to be
+  // in front of the whole screen; centred in the frame's depth it sits a
+  // fraction of a slab behind the frame's own face, which is how a dialog's
+  // scrim and a sheet's — whose frames differ in depth — ended up at two
+  // different depths over the same screen. `Alignment3d` centres in depth as
+  // well as across, and that is the trap `docs/traps.md` records.
+  alignment: Alignment3d(alignment.x, alignment.y, -1),
   // The stack takes the barrier's size, which is the whole overlay, so the
   // content is placed inside a full-screen frame rather than shrink-wrapped
   // around itself.

@@ -2413,6 +2413,17 @@ right for a barrier with nothing in it and wrong for a decorated scrim.
 A modal entry also traps focus, by wrapping its content in a `FocusScope3d`;
 removing it hands focus back to whatever held it before.
 
+A lift is measured from the **panel's front face**, and an in-plane entry is
+pinned there: the overlay's alignment places it across and no longer in depth,
+so `lift: 60dp` puts the entry 60dp in front of the panel rather than 60dp in
+front of wherever an alignment happened to centre it. That is worth knowing
+because the reverse cost real time — an `Alignment3d` centres in depth as well
+as across, and a dialog's scrim spent half its lift before it started. The
+other half of the same fact is in [docs/traps.md](../../docs/traps.md), and it
+is the one to read before hanging an overlay in a corner: **an entry is pressed
+where it was laid out, not where it is drawn**, because a lift is on the node
+tier and a surface clamps rays to its own box.
+
 `Navigator3d` is the thin route stack over all of it: `push` returns the
 future the route's result arrives on, `pop` completes it, and
 `Route3dTransition` says what happens while a route comes and goes — its

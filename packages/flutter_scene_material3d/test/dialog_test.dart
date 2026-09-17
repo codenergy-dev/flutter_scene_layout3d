@@ -1,4 +1,5 @@
 import 'package:flutter/services.dart' show LogicalKeyboardKey;
+import 'package:flutter/material.dart' show Icons;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
 import 'package:flutter_scene_layout3d/testing.dart';
 import 'package:flutter_scene_layout3d/widgets.dart';
@@ -347,6 +348,97 @@ void main() {
       final semantics = oneOf<Semantics3d>(pumped.surface);
       expect(semantics.properties.label, isNull);
       expect(semantics.properties.namesRoute, isFalse);
+    });
+  });
+  group('the scrim clears the screen it dims', () {
+    // The drift alarm for a defect that 1825 headless tests and 108 render
+    // probes passed over, and that a person found by opening a dialog on the
+    // gallery and looking at the window: the scrim sat *behind* the app bar
+    // and behind the floating action button and dimmed neither, because an
+    // overlay's lift was measured from the middle of the panel rather than
+    // from its front face. Nothing here was testing that the dimming reaches
+    // anything.
+
+    /// The frontmost face of any opaque panel on [screen], which is what a
+    /// scrim has to be in front of to dim all of it.
+    double frontmostPanel(Layout3d screen) {
+      var front = double.infinity;
+      void walk(Layout3d box) {
+        if (box is DecoratedBox3d) {
+          final decoration = box.decoration;
+          if (decoration is BoxDecoration3d && decoration.color.a == 1.0) {
+            final z = box.drawnOffsetInSurface.z;
+            if (z < front) front = z;
+          }
+        }
+        box.visitChildren(walk);
+      }
+
+      walk(screen);
+      return front;
+    }
+
+    testWidgets('a dialog over a whole scaffold dims every slot of it', (
+      tester,
+    ) async {
+      final pumped = await pumpOverlay(
+        tester,
+        child: Scaffold3d(
+          appBar: AppBar3d.text(title: 'Inbox'),
+          body: const SceneSizedBox3d(width: 4, height: 3, depth: 0.05),
+          bottomNavigationBar: NavigationBar3d(
+            selectedIndex: 0,
+            onDestinationSelected: (_) {},
+            destinations: const <NavigationDestination3d>[
+              NavigationDestination3d(icon: Icon3d(Icons.inbox), label: 'In'),
+              NavigationDestination3d(icon: Icon3d(Icons.tune), label: 'Set'),
+            ],
+          ),
+          floatingActionButton: FloatingActionButton3d(
+            semanticLabel: 'Compose',
+            onPressed: () {},
+            child: const Icon3d(Icons.edit),
+          ),
+        ),
+      );
+      showDialog3d<void>(
+        context: pumped.context,
+        builder: (context) => const Dialog3d(child: SceneSizedBox3d.cube(0.4)),
+      );
+      await tester.pumpAndSettle();
+
+      // The screen is the overlay's first child; the dialog is an entry after
+      // it. Looked for in the whole tree, a "translucent panel" finds a
+      // navigation bar's own pill long before it finds the scrim.
+      final children = <Layout3d>[];
+      pumped.overlay.visitChildren(children.add);
+      final screen = frontmostPanel(children.first);
+      double? scrim;
+      void findScrim(Layout3d box) {
+        if (box is DecoratedBox3d) {
+          final decoration = box.decoration;
+          if (decoration is BoxDecoration3d &&
+              decoration.color.a > 0 &&
+              decoration.color.a < 1.0) {
+            scrim ??= box.drawnOffsetInSurface.z;
+          }
+        }
+        box.visitChildren(findScrim);
+      }
+
+      for (final entry in children.skip(1)) {
+        findScrim(entry);
+      }
+
+      expect(
+        scrim,
+        lessThan(screen),
+        reason:
+            'the scrim is behind something on the screen, so that something '
+            'is not dimmed — the floating action button is the usual one, '
+            'because it is the frontmost slot and carries an elevation of its '
+            'own on top of its slot lift',
+      );
     });
   });
 }

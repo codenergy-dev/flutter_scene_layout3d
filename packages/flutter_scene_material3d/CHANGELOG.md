@@ -1,5 +1,15 @@
 ## Unreleased
 
+- **A modal's scrim clears the whole screen it dims.** `modalFrame3d` puts its
+  barrier on the frame's **front** face in depth and takes the caller's
+  alignment across, where before it took both — and an `Alignment3d` centres
+  in depth as well, so the scrim sat a fraction of a slab behind the frame's
+  own face. Together with the layout package's lift fix, a dialog's scrim and
+  a sheet's now land in the same place instead of 35dp apart, and both are in
+  front of the app bar and the floating action button, which neither used to
+  dim. `test/dialog_test.dart` asserts a real scaffold's scrim clears every
+  opaque panel on it, which is the alarm that was missing.
+
 - **The catalogue moves.** `MotionScheme3d` is the seventh token family —
   Material 3's sixteen durations and nine easing curves, carried on
   `Theme3dData.motion`, with `copyWith`, a `lerp` and a `MotionScheme3dTween`

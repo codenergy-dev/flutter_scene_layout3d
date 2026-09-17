@@ -1,5 +1,30 @@
 ## Unreleased
 
+- **An overlay's lift is measured from the panel's front face**, so an entry
+  lifted 60dp is 60dp in front of the screen rather than 30dp. An in-plane
+  entry is pinned there with `Positioned3d(front: 0)`; the overlay's alignment
+  still places it across.
+  - **It had never been applied.** `Overlay3d` is a `Stack3d` and an
+    `Alignment3d` centres in **depth** as well as across, so a thin entry in a
+    panel 0.6 deep started in the middle of it and half the lift was spent
+    before it began. A dialog's scrim sat behind the app bar and behind the
+    floating action button and dimmed neither, and the button drew over the
+    dialog. Two modals whose frames differed in depth were centred on
+    different remainders and dimmed the same screen differently.
+  - It also repairs `Overlay3d.defaultLift`, eight logical pixels described as
+    a depth-buffer separation, which put an entry 8dp in front of the *middle*
+    of a panel — still inside anything thicker than 16dp.
+  - **Found by a person opening a dialog on the gallery and looking**, after
+    1825 headless tests and 108 render probes had passed over it, two of them
+    asserting it as the contract. `examples/render_probe` photographs the
+    gallery with a dialog open now, because a state no frame ever gets into is
+    a state the third lane cannot answer for.
+  - **What it exposes is in `docs/traps.md`:** an entry is pressed where it was
+    laid out rather than where it is drawn, because a lift is on the node tier
+    and a surface clamps rays to its own box. A dialog near the middle of a
+    panel is unaffected; one hung in the far corner draws in one place and
+    answers in another.
+
 - **A route carries its own clock.** `Route3d.transition` is a transition on
   the route rather than on the navigator, consulted before
   `Navigator3d.transition` and null by default, so every route built today is

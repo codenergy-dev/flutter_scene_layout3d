@@ -267,6 +267,25 @@ Two entry points:
   passed the whole time because that suite's trigger was a sized box rather
   than the `Icon3d` every caller passes.
 
+- **An overlay that clears the screen** is
+  [the eleventh](../packages/flutter_scene_layout3d/plans/2026_09_17_an_overlay_that_clears_the_screen.md),
+  and the only one here that began as a bug report rather than a piece of
+  work: a person opened a dialog on the gallery, looked at the window, and saw
+  half a screen dimmed. An overlay's lift had never actually been applied —
+  `Overlay3d` is a `Stack3d` and an `Alignment3d` centres in **depth** as well
+  as across, so a thin entry started in the middle of the panel and half the
+  lift was spent before it began. A scrim sat behind the app bar and behind
+  the floating action button and dimmed neither. An in-plane entry is pinned
+  to the front face now, and `modalFrame3d`'s barrier with it.
+  **1825 headless tests and 108 render probes passed over it**, and two of
+  them asserted it as the contract — the plan's most useful paragraph is about
+  that rather than about the fix, which is three lines. It also names what
+  applying a lift exposes and does not close: an entry is pressed where it was
+  *laid out* rather than where it is drawn, because the lift is on the node
+  tier and a surface clamps rays to its own box, so geometry drawn in front of
+  a surface is out of reach by construction. Two ways to close that were tried
+  and are written up as failures.
+
 ## Keeping this true
 
 A page that describes behaviour the code no longer has is worse than no page,

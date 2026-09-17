@@ -14,6 +14,7 @@
 // at the gallery's window. This is that window, on every run, without anyone
 // having to start it.
 
+import 'package:flutter_scene_layout3d/testing.dart';
 import 'package:flutter_scene_material3d/flutter_scene_material3d.dart'
     show initializeMaterial3d;
 import 'package:flutter_test/flutter_test.dart';
@@ -74,5 +75,25 @@ void main() {
     );
     keep(later);
     expectAFrame(later);
+
+    // And the screen with something in front of it, which no photograph used
+    // to take. Five of the catalogue's six arrivals and the whole of the
+    // overlay lift had nowhere a person could look at them: the gallery sat
+    // idle in every frame anyone ever kept. It is the third lane's job to
+    // answer *is anything obviously wrong*, and it cannot answer for a state
+    // it never gets into.
+    //
+    // This is what found the scrim sitting behind the app bar and behind the
+    // floating action button, dimming neither.
+    await tester.tap3d(find3d.bySemanticsLabel('More'));
+    await tester.pumpAndSettle();
+    await tester.tap3d(find3d.bySemanticsLabel('About'));
+    final dialog = await photographAgain(
+      tester,
+      name: 'gallery_dialog',
+      frames: 60,
+    );
+    keep(dialog);
+    expectAFrame(dialog);
   });
 }
