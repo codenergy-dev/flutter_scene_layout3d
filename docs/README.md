@@ -302,6 +302,19 @@ Two entry points:
   an opaque one and the order stops mattering. The price is a dithered rather
   than a smooth dim, and it was chosen by looking at a window.
 
+**One defect is open and planned but not yet worked**:
+[a letter that comes back wrong](../packages/flutter_scene_layout3d/plans/2026_09_17_a_letter_that_comes_back_wrong.md).
+Individual glyphs come out of the gallery missing, or replaced by a dark
+speckled block, intermittently and per *atlas* rather than per label. It is
+the same family as *A shared glyph atlas repacks* in
+[traps.md](traps.md) — the page to read first — and the plan carries what was
+established, the leading hypothesis (a settled label re-baked at a new
+generation binding the texture uploaded at the old one), and the route to a
+reproduction, since the atlas is testable without a GPU. Nothing in
+`lib/src/text/` has changed since the wall landed; what is new is that the
+gallery's overlays introduce glyphs late, in styles the screen is already
+using.
+
 ## Keeping this true
 
 A page that describes behaviour the code no longer has is worse than no page,
