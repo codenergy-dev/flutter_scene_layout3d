@@ -37,6 +37,31 @@ T oneOf<T extends Layout3d>(Layout3dSurface surface) {
   return found.single;
 }
 
+/// The scrim's panel: the one [DecoratedBox3d] inside the modal barrier.
+///
+/// Found by *where it is* rather than by being translucent, which is how
+/// every one of these tests used to find it. A scrim's alpha is spent as
+/// coverage now — the slab draws in an opaque colour and keeps a fraction of
+/// its fragments — so "the panel whose colour is not opaque" finds nothing.
+/// See `scrimCoverage3d`.
+DecoratedBox3d? scrimOf(Layout3dSurface surface) {
+  for (final barrier in boxesOf<ModalBarrier3d>(surface)) {
+    final found = <DecoratedBox3d>[];
+    void walk(Layout3d box) {
+      if (box is DecoratedBox3d) found.add(box);
+      box.visitChildren(walk);
+    }
+
+    barrier.visitChildren(walk);
+    if (found.isNotEmpty) return found.first;
+  }
+  return null;
+}
+
+/// How strongly the scrim dims, which is the coverage imposed on it.
+double scrimCoverageOf(Layout3dSurface surface) =>
+    scrimOf(surface)?.inheritedOpacity ?? 0.0;
+
 /// A surface with a themed overlay in it, and the handles a test wants.
 class PumpedOverlay {
   PumpedOverlay(this.controller, this.overlayController, this.context);

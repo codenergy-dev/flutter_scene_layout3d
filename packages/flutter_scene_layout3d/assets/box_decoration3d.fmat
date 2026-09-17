@@ -48,12 +48,22 @@ material {
   // the `base.a` discard at the end of `Surface`.
   //
   // What this does **not** fix is a *partly* transparent slab — a 5% wash, a
-  // 32% scrim — standing in front of something the sort puts after it. That
-  // needs depth write chosen per instance rather than per material, and
-  // `flutter_scene` 0.23.0 has no runtime setter for it: `depth_write` is
-  // read once out of the compiled material's metadata. When one lands, the
-  // rule to encode is "a decoration whose resolved colour is not opaque does
-  // not write depth", and the sort is then the only thing ordering it.
+  // 32% scrim — standing in front of something the sort puts after it.
+  //
+  // This note used to prescribe the fix: depth write chosen per instance,
+  // with the rule "a decoration whose resolved colour is not opaque does not
+  // write depth", the sort being the only thing ordering it. **That was
+  // photographed and it does not work.** With depth write off, a modal's
+  // scrim stopped erasing the app bar behind it and started being drawn
+  // *under* it — the error inverts rather than closing, because the sort was
+  // wrong about that pair either way. Writing depth is not the problem on its
+  // own.
+  //
+  // The catalogue's answer is to stop being partly transparent: a scrim draws
+  // in an opaque colour and keeps a fraction of its fragments, so every
+  // fragment it does draw is an opaque one and the order stops mattering. See
+  // `flutter_scene_material3d`'s `scrimCoverage3d`, and
+  // `plans/2026_09_17_a_scrim_that_dims_evenly.md` for the four pictures.
   depth_write: true,
   culling: back,
 

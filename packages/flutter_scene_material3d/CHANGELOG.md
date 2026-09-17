@@ -1,5 +1,30 @@
 ## Unreleased
 
+- **A modal's scrim dims the screen evenly.** Its alpha is spent as
+  *coverage* rather than as a blend: the slab draws in its colour at full
+  strength and keeps that fraction of its fragments, which is the same
+  screen-door `Opacity3d` fades a subtree with. `scrimCoverage3d` is where the
+  reasoning lives, and `DialogStyle3d.scrimColor` and
+  `BottomSheetStyle3d.scrimColor` keep Material's `scrim` at 32% — only how
+  that number is spent has changed.
+  - **A blended scrim did not dim unevenly, it erased.** Every panel and every
+    glyph on a Material screen writes depth, each for a reason its own shader
+    header explains, and the translucent pass sorts by one number per draw —
+    so a 32% slab in front of a screen wiped out whatever the sort put after
+    it. An app bar's title came out as a bare outline while the navigation
+    bar's labels were untouched, on the same screen, under the same scrim.
+  - **Four treatments were built over the gallery and photographed**, and the
+    one that was *predicted* to work does not: with `depth_write` off — which
+    is what `box_decoration3d.fmat`'s own note used to prescribe — the app bar
+    is drawn over the scrim and is not dimmed at all. The error inverts rather
+    than closing. That note is corrected, and
+    [the plan](plans/2026_09_17_a_scrim_that_dims_evenly.md) has the pictures.
+  - The cost is that the dim is dithered rather than smooth. It was chosen by
+    looking at a window, which is the only thing that answers that.
+  - **A scrim given an opaque colour now hides the screen** rather than
+    dimming it, which is the third treatment and is worth knowing before
+    writing one.
+
 - **A modal's scrim clears the whole screen it dims.** `modalFrame3d` puts its
   barrier on the frame's **front** face in depth and takes the caller's
   alignment across, where before it took both — and an `Alignment3d` centres

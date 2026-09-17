@@ -976,11 +976,26 @@ whether or not a frame has run.
 
 Material's scrim is black at 32% over the content. Here it is geometry — a
 `thickness.thin` slab in front of the screen and behind the dialog — and every
-depth rule applies to it. The 32% is real: the panel shader blends, so a
-translucent colour is a translucent slab. What a scrim must not be is
-zero-depth, which would make it coplanar with whatever it covers, and what must
-not sit on its plane is the dialog, which needs a real `thickness.depthStep`
-between them.
+depth rule applies to it. What a scrim must not be is zero-depth, which would
+make it coplanar with whatever it covers, and what must not sit on its plane is
+the dialog, which needs a real `thickness.depthStep` between them.
+
+**The 32% is spent as coverage rather than as a blend**, and that is the part
+worth reading before you write a scrim of your own. The slab draws in its
+colour at full strength and keeps 32% of its fragments — the same screen-door
+`Opacity3d` fades a subtree with. It has to, because a *blended* slab in front
+of a screen is composited in whatever order the translucent pass sorts it, and
+every panel and every glyph here writes depth: a 32%-alpha scrim did not dim
+the screen unevenly, it **erased** whatever the sort put after it. An app bar's
+title came out as a bare outline while the navigation bar's labels were
+untouched. Four treatments were built over the gallery and photographed, the
+predicted one failed, and
+[the plan](plans/2026_09_17_a_scrim_that_dims_evenly.md) has the pictures.
+
+Two consequences for a caller. The dim is **dithered rather than smooth**,
+which is the price of the technique and was chosen by looking at a window. And
+`scrimColor`'s alpha is how much of the screen the scrim *covers*, so an
+opaque scrim colour hides the screen rather than dimming it.
 
 The lift is the other half. A `Scaffold3d` has already spent four depth steps
 on its own slots by the time anything is put in front of it, and the frontmost

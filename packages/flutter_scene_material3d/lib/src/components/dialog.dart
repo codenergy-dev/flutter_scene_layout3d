@@ -74,11 +74,15 @@ import 'reading_direction.dart';
 /// instead of using `Overlay3dEntry.modal`, whose barrier and content share a
 /// plane.
 ///
-/// The 32% alpha is real: `box_decoration3d.fmat` declares `blending: alpha`,
-/// so a translucent colour blends. What is still missing from the stack is
-/// *subtree* opacity — there is no way to fade an arbitrary child — which is
-/// what `ModalBarrier3d`'s documentation means when it says a translucent
-/// scrim is not expressible.
+/// **The 32% is spent as coverage rather than as a blend.** The slab is drawn
+/// in its colour at full strength and keeps 32% of its fragments, which is
+/// the only arrangement that dims a screen *evenly*: a blended slab in front
+/// of a screen is composited in whatever order the translucent pass sorts it,
+/// and a Material screen's panels and glyphs all write depth, so the parts of
+/// the screen the sort puts after the scrim are erased instead of dimmed. The
+/// app bar's title used to come out as a bare outline while the navigation
+/// bar's labels were untouched. `scrimCoverage3d` has the four treatments that
+/// were photographed and why this is the one that ships.
 class Dialog3d extends StatelessWidget {
   /// Creates a dialog surface.
   const Dialog3d({

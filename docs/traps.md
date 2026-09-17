@@ -406,6 +406,19 @@ reaches further toward the viewer than a 0.8-deep child stepped 0.35, so the
 back child wins the depth test and the stack looks inverted. Keep stacked
 children thin relative to the step, or raise the step.
 
+**A partly transparent slab in front of a screen erases rather than dims.**
+Panels and glyphs both write depth — each for a reason its own shader header
+gives — and the translucent pass sorts by one number per draw, so a 32% scrim
+wipes out whatever the sort puts after it. An app bar's title came out as a
+bare outline while the navigation bar's labels, under the same scrim on the
+same screen, were untouched. **Turning `depth_write` off does not fix it**: it
+was photographed, and the scrim then draws *under* the app bar instead, so the
+error inverts. `flutter_scene_material3d`'s answer is to stop being partly
+transparent — a scrim draws opaque and keeps a fraction of its fragments, so
+every fragment it draws is an opaque one and the order stops mattering. See
+`scrimCoverage3d`. The general case — any other partly transparent slab — is
+still open.
+
 **A flat-looking thing still needs a thickness.** A divider is a 1dp rule and
 the tempting model is a decal — a slab with no depth at all. It cannot be one:
 `Material3d` aligns its child to its **front face**, so a rule drawn on a card

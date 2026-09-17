@@ -113,6 +113,7 @@ export 'src/components/snack_bar.dart'
         SnackBar3d,
         SnackBar3dClosedReason,
         SnackBar3dController;
+export 'src/components/overlay_support.dart' show scrimCoverage3d;
 export 'src/components/overlay_style.dart'
     show
         Arrival3d,

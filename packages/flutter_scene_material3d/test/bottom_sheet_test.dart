@@ -97,12 +97,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(boxesOf<ModalBarrier3d>(pumped.surface), hasLength(1));
+      final scrim = scrimOf(pumped.surface)!;
       final sheet = boxesOf<DecoratedBox3d>(
         pumped.surface,
-      ).firstWhere((box) => (box.decoration as BoxDecoration3d).color.a == 1.0);
-      final scrim = boxesOf<DecoratedBox3d>(
-        pumped.surface,
-      ).firstWhere((box) => (box.decoration as BoxDecoration3d).color.a < 1.0);
+      ).firstWhere((box) => !identical(box, scrim));
 
       // Against the bottom of the six-unit-tall panel, and entirely in front
       // of its own scrim.

@@ -122,12 +122,10 @@ void main() {
       await tester.pumpAndSettle();
 
       final barrier = oneOf<ModalBarrier3d>(pumped.surface);
-      final scrim = boxesOf<DecoratedBox3d>(
-        pumped.surface,
-      ).firstWhere((box) => (box.decoration as BoxDecoration3d).color.a < 1.0);
+      final scrim = scrimOf(pumped.surface)!;
       final dialog = boxesOf<DecoratedBox3d>(
         pumped.surface,
-      ).firstWhere((box) => (box.decoration as BoxDecoration3d).color.a == 1.0);
+      ).firstWhere((box) => !identical(box, scrim));
 
       // Toward the viewer is negative z. The dialog is *entirely* in front of
       // the scrim — its back face clears the scrim's front one — which is the
@@ -276,9 +274,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      final scrim = scrimOf(pumped.surface)!;
       final dialog = boxesOf<DecoratedBox3d>(
         pumped.surface,
-      ).firstWhere((box) => (box.decoration as BoxDecoration3d).color.a == 1.0);
+      ).firstWhere((box) => !identical(box, scrim));
       // 280dp minimum at a hundred logical pixels to the unit.
       expect(dialog.size.width, closeTo(2.8, 1e-9));
       // The height is the content plus 24dp of padding on each side, not the
@@ -350,6 +349,64 @@ void main() {
       expect(semantics.properties.namesRoute, isFalse);
     });
   });
+  group('a scrim dims by coverage', () {
+    // The decision four photographed treatments settled, pinned so nobody
+    // "fixes" it back into a blend. A blended scrim is composited in whatever
+    // order the translucent pass sorts it, and every panel and glyph on a
+    // Material screen writes depth — so the parts of the screen the sort put
+    // after the scrim were erased rather than dimmed, and an app bar's title
+    // came out as a bare outline while the navigation bar's labels were
+    // untouched. See `scrimCoverage3d`.
+
+    testWidgets('the slab is opaque and the alpha is the coverage', (
+      tester,
+    ) async {
+      final pumped = await pumpOverlay(tester);
+      showDialog3d<void>(
+        context: pumped.context,
+        builder: (context) => const Dialog3d(child: SceneSizedBox3d.cube(0.4)),
+      );
+      await tester.pumpAndSettle();
+
+      final style = DialogStyle3d.of(Theme3dData.light);
+      expect(style.scrimColor.a, closeTo(0.32, 1e-6), reason: "Material's own");
+
+      final scrim = scrimOf(pumped.surface)!;
+      expect(
+        (scrim.decoration as BoxDecoration3d).color.a,
+        1.0,
+        reason: 'the slab draws at full strength; the dim is the coverage',
+      );
+      expect(
+        scrimCoverageOf(pumped.surface),
+        closeTo(style.scrimColor.a, 1e-6),
+        reason: "the style's alpha is spent as coverage, one for one",
+      );
+      expect(scrimCoverage3d(style.scrimColor), style.scrimColor.a);
+    });
+
+    testWidgets('it arrives with the route rather than snapping on', (
+      tester,
+    ) async {
+      // The coverage composes with the route's own fade: a scrim part way
+      // through an arrival covers part way, and neither replaces the other.
+      final pumped = await pumpOverlay(tester);
+      showDialog3d<void>(
+        context: pumped.context,
+        builder: (context) => const Dialog3d(child: SceneSizedBox3d.cube(0.4)),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 75));
+
+      final part = scrimCoverageOf(pumped.surface);
+      expect(part, greaterThan(0.0));
+      expect(part, lessThan(0.32));
+
+      await tester.pumpAndSettle();
+      expect(scrimCoverageOf(pumped.surface), closeTo(0.32, 1e-6));
+    });
+  });
+
   group('the scrim clears the screen it dims', () {
     // The drift alarm for a defect that 1825 headless tests and 108 render
     // probes passed over, and that a person found by opening a dialog on the
@@ -413,22 +470,7 @@ void main() {
       final children = <Layout3d>[];
       pumped.overlay.visitChildren(children.add);
       final screen = frontmostPanel(children.first);
-      double? scrim;
-      void findScrim(Layout3d box) {
-        if (box is DecoratedBox3d) {
-          final decoration = box.decoration;
-          if (decoration is BoxDecoration3d &&
-              decoration.color.a > 0 &&
-              decoration.color.a < 1.0) {
-            scrim ??= box.drawnOffsetInSurface.z;
-          }
-        }
-        box.visitChildren(findScrim);
-      }
-
-      for (final entry in children.skip(1)) {
-        findScrim(entry);
-      }
+      final scrim = scrimOf(pumped.surface)!.drawnOffsetInSurface.z;
 
       expect(
         scrim,

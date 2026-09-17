@@ -17,6 +17,7 @@ import 'package:flutter_scene_layout3d/widgets.dart'
     show
         SceneDecoratedBox3d,
         SceneFadeTransition3d,
+        SceneOpacity3d,
         SceneModalBarrier3d,
         SceneOverlay3d,
         SceneStack3d;
@@ -58,6 +59,44 @@ Navigator3d navigatorOf3d(BuildContext context) {
 
 /// The overlay above [context].
 Overlay3d overlayOf3d(BuildContext context) => SceneOverlay3d.of(context);
+
+/// How much of a scrim's fragments survive, out of [scrimColor]'s alpha.
+///
+/// **A scrim dims by coverage rather than by blending**, and the difference is
+/// not an optimisation — it is the only arrangement that dims a screen
+/// *evenly*. This is the rule the whole catalogue's modals are built on, so it
+/// is stated once, here.
+///
+/// A translucent slab in front of a screen has to be composited against
+/// everything behind it, and in this stack that ordering is decided twice
+/// over: `box_decoration3d.fmat` and `text_glyph3d.fmat` both write depth —
+/// each for a reason its own header explains — and the translucent pass sorts
+/// by one number per draw. A 32%-alpha scrim standing in front of a Material
+/// screen therefore erases whatever the sort puts after it instead of dimming
+/// it: **an app bar's title came out as a bare outline while the navigation
+/// bar's labels were untouched**, on the same screen, under the same scrim.
+///
+/// Four treatments of the same dim were built and photographed over the
+/// gallery, and only this one is even:
+///
+///  * **32% alpha**, as it was — the app bar erased, the navigation bar not.
+///  * **`depth_write: false`** on the panel shader, which is what
+///    `box_decoration3d.fmat`'s own note prescribes — the error inverts rather
+///    than closing: the app bar is then drawn *over* the scrim and is not
+///    dimmed at all.
+///  * **A fully opaque scrim** — even, by construction, and the screen behind
+///    is simply gone. Consistent, and not Material.
+///  * **Coverage**, which is this. The slab keeps `alpha` of its fragments and
+///    draws them at full strength, so each one writes depth exactly as an
+///    opaque fragment does and the result stops depending on the order at all:
+///    drawn before the screen or after it, the same fraction of pixels is
+///    scrim and the rest is screen.
+///
+/// The cost is that the dim is dithered rather than smooth — the same
+/// screen-door coverage `Opacity3d` fades a subtree with, and the same
+/// trade. It was chosen by looking at a window, which is the only thing that
+/// answers whether a dither reads.
+double scrimCoverage3d(Color scrimColor) => scrimColor.a;
 
 /// A barrier, a scrim on it, and [child] a depth step in front of both.
 ///
@@ -113,10 +152,18 @@ Widget modalFrame3d({
       // nothing at all, which is exactly what `ModalBarrier3d` documents.
       child: scrimColor == null
           ? null
+          // **A scrim's alpha is spent as coverage, not as a blend**, so the
+          // slab is drawn in its colour at full strength and keeps that
+          // fraction of its fragments. See `scrimCoverage3d`.
           : SceneFadeTransition3d(
               opacity: scrimFade,
-              child: SceneDecoratedBox3d(
-                decoration: BoxDecoration3d(color: scrimColor),
+              child: SceneOpacity3d(
+                opacity: scrimCoverage3d(scrimColor),
+                child: SceneDecoratedBox3d(
+                  decoration: BoxDecoration3d(
+                    color: scrimColor.withValues(alpha: 1.0),
+                  ),
+                ),
               ),
             ),
     ),

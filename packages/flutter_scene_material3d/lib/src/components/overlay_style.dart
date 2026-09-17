@@ -205,9 +205,10 @@ class DialogStyle3d {
       insetPadding: const EdgeInsets3d.symmetric(horizontal: 40, vertical: 24),
       minWidth: 280.0,
       maxWidth: 560.0,
-      // Material's scrim is black at 32%, and here that alpha reaches the
-      // panel shader, which blends. What it is *not* is a wash over a display
-      // list: see the scrim discussion on `Dialog3d`.
+      // Material's scrim is black at 32%, and here that alpha is spent as
+      // *coverage* rather than as a blend — see `scrimCoverage3d`, which has
+      // the four treatments that were photographed over the gallery and why
+      // this is the only even one.
       scrimColor: scheme.scrim.withValues(alpha: 0.32),
       scrimThickness: theme.thickness.thin,
       textStyle: Typography3dToken.bodyMedium,
@@ -253,6 +254,11 @@ class DialogStyle3d {
   final double maxWidth;
 
   /// The scrim's colour: `scrim` at 32% alpha, Material's own figure.
+  ///
+  /// **The alpha is how much of the screen the scrim covers**, not how much
+  /// it blends: the slab draws in this colour at full strength and keeps that
+  /// fraction of its fragments. `scrimCoverage3d` says why, and a scrim given
+  /// an opaque colour hides the screen rather than dimming it.
   final Color scrimColor;
 
   /// How deep the scrim's slab is: `thickness.thin`, 1dp.
@@ -662,6 +668,9 @@ class BottomSheetStyle3d {
   final double maxWidth;
 
   /// The scrim's colour, for a modal sheet.
+  ///
+  /// As on a dialog, **the alpha is coverage rather than a blend**: see
+  /// `scrimCoverage3d`.
   final Color scrimColor;
 
   /// How deep the scrim's slab is.

@@ -1,5 +1,13 @@
 ## Unreleased
 
+- **`box_decoration3d.fmat`'s note on a partly transparent slab is corrected.**
+  It prescribed per-instance `depth_write` with the rule "a decoration whose
+  resolved colour is not opaque does not write depth". That was photographed
+  and it does not work: with depth write off a modal's scrim stops erasing the
+  app bar behind it and starts being drawn *under* it. Writing depth is not
+  the problem on its own — the sort is wrong about that pair either way. No
+  shader behaviour changed; the comment did.
+
 - **An overlay's lift is measured from the panel's front face**, so an entry
   lifted 60dp is 60dp in front of the screen rather than 30dp. An in-plane
   entry is pinned there with `Positioned3d(front: 0)`; the overlay's alignment

@@ -286,6 +286,22 @@ Two entry points:
   a surface is out of reach by construction. Two ways to close that were tried
   and are written up as failures.
 
+- **A scrim that dims evenly** is
+  [the twelfth](../packages/flutter_scene_material3d/plans/2026_09_17_a_scrim_that_dims_evenly.md),
+  the second plan written *after* its experiment rather than before it, and
+  the direct sequel to the eleventh: once a scrim actually reached the screen
+  it was supposed to dim, it turned out not to dim it but to **erase** parts
+  of it. Panels and glyphs both write depth, the translucent pass sorts by one
+  number per draw, and an app bar's title came out as a bare outline while the
+  navigation bar's labels were untouched. Four treatments were built over the
+  gallery and photographed. **The one that was predicted to work does not**:
+  `box_decoration3d.fmat`'s own note prescribed turning `depth_write` off, and
+  with it off the scrim is drawn *under* the app bar instead — the error
+  inverts. That note is corrected. What ships is coverage: the slab draws
+  opaque and keeps a fraction of its fragments, so every fragment it draws is
+  an opaque one and the order stops mattering. The price is a dithered rather
+  than a smooth dim, and it was chosen by looking at a window.
+
 ## Keeping this true
 
 A page that describes behaviour the code no longer has is worse than no page,
