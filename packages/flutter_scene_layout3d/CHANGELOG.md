@@ -1,5 +1,24 @@
 ## Unreleased
 
+- **A hero flies between two routes, and what flies is built rather than
+  moved.** `Hero3d` matches a box on an arriving route with one carrying the
+  same `tag` on the route it covers, and puts a flight between them for as
+  long as the route's clock runs. Nothing is reparented — the constraint
+  `Draggable3d` found first, since building a second copy of a widget-built
+  child lays a render box out and a flight begins inside a transition — so a
+  hero names a `flightBuilder` the way a draggable names a `feedbackBuilder`,
+  and returns a `Layout3d` from it even in `SceneHero3d`.
+
+  The flight rides `Route3d.animation` and has **no ticker of its own**, so it
+  takes the route's duration and curve for free and there is no second clock
+  to leave spinning; a route pushed with `Route3dTransition.none` correctly
+  flies nothing. It is laid out once, at the size of the end it starts from,
+  and reaches the other on the node tier — `Hero3dFit.stretch` matching both
+  ends exactly, `Hero3dFit.uniform` never distorting. Both ends hide on the
+  flag `Visibility3d` writes, and only once the flight has placed itself, so
+  no frame is left empty. `Hero3dFlight`, `Hero3dFlightBuilder`,
+  `Hero3dFlightDirection` and `Hero3dFlightBox` are the rest of the surface.
+
 - **The engine has to come from git until `flutter_scene` 0.24.0 is
   published.** On 0.23.0 a GPU-bound scene blocks the calling thread on the
   GPU's backlog, and that queue is serialized with the raster thread's own

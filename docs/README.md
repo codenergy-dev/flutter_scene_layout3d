@@ -139,7 +139,8 @@ Two entry points:
 - **What is being built next** is
   [what a real application still needs](../packages/flutter_scene_layout3d/plans/2026_09_11_what_a_real_application_still_needs.md),
   the index of the seventeen plans between a finished catalogue and an
-  application people use — **ten closed, seven open**. It is a map rather than
+  application people use — **eleven closed, six open**, and the whole motion
+  lane now among the closed. It is a map rather than
   a work item: each row becomes a plan of its own when it is picked up.
   [An application that does not wire its own rays](../packages/flutter_scene_layout3d/plans/2026_09_11_an_application_that_does_not_wire_its_own_rays.md)
   is the first of them, and it led for the reason the map gave: it is the item
@@ -222,7 +223,8 @@ Two entry points:
   stated as a fraction of a size needs a size the box does not have until it
   has been laid out. It shipped with **no fade**, and the reason it gave —
   `flutter_scene` has no per-node opacity — turned out to be the wrong reason;
-  see the next entry. `Hero3d` is deferred to a plan of its own.
+  see the next entry. `Hero3d` is deferred to a plan of its own, and that plan
+  has since landed — see *A hero that flies between two routes*.
 - **A box that fades** is
   [the ninth](../packages/flutter_scene_layout3d/plans/2026_09_16_a_box_that_fades.md),
   and it is the one plan here written *after* its experiment rather than
@@ -244,6 +246,22 @@ Two entry points:
   package ships a third shader for it. The experiment was retired with the
   plan: it generated its variants by patching the shaders this work has now
   patched.
+- **A hero that flies between two routes** is
+  [the eleventh](../packages/flutter_scene_layout3d/plans/2026_09_20_a_hero_that_flies_between_two_routes.md),
+  and it closes the motion lane. `Hero3d` matches a box on an arriving route
+  with one carrying the same tag on the route it covers, and flies between
+  them. **What flies is built rather than reparented** — the constraint
+  `Draggable3d` found first — so a hero names a `flightBuilder` and the thing
+  is written twice. The flight rides `Route3d.animation`, which means it takes
+  the route's duration and curve for free and there is no second ticker to
+  leave spinning; the deferral had called the curve the motion tokens'
+  question, and it dissolved rather than being answered. It is laid out once
+  and scaled on the node tier, which is the same answer the switch's growing
+  thumb is still waiting for. Two things the plan got wrong are worth the
+  reading: the shared arithmetic it meant to extract already existed as
+  `anchorOffsetTo`, and a **widget-built route has no subtree at all in the
+  turn that pushed it**, so the arriving side could not be collected there —
+  a defect both headless suites were green through, and the gallery caught.
 - **The motion tokens** are
   [the tenth](../packages/flutter_scene_material3d/plans/2026_09_17_the_motion_tokens.md),
   the first plan in the Material package since its own ten phases, and the

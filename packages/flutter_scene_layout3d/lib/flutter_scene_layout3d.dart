@@ -86,6 +86,14 @@
 library;
 
 export 'src/anchoring.dart' show Layout3dAnchoring;
+export 'src/animation/hero.dart'
+    show
+        Hero3d,
+        Hero3dFit,
+        Hero3dFlight,
+        Hero3dFlightBuilder,
+        Hero3dFlightBox,
+        Hero3dFlightDirection;
 export 'src/animation/motion.dart' show Motion3d, MotionTransition3d;
 export 'src/animation/node_transform.dart' show NodeTransform3d;
 export 'src/animation/tweens.dart'

@@ -162,4 +162,36 @@ void main() {
     await tester.pumpAndSettle();
     expect(find3d.bySemanticsLabel('About this gallery'), findsNothing);
   });
+
+  testWidgets('a row opens its message, and its avatar flies there', (
+    tester,
+  ) async {
+    // The headless half again: that a flight goes up, stands in for both
+    // ends while it is up, and puts them back afterwards. Whether it reads
+    // as one object moving is a question only the window answers.
+    final surface = await pumpScreen(tester, const MaterialScreen());
+    final rows = <Hero3d>{};
+    void collect(Layout3d box) {
+      if (box is Hero3d) rows.add(box);
+      box.visitChildren(collect);
+    }
+
+    collect(surface);
+    expect(rows, isNotEmpty, reason: 'every row carries its avatar as a hero');
+    expect(rows.every((hero) => !hero.isFlying), isTrue);
+
+    await tester.tap3d(find3d.bySemanticsLabel('Ada Lovelace'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 40));
+    // Mid-arrival: the row's avatar has handed over to a flight.
+    expect(rows.any((hero) => hero.isFlying), isTrue);
+
+    await tester.pumpAndSettle();
+    expect(find3d.bySemanticsLabel('Ada Lovelace'), findsWidgets);
+    expect(
+      rows.every((hero) => !hero.isFlying),
+      isTrue,
+      reason: 'a settled flight gives both ends back',
+    );
+  });
 }

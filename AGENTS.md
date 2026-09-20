@@ -90,9 +90,9 @@ Everything below runs from the repository root unless stated otherwise.
 
 ```sh
 flutter pub get                                      # clones the engine, see below
-cd packages/flutter_scene_layout3d && flutter test   # 1276 today
+cd packages/flutter_scene_layout3d && flutter test   # 1288 today
 cd packages/flutter_scene_material3d && flutter test # 569 today
-cd examples/layout3d_gallery && flutter test         # 5 today
+cd examples/layout3d_gallery && flutter test         # 6 today
 dart analyze                                         # must be clean, everywhere
 dart format .                                        # before every commit
 ```

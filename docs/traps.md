@@ -181,6 +181,38 @@ does not move while a container resizes a label through a whole run; that test
 fails first if text measurement gets back onto the layout path, which is the
 regression the whole prepare/layout split exists to prevent.
 
+## A hero flight is built, and it ignores the route's own motion
+
+Two things about `Hero3d` surprise people who know Flutter's, and both follow
+from decisions this package made elsewhere.
+
+**Nothing is reparented, so the flight is written twice.** Flutter's `Hero`
+lifts the hero's own subtree into the overlay for the duration of a flight.
+That is not available here, for the reason `Draggable3d` found first: building
+a second copy of a widget-built child lays a render box out, and a flight
+begins in the middle of a route transition. A hero therefore names a
+`flightBuilder`, exactly as a draggable names a `feedbackBuilder`, and it
+returns a `Layout3d` even on the declarative `SceneHero3d` — the flight
+belongs to an overlay entry inserted from inside a transition, where there is
+no element to build a widget into. Write one small function and call it from
+both places. An application that only imports `widgets.dart` needs
+`flutter_scene_layout3d.dart` as well to have the boxes a flight is made of.
+
+**A flight lands where layout put the far end, not where the route is drawing
+it.** `Layout3d.worldTransform` undoes the node tier, which is what makes a
+flight safe to recompute every frame and correct under a scroll — and it means
+a route that is itself sliding a long way has its hero travel a straight line
+to the resting place rather than riding along with the content. The two finish
+on the same clock, so they agree at the end; in between they are two answers
+to one question. A dialog that grows and fades is no trouble. A sheet that
+rises a whole height, with a hero in it, is worth looking at before shipping.
+
+And the ordering hazard this package keeps producing applies here too: **a
+widget-built route has no subtree at all in the turn that pushed it**, so the
+arriving side cannot be collected there. `Navigator3d` asks once at push and,
+finding nothing, once more after the build the insertion asked for. A route
+that genuinely carries no heroes simply finds nothing twice.
+
 ## A kept-alive item is the item, not something inside it
 
 `KeepAlive3d` and `SceneKeepAlive3d` ask a lazy view not to release an item

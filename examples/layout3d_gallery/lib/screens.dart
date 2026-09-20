@@ -3,6 +3,10 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart' show SynchronousFuture;
 import 'package:flutter/material.dart' show Icons;
 import 'package:flutter/widgets.dart';
+// Both libraries, because a flight builder returns a `Layout3d` rather than a
+// `Widget`: an overlay entry inserted from inside a route transition has no
+// element to build into. `widgets.dart` is the rest of the screen.
+import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
 import 'package:flutter_scene_layout3d/widgets.dart';
 import 'package:flutter_scene_material3d/flutter_scene_material3d.dart';
 
@@ -152,6 +156,59 @@ class _MaterialScreenState extends State<MaterialScreen> {
     );
   }
 
+  /// The message a row opens, with the row's own avatar flown into it.
+  ///
+  /// The dialog keeps its own arrival — it grows from 85% and fades in — and
+  /// the flight rides the same clock, so the two finish together and the
+  /// frame where the flight hands over to the real avatar is the frame the
+  /// dialog is done growing.
+  Future<void> _openMessage(BuildContext context, int index) async {
+    final theme = Theme3d.of(context);
+    await showDialog3d<void>(
+      context: context,
+      builder: (context) => Dialog3d(
+        semanticLabel: _messages[index].$1,
+        child: SceneColumn3d(
+          mainAxisSize: MainAxisSize3d.min,
+          crossAxisAlignment: CrossAxisAlignment3d.start,
+          children: <Widget>[
+            // The far end of the flight. Four times the row's 40dp, so the
+            // scale is doing visible work rather than a polite nudge.
+            SceneHero3d(
+              tag: index,
+              flightBuilder: (_) => _avatar(index),
+              child: SceneSizedBox3d(
+                width: _dp(context, 160),
+                height: _dp(context, 160),
+                child: SceneImage3d(
+                  image: GalleryAvatar(index),
+                  fit: BoxFit.cover,
+                  borderRadius: const BorderRadius3d.circular(80),
+                ),
+              ),
+            ),
+            SceneSizedBox3d(height: _dp(context, 16)),
+            SceneText3d(
+              _messages[index].$1,
+              style: theme.textStyle(
+                Typography3dToken.headlineSmall,
+                color: theme.colorScheme.onSurface,
+              ),
+            ),
+            SceneSizedBox3d(height: _dp(context, 8)),
+            SceneText3d(
+              _messages[index].$2,
+              style: theme.textStyle(
+                Typography3dToken.bodyMedium,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   /// A bottom sheet, which rises one whole height from off the edge.
   Future<void> _sort(BuildContext context) async {
     final picked = await showModalBottomSheet3d<String>(
@@ -259,7 +316,7 @@ class _MaterialScreenState extends State<MaterialScreen> {
                     const EdgeInsets3d.symmetric(horizontal: 12),
                   ),
                   child: ElevatedCard3d(
-                    onTap: () => _say(context, 'Opened ${_messages[index].$1}'),
+                    onTap: () => _openMessage(context, index),
                     semanticLabel: _messages[index].$1,
                     child: ListTile3d(
                       // A photograph, cut to a circle by the panel that draws
@@ -268,13 +325,22 @@ class _MaterialScreenState extends State<MaterialScreen> {
                       // so the only thing that can round a picture is the
                       // signed distance field it is sampled inside, which is
                       // why a picture is a decoration here.
-                      leading: SceneSizedBox3d(
-                        width: _dp(context, 40),
-                        height: _dp(context, 40),
-                        child: SceneImage3d(
-                          image: GalleryAvatar(index),
-                          fit: BoxFit.cover,
-                          borderRadius: const BorderRadius3d.circular(20),
+                      //
+                      // And it is a hero: pressing the row flies this circle
+                      // to the big one in the dialog. Nothing is reparented,
+                      // so `_avatar` below is what flies and this is what
+                      // stands here, which is why both are one function.
+                      leading: SceneHero3d(
+                        tag: index,
+                        flightBuilder: (_) => _avatar(index),
+                        child: SceneSizedBox3d(
+                          width: _dp(context, 40),
+                          height: _dp(context, 40),
+                          child: SceneImage3d(
+                            image: GalleryAvatar(index),
+                            fit: BoxFit.cover,
+                            borderRadius: const BorderRadius3d.circular(20),
+                          ),
                         ),
                       ),
                       title: SceneText3d(_messages[index].$1),
@@ -572,3 +638,18 @@ double _dp(BuildContext context, double logicalPixels) =>
 
 EdgeInsets3d _insets(BuildContext context, EdgeInsets3d insets) =>
     Layout3dMetricsScope.of(context).dpInsets(insets);
+
+/// What flies between a row's avatar and the dialog's, built imperatively.
+///
+/// A flight belongs to an overlay entry inserted from inside a route
+/// transition, where there is no element to build a widget into — so this
+/// returns a `Layout3d` rather than a `Widget`, the same seam a drag's
+/// feedback has. It is laid out at the size of the end the flight starts
+/// from and scaled to reach the other, so it needs no size of its own.
+Layout3d _avatar(int index) => Image3d(
+  image: GalleryAvatar(index),
+  fit: BoxFit.cover,
+  // Half the 40dp end, so the circle stays a circle at both sizes: the
+  // radius is geometry and scales with everything else.
+  borderRadius: const BorderRadius3d.circular(20),
+);

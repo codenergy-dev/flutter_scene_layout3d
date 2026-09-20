@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart' show SynchronousFuture, protected;
 import 'package:flutter/scheduler.dart'
     show SchedulerBinding, Ticker, TickerCallback, TickerProvider;
 
+import '../animation/hero.dart';
 import '../animation/motion.dart';
 import '../geometry/alignment3d.dart';
 import '../layout3d.dart';
@@ -414,6 +415,21 @@ class Navigator3d {
 
   final List<Route3d<Object?>> _routes = <Route3d<Object?>>[];
 
+  /// The flight entries a route put up, so that every ending can take them
+  /// down again.
+  ///
+  /// One map rather than a listener per flight, because the endings do not
+  /// all arrive the same way: an arrival settles, a pop interrupts one before
+  /// it settled, and a route finishing disposes the clock the flights are
+  /// riding. All three reach [_clearFlights].
+  final Map<Route3d<Object?>, List<Overlay3dEntry>> _flights =
+      <Route3d<Object?>, List<Overlay3dEntry>>{};
+
+  /// What the current attempt at [route]'s flights is, so that a deferred
+  /// second attempt can tell it has been superseded.
+  final Map<Route3d<Object?>, Object> _flightAttempts =
+      <Route3d<Object?>, Object>{};
+
   /// The routes on the stack, bottom first.
   List<Route3d<Object?>> get routes =>
       List<Route3d<Object?>>.unmodifiable(_routes);
@@ -447,7 +463,14 @@ class Navigator3d {
     _routes.add(route);
     overlay.insertEntry(entry);
     route.didPush();
-    unawaited(_transitionFor(route).forward(route));
+    // After `forward`, which sets the clock to its starting point in this
+    // same turn: a flight reads that clock, and a synchronous future means
+    // there is no clock to read.
+    final forward = _transitionFor(route).forward(route);
+    if (forward is! SynchronousFuture<void>) {
+      _startFlights(route, Hero3dFlightDirection.push);
+      unawaited(forward.then((_) => _clearFlights(route)));
+    }
     return route.popped;
   }
 
@@ -472,10 +495,14 @@ class Navigator3d {
     if (!_routes.remove(route)) return false;
     route._popping = true;
     final entry = route._entry;
+    // Before `reverse`, so that the sides are collected while this route is
+    // still the one in front — and after `_routes.remove`, so that the route
+    // it is uncovering is the one now on top.
     final reverse = _transitionFor(route).reverse(route);
     if (reverse is SynchronousFuture<void>) {
       _finish(route, entry, result);
     } else {
+      _startFlights(route, Hero3dFlightDirection.pop);
       unawaited(reverse.then((_) => _finish(route, entry, result)));
     }
     return true;
@@ -505,8 +532,109 @@ class Navigator3d {
       route.transition ?? transition;
 
   void _finish(Route3d<Object?> route, Overlay3dEntry? entry, Object? result) {
+    // Before the entry goes, so a flight still has both ends to un-hide, and
+    // before `route._finish`, which disposes the clock they are riding.
+    _clearFlights(route);
     entry?.remove();
     route._finish(result);
+  }
+
+  /// Puts up a flight for every tag [route] shares with what it covers.
+  ///
+  /// The two sides are found by walking, not by a registry: registration has
+  /// a lifetime and a lifetime has a disposal path, and a walk has neither to
+  /// get wrong. It is paid twice per transition rather than once per mount.
+  void _startFlights(
+    Route3d<Object?> route,
+    Hero3dFlightDirection direction, {
+    bool retry = true,
+  }) {
+    if (retry) _clearFlights(route);
+    final covering = route._entry?.content;
+    if (covering == null) return;
+    final bSide = <Object, Hero3d>{};
+    collectHero3ds(covering, bSide);
+    if (bSide.isEmpty) {
+      // **A widget-built route has no subtree at all in the turn that pushed
+      // it**: its content reaches the element tree on the build that
+      // `Overlay3d.entriesChanged` asks for, which is the next frame. So an
+      // empty covering side is not yet an answer, and the question is asked
+      // once more when that build has happened. A route that genuinely
+      // carries no heroes simply finds nothing twice.
+      if (!retry) return;
+      final attempt = Object();
+      _flightAttempts[route] = attempt;
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        // Superseded by a later transition, or cleared by one — either way
+        // this attempt is stale and must not put anything up.
+        if (!identical(_flightAttempts[route], attempt)) return;
+        _flightAttempts.remove(route);
+        if (!route._popping && !_routes.contains(route)) return;
+        _startFlights(route, direction, retry: false);
+      });
+      return;
+    }
+
+    // What this route covers: the route beneath it, or — when there is none —
+    // the page the overlay was built over, searched with every entry standing
+    // on it pruned away. A detached entry's content is not a descendant of
+    // the overlay at all, so it is excluded without being pruned.
+    final below = _routeBelow(route);
+    final aSide = <Object, Hero3d>{};
+    if (below == null) {
+      collectHero3ds(
+        overlay,
+        aSide,
+        stopAt: <Layout3d>{
+          for (final entry in overlay.entries)
+            if (entry.content case final content?) content,
+        },
+      );
+    } else if (below._entry?.content case final content?) {
+      collectHero3ds(content, aSide);
+    }
+    if (aSide.isEmpty) return;
+
+    final entries = <Overlay3dEntry>[];
+    for (final MapEntry(key: tag, value: b) in bSide.entries) {
+      final a = aSide[tag];
+      if (a == null) continue;
+      final flight = buildHero3dFlightEntry(
+        tag: tag,
+        aSide: a,
+        bSide: b,
+        direction: direction,
+        animation: route.animation,
+      );
+      entries.add(flight);
+      // In front of everything, including this route's own entry: a flight
+      // stands in for boxes on both sides of it.
+      overlay.insertEntry(flight);
+    }
+    if (entries.isNotEmpty) _flights[route] = entries;
+  }
+
+  /// Takes [route]'s flights down, which un-hides both of each flight's ends.
+  ///
+  /// Idempotent: removing an entry that is already out is a no-op, which is
+  /// what lets every ending call this without checking first.
+  void _clearFlights(Route3d<Object?> route) {
+    _flightAttempts.remove(route);
+    final entries = _flights.remove(route);
+    if (entries == null) return;
+    for (final entry in entries) {
+      entry.remove();
+    }
+  }
+
+  /// The route [route] covers, or null when it is the bottom of the stack.
+  ///
+  /// On a pop [route] has already been taken off, so what it covered is now
+  /// on top; on a push it is on top, and what it covers is under it.
+  Route3d<Object?>? _routeBelow(Route3d<Object?> route) {
+    final at = _routes.indexOf(route);
+    if (at < 0) return _routes.isEmpty ? null : _routes.last;
+    return at == 0 ? null : _routes[at - 1];
   }
 
   @override

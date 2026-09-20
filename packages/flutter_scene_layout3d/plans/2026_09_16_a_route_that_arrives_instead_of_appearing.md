@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-09-16T19:40:00Z
-updated_at: 2026-09-17T12:10:00Z
+updated_at: 2026-09-20T16:00:00Z
 commit: 503dbae1329ae1e73f0f31304a6720ae0a56ae15
 ---
 
@@ -235,6 +235,23 @@ being able to quote it did not stop it costing a run.
 which are gated on the engine. Neither is an open item here; both are named in
 [the map](2026_09_11_what_a_real_application_still_needs.md), whose row for
 this item stays open until the hero lands.
+
+> **Both have since landed, and this section is kept as it was written.** The
+> fades came first, from
+> [a box that fades](2026_09_16_a_box_that_fades.md), whose note is already
+> above. The hero came on 2026-09-20, in
+> [a hero that flies between two routes](2026_09_20_a_hero_that_flies_between_two_routes.md),
+> **so the map's row for this item is closed and the motion lane with it.**
+> Two things in the paragraph this section points at are worth correcting
+> from here. The curve a flight follows was called the motion tokens'
+> question, and it turned out not to be a question at all: a flight rides
+> `Route3d.animation`, so it has the route's own duration and curve and no
+> ticker of its own. And the tag registry it predicted was not built —
+> a downward walk from `Overlay3dEntry.content` has no lifetime to get wrong.
+> What *did* bite is something this plan had already written down about
+> itself, one paragraph away: **a widget-built entry has no subtree at all
+> until the build after the insertion.** The hero read that as being about
+> sizes, and it is also about whether the content can be searched at all.
 
 **Nothing in the catalogue moves yet, by design.** `showDialog3d`,
 `showMenu3d` and the sheets push with `Route3dTransition.none` and build their

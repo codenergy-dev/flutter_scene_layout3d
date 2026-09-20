@@ -1,8 +1,8 @@
 ---
 status: in progress
-reason: seven of the seventeen items are open; the record of what shipped, the application widget, the wheel and the key, the test library, right to left, the picture, the item that keeps its state, the screen that knows how big it is, the box that fades and the motion tokens are closed, and the route is closed but for its Hero3d
+reason: six of the seventeen items are open, and the whole motion lane is now closed; what is left is the catalogue batch, a scheme from one colour, more than one screen, more than one language, and the letter someone can type with the keyboard controls behind it
 created_at: 2026-09-11T21:20:18Z
-updated_at: 2026-09-17T15:50:00Z
+updated_at: 2026-09-20T16:00:00Z
 commit: abc2469ce5c4ec4c41e2738fc5acf55bcf40640a
 ---
 
@@ -102,7 +102,7 @@ plan, which is the rule phase 0 established and every phase since has obeyed.
 | [A letter someone can type](#a-letter-someone-can-type) | layout3d | text fields, forms, search, pickers |
 | ~~[An item that keeps its state](#an-item-that-keeps-its-state)~~ | layout3d | **done** — forms in lists, and the declarative layer complete |
 | ~~[A screen that knows how big it is](#a-screen-that-knows-how-big-it-is)~~ | layout3d | **done** — the reader's font setting, the safe area, and something to branch on |
-| [A route that arrives instead of appearing](#a-route-that-arrives-instead-of-appearing) | layout3d | **the transitions are done**; `Hero3d` is what the row is still open for |
+| ~~[A route that arrives instead of appearing](#a-route-that-arrives-instead-of-appearing)~~ | layout3d | **done** — the transitions, and now the hero that closes the motion lane |
 | [An application with more than one screen](#an-application-with-more-than-one-screen) | layout3d | named routes, deep links, the system back button |
 | ~~[A way to test a screen someone else built](#a-way-to-test-a-screen-someone-else-built)~~ | layout3d | **done** — anyone building on this, including us |
 | ~~[The motion tokens](#the-motion-tokens)~~ | material3d | **done** — every overlay in the catalogue arrives instead of appearing |
@@ -175,7 +175,8 @@ and everything below it is now a choice rather than a queue.
 landed** — see
 [the route's plan](2026_09_16_a_route_that_arrives_instead_of_appearing.md) and
 [the tokens'](../../flutter_scene_material3d/plans/2026_09_17_the_motion_tokens.md)
-— and the row above stays open for `Hero3d` alone. The reasoning here said the
+— and **the hero has since closed the lane outright**, see
+[its plan](2026_09_20_a_hero_that_flies_between_two_routes.md). The reasoning here said the
 catalogue half was the ripe one and it was, but for a reason it got
 backwards: it called this "the first item on the map whose result cannot be
 seen by running the gallery", and the *opposite* turned out to be the
@@ -192,8 +193,9 @@ around that label's letters by screen-door coverage, and `Motion3d.opacity`
 is what finishes an arrival. **That left the motion lane's remaining work
 entirely in the catalogue**, and
 [the motion tokens](../../flutter_scene_material3d/plans/2026_09_17_the_motion_tokens.md)
-have since taken it: every overlay in the catalogue arrives, and the whole
-lane is now closed but for `Hero3d`.
+have since taken it: every overlay in the catalogue arrives. **And
+[the hero](2026_09_20_a_hero_that_flies_between_two_routes.md) has closed the
+last row of it**: the motion lane is done.
 
 Then [the catalogue batch](#the-components-a-screen-still-needs), which is
 broad and shallow, and
@@ -303,7 +305,15 @@ are where a first implementer's decision becomes someone else's constraint.
   `Route3d.transition` is the fix. And **a moving box is pressable where
   layout put it, not where it is drawn** — the node tier's contract, now
   met by the test library, which aims where a person aims. Anything on this
-  map that moves and can be pressed inherits both.
+  map that moves and can be pressed inherits both. **And the hero closed it with
+a fourth**: a thing that has to *change size* while it moves is drawn at one
+size and scaled on the node tier, never laid out again — which is the same
+answer the switch's growing thumb is waiting for, now with a shipped example
+to copy. Its ordering lesson generalizes too: **a widget-built overlay entry
+has no subtree at all in the turn that inserted it**, so anything that needs
+to look *inside* what a route built must ask again after the build that
+insertion asks for. The route plan had written that down and it was read as
+being about sizes.
 - **`Decoration3dPainterCache` is what makes a screen of panels affordable**,
   and it keys on `Decoration3d.cacheKey`. Two plans here compute colours that
   did not exist before — [a scheme from one colour](#a-scheme-from-one-colour)
@@ -322,7 +332,12 @@ are where a first implementer's decision becomes someone else's constraint.
   [a picture](#a-picture-on-a-panel) is a decoration rather than a quad. That
   is the shape of the workaround for anything else that can be expressed as a
   parameter of the surface it sits on — and it does nothing for a child
-  overflowing a rounded card, which is still the wall.
+  overflowing a rounded card, which is still the wall. **A hero flight does
+  not meet it either**, and for the same reason the picture does not: a flight
+  is a box of its own in the overlay rather than a child overflowing a
+  container, so the gallery's circular avatar flies as an `Image3d` whose
+  radius is carved by that same field at both ends, and scales with
+  everything else.
 - **A target reaches past its own extent and its parent does not.** Every new
   interactive component in the catalogue lane obeys the placement rule from
   [a tap target that delivers a press](2026_09_02_a_tap_target_that_delivers_a_press.md):
@@ -709,12 +724,18 @@ layout, so it has to leave something behind for an author to branch on.
 
 **Package:** `flutter_scene_layout3d`.
 **Slug:** `a_route_that_arrives_instead_of_appearing`.
-**Mostly closed** by
-[its own plan](2026_09_16_a_route_that_arrives_instead_of_appearing.md): the
-clock, the transitions and the box that moves a subtree have shipped, and
-**the row stays open for `Hero3d` alone**, which that plan defers to one of
-its own with the reasoning for it written down. The entry below is what it was
-reasoned from. What that reasoning got wrong, in short: it said the seam was
+**Closed** by two plans:
+[the route's](2026_09_16_a_route_that_arrives_instead_of_appearing.md), which
+shipped the clock, the transitions and the box that moves a subtree, and
+[the hero's](2026_09_20_a_hero_that_flies_between_two_routes.md), which took
+the one row that plan deferred and **closed the motion lane with it**. What
+the hero's own reasoning got wrong is written there, and the short version is
+that the shared arithmetic it planned to extract already existed as
+`Layout3d.anchorOffsetTo`, and that the ordering hazard was one step worse
+than it allowed for — a widget-built route has no subtree *at all* in the turn
+that pushed it, so the arriving side could not even be collected there, and
+the gallery is what caught it while both headless suites stayed green. The
+entry below is what the route half was reasoned from. What that reasoning got wrong, in short: it said the seam was
 one hook wide and it was two — a transition can only wind a clock, because
 *what* moves has to be chosen by whoever built the route's content, since a
 catalogue route carries its own scrim and a dim must not slide in with the
@@ -744,9 +765,11 @@ and `NodeShift3d`, one matrix a frame, nothing laid out again.
 What the plan owns: the transitions themselves; the fades, which were gated on
 [a box that fades](#a-box-that-fades) and did ship without them — that item is
 now closed and `Motion3d.opacity` is where they landed; a
-`Hero3d`, which is `Layout3d.anchorOffsetTo` plus a route's clock and is
-genuinely interesting in three dimensions because the flight can go *through*
-the scene; and above all the `Ticker` discipline — an animation that has
+`Hero3d`, which is `Layout3d.anchorOffsetTo` plus a route's clock — **that
+guess was exactly right**, and the flight needed no new arithmetic at all,
+though the flight going *through* the scene is the part that was left, since a
+flight between two surfaces at different angles lands correctly and does not
+turn to match; and above all the `Ticker` discipline — an animation that has
 stopped changing must stop asking for frames or `pumpAndSettle` spins forever,
 and one restarted after a stop begins its clock at zero, so a driver that
 pauses carries its own baseline.

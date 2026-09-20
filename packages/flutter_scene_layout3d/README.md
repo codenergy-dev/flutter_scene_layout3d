@@ -1216,6 +1216,7 @@ asserts in debug when it is inside a faded subtree without one.
 | `ModalBarrier3d`, `Navigator3d`, `Route3d` | `ModalBarrier`, `Navigator`, `Route` |
 | `Route3dTransition`, `TimedRoute3dTransition`, `Route3d.transition`, `Route3d.animation` | `TransitionRoute`'s controller and the duration-and-curve half of `PageRouteBuilder` |
 | `Motion3d`, `MotionTransition3d`, `SceneMotionTransition3d` | `SlideTransition`, `ScaleTransition`, `RotationTransition` and `FadeTransition`, as one value and one box |
+| `Hero3d`, `SceneHero3d`, `Hero3dFit` | `Hero`, with the flight built rather than reparented |
 | `WidgetOverlay3dEntry`, `WidgetPageRoute3d` | an entry and a route whose content is a widget subtree |
 | `Layout3d.anchorOffsetTo` | `CompositedTransformTarget` and `CompositedTransformFollower`, as one call on the node tier |
 | `Layout3dPointerGroup` | routing a ray across surfaces, which a screen does not need |
@@ -2906,6 +2907,68 @@ around that label's letters all fade together. `Motion3d.fade()` is the
 plainest arrival there is, and `Motion3d(scale: 0.85, opacity: 0)` is a
 dialog. Read *Fading a subtree* for what that costs — it is coverage rather
 than a `saveLayer`, exact at both ends and a little generous in the middle.
+
+### A hero that flies between two routes
+
+`Hero3d` matches a box on the route that is arriving with one carrying the
+same `tag` on the route it covers, and flies between them while the route's
+own clock runs:
+
+```dart
+Layout3d avatar() => Image3d(image: photo, fit: BoxFit.cover);
+
+// On the page:
+SceneHero3d(
+  tag: photo.id,
+  flightBuilder: (_) => avatar(),
+  child: SceneImage3d(image: photo, fit: BoxFit.cover),
+)
+
+// And on the route it opens, the same tag around a bigger box.
+```
+
+**What flies is built, not moved**, and that is the one thing to understand
+before writing one. Flutter's `Hero` lifts the hero's own subtree into the
+overlay for the duration of the flight; this package cannot, for the reason
+`Draggable3d` found first — building a second copy of a widget-built child
+lays a render box out, and a flight begins in the middle of a route
+transition. So a hero names a `flightBuilder`, the way a draggable names a
+`feedbackBuilder`, and the thing is written twice. The idiom that makes that
+cheap is one small function called from both places, as above. Note that a
+flight builder returns a `Layout3d` rather than a `Widget` even in the
+declarative `SceneHero3d`: the flight belongs to an overlay entry inserted
+from inside a transition, where there is no element to build into.
+
+Four more things are worth knowing.
+
+**It rides the route's clock and has no ticker of its own.** A flight takes
+the route's duration and the route's curve for free, which is where the
+catalogue's motion tokens already are — and it means there is no second clock
+to stop, restart or leave spinning. A route pushed with
+`Route3dTransition.none` has a clock that never ticks, so its heroes
+correctly do not fly.
+
+**The size change is a scale, not a relayout.** The flight is laid out once,
+at the size of the end it starts from — so it is exact at the frame it
+replaces that box — and reaches the other end on the node tier.
+`Hero3dFit.stretch`, the default, scales each axis on its own so both ends
+match exactly; `Hero3dFit.uniform` takes one factor and never distorts, which
+is what a flight carrying type wants. When the two ends share an aspect ratio
+the two are identical, which is the common case.
+
+**Both ends hide while the flight is up**, on the same `node.visible` flag
+`Visibility3d` writes, so a hero mid-flight is unpointable as well as unseen.
+They hide when the flight has managed to place itself and not before, so
+there is never a frame with nothing in it.
+
+**A flight ignores the route's own motion.** It lands where *layout* put the
+far end, because `worldTransform` undoes the node tier — which is what makes
+it safe to recompute every frame, and what keeps a flight correct under a
+scroll. A route that also slides a long way therefore has its hero travel a
+straight line to the resting place rather than riding along with the content.
+Both finish on the same clock, so they agree at the end; in between they are
+two answers to one question, and the flight is the better one. A dialog that
+grows and fades is no trouble at all.
 
 ### Implicit: a size, a padding, an alignment
 
