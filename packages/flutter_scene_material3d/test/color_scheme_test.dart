@@ -9,7 +9,8 @@
 
 import 'dart:ui' show Brightness, Color;
 
-import 'package:flutter/material.dart' show ColorScheme, ThemeData;
+import 'package:flutter/material.dart'
+    show ColorScheme, DynamicSchemeVariant, ThemeData;
 import 'package:flutter_scene_material3d/flutter_scene_material3d.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -270,7 +271,318 @@ void main() {
       );
     });
   });
+
+  group('a scheme from one colour', () {
+    test('is Flutter\'s own generator, role by role, everywhere', () {
+      // The strongest oracle available: both generators read the same
+      // `MaterialDynamicColors` table, so this is an exact comparison rather
+      // than a tolerance — and what it actually checks is the *mapping*,
+      // which is this package's and is where a transcription error hides.
+      // 9 variants x 2 brightnesses x 9 seeds, and nothing is allowed to
+      // differ by one unit.
+      for (final seed in _seeds) {
+        for (final brightness in Brightness.values) {
+          for (final variant in ColorSchemeVariant3d.values) {
+            final ours = rolesOf(
+              ColorScheme3d.fromSeed(
+                seedColor: seed,
+                brightness: brightness,
+                variant: variant,
+              ),
+            );
+            final theirs = flutterRolesOf(
+              ColorScheme.fromSeed(
+                seedColor: seed,
+                brightness: brightness,
+                dynamicSchemeVariant: _flutterVariant(variant),
+              ),
+            );
+            final where =
+                '${variant.name} ${brightness.name} '
+                '#${seed.toARGB32().toRadixString(16)}';
+            expect(ours.keys, theirs.keys, reason: where);
+            for (final role in ours.keys) {
+              expect(ours[role], theirs[role], reason: '$where $role');
+            }
+          }
+        }
+      }
+    });
+
+    test('follows Flutter through the contrast levels too', () {
+      for (final contrast in <double>[-1.0, -0.5, 0.0, 0.5, 1.0]) {
+        for (final brightness in Brightness.values) {
+          final ours = rolesOf(
+            ColorScheme3d.fromSeed(
+              seedColor: _brand,
+              brightness: brightness,
+              contrastLevel: contrast,
+            ),
+          );
+          final theirs = flutterRolesOf(
+            ColorScheme.fromSeed(
+              seedColor: _brand,
+              brightness: brightness,
+              contrastLevel: contrast,
+            ),
+          );
+          for (final role in ours.keys) {
+            expect(
+              ours[role],
+              theirs[role],
+              reason: 'contrast $contrast ${brightness.name} $role',
+            );
+          }
+        }
+      }
+    });
+
+    test('raising the contrast actually changes the scheme', () {
+      // Otherwise the comparison above would pass against a forwarded
+      // argument that went nowhere.
+      expect(
+        ColorScheme3d.fromSeed(seedColor: _brand, contrastLevel: 1.0),
+        isNot(ColorScheme3d.fromSeed(seedColor: _brand)),
+      );
+    });
+
+    test('a contrast level outside Material\'s range is an assert', () {
+      expect(
+        () => ColorScheme3d.fromSeed(seedColor: _brand, contrastLevel: 1.5),
+        throwsAssertionError,
+      );
+      expect(
+        () => ColorScheme3d.fromSeed(seedColor: _brand, contrastLevel: -1.5),
+        throwsAssertionError,
+      );
+    });
+
+    test('tonalSpot is the default, and light is the default brightness', () {
+      expect(
+        ColorScheme3d.fromSeed(seedColor: _brand),
+        ColorScheme3d.fromSeed(
+          seedColor: _brand,
+          brightness: Brightness.light,
+          variant: ColorSchemeVariant3d.tonalSpot,
+        ),
+      );
+    });
+
+    test('brightness is the argument, not something inferred', () {
+      expect(
+        ColorScheme3d.fromSeed(
+          seedColor: _brand,
+          brightness: Brightness.dark,
+        ).brightness,
+        Brightness.dark,
+      );
+      expect(
+        ColorScheme3d.fromSeed(seedColor: _brand).brightness,
+        Brightness.light,
+      );
+    });
+
+    test('the variants are not all the same scheme', () {
+      // A switch that fell through to tonalSpot nine times would pass the
+      // comparison above only if Flutter's did too, which it would not — but
+      // this says it directly and fails faster.
+      final seen = <ColorScheme3d>{};
+      for (final variant in ColorSchemeVariant3d.values) {
+        seen.add(ColorScheme3d.fromSeed(seedColor: _brand, variant: variant));
+      }
+      expect(seen, hasLength(ColorSchemeVariant3d.values.length));
+    });
+
+    test('monochrome is grey and tonalSpot is not', () {
+      // One variant spelled out, so the suite states a property of its own
+      // rather than only deferring to Flutter.
+      final grey = ColorScheme3d.fromSeed(
+        seedColor: _brand,
+        variant: ColorSchemeVariant3d.monochrome,
+      );
+      expect(grey.primary.r, closeTo(grey.primary.g, 1 / 255));
+      expect(grey.primary.g, closeTo(grey.primary.b, 1 / 255));
+      final colourful = ColorScheme3d.fromSeed(seedColor: _brand);
+      expect(colourful.primary.r, isNot(closeTo(colourful.primary.b, 1 / 255)));
+    });
+
+    test('a brand colour reaches a component, which is the whole promise', () {
+      // What the catalogue plan promised when it put this out of its own
+      // scope: "a generator can be added later without changing a single
+      // component". This is that promise as a test rather than as a sentence
+      // — a filled button's container is `primary`, whoever computed primary.
+      final scheme = ColorScheme3d.fromSeed(seedColor: _brand);
+      final resolved = ButtonStyle3d.of(
+        Theme3dData(colorScheme: scheme),
+        ButtonVariant3d.filled,
+      ).resolve(const <Material3dState>{}, enabled: true);
+      expect(resolved.container, scheme.primary);
+      expect(resolved.content, scheme.onPrimary);
+      // And it really is the brand's, not the baseline's.
+      expect(resolved.container, isNot(ColorScheme3d.light.primary));
+    });
+
+    test('a role can be overridden with copyWith, which is why there are '
+        'no overrides on the factory', () {
+      const brandRed = Color(0xFFB00020);
+      final scheme = ColorScheme3d.fromSeed(
+        seedColor: _brand,
+      ).copyWith(error: brandRed);
+      expect(scheme.error, brandRed);
+      expect(scheme.primary, ColorScheme3d.fromSeed(seedColor: _brand).primary);
+    });
+  });
+
+  group('a generated scheme is not the baseline', () {
+    // Stated out loud so that the next reader does not file it as a defect.
+    // The map that asked for this generator proposed the opposite as its
+    // oracle - "a generator seeded with Material's own baseline primary
+    // should reproduce them" - and that premise is wrong for two separate
+    // reasons, both by design.
+
+    test('the seed is an input to the palettes, not the primary role', () {
+      // tonalSpot clamps the primary palette's chroma to 36 and #6750A4's own
+      // is 47.9, so the scheme it seeds is quieter than the seed.
+      final seeded = ColorScheme3d.fromSeed(
+        seedColor: ColorScheme3d.light.primary,
+      );
+      expect(ColorScheme3d.light.primary, const Color(0xFF6750A4));
+      expect(seeded.primary, const Color(0xFF65558F));
+      expect(seeded.primary, isNot(ColorScheme3d.light.primary));
+    });
+
+    test('and the error palette is the variant\'s, not the baseline\'s', () {
+      final seeded = ColorScheme3d.fromSeed(
+        seedColor: ColorScheme3d.light.primary,
+      );
+      expect(ColorScheme3d.light.error, const Color(0xFFB3261E));
+      expect(seeded.error, const Color(0xFFBA1A1A));
+    });
+
+    test('twenty-seven of the forty-six differ, in both brightnesses', () {
+      // The count itself is the alarm: if a Flutter upgrade moves the
+      // generator or the baseline, this is what says so and by how much.
+      int differences(Brightness brightness) {
+        final baseline = rolesOf(
+          brightness == Brightness.light
+              ? ColorScheme3d.light
+              : ColorScheme3d.dark,
+        );
+        final seeded = rolesOf(
+          ColorScheme3d.fromSeed(
+            seedColor: const Color(0xFF6750A4),
+            brightness: brightness,
+          ),
+        );
+        return seeded.keys.where((r) => seeded[r] != baseline[r]).length;
+      }
+
+      expect(differences(Brightness.light), 27);
+      expect(differences(Brightness.dark), 27);
+    });
+  });
+
+  group('the memo', () {
+    test('hands back the same instance for the same arguments', () {
+      expect(
+        identical(
+          ColorScheme3d.fromSeed(seedColor: _brand),
+          ColorScheme3d.fromSeed(seedColor: _brand),
+        ),
+        isTrue,
+      );
+    });
+
+    test('keys on every argument', () {
+      final base = ColorScheme3d.fromSeed(seedColor: _brand);
+      expect(
+        identical(
+          base,
+          ColorScheme3d.fromSeed(
+            seedColor: _brand,
+            brightness: Brightness.dark,
+          ),
+        ),
+        isFalse,
+      );
+      expect(
+        identical(
+          base,
+          ColorScheme3d.fromSeed(
+            seedColor: _brand,
+            variant: ColorSchemeVariant3d.vibrant,
+          ),
+        ),
+        isFalse,
+      );
+      expect(
+        identical(
+          base,
+          ColorScheme3d.fromSeed(seedColor: _brand, contrastLevel: 0.5),
+        ),
+        isFalse,
+      );
+      expect(
+        identical(
+          base,
+          ColorScheme3d.fromSeed(seedColor: const Color(0xFF123456)),
+        ),
+        isFalse,
+      );
+    });
+
+    test('an evicted scheme comes back identical in value', () {
+      // The cache holds 32; walking well past that evicts the first one, and
+      // regenerating it has to produce the same forty-six roles. A memo that
+      // changed an answer would be a defect nothing else here would catch.
+      final first = ColorScheme3d.fromSeed(seedColor: const Color(0xFF010101));
+      for (var i = 0; i < 64; i++) {
+        ColorScheme3d.fromSeed(seedColor: Color(0xFF000000 | (i * 7919)));
+      }
+      final again = ColorScheme3d.fromSeed(seedColor: const Color(0xFF010101));
+      expect(again, first);
+      expect(identical(again, first), isFalse, reason: 'it really was evicted');
+    });
+  });
 }
+
+/// A brand colour that is nothing like Material's baseline: a deep teal.
+const Color _brand = Color(0xFF00696E);
+
+/// Seeds chosen for where a generator breaks rather than for how they look.
+///
+/// The three achromatic ones have no defined hue, and the three primaries sit
+/// at a chroma no palette can hold, so between them they cover the clamping
+/// and the fallbacks. The baseline primary is there because it is the one
+/// seed anybody will try first.
+const List<Color> _seeds = <Color>[
+  Color(0xFF6750A4),
+  _brand,
+  Color(0xFF000000),
+  Color(0xFFFFFFFF),
+  Color(0xFF808080),
+  Color(0xFFFF0000),
+  Color(0xFF00FF00),
+  Color(0xFF0000FF),
+  Color(0xFFFFC107),
+];
+
+/// The Flutter variant this package's [ColorSchemeVariant3d] stands for.
+///
+/// Written out rather than indexed, so that a value added to either enum in a
+/// different order is a compile error instead of a silent remapping.
+DynamicSchemeVariant _flutterVariant(ColorSchemeVariant3d variant) =>
+    switch (variant) {
+      ColorSchemeVariant3d.tonalSpot => DynamicSchemeVariant.tonalSpot,
+      ColorSchemeVariant3d.fidelity => DynamicSchemeVariant.fidelity,
+      ColorSchemeVariant3d.monochrome => DynamicSchemeVariant.monochrome,
+      ColorSchemeVariant3d.neutral => DynamicSchemeVariant.neutral,
+      ColorSchemeVariant3d.vibrant => DynamicSchemeVariant.vibrant,
+      ColorSchemeVariant3d.expressive => DynamicSchemeVariant.expressive,
+      ColorSchemeVariant3d.content => DynamicSchemeVariant.content,
+      ColorSchemeVariant3d.rainbow => DynamicSchemeVariant.rainbow,
+      ColorSchemeVariant3d.fruitSalad => DynamicSchemeVariant.fruitSalad,
+    };
 
 /// [scheme] with exactly one role replaced by a colour nothing else uses.
 ColorScheme3d _withRoleChanged(ColorScheme3d scheme, String role) {

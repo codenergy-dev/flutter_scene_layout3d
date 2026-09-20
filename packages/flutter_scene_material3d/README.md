@@ -118,9 +118,16 @@ Five of the families are Material's, transcribed:
 - **`ColorScheme3d`** — the colour roles, all forty-six of them, in a
   hand-written light and dark baseline. A role is a *job* rather than a
   colour: `primary` is "the most prominent thing on this screen",
-  `onPrimary` is "what reads on top of that". Generating a scheme from a seed
-  colour is out of scope; the baselines are enough to build every component
-  against, and a generator can be added later without touching one.
+  `onPrimary` is "what reads on top of that". An application with a brand
+  does not use the baseline, so there is also
+  `ColorScheme3d.fromSeed(seedColor: brand)`, which derives all forty-six from
+  one colour through Material's tonal palettes — a `brightness`, one of nine
+  `ColorSchemeVariant3d` rules, and a `contrastLevel` for accessibility.
+  **A seed is an input to the palettes, not a role of the result**: seeded
+  with Material's own `#6750A4` it comes back with `#65558F` as its `primary`,
+  because `tonalSpot` clamps chroma to 36, and twenty-seven of the forty-six
+  roles differ from the baseline. That is the generator working, not failing.
+  Override any role afterwards with `copyWith`.
 - **`Typography3d`** — the fifteen-style type scale, as Flutter `TextStyle`s,
   which `Text3d` consumes directly. Sizes are in logical pixels and stay that
   way; `Text3d` multiplies by the metrics to reach world units.

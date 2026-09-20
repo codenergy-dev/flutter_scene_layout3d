@@ -1976,7 +1976,11 @@ The final tally: **505** headless tests here, **944** in the layout package,
 - **A seed-generated colour scheme.** M3's tonal-palette algorithm is a
   package's worth of work; hand-written light and dark baselines are enough to
   build every component against, and a generator can be added later without
-  changing a single component.
+  changing a single component. *Since closed:* the second half held exactly —
+  `ColorScheme3d.fromSeed` touched no component — and the first half was wrong
+  by then, because the package in question is one `package:flutter` already
+  depends on. See
+  [a scheme from one colour](2026_09_20_a_scheme_from_one_colour.md).
 - **Motion tokens.** M3's easing and duration sets are worth adopting, but only
   once enough components animate to know which ones are actually used. Phase 8
   is the first component that animates at all, and it deliberately did **not**

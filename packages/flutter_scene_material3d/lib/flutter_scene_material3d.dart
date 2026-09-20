@@ -151,6 +151,7 @@ export 'src/theme/tweens.dart'
         Thickness3dTween,
         Typography3dTween;
 export 'src/tokens/color_scheme.dart' show ColorScheme3d;
+export 'src/tokens/color_scheme_variant.dart' show ColorSchemeVariant3d;
 export 'src/tokens/depth.dart' show Elevation3d, Thickness3d;
 export 'src/tokens/motion.dart' show MotionScheme3d;
 export 'src/tokens/shape.dart' show ShapeScale3d;

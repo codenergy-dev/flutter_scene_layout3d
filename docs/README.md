@@ -139,9 +139,9 @@ Two entry points:
 - **What is being built next** is
   [what a real application still needs](../packages/flutter_scene_layout3d/plans/2026_09_11_what_a_real_application_still_needs.md),
   the index of the seventeen plans between a finished catalogue and an
-  application people use — **eleven closed, six open**, and the whole motion
-  lane now among the closed. It is a map rather than
-  a work item: each row becomes a plan of its own when it is picked up.
+  application people use — **twelve closed, five open**, with the whole motion
+  lane among the closed and the colour generator with it. It is a map rather
+  than a work item: each row becomes a plan of its own when it is picked up.
   [An application that does not wire its own rays](../packages/flutter_scene_layout3d/plans/2026_09_11_an_application_that_does_not_wire_its_own_rays.md)
   is the first of them, and it led for the reason the map gave: it is the item
   every other item is consumed through. `SceneInput3d` wraps the `SceneView`
@@ -247,7 +247,7 @@ Two entry points:
   plan: it generated its variants by patching the shaders this work has now
   patched.
 - **A hero that flies between two routes** is
-  [the eleventh](../packages/flutter_scene_layout3d/plans/2026_09_20_a_hero_that_flies_between_two_routes.md),
+  [the thirteenth](../packages/flutter_scene_layout3d/plans/2026_09_20_a_hero_that_flies_between_two_routes.md),
   and it closes the motion lane. `Hero3d` matches a box on an arriving route
   with one carrying the same tag on the route it covers, and flies between
   them. **What flies is built rather than reparented** — the constraint
@@ -262,6 +262,24 @@ Two entry points:
   `anchorOffsetTo`, and a **widget-built route has no subtree at all in the
   turn that pushed it**, so the arriving side could not be collected there —
   a defect both headless suites were green through, and the gallery caught.
+- **A scheme from one colour** is
+  [the fourteenth](../packages/flutter_scene_material3d/plans/2026_09_20_a_scheme_from_one_colour.md),
+  and it is the item on that map with the shortest distance between its
+  reasoning and its correction. `ColorScheme3d.fromSeed` derives all
+  forty-six roles from a brand colour, through Material's tonal palettes,
+  across nine variants and a contrast level. **Both halves of what the map
+  said about it were wrong.** Its proposed oracle — that a scheme seeded with
+  Material's own `#6750A4` should reproduce the hand-written baseline — is
+  false, and neither side is at fault: a seed is an input to the *palettes*
+  rather than a role of the result, `tonalSpot` clamps chroma to 36 where that
+  seed's own is 47.9, and twenty-seven of the forty-six roles differ. And it
+  is not "a package's worth of work", because the package is
+  `material_color_utilities`, which `package:flutter` already depends on and
+  which Flutter's own generator is built out of — so the drift test compares
+  the two generators exactly instead of within a tolerance, and 3,910 lines of
+  CAM16 colour science stayed unforked. The figure worth carrying: a generated
+  scheme costs **679µs**, so `fromSeed` memoizes, because a theme is installed
+  from a `build` method and a `build` method runs on frames.
 - **The motion tokens** are
   [the tenth](../packages/flutter_scene_material3d/plans/2026_09_17_the_motion_tokens.md),
   the first plan in the Material package since its own ten phases, and the

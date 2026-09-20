@@ -37,6 +37,18 @@ dependencies:
   flutter_scene: ^0.23.0
   flutter_scene_layout3d:
     path: ../flutter_scene_layout3d
+  # What `ColorScheme3d.fromSeed` generates a scheme with, and the same
+  # library Flutter's own `ColorScheme.fromSeed` is built out of — which is
+  # what makes the drift test in `test/color_scheme_test.dart` an exact
+  # comparison rather than a tolerance. It is already in the graph of every
+  # Flutter application: `package:flutter` depends on it directly and the SDK
+  # pins it, so naming it here adds no package.
+  #
+  # **The pin is the SDK's, so bump this when Flutter bumps that.** A caret on
+  # a 0.x version means `>=0.13.0 <0.14.0`; the day
+  # `packages/flutter/pubspec.yaml` moves to 0.14.0, this constraint is what
+  # refuses to resolve, and the fix is to move it rather than to loosen it.
+  material_color_utilities: ^0.13.0
   # The one matrix this package writes itself: `NodeShift3d` stretches a
   # slider's active track on the node tier. `vector_math`, never
   # `vector_math_64` — see docs/engine-rules.md.

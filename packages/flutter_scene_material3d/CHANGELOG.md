@@ -1,5 +1,36 @@
 ## Unreleased
 
+- **A whole scheme from one colour.** `ColorScheme3d.fromSeed` derives all
+  forty-six roles from a brand colour, because no real application uses the
+  Material baseline and until now there was nothing else to start from. It
+  takes a `brightness`, a `ColorSchemeVariant3d` — Material's nine palette
+  rules, `tonalSpot` by default and `fidelity` for when a brand colour has to
+  survive intact rather than be made polite — and a `contrastLevel` from −1.0
+  to 1.0, which is the accessibility knob.
+  - **It takes no per-role overrides, and Flutter's takes forty-six.**
+    `copyWith` already covers every role, so
+    `ColorScheme3d.fromSeed(seedColor: brand).copyWith(error: brandRed)` says
+    the same thing in less.
+  - **A generated scheme is deliberately not the baseline.** Seeded with
+    Material's own `#6750A4`, twenty-seven of the forty-six roles come back
+    different — `primary` is `#65558F`, because `tonalSpot` clamps the primary
+    palette's chroma to 36 and that seed's own is 47.9. A seed is an input to
+    the palettes, not a role of the result. `light` and `dark` stay exactly
+    what they were: the published baseline token set.
+  - **It is memoized, and that is what makes it safe in a `build` method.**
+    Generating a scheme runs a CAM16 solve once per role and costs about
+    679µs, four percent of a 60Hz frame; equal arguments now come back out of
+    a bounded least-recently-used cache instead. Nothing observable changes —
+    the schemes are `==` either way — but a theme installed from a `build`
+    method no longer re-derives a colour that did not move.
+  - `material_color_utilities` is a dependency now. It is the library
+    Flutter's own `ColorScheme.fromSeed` is built out of, `package:flutter`
+    already depends on it, and using it rather than transcribing 3,910 lines
+    of CAM16 is what makes the drift test an exact comparison against
+    Flutter's generator across nine variants, nine seeds, both brightnesses
+    and five contrast levels. **Its constraint tracks the SDK's pin**; the
+    pubspec says so where a reader upgrading Flutter will find it.
+
 - **The engine has to come from git until `flutter_scene` 0.24.0 is
   published.** On 0.23.0 a GPU-bound scene blocks the calling thread on the
   GPU's backlog and draw calls Flutter has already encoded into an offscreen

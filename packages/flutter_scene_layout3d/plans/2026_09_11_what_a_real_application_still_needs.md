@@ -1,8 +1,8 @@
 ---
 status: in progress
-reason: six of the seventeen items are open, and the whole motion lane is now closed; what is left is the catalogue batch, a scheme from one colour, more than one screen, more than one language, and the letter someone can type with the keyboard controls behind it
+reason: five of the seventeen items are open; the motion lane is closed and so is the colour generator, so what is left is the catalogue batch, more than one screen, more than one language, and the letter someone can type with the keyboard controls behind it
 created_at: 2026-09-11T21:20:18Z
-updated_at: 2026-09-20T16:00:00Z
+updated_at: 2026-09-20T20:10:00Z
 commit: abc2469ce5c4ec4c41e2738fc5acf55bcf40640a
 ---
 
@@ -107,7 +107,7 @@ plan, which is the rule phase 0 established and every phase since has obeyed.
 | ~~[A way to test a screen someone else built](#a-way-to-test-a-screen-someone-else-built)~~ | layout3d | **done** — anyone building on this, including us |
 | ~~[The motion tokens](#the-motion-tokens)~~ | material3d | **done** — every overlay in the catalogue arrives instead of appearing |
 | [The components a screen still needs](#the-components-a-screen-still-needs) | material3d | the two thirds of M3 not yet here |
-| [A scheme from one colour](#a-scheme-from-one-colour) | material3d | any application with a brand |
+| ~~[A scheme from one colour](#a-scheme-from-one-colour)~~ | material3d | **done** — any application with a brand |
 | [The controls that wait on a keyboard](#the-controls-that-wait-on-a-keyboard) | material3d | search, dropdowns, date and time entry |
 | [A catalogue that speaks more than one language](#a-catalogue-that-speaks-more-than-one-language) | material3d | every locale, and the strings the catalogue invents |
 | ~~[The record of what shipped](#the-record-of-what-shipped)~~ | both | **done** — the next reader trusting what they read |
@@ -199,8 +199,12 @@ last row of it**: the motion lane is done.
 
 Then [the catalogue batch](#the-components-a-screen-still-needs), which is
 broad and shallow, and
-[a scheme from one colour](#a-scheme-from-one-colour), which is narrow and
-deep and independent of everything.
+~~[a scheme from one colour](#a-scheme-from-one-colour)~~ — **done**, and it
+was taken first of the two, see
+[its plan](../../flutter_scene_material3d/plans/2026_09_20_a_scheme_from_one_colour.md).
+It was narrow and independent exactly as this said, and it was not deep: the
+depth was all in a library every Flutter application already carries. **The
+catalogue batch is now the only thing left in the middle of this queue.**
 
 **[A letter someone can type](#a-letter-someone-can-type) last of the large
 items, and it is much larger than anything above it.** It gates
@@ -319,7 +323,16 @@ being about sizes.
   did not exist before — [a scheme from one colour](#a-scheme-from-one-colour)
   and the motion lane, which interpolates them per frame. A decoration built
   with a freshly computed colour every frame defeats the cache silently: the
-  frame rate falls and nothing says why.
+  frame rate falls and nothing says why. **Settled for the colour half, and
+  the hazard was one layer up from where this expected it:** a generated
+  scheme's roles are ordinary `Color`s and key the painter cache perfectly
+  well, so nothing downstream is defeated — what costs is *generating* it, at
+  679µs a call, which an author spends every frame by writing
+  `ColorScheme3d.fromSeed` in the `build` method that installs the theme.
+  `fromSeed` therefore memoizes on its four arguments. **Anything else here
+  that derives a value expensively from a few arguments should do the same
+  rather than assume the painter cache covers it** — the two caches answer
+  different questions.
 - **A rounded clip still does not exist.** `Clip3dRegion` is an intersection of
   planes, so it is convex, and a corner radius is carved by the panel shader
   rather than clipped. Anything on this map that wants to cut a child to a
@@ -954,6 +967,35 @@ should be grouped by what they actually need:
 
 **Package:** `flutter_scene_material3d`.
 **Slug:** `a_scheme_from_one_colour`.
+**Closed** by
+[its own plan](../../flutter_scene_material3d/plans/2026_09_20_a_scheme_from_one_colour.md).
+The entry below is what it was reasoned from, and **both halves of its last
+paragraph are wrong**.
+
+The oracle it proposes does not exist. A generated scheme does *not* reproduce
+the hand-written tables — seeded with Material's own `#6750A4`, twenty-seven
+of the forty-six roles come back different — and **neither of the two is
+wrong**: a seed is an input to the tonal palettes rather than a role of the
+result, `tonalSpot` clamps the primary palette's chroma to 36 where that
+seed's own is 47.9, and a generated scheme takes the variant's error palette
+instead of the baseline's error tokens. The hand-written tables are the
+published baseline token set and stay exactly as they are. **A `fromSeed` that
+reproduced them would be the bug.** The real oracle was better and was
+available the whole time: Flutter's own `ColorScheme.fromSeed`, role by role,
+across nine variants, nine seeds, both brightnesses and five contrast levels.
+
+And it is not "a package's worth of work", because **the package is already in
+every Flutter application's dependency graph**. `material_color_utilities` is
+what Flutter's own generator is built out of and `package:flutter` depends on
+it directly, so declaring it names a package that is already there.
+Transcribing it instead was measured at 3,910 lines of CAM16 colour science —
+a fork of a Google library, maintained to produce the same integers, in a
+repository whose first rule is that it is a consumer rather than a fork. What
+this package writes is the part that is genuinely its own: the role-to-field
+mapping, the variant vocabulary and a memo. The one figure worth carrying
+forward is that **a generated scheme costs 679µs**, so `fromSeed` memoizes —
+a theme is installed from a `build` method and a `build` method runs on
+frames.
 
 `ColorScheme3d` carries all of M3's roles, complete and pinned against
 Flutter's defaults, in exactly two instances: a hand-written `light` and a
