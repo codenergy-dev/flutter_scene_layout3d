@@ -21,11 +21,43 @@ dependencies:
     git:
       url: https://github.com/codenergy-dev/flutter_scene_layout3d.git
       path: packages/flutter_scene_layout3d
+
+# Temporary, and the reason is below: 0.23.0 loses draw calls out of an
+# offscreen render, which this package's glyph atlas bakes into a texture.
+dependency_overrides:
+  flutter_scene:
+    git:
+      url: https://github.com/bdero/flutter_scene.git
+      path: packages/flutter_scene
+      ref: 25f133d90716348f76565362be597b33ebc6e4db
+  scene:
+    git:
+      url: https://github.com/bdero/flutter_scene.git
+      path: packages/scene
+      ref: 25f133d90716348f76565362be597b33ebc6e4db
 ```
 
 Flutter 3.29 or newer, and the app must be run with `--enable-flutter-gpu`;
 without that flag the engine renders nothing at all. Verified on macOS, which
 is where this project's render probes run.
+
+**Take the engine from git until 0.24.0 is published**, or expect letters to
+come out hollow. On `flutter_scene` 0.23.0 a GPU-bound scene blocks the calling
+thread on the GPU's backlog, and that queue is serialized with the raster
+thread's own submissions; while it is blocked, draw calls Flutter has already
+encoded into an offscreen `Picture.toImage` are lost — the ones encoded first,
+text or not. A glyph atlas draws its letters into exactly such a render, and it
+keeps the result, so the loss is permanent until the atlas repacks. Maximizing
+a window is enough to make a scene GPU-bound on an integrated GPU, and that is
+all it takes. It is fixed upstream by `Scene.maxGpuFramesInFlight`, written and
+not yet released; `ref` above is a commit verified to contain it.
+
+Two things follow that are easy to get wrong. The `scene` override is not
+optional — the engine's git version needs a newer `scene` than pub.dev has, and
+leaving it out fails to resolve. And when 0.24.0 lands, `flutter_scene:
+^0.23.0` must become `^0.24.0`: on a 0.x version the caret means
+`>=0.23.0 <0.24.0`, so the constraint that looks permissive would *refuse* the
+release that carries the fix.
 
 If you want Material components rather than the protocol on its own,
 [`flutter_scene_material3d`](../flutter_scene_material3d) is built on this and

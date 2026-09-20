@@ -1,5 +1,19 @@
 ## Unreleased
 
+- **The engine has to come from git until `flutter_scene` 0.24.0 is
+  published.** On 0.23.0 a GPU-bound scene blocks the calling thread on the
+  GPU's backlog, and that queue is serialized with the raster thread's own
+  submissions; while it is blocked, draw calls Flutter has already encoded into
+  an offscreen `Picture.toImage` are lost — the ones encoded first, text or
+  not. A glyph atlas draws its letters into exactly such a render and keeps the
+  result, so on 0.23.0 this package's text comes out hollow and stays hollow
+  once a window has been maximized. **The fix is not in this package and there
+  is nothing here to upgrade to**: it is `Scene.maxGpuFramesInFlight` upstream,
+  written and unreleased. `README.md` carries the `dependency_overrides` to
+  copy, including the `scene` one, which is not optional. When 0.24.0 lands,
+  the constraint has to move to `^0.24.0` as well — on a 0.x version `^0.23.0`
+  means `>=0.23.0 <0.24.0`, so it would refuse the release that fixes this.
+
 - **A glyph is typeset once, and copied forward ever after.** `GlyphAtlas3d`
   used to typeset its whole alphabet into a fresh picture on every flush, so a
   repack re-drew every letter it already had. It now draws a glyph once and

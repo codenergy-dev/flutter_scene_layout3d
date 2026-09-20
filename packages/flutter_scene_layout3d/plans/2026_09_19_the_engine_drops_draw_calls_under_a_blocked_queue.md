@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-09-19T18:30:00Z
-updated_at: 2026-09-19T21:00:00Z
+updated_at: 2026-09-20T12:00:00Z
 commit: 41fbce3d63c2cb4ab1c1f1e5b9e4b46c2b6f2f0e
 ---
 
@@ -92,6 +92,21 @@ same cells.
 
 **So there is no pull request to open.** The work is done upstream; it is
 waiting on a release.
+
+What this workspace does in the meantime is pin it. The root `pubspec.yaml`
+overrides `flutter_scene` — and `scene`, which is not optional, because the
+engine's git version needs a newer one than pub.dev has — to
+`25f133d90716348f76565362be597b33ebc6e4db`, a commit verified to have
+`6ce121f1` as an ancestor. Pinned rather than tracking `master` because
+`pubspec.lock` is not committed here, so a bare branch would hand every fresh
+clone whatever upstream had that minute. The reasoning is written at the
+override, in `docs/engine-rules.md` for a reader looking at the engine, and in
+both packages' READMEs and changelogs for a consumer.
+
+**Deleting the override when 0.24.0 lands is not the whole job.** On a 0.x
+version `^0.23.0` means `>=0.23.0 <0.24.0`, so the four constraints — both
+packages, both examples — would refuse the release that carries the fix, and
+the defect would come straight back on the next `pub get`.
 
 ## What it looks like when it is fixed
 

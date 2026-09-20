@@ -9,3 +9,42 @@ workspace:
   - packages/flutter_scene_material3d
   - examples/layout3d_gallery
   - examples/render_probe
+
+# **The engine comes from git, not pub.dev, and this is temporary.**
+#
+# `flutter_scene` 0.23.0 — the newest published version — blocks the calling
+# thread on the GPU's backlog, and that queue is serialized with the raster
+# thread's own submissions. While it is blocked, draw calls Flutter has already
+# encoded into an offscreen `Picture.toImage` are lost: the ones encoded first,
+# text or not. A glyph atlas bakes the loss into a texture and keeps it, so the
+# gallery's letters come out hollow the moment the window is maximized. It is
+# fixed upstream by `Scene.maxGpuFramesInFlight`, in the engine's 0.24.0, which
+# is written but not released.
+#
+# The overrides sit here, in the workspace root, because a pub workspace has
+# one resolution for every member: an override written in one example silently
+# governs both packages and the other example too, which is not what it looks
+# like it says.
+#
+# **Pinned to a commit on purpose.** `pubspec.lock` is not committed, so a bare
+# `master` would hand every fresh clone and every CI run whatever upstream had
+# that minute. This one is verified: `6ce121f1`, the commit that fixes it, is
+# an ancestor of it, and the gallery was run against it by hand.
+#
+# **When 0.24.0 is published**: delete this block, and bump the four
+# `flutter_scene: ^0.23.0` constraints to `^0.24.0` — on a 0.x version the
+# caret means `>=0.23.0 <0.24.0`, so leaving them alone would *refuse* the
+# release that carries the fix. The four are the two packages and the two
+# examples. `docs/engine-rules.md` says the same thing where a reader looking
+# at the engine would find it.
+dependency_overrides:
+  flutter_scene:
+    git:
+      url: https://github.com/bdero/flutter_scene.git
+      path: packages/flutter_scene
+      ref: 25f133d90716348f76565362be597b33ebc6e4db
+  scene:
+    git:
+      url: https://github.com/bdero/flutter_scene.git
+      path: packages/scene
+      ref: 25f133d90716348f76565362be597b33ebc6e4db

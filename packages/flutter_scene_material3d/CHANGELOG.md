@@ -1,5 +1,14 @@
 ## Unreleased
 
+- **The engine has to come from git until `flutter_scene` 0.24.0 is
+  published.** On 0.23.0 a GPU-bound scene blocks the calling thread on the
+  GPU's backlog and draw calls Flutter has already encoded into an offscreen
+  render are lost, which the layout package's glyph atlas bakes into a texture
+  and keeps — so every label in this catalogue comes out hollow once a window
+  has been maximized. It is fixed upstream and unreleased; `README.md` carries
+  the `dependency_overrides` to copy, and the layout package's changelog has
+  the whole of it.
+
 - **A modal's scrim dims the screen evenly.** Its alpha is spent as
   *coverage* rather than as a blend: the slab draws in its colour at full
   strength and keeps that fraction of its fragments, which is the same

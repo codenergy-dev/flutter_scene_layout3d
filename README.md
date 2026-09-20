@@ -37,7 +37,28 @@ dependencies:
     git:
       url: https://github.com/codenergy-dev/flutter_scene_layout3d.git
       path: packages/flutter_scene_material3d
+
+# Temporary: 0.23.0 loses draw calls out of an offscreen render, which the
+# glyph atlas bakes into a texture, so letters come out hollow once a window
+# has been maximized. Fixed upstream, unreleased. Both entries are needed.
+dependency_overrides:
+  flutter_scene:
+    git:
+      url: https://github.com/bdero/flutter_scene.git
+      path: packages/flutter_scene
+      ref: 25f133d90716348f76565362be597b33ebc6e4db
+  scene:
+    git:
+      url: https://github.com/bdero/flutter_scene.git
+      path: packages/scene
+      ref: 25f133d90716348f76565362be597b33ebc6e4db
 ```
+
+**The `dependency_overrides` are not optional until `flutter_scene` 0.24.0 is
+published**, and neither is the `scene` entry beside them — the engine's git
+version needs a newer `scene` than pub.dev has. Why, and what to change when
+0.24.0 lands, is in
+[the layout package's README](packages/flutter_scene_layout3d/README.md#installing).
 
 Two things to know before the first run. **The app has to be launched with
 `--enable-flutter-gpu`** — the engine draws through Flutter GPU and without

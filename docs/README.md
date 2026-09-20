@@ -35,7 +35,9 @@ several files, guidance for using the engine underneath.
 - **[engine-rules.md](engine-rules.md)** — `flutter_scene` diverges from
   three.js, Godot and Unity in specific ways, and most first-attempt failures
   come from reaching for another engine's spelling. Short, and each item is a
-  build failure or a silent wrong result.
+  build failure or a silent wrong result. It also opens with **which version of
+  the engine this workspace is on** — the published 0.23.0 is not usable here,
+  and what has to change when 0.24.0 lands is more than deleting an override.
 
 ## The diagrams
 

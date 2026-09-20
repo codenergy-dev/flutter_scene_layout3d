@@ -14,10 +14,22 @@ than scattering it.
 
 ## What this repository is, and is not
 
-It is a **consumer** of `flutter_scene`, not a fork of it. The engine is a pub
-dependency like any other. Work here never edits the engine; if something is
-genuinely missing from `flutter_scene`, the answer is either to work around it
-on this side or to open an issue upstream, and to write down which.
+It is a **consumer** of `flutter_scene`, not a fork of it. Work here never
+edits the engine; if something is genuinely missing from `flutter_scene`, the
+answer is either to work around it on this side or to open an issue upstream,
+and to write down which.
+
+**The engine is not a pub dependency right now**, and that is the one
+outstanding case of the rule above. The published 0.23.0 loses draw calls out
+of an offscreen render, which this package's glyph atlas bakes into a texture
+and keeps; the workspace root overrides it with a pinned commit from upstream's
+git, where it is already fixed. Nothing was written upstream and nothing is
+owed there — 0.24.0 carries the fix and has not been released. The override
+carries its own reasoning, the engine-facing half is in
+[docs/engine-rules.md](docs/engine-rules.md) under *The version this workspace
+is on*, and the measurement is in [docs/traps.md](docs/traps.md). **Deleting
+the override is not enough when 0.24.0 lands** — the four `^0.23.0` constraints
+have to move with it, or the release that fixes this is the one they refuse.
 
 The package began inside a fork of the engine's own monorepo and was moved out
 once it became clear the scope was its own project. That history is preserved:
@@ -77,13 +89,19 @@ Start there rather than here when you want the shape of the remaining work.
 Everything below runs from the repository root unless stated otherwise.
 
 ```sh
-flutter pub get                                      # resolves the workspace
+flutter pub get                                      # clones the engine, see below
 cd packages/flutter_scene_layout3d && flutter test   # 1276 today
 cd packages/flutter_scene_material3d && flutter test # 569 today
 cd examples/layout3d_gallery && flutter test         # 5 today
 dart analyze                                         # must be clean, everywhere
 dart format .                                        # before every commit
 ```
+
+The first of those clones a git repository, which is not what a workspace
+usually does: the engine is overridden to a pinned upstream commit, for the
+reason the section above gives. A `pub get` that suddenly resolves
+`flutter_scene` from pub.dev means the override was lost, and the gallery's
+text will start breaking on the next window resize.
 
 All three suites are headless, all three must be green, and CI runs all
 three. The Material

@@ -9,6 +9,41 @@ This repository is a **consumer** of the engine, not a fork of it. Work here
 never edits it; if something is genuinely missing, the answer is to work around
 it on this side or open an issue upstream — and to write down which.
 
+## The version this workspace is on, and why it is not the published one
+
+`flutter_scene` **0.23.0, the newest published version, is not usable here**.
+The workspace root's `pubspec.yaml` overrides it with a pinned commit from
+upstream's git, and that is deliberate rather than a leftover:
+
+> On 0.23.0 a GPU-bound scene blocks the calling thread on the GPU's backlog,
+> and that queue is serialized with the raster thread's own submissions. While
+> it is blocked, draw calls Flutter has already encoded into an offscreen
+> `Picture.toImage` are lost — **the ones encoded first**, text or not.
+
+A glyph atlas draws its letters into exactly such a render and keeps the
+result, so the letters come out hollow and stay hollow. Maximizing a window is
+enough to make a scene GPU-bound on an integrated GPU. It is not a defect in
+this repository and it cannot be fixed here — the gallery's plain Flutter
+`Text` in the corner breaks the same way. The whole measurement is *The engine
+drops the draw calls it encoded first* in [traps.md](traps.md).
+
+It is fixed upstream by `Scene.maxGpuFramesInFlight` and its default of 1, in
+the engine's **0.24.0**, which is written and not yet released.
+
+Three things a reader needs from this, and each has already cost something:
+
+- **The `scene` override is not optional.** The engine's git version needs a
+  newer `scene` package than pub.dev has, and without both overrides the
+  workspace does not resolve at all.
+- **The commit is pinned rather than tracking `master`**, because
+  `pubspec.lock` is not committed here: a bare branch would hand every fresh
+  clone and every CI run whatever upstream had that minute.
+- **When 0.24.0 is published, bump the constraints as well as deleting the
+  override.** On a 0.x version `^0.23.0` means `>=0.23.0 <0.24.0`, so the four
+  `flutter_scene: ^0.23.0` constraints — both packages, both examples — would
+  *refuse* the release that carries the fix. Deleting the override without
+  bumping them puts the defect straight back.
+
 ## Do not reach for these
 
 - **Not `package:vector_math/vector_math_64.dart`.** Use
