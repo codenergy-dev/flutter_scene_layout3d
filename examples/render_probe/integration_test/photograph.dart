@@ -75,6 +75,19 @@ Future<Photograph> photograph(
 ///
 /// The way to ask a question about motion: the gallery's panel turns, and a
 /// second photograph a few seconds later shows it from another angle.
+/// Advances the clock by [frames] frames without taking a picture.
+///
+/// The same loop [photographAgain] runs, and it exists separately because
+/// `pumpAndSettle` is not usable against this app: the binding has a real
+/// clock and the gallery schedules a frame from its `onTick` for ever, so
+/// there is no moment at which no further frame is coming.
+Future<void> pumpFrames(WidgetTester tester, int frames) async {
+  for (var i = 0; i < frames; i++) {
+    await tester.pump(const Duration(milliseconds: 16));
+    await Future<void>.delayed(const Duration(milliseconds: 16));
+  }
+}
+
 Future<Photograph> photographAgain(
   WidgetTester tester, {
   required String name,

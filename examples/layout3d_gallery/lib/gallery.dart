@@ -83,6 +83,16 @@ class _Layout3dGalleryState extends State<Layout3dGallery> {
   /// What the cursor is over, by semantic label or layout name.
   String? _under;
 
+  /// The colour every scheme in this scene is generated from, and which of
+  /// the two schemes is in force.
+  ///
+  /// It lives here rather than in either screen because **two surfaces share
+  /// one theme**: the picker is on the upright screen's settings tab, and
+  /// throwing it re-themes the table as well. `GalleryTheme3d` is how it
+  /// reaches the control that changes it.
+  Color _seed = GalleryTheme3d.defaultSeed;
+  Brightness _brightness = Brightness.light;
+
   /// Makes the renderer one label draws its glyphs with.
   ///
   /// **A method, so that it is the same function every build.**
@@ -313,9 +323,26 @@ class _Layout3dGalleryState extends State<Layout3dGallery> {
   /// of this state, rather than a closure written here. See what that field
   /// says: a closure here is a new function every build and rebuilds every
   /// renderer in the scene.
-  Widget _themed(Widget child) => SceneTheme3d(
-    data: Theme3dData.light,
-    textRendererFactory: _textRenderer,
-    child: child,
+  Widget _themed(Widget child) => GalleryTheme3d(
+    seed: _seed,
+    brightness: _brightness,
+    onSeedChanged: (value) => setState(() => _seed = value),
+    onBrightnessChanged: (value) => setState(() => _brightness = value),
+    child: SceneTheme3d(
+      // Generated rather than one of the two baselines, because that is what
+      // an application with a brand does — and because the gallery is the
+      // only place a person can see whether a generated scheme actually
+      // *looks* like a scheme. `Theme3dData` has value semantics and
+      // `fromSeed` memoizes, so a build that changed nothing hands back an
+      // equal theme and relayouts nothing.
+      data: Theme3dData(
+        colorScheme: ColorScheme3d.fromSeed(
+          seedColor: _seed,
+          brightness: _brightness,
+        ),
+      ),
+      textRendererFactory: _textRenderer,
+      child: child,
+    ),
   );
 }

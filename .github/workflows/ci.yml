@@ -78,9 +78,12 @@ jobs:
             -d macos --enable-flutter-gpu
         working-directory: examples/render_probe
 
-      # Not a probe: two photographs of the gallery, asserting only that a
+      # Not a probe: six photographs of the gallery, asserting only that a
       # frame came out. The question they exist for is whether anything is
-      # obviously wrong, which is a person's, so the pictures are kept.
+      # obviously wrong, which is a person's, so the pictures are kept. Two of
+      # them are the settings tab before and after a colour swatch is pressed,
+      # because whether a generated scheme reads as a theme is the one claim
+      # about it that no role table can settle.
       - name: Photograph the gallery
         run: |
           flutter drive \

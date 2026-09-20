@@ -152,9 +152,21 @@ flutter drive --driver=test_driver/photograph.dart \
 The PNGs land in `build/photographs/` — `gallery.png`, and `gallery_later.png`
 a few seconds on, because the upright screen turns and a turned panel is a
 question of its own; then `gallery_dialog_arriving.png` and `gallery_dialog.png`
-with the About dialog over the screen. CI uploads them all from every run, as
-the `photographs` artifact. The test asserts only the floor a probe asserts,
-that a frame came out; nothing in it is a golden.
+with the About dialog over the screen; then `gallery_picker.png` and
+`gallery_reseeded.png`, the settings tab before and after a colour swatch is
+pressed. CI uploads them all from every run, as the `photographs` artifact.
+The test asserts only the floor a probe asserts, that a frame came out;
+nothing in it is a golden.
+
+**The last pair is the only lane that can judge a generated colour scheme.**
+The gallery draws a scheme built by `ColorScheme3d.fromSeed` rather than
+either hand-written baseline, and its settings tab carries the picker that
+changes the seed under both Material surfaces at once. A role-by-role
+comparison against Flutter's own generator says the forty-six numbers are
+right — it is in the Material package's suite and it is exact — and it cannot
+say whether the result reads as a theme. The swatch pressed is the teal, the
+furthest from the violet the gallery starts on, so a seed that never reached
+the theme is obvious rather than subtle.
 
 **`gallery_dialog_arriving` is ten frames after the tap and the number is the
 whole point.** The dialog brings a paragraph of `bodyMedium` — dozens of

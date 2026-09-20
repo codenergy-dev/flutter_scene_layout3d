@@ -74,7 +74,12 @@ void main() {
     await tester.pump();
 
     expect(find3d.bySemanticsLabel('Volume'), findsOne);
-    expect(find3d.bySubtype<ListView3d>(), findsNothing);
+    // The inbox's own rows are gone. This used to ask whether *any*
+    // `ListView3d` was left, which stopped meaning "the inbox is gone" the
+    // day the settings tab became a list of its own — it had to, because the
+    // theme picker is one row more than the panel holds.
+    expect(find3d.bySemanticsLabel('Ada Lovelace'), findsNothing);
+    expect(find3d.bySubtype<ListView3d>(), findsOne);
   });
 
   testWidgets('every control on the settings screen stands on the face of '
@@ -90,7 +95,16 @@ void main() {
     await tester.tap3d(find3d.bySemanticsLabel('Settings'));
     await tester.pump();
 
-    for (final label in <String>['Notifications', 'Compact rows', 'Volume']) {
+    // The swatches are in this list because they are the newest interactive
+    // control on the screen and the smallest: a 40dp disc with a 48dp reach,
+    // which is exactly the shape the catalogue has got wrong before.
+    for (final label in <String>[
+      'Notifications',
+      'Dark theme',
+      'Volume',
+      'Violet theme',
+      'Teal theme',
+    ]) {
       final control = find3d.bySemanticsLabel(label);
       expect(
         find3d.ancestor(
@@ -192,6 +206,72 @@ void main() {
       rows.every((hero) => !hero.isFlying),
       isTrue,
       reason: 'a settled flight gives both ends back',
+    );
+  });
+
+  testWidgets('the picker re-themes the scene from one colour, and the '
+      'switch changes its brightness', (tester) async {
+    // The headless half of what the gallery is for. Whether a generated
+    // scheme *looks* like a scheme is a question only the window answers —
+    // this asks the one the layout can: that pressing a swatch reaches the
+    // theme both surfaces read, rather than only the callback beside it.
+    var seed = GalleryTheme3d.defaultSeed;
+    var brightness = Brightness.light;
+
+    await tester.pumpSurface3d(
+      StatefulBuilder(
+        builder: (context, setState) => GalleryTheme3d(
+          seed: seed,
+          brightness: brightness,
+          onSeedChanged: (value) => setState(() => seed = value),
+          onBrightnessChanged: (value) => setState(() => brightness = value),
+          child: SceneTheme3d(
+            data: Theme3dData(
+              colorScheme: ColorScheme3d.fromSeed(
+                seedColor: seed,
+                brightness: brightness,
+              ),
+            ),
+            child: const SceneOverlay3d(child: MaterialScreen()),
+          ),
+        ),
+      ),
+      size: const Size3d(3.5, 4.8, 0.6),
+    );
+
+    // Read off the tree rather than off the local variable: what is being
+    // asked is whether the screen sees it, not whether the callback ran.
+    ColorScheme3d onScreen() =>
+        Theme3d.of(tester.element(find.byType(MaterialScreen))).colorScheme;
+
+    await tester.tap3d(find3d.bySemanticsLabel('Settings'));
+    await tester.pump();
+    expect(
+      onScreen().primary,
+      ColorScheme3d.fromSeed(seedColor: GalleryTheme3d.defaultSeed).primary,
+    );
+
+    const teal = Color(0xFF00696E);
+    await tester.tap3d(find3d.bySemanticsLabel('Teal theme'));
+    await tester.pumpAndSettle();
+    expect(seed, teal);
+    expect(
+      onScreen().primary,
+      ColorScheme3d.fromSeed(seedColor: teal).primary,
+      reason: 'the swatch re-themed the screen it is drawn on',
+    );
+
+    await tester.tap3d(find3d.bySemanticsLabel('Dark theme'));
+    await tester.pumpAndSettle();
+    expect(brightness, Brightness.dark);
+    expect(onScreen().brightness, Brightness.dark);
+    // And the seed survived the change of brightness: they are two knobs.
+    expect(
+      onScreen().primary,
+      ColorScheme3d.fromSeed(
+        seedColor: teal,
+        brightness: Brightness.dark,
+      ).primary,
     );
   });
 }

@@ -22,6 +22,88 @@ import 'package:flutter_scene_material3d/flutter_scene_material3d.dart';
 /// these screens carry the unit contract (`Layout3dMetrics`), so a 48dp touch
 /// target is 48dp whether the panel is a metre wide or a hand's breadth.
 
+/// The colour the whole gallery is themed from, and the two controls that
+/// change it while it is running.
+///
+/// Every surface in the scene reads one [Theme3dData] built by
+/// `ColorScheme3d.fromSeed`, so this is the seed and the brightness that go
+/// into it, published down to whoever draws the picker. It is the ordinary
+/// inherited-widget shape, and it is here rather than passed through
+/// constructors because the control that changes the theme is *inside* the
+/// screen the theme themes — a settings screen is where a person expects to
+/// find it, and threading two callbacks through `Scaffold3d`'s slots to get
+/// there would say nothing true about the toolkit.
+///
+/// **It reads the gallery, it does not decide it.** The state lives in the
+/// widget that owns the scene, because two surfaces share it.
+class GalleryTheme3d extends InheritedWidget {
+  /// Publishes [seed] and [brightness], and the two ways to change them.
+  const GalleryTheme3d({
+    super.key,
+    required this.seed,
+    required this.brightness,
+    required this.onSeedChanged,
+    required this.onBrightnessChanged,
+    required super.child,
+  });
+
+  /// Material's own baseline primary, and the colour the gallery starts on.
+  ///
+  /// Worth knowing while looking at the window: the scheme it seeds is **not**
+  /// the Material baseline. `tonalSpot` clamps the primary palette's chroma to
+  /// 36 and this colour's own is 47.9, so the gallery in its default state is
+  /// already a generated scheme rather than the hand-written one.
+  static const Color defaultSeed = Color(0xFF6750A4);
+
+  /// The seeds the picker offers, in the order it draws them.
+  ///
+  /// Five rather than more because a swatch's *target* is 48dp while the
+  /// swatch is 40dp — the rule that a target reaches past its own extent —
+  /// so six of them would have their reaches touching on a 350dp panel.
+  static const List<(Color, String)> seeds = <(Color, String)>[
+    (defaultSeed, 'Violet'),
+    (Color(0xFF00696E), 'Teal'),
+    (Color(0xFF4C662B), 'Green'),
+    (Color(0xFF8F4C00), 'Amber'),
+    (Color(0xFFB3005C), 'Crimson'),
+  ];
+
+  /// The colour every scheme in the gallery is generated from.
+  final Color seed;
+
+  /// Whether the gallery is on its light scheme or its dark one.
+  final Brightness brightness;
+
+  /// Called with the seed a swatch was pressed for.
+  final ValueChanged<Color> onSeedChanged;
+
+  /// Called with the brightness the switch was thrown to.
+  final ValueChanged<Brightness> onBrightnessChanged;
+
+  /// The palette in force at [context], or the gallery's default.
+  ///
+  /// **It does not throw**, and the callbacks of the fallback do nothing —
+  /// the same choice `Theme3d.of` makes and for the same reason: a picker
+  /// that draws in the default colours and does not respond is visible and
+  /// diagnosable, and it lets a headless test mount one of these screens on
+  /// its own without standing an application up around it.
+  static GalleryTheme3d of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<GalleryTheme3d>() ??
+      const GalleryTheme3d(
+        seed: defaultSeed,
+        brightness: Brightness.light,
+        onSeedChanged: _ignore,
+        onBrightnessChanged: _ignore,
+        child: SizedBox.shrink(),
+      );
+
+  static void _ignore(Object? value) {}
+
+  @override
+  bool updateShouldNotify(GalleryTheme3d oldWidget) =>
+      seed != oldWidget.seed || brightness != oldWidget.brightness;
+}
+
 /// An upright screen: a bar, a body that changes with the navigation bar, a
 /// floating action button, and a snack bar when it is pressed.
 ///
@@ -43,7 +125,6 @@ class _MaterialScreenState extends State<MaterialScreen> {
 
   // The settings.
   bool _notify = true;
-  bool _compact = false;
   double _volume = 0.65;
 
   static const List<(String, String)> _messages = <(String, String)>[
@@ -367,15 +448,72 @@ class _MaterialScreenState extends State<MaterialScreen> {
   }
 
   /// The controls, each one a real state that a press actually changes.
+  /// One colour the gallery can be generated from.
+  ///
+  /// **The swatch shows the scheme's `primary`, not the seed.** A seed is an
+  /// input to the tonal palettes rather than a role of the result, so a
+  /// swatch painted in the raw seed would promise a colour the theme never
+  /// takes — the violet one is the clearest case, `#6750A4` in and `#65558F`
+  /// out. Generating a scheme to find that out costs 679µs, which is why it
+  /// is safe to do here: `ColorScheme3d.fromSeed` memoizes, so five previews
+  /// and the two surfaces' own themes are one generation each and a map
+  /// lookup thereafter.
+  ///
+  /// **Only the chosen swatch has a check in it at all**, and getting that
+  /// wrong is a small lesson in what this toolkit is. The first version drew
+  /// the check on every swatch and hid the unchosen ones by giving them the
+  /// container's own colour — which is how you would do it in a flat
+  /// toolkit, where same-colour means invisible. It is not invisible here: a
+  /// glyph is an *extruded slab with a wall*, and the scene's light shades
+  /// that wall differently from the flat disc behind it, so all five swatches
+  /// came back wearing a faint embossed check. Nothing failed; the frame is
+  /// what said so. **A colour cannot hide geometry**, so the geometry goes.
+  ///
+  /// `Button3d` rather than `IconButton3d` for exactly that: it takes a
+  /// nullable child, and its 40dp minimum means the swatch is the same size
+  /// with a check and without one, so choosing a colour relayouts nothing.
+  Widget _swatch(BuildContext context, Color seed, String name) {
+    final palette = GalleryTheme3d.of(context);
+    final theme = Theme3d.of(context);
+    final preview = ColorScheme3d.fromSeed(
+      seedColor: seed,
+      brightness: palette.brightness,
+    );
+    final chosen = seed == palette.seed;
+    return Button3d(
+      semanticLabel: '$name theme',
+      onPressed: () => palette.onSeedChanged(seed),
+      style: ButtonStyle3d.of(theme, ButtonVariant3d.icon).copyWith(
+        container: preview.primary,
+        content: preview.onPrimary,
+        shape: theme.shape.full,
+        // And the chosen swatch stands off the card it is on, which is the
+        // signal a flat picker cannot use at all. The table screen makes the
+        // same point with its cards, where the lift is a height.
+        elevation: chosen ? theme.elevation.level3 : theme.elevation.level0,
+        thickness: theme.thickness.raised,
+      ),
+      child: chosen ? const Icon3d(Icons.check) : null,
+    );
+  }
+
   Widget _settings(BuildContext context) {
+    final palette = GalleryTheme3d.of(context);
     return ScenePadding3d(
       padding: _insets(context, const EdgeInsets3d.all(12)),
-      child: SceneColumn3d(
+      // **A list rather than a column, and the theme picker is why.** These
+      // controls used to fit this panel exactly, with nothing to spare, so
+      // adding one row of swatches overflowed the body by 64dp — which the
+      // layout reported as an error rather than drawing, because a box that
+      // overflows looks like a box that fits right up until its content is
+      // standing through the front of a panel. A settings screen with one
+      // more row than fits is an ordinary screen; this is the ordinary answer.
+      child: SceneListView3d(
         crossAxisAlignment: CrossAxisAlignment3d.stretch,
-        mainAxisSize: MainAxisSize3d.min,
         spacing: _dp(context, 8),
         children: <Widget>[
           FilledCard3d(
+            key: const ValueKey<String>('preferences'),
             child: SceneColumn3d(
               crossAxisAlignment: CrossAxisAlignment3d.stretch,
               // Everything in a card sits on the card's **front face**, and
@@ -397,18 +535,39 @@ class _MaterialScreenState extends State<MaterialScreen> {
                   ),
                 ),
                 const Divider3d(),
+                // The brightness of the whole scene, thrown from inside it.
+                // Both surfaces re-theme: the screen this switch is on, and
+                // the table beside it.
                 ListTile3d(
-                  title: const SceneText3d('Compact rows'),
+                  title: const SceneText3d('Dark theme'),
                   trailing: Switch3d(
-                    value: _compact,
-                    semanticLabel: 'Compact rows',
-                    onChanged: (value) => setState(() => _compact = value),
+                    value: palette.brightness == Brightness.dark,
+                    semanticLabel: 'Dark theme',
+                    onChanged: (value) => palette.onBrightnessChanged(
+                      value ? Brightness.dark : Brightness.light,
+                    ),
+                  ),
+                ),
+                const Divider3d(),
+                // And the colour the whole scheme is generated from.
+                ScenePadding3d(
+                  padding: _insets(
+                    context,
+                    const EdgeInsets3d.symmetric(horizontal: 8, vertical: 8),
+                  ),
+                  child: SceneRow3d(
+                    mainAxisAlignment: MainAxisAlignment3d.spaceEvenly,
+                    children: <Widget>[
+                      for (final (seed, name) in GalleryTheme3d.seeds)
+                        _swatch(context, seed, name),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
           OutlinedCard3d(
+            key: const ValueKey<String>('volume'),
             child: ScenePadding3d(
               // The four edges and not the six faces. `EdgeInsets3d.all` insets
               // the front as well, and a card's depth is only its thickness,
@@ -440,14 +599,21 @@ class _MaterialScreenState extends State<MaterialScreen> {
             ),
           ),
           SceneRow3d(
+            key: const ValueKey<String>('actions'),
             mainAxisAlignment: MainAxisAlignment3d.spaceEvenly,
             children: <Widget>[
               TextButton3d(
-                onPressed: () => setState(() {
-                  _notify = true;
-                  _compact = false;
-                  _volume = 0.65;
-                }),
+                onPressed: () {
+                  setState(() {
+                    _notify = true;
+                    _volume = 0.65;
+                  });
+                  // The theme is not this screen's state, so resetting it is
+                  // a call up rather than a `setState` here.
+                  palette
+                    ..onSeedChanged(GalleryTheme3d.defaultSeed)
+                    ..onBrightnessChanged(Brightness.light);
+                },
                 child: const SceneText3d('Reset'),
               ),
               FilledButton3d(

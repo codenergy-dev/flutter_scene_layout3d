@@ -6,8 +6,8 @@ all hit-testable:
 - **Left**, a Material screen standing upright on a panel that turns. It is a
   `Scaffold3d` — an app bar, a body, a navigation bar and a floating action
   button — with filter chips over a scrolling list of cards on one tab and the
-  selection controls on the other. Turning is the plane node's business, so
-  the layout does not re-run to make it happen.
+  settings on the other. Turning is the plane node's business, so the layout
+  does not re-run to make it happen.
 
   (Left, because `flutter_scene` builds its view matrix as
   `right = up × forward`: a camera out on `+z` has a right vector of `-x`, so
@@ -27,6 +27,49 @@ itself through `Semantics3d`, so the readout says "Ada Lovelace" or "Compose"
 rather than the name of a box — and pressing anything works: the switches
 throw, the slider drags, the chips select, and the floating action button
 raises a snack bar.
+
+## Changing the colours while it is running
+
+The settings tab carries a row of five swatches and a **Dark theme** switch,
+and between them they rebuild the scheme the whole scene is drawn in — both
+Material surfaces at once, from inside one of them.
+
+**Nothing here draws a hand-written baseline any more.** The gallery seeds a
+scheme with `ColorScheme3d.fromSeed`, the way an application with a brand
+does, and the swatches are five seeds to try it with. Worth knowing before
+comparing a frame against the Material specification: a scheme seeded with
+Material's own `#6750A4` is *not* the Material baseline — `tonalSpot` clamps
+the primary palette's chroma to 36 and that colour's own is 47.9, so the
+gallery in its default state already shows `#65558F` where the baseline has
+`#6750A4`, and twenty-seven of the forty-six roles differ.
+
+Two things in that row are worth a second look, because both are decisions
+rather than details:
+
+- **A swatch is painted in the scheme's `primary`, not in the seed.** A seed
+  is an input to the tonal palettes rather than a role of the result, so a
+  swatch showing the raw colour would promise one the theme never takes. Each
+  one therefore generates the scheme it stands for — which is affordable only
+  because `ColorScheme3d.fromSeed` memoizes: a generated scheme costs 679µs,
+  and five previews plus two surfaces would otherwise be five milliseconds of
+  every frame.
+- **The chosen swatch stands off the card**, at `elevation.level3`, and it is
+  the only one with a check in it. The first version drew the check on all
+  five and hid the unchosen ones by giving them the container's own colour,
+  which is how a flat toolkit does it — and it does not work here, because a
+  glyph is an extruded slab with a wall and the scene's light shades that wall
+  differently from the disc behind it. All five came back wearing a faint
+  embossed check. No test failed; the photograph is what said so. **A colour
+  cannot hide geometry.** The swatch is a `Button3d` rather than an
+  `IconButton3d` so that its child can be nothing at all, and its 40dp minimum
+  keeps both states the same size, so choosing a colour relayouts nothing.
+
+The settings tab **scrolls**, and the picker is why: those controls used to
+fit the panel exactly, with nothing to spare, so one row of swatches
+overflowed the body by 64dp. The layout reported that as an error rather than
+drawing it, which is the whole point of `Layout3dOverflow` — a box that
+overflows looks exactly like a box that fits until its content is standing
+through the front of a panel.
 
 ## Running it
 
@@ -152,9 +195,15 @@ flutter drive --driver=test_driver/photograph.dart \
   -d macos --enable-flutter-gpu
 ```
 
-Two PNGs land in `render_probe/build/photographs/`, a few seconds apart so the
-turning panel is seen from two angles, and CI keeps them from every run. See
+Six PNGs land in `render_probe/build/photographs/`: the gallery, the gallery a
+few seconds later so the turning panel is seen from a second angle, a dialog
+while it is still arriving and once it has settled, and the settings tab
+before and after a swatch is pressed. CI keeps them from every run. See
 [its README](../render_probe/README.md#photographing-the-gallery).
+
+The last two are there because a role table compared against Flutter can say
+that a generated scheme's numbers are right and cannot say whether the result
+is a theme anyone would ship. Only a frame answers that.
 
 ## Testing a screen of your own
 

@@ -15,7 +15,7 @@
 // having to start it.
 
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart'
-    show GlyphAtlasCache3d;
+    show GlyphAtlasCache3d, Layout3d, ModalBarrier3d, Navigator3d;
 import 'package:flutter_scene_layout3d/testing.dart';
 import 'package:flutter_scene_material3d/flutter_scene_material3d.dart'
     show initializeMaterial3d;
@@ -87,8 +87,17 @@ void main() {
     //
     // This is what found the scrim sitting behind the app bar and behind the
     // floating action button, dimming neither.
+    //
+    // **Pumped by the frame, never settled.** `pumpAndSettle` is not usable
+    // against this app at all: the binding has a real clock and the gallery
+    // schedules a frame from `onTick` for ever — the panel turns and the mesh
+    // list scrolls itself — so "no more frames are coming" is a state it
+    // never reaches. This call used to be a `pumpAndSettle` and it passed for
+    // weeks, which is worse than failing: it was waiting on a condition that
+    // is never true and getting away with it on how long the menu happened to
+    // take. It timed out the first time a step was added after it.
     await tester.tap3d(find3d.bySemanticsLabel('More'));
-    await tester.pumpAndSettle();
+    await pumpFrames(tester, 40);
     await tester.tap3d(find3d.bySemanticsLabel('About'));
 
     // **And the dialog while it is still arriving**, which is a different
@@ -129,6 +138,33 @@ void main() {
     );
     keep(dialog);
     expectAFrame(dialog);
+
+    // And the screen re-themed while it is running, which is the only lane
+    // that can answer whether a *generated* scheme looks like a scheme. The
+    // gallery no longer draws either hand-written baseline: it seeds one with
+    // `ColorScheme3d.fromSeed`, and the settings tab carries the picker that
+    // changes the seed under both surfaces at once. A role table compared
+    // against Flutter says the numbers are right; only these two frames say
+    // whether the result is a theme a person would ship.
+    final navigator = Navigator3d.of(
+      tester.layout3d<Layout3d>(find3d.bySubtype<ModalBarrier3d>()),
+    );
+    navigator!.pop();
+    await pumpFrames(tester, 40);
+
+    await tester.tap3d(find3d.bySemanticsLabel('Settings'));
+    await pumpFrames(tester, 40);
+    final picker = await photographAgain(tester, name: 'gallery_picker');
+    keep(picker);
+    expectAFrame(picker);
+
+    // The swatch furthest from the violet the gallery starts on, so that a
+    // seed that never reached the theme is obvious rather than subtle.
+    await tester.tap3d(find3d.bySemanticsLabel('Teal theme'));
+    await pumpFrames(tester, 40);
+    final reseeded = await photographAgain(tester, name: 'gallery_reseeded');
+    keep(reseeded);
+    expectAFrame(reseeded);
 
     // The one thing here that is a probe rather than a photograph, and it is
     // in this lane because nowhere else is there a real screen with real
