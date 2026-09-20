@@ -302,18 +302,33 @@ Two entry points:
   an opaque one and the order stops mattering. The price is a dithered rather
   than a smooth dim, and it was chosen by looking at a window.
 
-**One defect is open and planned but not yet worked**:
-[a letter that comes back wrong](../packages/flutter_scene_layout3d/plans/2026_09_17_a_letter_that_comes_back_wrong.md).
-Individual glyphs come out of the gallery missing, or replaced by a dark
-speckled block, intermittently and per *atlas* rather than per label. It is
-the same family as *A shared glyph atlas repacks* in
-[traps.md](traps.md) — the page to read first — and the plan carries what was
-established, the leading hypothesis (a settled label re-baked at a new
-generation binding the texture uploaded at the old one), and the route to a
-reproduction, since the atlas is testable without a GPU. Nothing in
-`lib/src/text/` has changed since the wall landed; what is new is that the
-gallery's overlays introduce glyphs late, in styles the screen is already
-using.
+**The thirteenth is closed, and it was never ours**:
+[the engine drops draw calls when its queue blocks](../packages/flutter_scene_layout3d/plans/2026_09_19_the_engine_drops_draw_calls_under_a_blocked_queue.md),
+which is the resolution of
+[a letter that comes back wrong](../packages/flutter_scene_layout3d/plans/2026_09_17_a_letter_that_comes_back_wrong.md)
+after seven rounds. Individual glyphs came out of the gallery missing or
+replaced by a speckled block, and a person could only reproduce it by
+**maximizing the window** — which turned out to be exactly the right clue, for
+a reason no round reached until the last one. On `flutter_scene` 0.23.0 a
+GPU-bound scene blocks the calling thread on the GPU's backlog, and that queue
+is serialized with the raster thread's own submissions; while it is blocked,
+draw calls Flutter has already encoded into an offscreen `Picture.toImage` are
+lost — **the ones encoded first**, text or not. A glyph atlas bakes the loss
+into a texture and keeps it. It is fixed upstream, in the engine's unreleased
+0.24.0, by `Scene.maxGpuFramesInFlight`. Read *The engine drops the draw calls
+it encoded first* in [traps.md](traps.md) first; the newer plan carries the
+measurement that separates it from everything it looks like, and the older one
+carries six rounds of hypotheses that were all wrong and why.
+
+Four real defects were found and fixed on the way there, each a trap of its
+own: a mesh and an atlas texture are a **pair**, and a renderer that has
+something correct to draw now waits for the new picture rather than baking into
+the window a repack opens; the atlas texture was being uploaded with a mip
+chain that averages one letter into the next; the gallery was throwing away
+every label's renderer on every widget rebuild, which is the only way a resize
+reaches the text layer in an application whose surfaces are authored at a fixed
+size; and a `Text` with no `Material` above it bakes Flutter's error
+decoration into the atlas.
 
 ## Keeping this true
 

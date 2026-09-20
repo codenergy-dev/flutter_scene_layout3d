@@ -1,5 +1,152 @@
 ## Unreleased
 
+- **A glyph is typeset once, and copied forward ever after.** `GlyphAtlas3d`
+  used to typeset its whole alphabet into a fresh picture on every flush, so a
+  repack re-drew every letter it already had. It now draws a glyph once and
+  copies its cell out of the previous picture with `drawImageRect`, at whatever
+  address the new packing gave it; the cells are the same size in both, so it
+  is a texel-for-texel blit. A repack that blits is much cheaper than one that
+  re-typesets an alphabet. `GlyphAtlasPicture3d.slots` carries what a picture
+  actually drew, which is what the next one copies from — and which is not the
+  same thing as what the atlas has reserved, because glyphs arrive during the
+  rasterization's own `await`.
+
+  **This is not what fixed the hollow letters in the gallery**, and an earlier
+  draft of this entry said it was. That defect is `flutter_scene` 0.23.0
+  blocking the calling thread on the GPU's backlog, which loses draw calls
+  Flutter has already encoded into an offscreen render — the ones encoded
+  first, text or not. It is fixed upstream by `Scene.maxGpuFramesInFlight`, in
+  the engine's unreleased 0.24.0. See *The engine drops the draw calls it
+  encoded first* in `docs/traps.md`.
+
+- **The glyph atlas texture wraps its picture instead of copying it.**
+  `GlyphAtlasPictureUpload3d` and `uploadGlyphAtlasPicture` are the new seam:
+  the `ui.Image` `toImage` already produced is handed straight to
+  `gpu.Texture.fromImage`, so nothing is copied off the GPU on the drawing
+  path. `GlyphAtlasUpload3d` stays as the fallback for a backend that will not
+  wrap an image — the engine's web backend throws rather than doing it — and
+  `GlyphAtlas3d.readBack` is the copy, now named so it is obvious where it is
+  paid. The remaining caller is silhouette tracing, and only for a glyph
+  nothing has traced yet: **a repack traces nothing**, because an outline is
+  stated from its own cell's corner, so the case the copy was most expensive in
+  no longer pays for it. The sampler also states `clampToEdge`, where the
+  engine's default is `repeat` and a glyph packed against the atlas's edge
+  sampled the far side of the texture in its outermost texel.
+
+  **It did not fix the artifact it was written for**, and that is worth saying
+  plainly: the copy was suspected of corrupting the pixels, and with it gone
+  the letters came out wrong in exactly the same way. It is kept because it is
+  faster and because `clampToEdge` is right, not because it repaired anything.
+
+- **A glyph atlas says so when its picture comes back without the letters in
+  it.** This is the diagnostic that made the defect measurable at all. With `debugVerifyGlyphAtlasInk` on, `_flush` checks that every glyph it
+  drew arrived with ink and names the ones that did not, and `debugPicture`
+  hands a diagnostic the bytes behind the texture rather than a fresh
+  rasterization. `GlyphAtlas3d.debugStaleGlyphs` answers the other half — every
+  grapheme whose slot is not where the picture has it — which should always be
+  empty and is what a text artifact should be checked against first. This is
+  how a defect that had survived three rounds of guessing was finally named:
+  `AlU`, at every step of a scripted run, never healing.
+
+- **`GlyphAtlas3d.textureRevision` says how *complete* the uploaded picture is,
+  which `textureGeneration` cannot.** The two counters describing the picture
+  now mirror the two describing the atlas, and the second one was needed for
+  the same reason it was needed there: reserving a glyph into free space does
+  not repack, so the generation does not move and `textureIsCurrent` stays true
+  while the texture is a letter short. That gap is deliberate for a glyph's
+  face — every letter the picture *does* hold is exactly where the coordinates
+  say, so a label is missing a letter for a frame rather than drawing a wrong
+  one — but nothing said it out loud, so a diagnostic reported a healthy atlas
+  at the exact moment a label was drawing a letter the texture did not hold.
+  It is now the first thing to read when a letter is missing and the generation
+  looks fine.
+
+- **The glyph atlas no longer hands the GPU a mip chain.** `uploadGlyphAtlas`
+  has always documented that mipmaps are deliberately off — a glyph atlas packs
+  unrelated letters two texels apart, so a lower level averages one into the
+  next — but it called `Texture2D.fromPixels` without saying so, and that
+  defaults to `TextureSampling()`: the full chain, trilinear, anisotropic. The
+  engine's own dartdoc for the parameter that exists for this says what happens
+  next, in as many words: *a texture atlas uses this so tiles stop shrinking
+  before they merge into their neighbors across the padding gutter.* Two texels
+  of gutter survive one halving and nothing below it, and
+  `assets/text_glyph3d.fmat` discards a fragment whose coverage falls under
+  `alpha_cutoff` — so the averaging did not blur a minified letter, it ate it,
+  per grapheme, according to the letter's own shape. The uploader now states
+  `const TextureSampling(mipmaps: false)`. It also stops cooking a mip chain on
+  every flush — though that saving does not show: the gallery's repack window
+  was measured at 700–900ms before the change and after it, because what fills
+  it is the `toImage`/`toByteData` readback and not the upload.
+
+- **A glyph's wall is no longer told to draw against a picture that does not
+  exist.** The door left open by the fix below, and the same hollow letter
+  through it: a renderer handed a *different* atlas — the style changed, or the
+  surface's scale crossed a bucket — forgets which packing it baked against and
+  reports -1, and an atlas nothing has rasterized reports -1 for its picture.
+  Comparing those equal read as *the picture matches*, so the face bound a
+  texture that was not there and drew nothing while the wall, which has no
+  texture to be stopped by, was told to draw. Two nothings are not a pair.
+  **No frame is known to have been drawn from that state** — every path that
+  reaches it goes on to bake and replace the mesh before the frame ends — so
+  this is a door closed rather than an artifact removed, and the test says
+  which.
+
+- **A letter no longer comes back wrong while its atlas repacks.** A glyph mesh
+  and the atlas texture it samples are a pair: coordinates measured at one
+  packing address the picture rasterized at that packing and no other. A repack
+  renumbers every slot the instant it happens and the picture follows only when
+  the readback lands, and `AtlasText3dRenderer` used to bake straight into that
+  window — so for the few frames it takes, a letter sampled its neighbour's
+  texels and drew a **dark speckled block**, or landed on empty atlas and drew
+  **nothing at all** while the pen still advanced. `Notifications` came out as
+  `Noti▓ications` and `Ada Lovelace` as `Lovel ce`, on a screen that had been
+  right a moment earlier and would be right a moment later.
+  - **A renderer that has something correct to draw now waits.** It keeps the
+    mesh it has, which is consistent with the texture bound to it, and bakes
+    again when the flush lands the new picture — so a settled label does not
+    flicker at all. One whose letters are new in that window binds nothing,
+    because `bindAtlas(null)` draws nothing and nothing beats a word with a
+    block in the middle of it.
+  - **`GlyphAtlas3d.textureGeneration` and `textureIsCurrent`** are what say
+    so, along with `AtlasText3dRenderer.bakedGeneration` on the other side of
+    the pair and `GlyphAtlasCache3d.atlases` for asking it of the whole set.
+    None of them is a fourth counter: `generation`, `revision` and
+    `outlineRevision` describe the atlas, and these describe the picture.
+  - **It read as a defect per glyph**, which is why it was so hard to place —
+    and the reason is arithmetic. The atlas *doubles*, so a coordinate is
+    roughly halved, and the letters packed first still land on themselves while
+    the ones packed later do not.
+  - **`AtlasText3dRenderer` takes a `GlyphGeometryUpload3d`**, the seam
+    `GlyphAtlasUpload3d` already is for the atlas: `GeometryBuilder.build`
+    needs a GPU and nothing else in the renderer does, so the bookkeeping this
+    defect lived in — which generation a mesh was measured against, which
+    picture is bound to it, when a settled label may bake again — is now
+    covered headlessly. It had never been run in a test at all.
+  - **A glyph's wall no longer outlives the face it belongs to.** Withholding
+    the face was only half the job: the wall is geometry with no texture in
+    it, so nothing about the atlas could stop it, and what a person saw where
+    a letter should be was its own dark edge — hatched rather than solid,
+    because a label arriving fades by coverage. Both materials are now told
+    the same thing in one place. This is the half that was still visible in
+    the gallery after the first fix, and it is what turns a smear into a gap.
+  - **`debugReportGlyphAtlasRepacks`** reports each repack and the
+    milliseconds until its picture arrived. It is the only way to tell, from a
+    running application, whether a text artifact belongs to this family — the
+    window is a race against a texture readback, so it does not open on every
+    run or every machine, and no probe can be honest about it.
+  - The second suspect, a silhouette traced off the wrong pixels and cached for
+    the life of the atlas, was checked and is not the fault; the case that
+    would have caused it is pinned now.
+  - **What this does not close**: the window still exists, and a label that has
+    to be baked again inside it has no picture to draw from and draws nothing
+    until the raster lands. Making a repack atomic, so the new packing is
+    published together with its picture, is what would close it. (This said "a
+    window *resize* forces that on every label at once". A resize does so only
+    where a surface takes its metrics from the camera, or where the widget
+    rebuild that comes with it replaces the labels' text renderers — see *A
+    text renderer is a resource* in `docs/traps.md`. A surface authored at a
+    fixed size and unit rate does not lay out again at all.)
+
 - **`box_decoration3d.fmat`'s note on a partly transparent slab is corrected.**
   It prescribed per-instance `depth_write` with the rule "a decoration whose
   resolved colour is not opaque does not write depth". That was photographed

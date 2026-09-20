@@ -1,6 +1,6 @@
 import 'package:flutter/painting.dart' show Color, TextStyle;
 import 'package:flutter_scene/scene.dart'
-    show GeometryBuilder, Mesh, MeshPrimitive, Node, TextureSource;
+    show Geometry, GeometryBuilder, Mesh, MeshPrimitive, Node;
 import 'package:vector_math/vector_math.dart'
     show Matrix4, Vector2, Vector3, Vector4;
 
@@ -9,6 +9,22 @@ import 'glyph_material.dart';
 import 'text_geometry.dart';
 import 'text_layout.dart';
 import 'text_renderer.dart';
+
+/// Uploads one builder's vertices and returns the geometry a primitive draws.
+///
+/// The one GPU-shaped step in the renderer, kept behind a function for the
+/// reason [GlyphAtlasUpload3d] is kept behind one: `GeometryBuilder.build`
+/// allocates a device buffer and there is no context to allocate it in under
+/// `flutter test`, while everything *around* it — which generation a mesh's
+/// texture coordinates were measured against, which picture of the atlas is
+/// bound to them, when a settled label may be baked again — is bookkeeping
+/// whose defects are invisible to a probe and cost a screen its letters.
+/// Returning null builds a node with no primitives, which is what a headless
+/// test wants: the coordination runs, the upload does not.
+typedef GlyphGeometryUpload3d = Geometry? Function(GeometryBuilder builder);
+
+/// The default uploader: `GeometryBuilder.build`, which needs a GPU.
+Geometry? uploadGlyphGeometry(GeometryBuilder builder) => builder.build();
 
 /// Draws text as textured quads out of a shared glyph atlas.
 ///
@@ -61,12 +77,14 @@ class AtlasText3dRenderer extends Text3dRenderer {
     this.depthFactor = 0.10,
     GlyphAtlasCache3d? atlases,
     TextRunShaper3d? shaper,
+    GlyphGeometryUpload3d upload = uploadGlyphGeometry,
   }) : assert(resolution > 0.0),
        assert(depthOffset >= 0.0),
        assert(depth == null || depth >= 0.0),
        assert(depthFactor >= 0.0),
        _atlases = atlases ?? GlyphAtlasCache3d.shared,
-       _shaper = shaper ?? TextRunShaper3d.shared;
+       _shaper = shaper ?? TextRunShaper3d.shared,
+       _upload = upload;
 
   /// Texels per logical pixel, on top of what the metrics ask for.
   ///
@@ -131,6 +149,7 @@ class AtlasText3dRenderer extends Text3dRenderer {
 
   final GlyphAtlasCache3d _atlases;
   final TextRunShaper3d _shaper;
+  final GlyphGeometryUpload3d _upload;
 
   GlyphAtlas3d? _atlas;
   Node? _mesh;
@@ -150,6 +169,16 @@ class AtlasText3dRenderer extends Text3dRenderer {
 
   /// The atlas this renderer draws out of, or null before the first layout.
   GlyphAtlas3d? get atlas => _atlas;
+
+  /// The [GlyphAtlas3d.generation] this mesh's texture coordinates were
+  /// measured against, or -1 before the first bake.
+  ///
+  /// The other half of the pair, and the first thing to ask of a label that
+  /// has quads and draws nothing: the letters are sampled only when the atlas
+  /// has a picture of *this* generation, which is what
+  /// [GlyphAtlas3d.textureGeneration] answers. The two differ for the few
+  /// frames a repack takes to be rasterized and never longer.
+  int get bakedGeneration => _generation;
 
   /// How many glyph quads the current mesh holds.
   ///
@@ -185,15 +214,25 @@ class AtlasText3dRenderer extends Text3dRenderer {
     // nothing had changed. Spending it here costs two uniform writes and no
     // geometry, which is the tier a fade has to stay on.
     _opacity = request.opacity;
-    _material?.fade(_opacity);
-    _wall?.fade(_opacity);
+    _publish();
     if (identical(request.layout, _layout) &&
         _scale == scale &&
         _units == request.unitsPerLogicalPixel &&
         _style == request.style &&
-        _generation == atlas.generation &&
+        (_generation == atlas.generation || _waitsForPicture(atlas)) &&
         _outlineRevision == atlas.outlineRevision &&
         identical(_parent, request.node)) {
+      // Two ways to arrive here, and the second one is the fix for a letter
+      // that came back wrong: either nothing changed, or the only thing that
+      // changed is a repack whose picture does not exist yet, and baking
+      // against it would replace a mesh that draws with one that cannot.
+      //
+      // Nothing is rebound in either case, because in both of them the mesh
+      // and the texture bound to it already agree. What there is to say is
+      // `flush`, and only when the atlas owes one: this runs once per label
+      // per frame for every settled label on the screen, so the guard is what
+      // keeps it from allocating a future per label per frame to say nothing.
+      if (atlas.needsRaster) atlas.flush();
       return;
     }
     _layout = request.layout;
@@ -208,6 +247,48 @@ class AtlasText3dRenderer extends Text3dRenderer {
     if (_generation != atlas.generation) _rebuild(request, atlas);
     atlas.flush();
   }
+
+  /// Whether this mesh is better left alone until the atlas has rasterized
+  /// the packing it is handing out.
+  ///
+  /// **A mesh and a texture are a pair.** Texture coordinates measured at one
+  /// generation address the picture rasterized at that generation and no
+  /// other, and a repack renumbers every slot the moment it happens while the
+  /// picture follows only when the rasterization lands. Reading a 2048-texel
+  /// atlas back is several frames of work, so that window is wide enough to
+  /// be seen and photographed — and a mesh baked inside it points at texels
+  /// that belong to a neighbouring letter, which draws a dark speckled block,
+  /// or at empty atlas, which draws nothing and takes the letter out of the
+  /// word. Both symptoms, one cause, and it read as a defect *per glyph*
+  /// because the atlas doubles: a coordinate is roughly halved, so the
+  /// letters packed first still land on themselves while the ones packed
+  /// later do not.
+  ///
+  /// So a renderer already drawing a consistent pair waits. It keeps the
+  /// letters it has — they are correct, and a settled label's text is not
+  /// what changed — and the flush that lands the new picture notifies, after
+  /// which both halves move forward together.
+  ///
+  /// **It protects a label only for as long as the label is left alone.** The
+  /// thing kept is the mesh, so a renderer built this frame has nothing to
+  /// keep and bakes against whatever packing the atlas is handing out. That is
+  /// not a hypothetical: `DefaultTextRenderer3d` compares its factory by
+  /// identity, so an application that writes a closure into
+  /// `SceneTheme3d.textRendererFactory` inside `build` disposes and rebuilds
+  /// every renderer in the scene on every build — and never gets this. See
+  /// *A text renderer is a resource* in `docs/traps.md`.
+  ///
+  /// The wait cannot hang: a repack sets [GlyphAtlas3d.needsRaster], and
+  /// every path that waits calls [GlyphAtlas3d.flush] on the way out.
+  /// There is also nothing to preserve when there is no picture at all: an
+  /// atlas before its first flush reports [GlyphAtlas3d.textureGeneration] as
+  /// -1, which is the same -1 a renderer that has never baked reports, and two
+  /// nothings comparing equal is not a pair worth waiting on.
+  bool _waitsForPicture(GlyphAtlas3d atlas) =>
+      _mesh != null &&
+      atlas.texture != null &&
+      !atlas.textureIsCurrent &&
+      atlas.textureGeneration == _generation;
 
   void _rebuild(Text3dRenderRequest request, GlyphAtlas3d atlas) {
     _generation = atlas.generation;
@@ -246,10 +327,7 @@ class AtlasText3dRenderer extends Text3dRenderer {
     _detach();
     if (quads.isEmpty) return;
     final color = style.color ?? const Color(0xFFFFFFFF);
-    final material = _material = GlyphMaterial3d.factory()
-      ..tint(color)
-      ..fade(_opacity);
-    _bindTexture(_atlas?.texture);
+    final material = _material = GlyphMaterial3d.factory()..tint(color);
     final thickness = resolveDepth(style) * units;
     _wallSegmentCount = thickness > 0.0 ? walls.length : 0;
 
@@ -257,33 +335,35 @@ class AtlasText3dRenderer extends Text3dRenderer {
     // negative z and its back face is at zero — on the plane the flat quad
     // used to occupy. Growing the letter forward rather than backward is what
     // keeps every `contentLift` already computed against that plane valid.
-    final primitives = <MeshPrimitive>[
-      MeshPrimitive(
-        buildGlyphGeometry(quads, units, z: -thickness).build(),
-        material.material,
-      ),
-    ];
+    final primitives = <MeshPrimitive>[];
+    final front = _upload(buildGlyphGeometry(quads, units, z: -thickness));
+    if (front != null) primitives.add(MeshPrimitive(front, material.material));
     if (thickness > 0.0) {
-      primitives.add(
-        MeshPrimitive(
-          // The back face, reversed so it faces away from the viewer. The
-          // compiled glyph material culls nothing and would not care; the
-          // `UnlitMaterial` fallback blends, and a blending material culls
-          // back faces, so a back face wound like the front one is invisible
-          // in exactly the application that installed no shader.
-          buildGlyphGeometry(quads, units, reversed: true).build(),
-          material.material,
-        ),
-      );
+      // The back face, reversed so it faces away from the viewer. The
+      // compiled glyph material culls nothing and would not care; the
+      // `UnlitMaterial` fallback blends, and a blending material culls back
+      // faces, so a back face wound like the front one is invisible in
+      // exactly the application that installed no shader.
+      final back = _upload(buildGlyphGeometry(quads, units, reversed: true));
+      if (back != null) primitives.add(MeshPrimitive(back, material.material));
       if (walls.isNotEmpty) {
-        primitives.add(
-          MeshPrimitive(
-            buildGlyphWallGeometry(walls, units, thickness, color).build(),
-            (_wall = GlyphWallMaterial3d.factory()..fade(_opacity)).material,
-          ),
+        // The material before the upload, and deliberately not inside the
+        // `if`: whether the wall *draws* is the one thing [_publish] has to be
+        // able to say, and a seam that skipped the geometry would otherwise
+        // take the say-so with it.
+        final wallMaterial = _wall = GlyphWallMaterial3d.factory();
+        final wall = _upload(
+          buildGlyphWallGeometry(walls, units, thickness, color),
         );
+        if (wall != null) {
+          primitives.add(MeshPrimitive(wall, wallMaterial.material));
+        }
       }
     }
+
+    // After the primitives, because the wall material is made while they are
+    // being built and both halves have to be told the same thing.
+    _publish();
 
     final node = _mesh = Node(mesh: Mesh.primitives(primitives: primitives))
       ..name = 'Text3d glyphs'
@@ -298,16 +378,56 @@ class AtlasText3dRenderer extends Text3dRenderer {
     parent.add(node);
   }
 
-  /// Points the material at the atlas, or at nothing when there is no atlas
-  /// texture yet.
+  /// Spends the opacity on both materials, and points the label at the atlas
+  /// — or hides it, when the atlas has no picture of the packing this mesh
+  /// was baked from.
   ///
-  /// The second half is not a nicety: a material with no texture samples a
+  /// Binding nothing is not a nicety: a material with no texture samples a
   /// **1x1 white placeholder**, so a glyph mesh attached before the atlas has
   /// uploaded anything draws its quads as solid rectangles in the label's own
   /// colour — which is what a black slab where a navigation label belongs
   /// actually is, rather than a quad sampling empty atlas. Drawing nothing
   /// until the pixels arrive is [GlyphMaterial3d.bindAtlas]'s contract.
-  void _bindTexture(TextureSource? texture) => _material?.bindAtlas(texture);
+  ///
+  /// **And nothing until the pixels *match*,** which is the same contract
+  /// read once more. A texture whose [GlyphAtlas3d.textureGeneration] is not
+  /// the generation these coordinates were measured against is a picture of
+  /// another packing: every quad in the mesh lands on some other letter's
+  /// texels or on none, and a label drawn from it is worse than a label not
+  /// drawn at all. A renderer that has something correct to draw does not
+  /// reach this state — see [_waitsForPicture] — but one whose label is new
+  /// in the window a repack opened has nothing else to do but wait a frame.
+  ///
+  /// **The wall goes with the face, and that is the half this used to miss.**
+  /// A glyph is a slab: a face drawn out of the atlas, and a wall swept around
+  /// the silhouette which is *geometry with no texture in it*. Binding nothing
+  /// stops the face and leaves the wall standing — and a wall without its face
+  /// is not a letter, it is the dark edge of one. On a panel turned even
+  /// slightly it reads as a smear where the letter belongs, hatched rather
+  /// than solid when the label is arriving, because a fade here is coverage.
+  /// Nothing about the atlas could have stopped it; it has to be told, and
+  /// this is where. It is the same shape of failure
+  /// [GlyphWallMaterial3d.fade] exists to avoid from the other direction.
+  /// **And two nothings are not a pair.** A renderer that has just been given
+  /// a different atlas reports -1 until it bakes, and an atlas that has never
+  /// flushed reports -1 until its first picture lands: comparing those two
+  /// equal would say *the picture matches* about a mesh measured against
+  /// another atlas entirely and a texture that does not exist. Binding null
+  /// makes the face harmless either way, but the wall has no texture to be
+  /// stopped by — it is told — and telling it to draw here is the same
+  /// hollow letter from the same door. [_waitsForPicture] already says this
+  /// about the other half of the pair; this is the half that draws.
+  void _publish() {
+    final atlas = _atlas;
+    final draws =
+        atlas != null &&
+        _generation >= 0 &&
+        atlas.textureGeneration == _generation;
+    _material
+      ?..bindAtlas(draws ? atlas.texture : null)
+      ..fade(_opacity);
+    _wall?.fade(draws ? _opacity : 0.0);
+  }
 
   void _detach() {
     final mesh = _mesh;
@@ -343,6 +463,19 @@ class AtlasText3dRenderer extends Text3dRenderer {
       // an app bar reading "nb" where it should have read "Inbox" — because
       // it is the first thing in this repository to put two lots of type in
       // one scene.
+      //
+      // **But not while the atlas is mid-repack.** A flush notifies with the
+      // texture and the generation agreeing, so the ordinary arrival here is
+      // safe — but a listener woken *before* this one can reserve a glyph of
+      // its own and repack the atlas from inside the notification, and then
+      // every renderer after it in the list is being asked to bake against a
+      // packing no picture exists for. Keeping the mesh is what draws the
+      // right letters: it and the texture bound to it are a pair, and the
+      // flush this leaves owing brings both forward at once.
+      if (_waitsForPicture(atlas)) {
+        atlas.flush();
+        return;
+      }
       final layout = _layout;
       final parent = _parent;
       final style = _style;
@@ -381,7 +514,7 @@ class AtlasText3dRenderer extends Text3dRenderer {
       } finally {
         _rebuilding = false;
       }
-      _bindTexture(atlas.texture);
+      _publish();
       // Baking outside `render` is the common case now, and `render` used to
       // be the only caller of `flush`. A panel that has settled has nothing
       // left to call it, so a glyph this rebuild reserved would wait for
@@ -391,7 +524,7 @@ class AtlasText3dRenderer extends Text3dRenderer {
       atlas.flush();
       return;
     }
-    _bindTexture(atlas.texture);
+    _publish();
   }
 
   @override

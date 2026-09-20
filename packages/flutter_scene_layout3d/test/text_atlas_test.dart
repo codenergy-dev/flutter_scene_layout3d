@@ -37,6 +37,8 @@ class RecordingAtlas {
         uploads.add(image);
         return null;
       },
+      // Explicitly the slow path: there is no GPU here to wrap a picture with.
+      uploadPicture: (picture) => null,
     );
   }
 
@@ -47,6 +49,35 @@ class RecordingAtlas {
 /// The alpha of one texel of a rasterized atlas.
 int alphaAt(GlyphAtlasImage3d image, int x, int y) =>
     image.pixels[(y * image.size + x) * 4 + 3];
+
+/// Which glyph of [packing] owns the texel at ([x], [y]), or null where the
+/// atlas is empty.
+///
+/// The test font fills every glyph's em box with the same solid block, so a
+/// texel cannot say which letter it belongs to and no amount of reading
+/// pixels will answer this. The packing can, exactly: a slot is a rectangle
+/// and the rectangles never overlap.
+String? graphemeUnder(Iterable<GlyphSlot3d> packing, double x, double y) {
+  for (final slot in packing) {
+    if (slot.isBlank) continue;
+    if (x >= slot.x &&
+        x < slot.x + slot.width &&
+        y >= slot.y &&
+        y < slot.y + slot.height) {
+      return slot.grapheme;
+    }
+  }
+  return null;
+}
+
+/// The texel a quad built from [slot] samples at its middle, in an atlas image
+/// of [size] texels.
+///
+/// The GPU's own arithmetic, and the reason a mesh and a texture are a pair:
+/// a slot's texture coordinates are a *fraction* of the atlas edge, so the
+/// same slot addresses a different texel in a picture of a different size.
+(double, double) sampleAt(GlyphSlot3d slot, int size) =>
+    ((slot.u0 + slot.u1) / 2 * size, (slot.v0 + slot.v1) / 2 * size);
 
 TextLayout3d layoutOf(
   String text, {
@@ -268,6 +299,236 @@ void main() {
     );
   });
 
+  group('the picture the texture holds', () {
+    // A letter that comes back wrong. See
+    // `plans/2026_09_17_a_letter_that_comes_back_wrong.md`.
+    //
+    // A mesh's texture coordinates and the texture they sample are a *pair*:
+    // coordinates baked at one generation address the picture rasterized at
+    // that generation and no other. A repack renumbers every slot the moment
+    // it happens and rasterizes the new picture several frames later — reading
+    // a 2048-texel atlas back off the raster thread is not free — so between
+    // the two there is a window in which every coordinate the atlas hands out
+    // describes an image that does not exist. `textureGeneration` is what
+    // says so.
+    //
+    // The atlas here is built to **grow**, which is the opposite of what the
+    // `two_surfaces_of_type` family needs: a repack is the whole mechanism
+    // rather than the thing that hides it.
+    const graphemes = <String>[
+      'a',
+      'b',
+      'c',
+      'd',
+      'e',
+      'f',
+      'g',
+      'h',
+      'i',
+      'j',
+      'k',
+      'l',
+    ];
+
+    /// An atlas of twelve glyphs, rasterized, one reservation short of a
+    /// repack.
+    ///
+    /// Twelve 14x19 cells is exactly a 64-texel atlas — four to a shelf,
+    /// three shelves — so the thirteenth letter is what doubles it.
+    Future<RecordingAtlas> settled() async {
+      final recording = RecordingAtlas(initialSize: 64, maxSize: 512);
+      for (final grapheme in graphemes) {
+        recording.atlas.slotFor(grapheme);
+      }
+      await recording.atlas.flush();
+      return recording;
+    }
+
+    test('names the packing it was rasterized from', () async {
+      final recording = await settled();
+      final atlas = recording.atlas;
+      expect(atlas.textureGeneration, atlas.generation);
+      expect(atlas.textureIsCurrent, isTrue);
+      expect(recording.uploads.single.generation, atlas.textureGeneration);
+    });
+
+    test('says how complete it is, which the generation cannot', () async {
+      // The gap `textureIsCurrent` leaves open on purpose. Reserving a glyph
+      // into free space does not repack, so the generation does not move and
+      // the picture stays "current" while being a letter short. Only
+      // `textureRevision` says so, and a diagnostic that cannot say it reports
+      // a healthy atlas at the exact moment a label is drawing a letter the
+      // texture does not hold — which is how a round was spent.
+      // Room to spare, so the reservation below lands in free space: a
+      // repack would move the generation and this is the case the generation
+      // cannot see.
+      final recording = RecordingAtlas(initialSize: 512, maxSize: 512);
+      final atlas = recording.atlas;
+      for (final grapheme in 'abc'.split('')) {
+        atlas.slotFor(grapheme);
+      }
+      await atlas.flush();
+      expect(atlas.textureRevision, atlas.revision);
+
+      atlas.slotFor('\u00e9');
+      expect(
+        atlas.generation,
+        atlas.textureGeneration,
+        reason: 'this case is the one a repack does not cover',
+      );
+      expect(atlas.textureIsCurrent, isTrue);
+      expect(
+        atlas.textureRevision,
+        lessThan(atlas.revision),
+        reason: 'the picture is a letter short and nothing else says so',
+      );
+
+      await atlas.flush();
+      expect(atlas.textureRevision, atlas.revision);
+    });
+
+    test('typesets a letter once, and copies it forward ever after', () async {
+      // **The defect this exists to stop is not in this package**, which is
+      // why the test is about *how many times* a glyph is typeset rather than
+      // about what came out. Drawing a grapheme into one offscreen picture and
+      // then into a second one draws nothing the second time on at least one
+      // machine — the same glyph set rendered three times running came back
+      // with 3021, 0 and 0 ink texels — and a repack used to redraw the whole
+      // alphabet, so the letters that had been there longest were the ones
+      // that came out hollow. Nothing headless can see that. What it can see
+      // is the rule that avoids it: a glyph is handed to the font engine once
+      // and blitted from the previous picture every time after.
+      final recording = RecordingAtlas(initialSize: 64, maxSize: 2048);
+      final atlas = recording.atlas;
+      for (final grapheme in 'abc'.split('')) {
+        atlas.slotFor(grapheme);
+      }
+      await atlas.flush();
+      final pictured = atlas.generation;
+
+      // Reserve until the packing moves, so every letter above is at a new
+      // address in the next picture and a redraw is the *easy* way to get it
+      // there.
+      final added = <String>[];
+      for (final grapheme in 'defghijklmnopqrstuv'.split('')) {
+        atlas.slotFor(grapheme);
+        added.add(grapheme);
+        if (atlas.generation > pictured) break;
+      }
+      expect(atlas.generation, greaterThan(pictured), reason: 'no repack');
+
+      final before = debugTextParagraphCount;
+      await atlas.flush();
+      expect(
+        debugTextParagraphCount - before,
+        added.length,
+        reason: 'a, b and c were already drawn and must be copied, not redrawn',
+      );
+
+      // And the copy has to be the letter, at the address the packing now
+      // hands out — a blit that lands anywhere else is worse than a redraw.
+      final image = recording.uploads.last;
+      for (final grapheme in 'abc'.split('')) {
+        final slot = atlas.slotFor(grapheme);
+        final (u, v) = sampleAt(slot, image.size);
+        expect(
+          alphaAt(image, u.round(), v.round()),
+          greaterThan(0),
+          reason: 'the cell "$grapheme" was copied into came back empty',
+        );
+      }
+    });
+
+    test('is nothing at all before the first flush', () {
+      final atlas = RecordingAtlas().atlas;
+      expect(atlas.textureGeneration, -1);
+      expect(atlas.textureRevision, -1);
+      expect(atlas.textureIsCurrent, isFalse);
+      atlas.slotFor('a');
+      expect(atlas.textureIsCurrent, isFalse);
+    });
+
+    test('falls behind the moment a repack happens', () async {
+      final recording = await settled();
+      final atlas = recording.atlas;
+      final was = atlas.generation;
+      atlas.slotFor('m');
+      expect(atlas.generation, greaterThan(was), reason: 'no repack happened');
+      expect(atlas.textureGeneration, was);
+      expect(
+        atlas.textureIsCurrent,
+        isFalse,
+        reason: 'the new packing has not been rasterized yet',
+      );
+      // And the atlas always owes a raster in that window, which is what
+      // makes waiting for it safe rather than a deadlock.
+      expect(atlas.needsRaster, isTrue);
+      await atlas.flush();
+      expect(atlas.textureIsCurrent, isTrue);
+      expect(atlas.textureGeneration, atlas.generation);
+    });
+
+    test('holds another letter under a coordinate baked after the repack, or '
+        'no letter at all', () async {
+      // The defect, reproduced: `Notifications` drew as `Noti`, a dark
+      // speckled block, then `ications`, and `Ada Lovelace` drew as
+      // `Lovel ce`. Both are one mesh sampling the *previous* picture of the
+      // atlas with coordinates measured against the new one.
+      final recording = await settled();
+      final atlas = recording.atlas;
+      final picture = recording.uploads.single;
+      final before = <GlyphSlot3d>[
+        for (final grapheme in graphemes) atlas.slotFor(grapheme),
+      ];
+
+      // Every letter is where its own coordinates say, while the pair holds.
+      for (final slot in before) {
+        final (x, y) = sampleAt(slot, picture.size);
+        expect(
+          graphemeUnder(before, x, y),
+          slot.grapheme,
+          reason: '"${slot.grapheme}" does not address its own texels',
+        );
+      }
+
+      // One more letter doubles the atlas, and nothing has rasterized it.
+      atlas.slotFor('m');
+      final after = <GlyphSlot3d>[
+        for (final grapheme in graphemes) atlas.slotFor(grapheme),
+      ];
+      expect(atlas.size, greaterThan(picture.size));
+
+      final wrongLetter = <String>[];
+      final noLetter = <String>[];
+      for (final slot in after) {
+        final (x, y) = sampleAt(slot, picture.size);
+        final found = graphemeUnder(before, x, y);
+        if (found == null) {
+          noLetter.add(slot.grapheme);
+        } else if (found != slot.grapheme) {
+          wrongLetter.add(slot.grapheme);
+        }
+      }
+      expect(
+        wrongLetter,
+        isNotEmpty,
+        reason: 'no glyph lands on a neighbour, so no speckled block',
+      );
+      expect(
+        noLetter,
+        isNotEmpty,
+        reason: 'no glyph lands on empty atlas, so no missing letter',
+      );
+      // And the reason it reads as a defect *per glyph* rather than per
+      // label: the atlas doubles, so a coordinate is roughly halved, and the
+      // letters packed first are the ones that still land on themselves. The
+      // first glyph in the atlas comes out right in the same frame the
+      // eighth comes out as a block.
+      final (x, y) = sampleAt(after.first, picture.size);
+      expect(graphemeUnder(before, x, y), after.first.grapheme);
+    });
+  });
+
   group('the atlas traces', () {
     test('a silhouette per glyph, with the pixels and not before', () async {
       final recording = RecordingAtlas();
@@ -322,6 +583,49 @@ void main() {
       atlas.slotFor('a');
       await atlas.flush();
       expect(atlas.outlineRevision, 2);
+    });
+
+    test('never from a picture of another packing', () async {
+      // The second hypothesis in
+      // `plans/2026_09_17_a_letter_that_comes_back_wrong.md`, checked and
+      // found not to be the fault: a silhouette is cached by grapheme and is
+      // never traced twice, so one traced off the wrong cell would be wrong
+      // for the life of the atlas with no path that repairs it. The guard is
+      // that `flush` traces only from an image whose generation *and* revision
+      // match the atlas's, and this is the case that tests it — a repack
+      // arriving while the rasterization is in flight, which moves every cell
+      // under the picture being read back.
+      const alphabet = 'abcdefghijkl';
+
+      // The control: one atlas that reserves its whole alphabet and then
+      // rasterizes it, so nothing moves while the pixels are being read.
+      final clean = RecordingAtlas(initialSize: 32, maxSize: 512).atlas;
+      for (final grapheme in alphabet.split('')) {
+        clean.slotFor(grapheme);
+      }
+      await clean.flush();
+
+      // And the same atlas built the way an overlay builds one: a letter
+      // settled and rasterized, then eleven more arriving while that raster is
+      // in flight, which repacks the atlas twice under the picture being read
+      // back.
+      final atlas = RecordingAtlas(initialSize: 32, maxSize: 512).atlas;
+      atlas.slotFor('a');
+      final pending = atlas.flush();
+      for (final grapheme in alphabet.substring(1).split('')) {
+        atlas.slotFor(grapheme);
+      }
+      await pending;
+      expect(atlas.generation, greaterThan(0), reason: 'no repack happened');
+      expect(atlas.size, clean.size);
+
+      for (final grapheme in alphabet.split('')) {
+        expect(
+          atlas.outlineFor(grapheme)!.contours,
+          clean.outlineFor(grapheme)!.contours,
+          reason: '"$grapheme" was traced off the wrong cell',
+        );
+      }
     });
 
     test('an outline survives the repack that invalidates every UV', () async {

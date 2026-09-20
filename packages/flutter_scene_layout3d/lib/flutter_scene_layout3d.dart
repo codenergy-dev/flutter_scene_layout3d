@@ -332,7 +332,8 @@ export 'src/sliver/sliver_list.dart' show Sliver3dItemBuilder, SliverList3d;
 export 'src/sliver/sliver_padding.dart' show SliverPadding3d;
 export 'src/sliver/sliver_reorderable_list.dart'
     show Reorder3dCallback, SliverReorderableList3d;
-export 'src/text/atlas_text_renderer.dart' show AtlasText3dRenderer;
+export 'src/text/atlas_text_renderer.dart'
+    show AtlasText3dRenderer, GlyphGeometryUpload3d, uploadGlyphGeometry;
 export 'src/text/glyph_material.dart'
     show
         FmatGlyphMaterial3d,
@@ -352,11 +353,16 @@ export 'src/text/glyph_atlas.dart'
         GlyphAtlas3d,
         GlyphAtlasCache3d,
         GlyphAtlasImage3d,
+        GlyphAtlasPicture3d,
+        GlyphAtlasPictureUpload3d,
         GlyphAtlasUpload3d,
         GlyphSlot3d,
+        debugReportGlyphAtlasRepacks,
+        debugVerifyGlyphAtlasInk,
         glyphAtlasScaleFor,
         glyphAtlasStyleOf,
-        uploadGlyphAtlas;
+        uploadGlyphAtlas,
+        uploadGlyphAtlasPicture;
 export 'src/text/glyph_outline.dart'
     show
         GlyphOutline3d,

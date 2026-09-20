@@ -3,9 +3,27 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart'
-    show ChangeNotifier, FlutterError, FlutterErrorDetails, ErrorDescription;
-import 'package:flutter/painting.dart' show Canvas, Color, Offset, TextStyle;
-import 'package:flutter_scene/scene.dart' show Texture2D, TextureSource;
+    show
+        ChangeNotifier,
+        ErrorDescription,
+        FlutterError,
+        FlutterErrorDetails,
+        debugPrint;
+import 'package:flutter/painting.dart'
+    show Canvas, Color, FilterQuality, Offset, Paint, Rect, TextStyle;
+import 'package:flutter_scene/scene.dart'
+    show GpuTextureSource, Texture2D, TextureSampling, TextureSource;
+//
+// **The engine's own GPU shim, and the import is the workaround.**
+// `flutter_scene` exposes no way to make a [TextureSource] out of a `ui.Image`
+// without copying it: `Texture2D.fromImage` reads the pixels back, which is the
+// thing this file exists to stop doing. `gpu.Texture.fromImage` does exactly
+// what is wanted and lives one layer down. Importing the shim rather than
+// `package:flutter_gpu` directly is deliberate — the shim is a re-export on
+// native and a WebGL2 backend on web, so this keeps working where a direct
+// dependency would not. Upstream should expose it; until then, this.
+// ignore: implementation_imports
+import 'package:flutter_scene/src/gpu/gpu.dart' as gpu;
 
 import 'glyph_outline.dart';
 import 'text_measurement.dart' show buildParagraph;
@@ -105,6 +123,135 @@ class GlyphAtlasImage3d {
   final int revision;
 }
 
+/// The atlas as an image the GPU already holds, before anything has been
+/// copied off it.
+///
+/// The counterpart of [GlyphAtlasImage3d], and the difference between them is
+/// the whole cost of this path: that one is **pixels on the Dart heap**, which
+/// means a `toByteData` off the raster thread and 785–973ms for a 512-texel
+/// atlas on a real machine; this is the `ui.Image` `toImage` already produced,
+/// which a texture can wrap without copying a byte.
+class GlyphAtlasPicture3d {
+  /// Records a rasterized atlas.
+  const GlyphAtlasPicture3d(
+    this.image,
+    this.size,
+    this.generation,
+    this.revision, {
+    this.slots = const <String, GlyphSlot3d>{},
+  });
+
+  /// The rendered atlas.
+  ///
+  /// **Do not dispose it.** A texture wrapping it shares its storage, and
+  /// [GlyphAtlas3d] keeps it alive for as long as the texture it made from it.
+  final ui.Image image;
+
+  /// The atlas is square; this is its edge, in texels.
+  final int size;
+
+  /// The [GlyphAtlas3d.generation] this picture was rasterized from.
+  final int generation;
+
+  /// The [GlyphAtlas3d.revision] this picture was rasterized from.
+  final int revision;
+
+  /// Where every glyph this picture holds is in it.
+  ///
+  /// **What was drawn, not what was reserved.** The two part company across
+  /// the `await` inside the rasterization, and the difference is load-bearing:
+  /// the next picture blits these cells forward rather than typesetting them
+  /// again, so a grapheme listed here that the image does not actually hold
+  /// would be copied, empty, for the life of the atlas.
+  final Map<String, GlyphSlot3d> slots;
+}
+
+/// Wraps a rasterized atlas as a texture without copying it.
+///
+/// Tried before [GlyphAtlasUpload3d], and returning null is how a backend that
+/// cannot do it says so — the atlas then reads the pixels back and takes the
+/// slower path. That is not hypothetical: the engine's web backend throws
+/// rather than wrapping.
+typedef GlyphAtlasPictureUpload3d =
+    TextureSource? Function(GlyphAtlasPicture3d picture);
+
+/// The default picture uploader: the image, wrapped, with nothing copied.
+///
+/// **This is the fix for two things at once.** A `toByteData` readback of the
+/// atlas costs 785–973ms on a 512-texel atlas on a real machine, which is the
+/// window every text artifact in this package's history lives in — and on that
+/// same machine the readback comes back *wrong*, with cells blank that were
+/// drawn and stripes where letters should be, permanently, because the bad
+/// image is the one that gets kept. See *A picture of the atlas can come back
+/// without the letters in it* in `docs/traps.md`. Neither can happen to a
+/// texture that was never copied.
+///
+/// **`clampToEdge`, and it matters here**: the engine's default sampler
+/// addressing is `repeat`, so a glyph packed against the atlas's own edge
+/// samples the far side of the texture in its outermost texel.
+TextureSource? uploadGlyphAtlasPicture(GlyphAtlasPicture3d picture) {
+  try {
+    return GpuTextureSource(
+      gpu.Texture.fromImage(gpu.gpuContext, picture.image),
+      sampler: gpu.SamplerOptions(
+        minFilter: gpu.MinMagFilter.linear,
+        magFilter: gpu.MinMagFilter.linear,
+        // No mip chain to walk: an atlas packs unrelated letters two texels
+        // apart, so a lower level averages one into the next.
+        mipFilter: gpu.MipFilter.nearest,
+        widthAddressMode: gpu.SamplerAddressMode.clampToEdge,
+        heightAddressMode: gpu.SamplerAddressMode.clampToEdge,
+      ),
+    );
+  } catch (error) {
+    // A backend that will not wrap an image — the web one throws in as many
+    // words. The atlas reads the pixels back instead.
+    assert(() {
+      debugPrint(
+        'GlyphAtlas3d could not wrap its picture as a texture ($error); '
+        'falling back to reading the pixels back.',
+      );
+      return true;
+    }());
+    return null;
+  }
+}
+
+/// Reports every repack, and how long its picture took to arrive.
+///
+/// The window this opens is the one a text artifact almost always turns out
+/// to be — see *A mesh and an atlas texture are a pair* in `docs/traps.md` —
+/// and it is the one thing about it a person running an application can
+/// actually observe. A repack renumbers the packing at once and the picture
+/// follows a readback later; between the two, a label that has to be baked
+/// again — because it relaid out, or because its renderer was rebuilt out from
+/// under it — has no picture to draw from and draws nothing.
+///
+/// Turn this on, use the application, and each line pairs: a repack, then the
+/// milliseconds until the picture landed. Artifacts that coincide with a wide
+/// window are this; artifacts with no window open near them are not, which is
+/// the more useful half of the answer.
+///
+/// Debug builds only, and off by default.
+bool debugReportGlyphAtlasRepacks = false;
+
+/// Checks that every glyph the atlas accepts a picture of actually has ink in
+/// it, and remembers the ones that do not.
+///
+/// The half [GlyphAtlas3d.debugStaleGlyphs] cannot see on its own. That one
+/// compares *addresses* — is the slot I hand out the slot the picture has —
+/// and is satisfied by a picture whose cell for a letter is empty, because an
+/// empty cell is still at the right address. This asks the other question: did
+/// the letter actually get drawn.
+///
+/// It is a flag rather than an assertion because it walks every glyph's cell
+/// on every flush, which is the whole atlas. Turn it on from a diagnostic —
+/// `examples/render_probe`'s self-driving harness does — and leave it off in a
+/// frame.
+///
+/// Debug builds only, and off by default.
+bool debugVerifyGlyphAtlasInk = false;
+
 /// Uploads a rasterized atlas to the GPU.
 ///
 /// The one GPU-shaped step in the whole atlas, kept behind a function so the
@@ -118,8 +265,27 @@ typedef GlyphAtlasUpload3d = TextureSource? Function(GlyphAtlasImage3d image);
 /// to each other, so a lower mip level averages one letter into its
 /// neighbour; the way to keep type sharp as a panel recedes is a bigger
 /// [GlyphAtlas3d.scale] or a distance field, not a mip chain.
+///
+/// **The sampling has to be said out loud**, and for a while it was not.
+/// `Texture2D.fromPixels` defaults to `TextureSampling()`, which is
+/// `mipmaps: true` with no cap on the levels — the right default for a
+/// photograph on a wall and the wrong one for an atlas, as the engine's own
+/// `TextureSampling.maxMipmapLevels` says in as many words: *a texture atlas
+/// uses this so tiles stop shrinking before they merge into their neighbors
+/// across the padding gutter*. Two texels of gutter survive one halving and
+/// nothing below it, so from the second level down a glyph is averaged with
+/// whatever was packed beside it — and `assets/text_glyph3d.fmat` throws away
+/// a fragment whose coverage falls under `alpha_cutoff`, which turns that
+/// averaging into letters that thin out, break up or disappear according to
+/// their own shape while their neighbours stay solid. It also cost a mip
+/// chain's worth of CPU on every flush, inside the window a repack opens.
 TextureSource? uploadGlyphAtlas(GlyphAtlasImage3d image) =>
-    Texture2D.fromPixels(image.pixels, image.size, image.size);
+    Texture2D.fromPixels(
+      image.pixels,
+      image.size,
+      image.size,
+      sampling: const TextureSampling(mipmaps: false),
+    );
 
 /// A square texture holding every glyph one style has been asked to draw at
 /// one resolution.
@@ -159,11 +325,13 @@ class GlyphAtlas3d extends ChangeNotifier {
     this.initialSize = 128,
     this.maxSize = 2048,
     GlyphAtlasUpload3d upload = uploadGlyphAtlas,
+    GlyphAtlasPictureUpload3d uploadPicture = uploadGlyphAtlasPicture,
   }) : assert(scale > 0.0),
        assert(padding >= 0),
        assert(initialSize > 0),
        assert(maxSize >= initialSize),
        _upload = upload,
+       _uploadPicture = uploadPicture,
        _size = initialSize;
 
   /// The style glyphs are measured and drawn at, in logical pixels.
@@ -192,6 +360,7 @@ class GlyphAtlas3d extends ChangeNotifier {
   final int maxSize;
 
   final GlyphAtlasUpload3d _upload;
+  final GlyphAtlasPictureUpload3d _uploadPicture;
 
   /// The line box glyphs are rasterized inside, as a multiple of the font
   /// size.
@@ -212,11 +381,35 @@ class GlyphAtlas3d extends ChangeNotifier {
   int _shelfHeight = 0;
   bool _needsRaster = false;
   TextureSource? _texture;
+  int _textureGeneration = -1;
+  int _textureRevision = -1;
   Future<void>? _pending;
 
   final Map<String, GlyphSlot3d> _slots = <String, GlyphSlot3d>{};
   final Map<String, _GlyphInk> _ink = <String, _GlyphInk>{};
   final Map<String, GlyphOutline3d> _outlines = <String, GlyphOutline3d>{};
+
+  /// Where each glyph was in the picture that is uploaded.
+  ///
+  /// Not the packing — [_slots] is the packing, and it moves the instant a
+  /// repack happens. This is what the *texture* is a picture of, which is the
+  /// only thing a baked mesh can actually sample. See [debugStaleGlyphs].
+  Map<String, GlyphSlot3d> _pictured = const <String, GlyphSlot3d>{};
+
+  /// The image the texture wraps, kept alive because the texture shares its
+  /// storage.
+  ui.Image? _textureImage;
+
+  GlyphAtlasImage3d? _debugPicture;
+
+  /// The image the uploaded texture was made from, kept only while
+  /// [debugVerifyGlyphAtlasInk] is on.
+  ///
+  /// **Not a fresh rasterization.** Asking the atlas to draw itself again
+  /// answers *what would it look like now*, which is a different question from
+  /// *what is on the GPU*, and the two differ by exactly the window every text
+  /// artifact here lives in. This is the second one.
+  GlyphAtlasImage3d? get debugPicture => _debugPicture;
   int _outlineRevision = 0;
 
   /// The atlas edge, in texels. Always a power of two times [initialSize].
@@ -242,6 +435,50 @@ class GlyphAtlas3d extends ChangeNotifier {
   /// The uploaded texture, or null until the first [flush] has resolved.
   TextureSource? get texture => _texture;
 
+  /// The [generation] [texture] is a picture of, or -1 before the first
+  /// [flush] has resolved.
+  ///
+  /// **Not a fourth counter.** [generation], [revision] and [outlineRevision]
+  /// describe the atlas; this describes the *texture*, and it is the one
+  /// number that answers the question a baked mesh has to ask before it
+  /// samples: *is the picture I am pointing at the packing I was measured
+  /// against?* A repack renumbers every slot the moment it happens and the
+  /// picture follows only when the rasterization lands, so between the two
+  /// this is behind [generation] and every coordinate [slotFor] hands out
+  /// describes an image that does not exist yet.
+  int get textureGeneration => _textureGeneration;
+
+  /// The [revision] [texture] is a picture of, or -1 before the first [flush]
+  /// has resolved.
+  ///
+  /// [textureGeneration] answers *is the picture of my packing*; this answers
+  /// *is the picture as complete as my packing was*. They are the same two
+  /// questions [generation] and [revision] ask of the atlas, asked of the
+  /// picture — and the second one is needed for the same reason it was needed
+  /// there. Reserving a glyph into free space does **not** repack, so the
+  /// generation does not move and [textureIsCurrent] stays true while the
+  /// uploaded picture is a letter short.
+  ///
+  /// That gap is deliberate for a glyph's **face**: every glyph the picture
+  /// does have is still exactly where the coordinates say, so a label drawn
+  /// from it is missing a letter rather than drawing a wrong one, and the
+  /// flush that closes the gap is already running. It is not survivable for a
+  /// glyph's **wall**, which is geometry with no texture in it and draws
+  /// whatever the picture does or does not hold — see
+  /// `AtlasText3dRenderer.bakedRevision`.
+  int get textureRevision => _textureRevision;
+
+  /// Whether [texture] is a picture of the packing [slotFor] is handing out.
+  ///
+  /// False in the window a repack opens, and the signal a renderer needs to
+  /// stay out of it: texture coordinates baked while this is false address
+  /// texels that belong to another letter, or to none. It says nothing about
+  /// [revision] on purpose — a picture that is a glyph *short* still puts
+  /// every glyph it has where the coordinates say, so a label drawn from it
+  /// is missing a letter rather than drawing a wrong one, and [flush] is
+  /// already rasterizing again to close that.
+  bool get textureIsCurrent => _textureGeneration == _generation;
+
   /// Whether a glyph has been reserved that the uploaded texture does not
   /// have yet.
   bool get needsRaster => _needsRaster;
@@ -260,6 +497,75 @@ class GlyphAtlas3d extends ChangeNotifier {
   /// laid out before the first flush has slots and no outlines, so it draws
   /// flat and rebuilds when this moves.
   int get outlineRevision => _outlineRevision;
+
+  /// Every glyph [image] was supposed to draw and did not.
+  ///
+  /// Stops at the first ink texel of a cell, so a healthy atlas pays a few
+  /// texels a glyph. Only the cells are walked, never the gutter between them.
+  List<String> _glyphsWithoutInk(GlyphAtlasImage3d image) {
+    final cutoff = (kGlyphOutlineThreshold * 255.0).round();
+    final lost = <String>[];
+    for (final slot in _slots.values) {
+      if (slot.isBlank) continue;
+      var found = false;
+      for (var row = 0; row < slot.height && !found; row++) {
+        final start = ((slot.y + row) * image.size + slot.x) * 4 + 3;
+        for (var column = 0; column < slot.width; column++) {
+          final index = start + column * 4;
+          if (index >= image.pixels.length || image.pixels[index] >= cutoff) {
+            found = true;
+            break;
+          }
+        }
+      }
+      if (!found) lost.add(slot.grapheme);
+    }
+    return lost;
+  }
+
+  /// Every grapheme whose slot is **not** where the uploaded picture has it.
+  ///
+  /// The invariant the whole text layer rests on, made askable. A mesh bakes
+  /// the coordinates [slotFor] hands out and samples [texture]; if the two
+  /// disagree about where a letter is, the mesh draws that letter's neighbour
+  /// or draws nothing, and every text artifact this package has shipped has
+  /// been one of those two.
+  ///
+  /// It should always be empty while [textureIsCurrent] is true, and a
+  /// grapheme listed here while it is true means one of three statements that
+  /// look airtight is false: that a silhouette is only traced from an accepted
+  /// image, that an accepted image draws every slot, or that an accepted image
+  /// is the one uploaded. A blank glyph is not listed — it has no raster to be
+  /// in the wrong place.
+  ///
+  /// Debug only, and it walks the alphabet, so call it from a diagnostic
+  /// rather than from a frame.
+  Iterable<String> debugStaleGlyphs() sync* {
+    for (final slot in _slots.values) {
+      if (slot.isBlank) continue;
+      final pictured = _pictured[slot.grapheme];
+      if (pictured == null ||
+          pictured.x != slot.x ||
+          pictured.y != slot.y ||
+          pictured.width != slot.width ||
+          pictured.height != slot.height) {
+        yield slot.grapheme;
+      }
+    }
+  }
+
+  /// Whether the uploaded picture has ink for [grapheme] where [slotFor] says
+  /// it is.
+  ///
+  /// The per-glyph half of [textureIsCurrent], and the one a wall wants: a
+  /// glyph's face is stopped by binding no texture, and its wall is geometry
+  /// with nothing to stop it.
+  bool picturesGlyph(String grapheme) {
+    final slot = _slots[grapheme];
+    if (slot == null || slot.isBlank) return false;
+    final pictured = _pictured[grapheme];
+    return pictured != null && pictured.x == slot.x && pictured.y == slot.y;
+  }
 
   /// [grapheme]'s silhouette, or null until the raster it is traced from has
   /// been read back.
@@ -318,12 +624,12 @@ class GlyphAtlas3d extends ChangeNotifier {
   Future<void> _flush() async {
     try {
       while (_needsRaster) {
-        final image = await rasterize();
+        final picture = await rasterizePicture();
         // A glyph reserved while the rasterization was in flight — or a
-        // repack triggered by one — means these pixels are already stale.
+        // repack triggered by one — means this picture is already stale.
         //
         // **This compares the revision and not only the generation**, and
-        // that is the whole of it: `rasterize` records its picture
+        // that is the whole of it: `rasterizePicture` records its picture
         // synchronously and then awaits `toImage`, so every glyph reserved
         // during that await is missing from the image, and a reservation
         // that finds free space does not repack, so the generation has not
@@ -333,14 +639,85 @@ class GlyphAtlas3d extends ChangeNotifier {
         // second surface shared this atlas. A single surface hid it, because
         // one surface reserves its whole alphabet in one layout pass, which
         // grows the atlas, which does move the generation.
-        if (image.generation != _generation || image.revision != _revision) {
+        if (picture.generation != _generation ||
+            picture.revision != _revision) {
+          picture.image.dispose();
           continue;
         }
+        // **Wrapped, not copied.** This is where the readback used to be, and
+        // taking it out cost 785–973ms on a 512-texel atlas — the window every
+        // text artifact here lives in. It is not what made the letters wrong;
+        // that was measured, and the artifact was identical either way. See
+        // *A letter draws once, and the second time it draws nothing* in
+        // `docs/traps.md`.
+        var texture = _uploadPicture(picture);
+        GlyphAtlasImage3d? pixels;
+        if (texture == null) {
+          // A backend that will not wrap an image. Read the pixels back and
+          // take the old path, which is slower and is still correct.
+          pixels = await readBack(picture);
+          texture = _upload(pixels);
+        }
         _needsRaster = false;
-        // Before the upload, so a listener woken by the texture finds the
-        // silhouettes already there and rebuilds once rather than twice.
-        _traceOutlines(image);
-        _texture = _upload(image);
+        // **The silhouettes are the one thing that still wants pixels**, and
+        // they want them only for a glyph nothing has traced yet. A repack
+        // traces nothing — an outline is stated from its own cell's corner, so
+        // moving the cell does not change it — which is exactly the case the
+        // readback used to be most expensive in.
+        if (_slots.values.any(
+          (slot) => !slot.isBlank && !_outlines.containsKey(slot.grapheme),
+        )) {
+          pixels ??= await readBack(picture);
+          _traceOutlines(pixels);
+        }
+        // **The verification, and it is the thing that found this.** It costs
+        // a readback, so it is behind a flag and never runs in a frame a
+        // person is waiting on. Note the question it asks: whether a cell
+        // holds *any* ink. A cell of stripes passes, so silence here is not a
+        // clean picture — [debugPicture] is what settles that.
+        if (debugVerifyGlyphAtlasInk) {
+          pixels ??= await readBack(picture);
+          _debugPicture = pixels;
+          final lost = _glyphsWithoutInk(pixels);
+          if (lost.isNotEmpty) {
+            debugPrint(
+              'GlyphAtlas3d drew ${lost.join()} into its picture and the '
+              'picture came back without '
+              '${lost.length == 1 ? 'it' : 'them'}. Those letters will not '
+              'draw until the atlas repacks. See *A letter draws once, and '
+              'the second time it draws nothing* in docs/traps.md.',
+            );
+          }
+        } else {
+          _debugPicture = null;
+        }
+        // **From the picture, not from `_slots`.** Reading the packing again
+        // here would count glyphs reserved during the awaits above, which this
+        // image does not hold — and the next picture blits whatever this map
+        // names.
+        _pictured = picture.slots;
+        // The generation goes up with the pixels, and both go up before the
+        // notification: a listener is entitled to read `textureIsCurrent` and
+        // find the two halves agreeing, because agreeing is the whole reason
+        // it was woken.
+        _textureGeneration = picture.generation;
+        _textureRevision = picture.revision;
+        // The image the texture wraps shares storage with it, so the old one
+        // is only let go once nothing is pointing at it any more.
+        _textureImage?.dispose();
+        _textureImage = picture.image;
+        _texture = texture;
+        assert(() {
+          final clock = _repackClock;
+          if (clock != null) {
+            debugPrint(
+              'GlyphAtlas3d picture of generation $_generation landed after '
+              '${clock.elapsedMilliseconds}ms.',
+            );
+            _repackClock = null;
+          }
+          return true;
+        }());
         notifyListeners();
       }
     } finally {
@@ -348,59 +725,126 @@ class GlyphAtlas3d extends ChangeNotifier {
     }
   }
 
-  /// Draws every reserved glyph into one image.
+  /// Copies [picture]'s pixels back off the GPU.
   ///
-  /// Free of the GPU and of `flutter_scene`, which is what makes the atlas
-  /// testable: a headless test rasterizes and reads the texels back.
-  Future<GlyphAtlasImage3d> rasterize() async {
+  /// The expensive step, kept behind a name so it is obvious where it is paid:
+  /// `toByteData` of a 512-texel atlas measures 785–973ms on a real machine.
+  /// Nothing on the drawing path calls it any more — only silhouette tracing
+  /// does, and only for a glyph nothing has traced yet.
+  Future<GlyphAtlasImage3d> readBack(GlyphAtlasPicture3d picture) async {
+    final bytes = await picture.image.toByteData(
+      format: ui.ImageByteFormat.rawStraightRgba,
+    );
+    if (bytes == null) {
+      throw StateError('The glyph atlas could not be read back.');
+    }
+    return GlyphAtlasImage3d(
+      bytes.buffer.asUint8List(),
+      picture.size,
+      picture.generation,
+      picture.revision,
+    );
+  }
+
+  /// Draws every reserved glyph into one image, and stops there.
+  ///
+  /// Free of the GPU only in the sense that matters to a test: it needs
+  /// `dart:ui`, which `flutter test` has, and nothing from `flutter_scene`.
+  /// The image it returns is the one a texture wraps, so **the caller owns it**
+  /// and must dispose it or hand it to something that will.
+  Future<GlyphAtlasPicture3d> rasterizePicture() async {
     final generation = _generation;
     final revision = _revision;
     final edge = _size;
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
     final style = rasterStyle;
+    // **A glyph is typeset exactly once, ever.** Every later picture copies
+    // its cell out of the previous one, at whatever address the new packing
+    // gave it.
+    //
+    // This is not an optimization, it is the defect. Drawing a grapheme into
+    // one offscreen picture and then into a second one draws *nothing* the
+    // second time, on the machine this was measured on: the same glyph set
+    // rendered three times running came back with 3021, 0 and 0 ink texels,
+    // and where it did not vanish outright it came back short — 12248, 9986,
+    // 9986 — always losing a contiguous run of the glyphs reserved earliest.
+    // Every flush used to typeset the whole atlas, so every repack redrew
+    // glyphs an earlier picture had already drawn, and those are exactly the
+    // letters that came out hollow. A blit is not typesetting, so it does not
+    // trip it. See *A letter draws once and never again* in `docs/traps.md`.
+    final previous = _textureImage;
+    final held = previous == null ? const <String, GlyphSlot3d>{} : _pictured;
+    // **Every paragraph stays alive until the picture has been rasterized.**
+    // `drawParagraph` records a reference rather than the ink, and the pixels
+    // are produced by `toImage` later. Disposing one in between was measured
+    // not to be what loses a glyph here, but the ordering is the one the API
+    // asks for and costs nothing to keep.
+    final drawn = <ui.Paragraph>[];
+    final holds = <String, GlyphSlot3d>{};
     for (final slot in _slots.values) {
       if (slot.isBlank) continue;
+      holds[slot.grapheme] = slot;
+      final was = held[slot.grapheme];
+      if (was != null && was.width == slot.width && was.height == slot.height) {
+        // A blit, not a typesetting. The cell is the same size in both
+        // pictures — it is the same glyph at the same scale — so this is a
+        // texel-for-texel copy and the filter never has anything to do.
+        canvas.drawImageRect(
+          previous!,
+          Rect.fromLTWH(
+            was.x.toDouble(),
+            was.y.toDouble(),
+            was.width.toDouble(),
+            was.height.toDouble(),
+          ),
+          Rect.fromLTWH(
+            slot.x.toDouble(),
+            slot.y.toDouble(),
+            slot.width.toDouble(),
+            slot.height.toDouble(),
+          ),
+          Paint()..filterQuality = FilterQuality.none,
+        );
+        continue;
+      }
       final paragraph = buildParagraph(slot.grapheme, style)
         ..layout(const ui.ParagraphConstraints(width: double.infinity));
       canvas.drawParagraph(
         paragraph,
         Offset((slot.x + padding).toDouble(), (slot.y + padding).toDouble()),
       );
-      paragraph.dispose();
+      drawn.add(paragraph);
     }
     final picture = recorder.endRecording();
     final image = await picture.toImage(edge, edge);
     picture.dispose();
+    for (final paragraph in drawn) {
+      paragraph.dispose();
+    }
+    return GlyphAtlasPicture3d(image, edge, generation, revision, slots: holds);
+  }
+
+  /// Draws every reserved glyph into one image and reads the pixels back.
+  ///
+  /// [rasterizePicture] followed by [readBack]. Nothing on the drawing path
+  /// calls this any more — the texture wraps the image instead — but it is
+  /// what makes the atlas testable, because a headless test can rasterize and
+  /// inspect the texels.
+  Future<GlyphAtlasImage3d> rasterize() async {
+    final picture = await rasterizePicture();
     try {
-      final bytes = await image.toByteData(
-        format: ui.ImageByteFormat.rawStraightRgba,
-      );
-      if (bytes == null) {
-        throw StateError('The glyph atlas could not be read back.');
-      }
-      return GlyphAtlasImage3d(
-        bytes.buffer.asUint8List(),
-        edge,
-        generation,
-        revision,
-      );
+      return await readBack(picture);
     } finally {
-      image.dispose();
+      picture.image.dispose();
     }
   }
 
   /// Traces every glyph whose silhouette this atlas does not know yet.
   ///
-  /// Called from [flush], with the image it just accepted, because that is
-  /// the only moment the ink exists as bytes on this side of the GPU. Each
-  /// glyph is traced once and kept: an outline is stated in logical pixels
-  /// from its own cell's corner, so a repack moves the cell without changing
-  /// the answer.
-  ///
-  /// The cost is one pass over each *new* glyph's cell, which is the same
-  /// order as rasterizing it and is paid on the frame the pixels arrive
-  /// rather than during layout.
+  /// Each glyph is traced once and kept: an outline is stated in logical
+  /// pixels from its own cell's corner, so a repack moves the cell without
+  /// changing the answer.
   void _traceOutlines(GlyphAtlasImage3d image) {
     var traced = false;
     for (final slot in _slots.values) {
@@ -556,14 +1000,37 @@ class GlyphAtlas3d extends ChangeNotifier {
     _generation++;
     _revision++;
     _needsRaster = true;
+    assert(() {
+      if (debugReportGlyphAtlasRepacks) {
+        _repackClock = Stopwatch()..start();
+        debugPrint(
+          'GlyphAtlas3d repacked to ${size}x$size at generation $_generation '
+          '(${style.fontSize?.toStringAsFixed(0) ?? '?'}dp, '
+          '${_slots.length} glyphs): every label drawn from this atlas has '
+          'no picture to sample until the raster lands.',
+        );
+      }
+      return true;
+    }());
   }
+
+  Stopwatch? _repackClock;
 
   @override
   void dispose() {
     _slots.clear();
     _ink.clear();
     _outlines.clear();
+    _pictured = const <String, GlyphSlot3d>{};
+    _debugPicture = null;
+    _textureImage?.dispose();
+    _textureImage = null;
     _texture = null;
+    // A disposed atlas has no picture of anything, and must not read as
+    // though it had one: a renderer still pointing at it compares its bake
+    // against this before it samples.
+    _textureGeneration = -1;
+    _textureRevision = -1;
     super.dispose();
   }
 
@@ -641,6 +1108,7 @@ class GlyphAtlasCache3d {
     this.initialSize = 128,
     this.maxSize = 2048,
     this.upload = uploadGlyphAtlas,
+    this.uploadPicture = uploadGlyphAtlasPicture,
   });
 
   /// The cache every renderer shares unless told otherwise.
@@ -652,11 +1120,25 @@ class GlyphAtlasCache3d {
   final int maxSize;
   final GlyphAtlasUpload3d upload;
 
+  /// Tried before [upload], and the one that costs nothing. See
+  /// [uploadGlyphAtlasPicture].
+  final GlyphAtlasPictureUpload3d uploadPicture;
+
   final Map<(TextStyle, double), GlyphAtlas3d> _atlases =
       <(TextStyle, double), GlyphAtlas3d>{};
 
   /// How many atlases are live.
   int get length => _atlases.length;
+
+  /// Every atlas this cache holds, in the order they were first asked for.
+  ///
+  /// For asking something of the whole set: how many textures an application
+  /// has accumulated, or — the reason this exists — whether every one of them
+  /// has rasterized the packing it is handing out. A label whose atlas
+  /// repacked waits for the new picture before baking again, and an atlas
+  /// stuck with [GlyphAtlas3d.textureIsCurrent] false would leave it waiting
+  /// for ever.
+  Iterable<GlyphAtlas3d> get atlases => _atlases.values;
 
   /// The atlas for [style] at [scale] texels per logical pixel, building one
   /// the first time it is asked for.
@@ -669,6 +1151,7 @@ class GlyphAtlasCache3d {
       initialSize: initialSize,
       maxSize: maxSize,
       upload: upload,
+      uploadPicture: uploadPicture,
     );
   }
 

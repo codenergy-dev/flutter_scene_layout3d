@@ -78,7 +78,7 @@ Everything below runs from the repository root unless stated otherwise.
 
 ```sh
 flutter pub get                                      # resolves the workspace
-cd packages/flutter_scene_layout3d && flutter test   # 1256 today
+cd packages/flutter_scene_layout3d && flutter test   # 1276 today
 cd packages/flutter_scene_material3d && flutter test # 569 today
 cd examples/layout3d_gallery && flutter test         # 5 today
 dart analyze                                         # must be clean, everywhere
@@ -130,6 +130,41 @@ probe answers *is this one claim true*; running the app answers *is anything
 obviously wrong*, and in this stack those are different questions. **Turning
 something is a question of its own**, and nothing here had asked it until a
 person watched a panel rotate.
+
+**And when the window has to be *used* rather than only looked at**, there is a
+third harness, because neither of the two above can be. `flutter drive` pumps
+frames on the test's clock, so every asynchronous arrival in the engine has
+landed before the next frame is built — and a defect living in the gap between
+a glyph atlas repacking and its texture readback returning, which measures
+**785–973ms** here, is never once open under it. Three rounds of chasing a text
+artifact read that as the defect not existing.
+
+```sh
+cd examples/render_probe
+flutter run -d macos --enable-flutter-gpu -t lib/main_self_drive.dart
+```
+
+A real window on the display's own clock, and the state changes **synthesized**
+rather than clicked: `SelfDrive.tap` finds a box by semantic label through the
+layout tree, the way `tap3d` does, and hands a `PointerDownEvent` to
+`GestureBinding`. `SelfDrive.zoom` resizes the window through a method channel,
+because a resize is the only thing anyone has reproduced these artifacts with
+and Dart cannot ask for one. `SelfDrive.dumpAtlases` writes the glyph atlases
+out beside the photographs, which is the half a picture of the application
+cannot show. Write the script in `lib/main_self_drive.dart`; the reasoning, the
+traps and where the PNGs land are in
+[examples/render_probe/README.md](examples/render_probe/README.md) under
+*Driving the real window*.
+
+**And when the suspect might not be this repository at all**, there is a fourth
+entry point in the same app, `lib/main_engine_probe.dart`. It drives the
+gallery and measures *the engine* at every step — plain `dart:ui` drawn into an
+offscreen picture, reported as which cells came back empty, in three variants
+that are only separable together. Reach for it before a long hunt through the
+packing: a text artifact that had survived six rounds of that turned out to be
+`flutter_scene` 0.23.0 blocking the calling thread on the GPU's backlog, losing
+draw calls Flutter had already encoded. See *The engine drops the draw calls it
+encoded first* in [docs/traps.md](docs/traps.md).
 
 When the window itself cannot be looked at — from a shell, from CI — the
 render probe app photographs the gallery, twice, a few seconds apart so the

@@ -83,6 +83,28 @@ class _Layout3dGalleryState extends State<Layout3dGallery> {
   /// What the cursor is over, by semantic label or layout name.
   String? _under;
 
+  /// Makes the renderer one label draws its glyphs with.
+  ///
+  /// **A method, so that it is the same function every build.**
+  /// `DefaultTextRenderer3d` compares the factory it is handed against the
+  /// one it had, and a renderer is a *resource* owned by the label holding
+  /// it — so a closure written inline in `build` is a new function every
+  /// time, and disposes and rebuilds the renderer, the mesh and the materials
+  /// of **every label in the scene**, marking every one of them for layout.
+  /// This state rebuilds whenever the pointer moves onto something new and on
+  /// every window metric a resize passes through, which is dozens of times
+  /// over one drag of a corner.
+  ///
+  /// Churning them also quietly disabled the one defence the text layer has
+  /// while a glyph atlas repacks: a label keeps the mesh it is already
+  /// drawing until the new picture lands, and a renderer built this frame has
+  /// no mesh to keep. See *A mesh and an atlas texture are a pair* in
+  /// `docs/traps.md`.
+  ///
+  /// `resolution` is the only thing that decides how sharp a glyph is — it
+  /// has nothing to do with how big the type is on the panel.
+  AtlasText3dRenderer _textRenderer() => AtlasText3dRenderer(resolution: 3.0);
+
   /// Set once the list of meshes has been dragged, which retires the clock
   /// that scrolls it for show.
   bool _scrolledByHand = false;
@@ -287,12 +309,13 @@ class _Layout3dGalleryState extends State<Layout3dGallery> {
   ///
   /// The renderer is a *factory* rather than an instance because a
   /// `Text3dRenderer` is owned and disposed by the label that holds it, so
-  /// there is no global one to install. Its `resolution` is the only thing
-  /// that decides how sharp a glyph is — it has nothing to do with how big
-  /// the type is on the panel.
+  /// there is no global one to install — and it is [_textRenderer], a method
+  /// of this state, rather than a closure written here. See what that field
+  /// says: a closure here is a new function every build and rebuilds every
+  /// renderer in the scene.
   Widget _themed(Widget child) => SceneTheme3d(
     data: Theme3dData.light,
-    textRendererFactory: () => AtlasText3dRenderer(resolution: 3.0),
+    textRendererFactory: _textRenderer,
     child: child,
   );
 }

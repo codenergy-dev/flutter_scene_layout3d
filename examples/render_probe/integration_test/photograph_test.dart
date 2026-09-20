@@ -14,6 +14,8 @@
 // at the gallery's window. This is that window, on every run, without anyone
 // having to start it.
 
+import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart'
+    show GlyphAtlasCache3d;
 import 'package:flutter_scene_layout3d/testing.dart';
 import 'package:flutter_scene_material3d/flutter_scene_material3d.dart'
     show initializeMaterial3d;
@@ -88,6 +90,38 @@ void main() {
     await tester.tap3d(find3d.bySemanticsLabel('More'));
     await tester.pumpAndSettle();
     await tester.tap3d(find3d.bySemanticsLabel('About'));
+
+    // **And the dialog while it is still arriving**, which is a different
+    // question from the dialog. The About dialog carries a paragraph of
+    // `bodyMedium` — dozens of letters the screen behind it has never drawn,
+    // in a style it is already using — so opening it repacks that style's
+    // atlas, and for the few frames the rasterization takes, every coordinate
+    // the atlas hands out describes a picture that does not exist yet. That
+    // window is where `Noti▓ications` and `Lovel ce` lived. See
+    // `plans/2026_09_17_a_letter_that_comes_back_wrong.md`.
+    //
+    // Ten frames rather than sixty, and the number is the whole point: at
+    // three the menu is still closing, at sixty everything has settled and
+    // there is nothing left to see. **Opening the overlay several times does
+    // not help** — that was the obvious thing to try and it is wrong, because
+    // after the first opening every letter is packed and no repack follows.
+    // Early is the only way in.
+    //
+    // It is a photograph and not a probe, and the reason is worth stating
+    // rather than discovering: with the defect deliberately put back, this
+    // frame came out **correct** — the window is a race against a texture
+    // readback and it is not open on every run or every machine. What pins
+    // the defect is `atlas_text_renderer_test.dart`, which drives the same
+    // cycle with no clock in it at all. This is here so that a person has
+    // somewhere to see it, which is the only lane that ever saw it.
+    keep(
+      await photographAgain(
+        tester,
+        name: 'gallery_dialog_arriving',
+        frames: 10,
+      ),
+    );
+
     final dialog = await photographAgain(
       tester,
       name: 'gallery_dialog',
@@ -95,5 +129,23 @@ void main() {
     );
     keep(dialog);
     expectAFrame(dialog);
+
+    // The one thing here that is a probe rather than a photograph, and it is
+    // in this lane because nowhere else is there a real screen with real
+    // overlays over it. A label whose atlas has repacked waits for the new
+    // picture before it bakes again, and that wait is safe only because an
+    // atlas that owes a raster always delivers one. If any atlas is still
+    // behind after everything has settled, every label baked against it is
+    // holding letters it will never be able to draw.
+    for (final atlas in GlyphAtlasCache3d.shared.atlases) {
+      expect(
+        atlas.textureIsCurrent,
+        isTrue,
+        reason:
+            '$atlas never rasterized the packing it is handing out, so every '
+            'label measured against it is waiting for a picture that is not '
+            'coming',
+      );
+    }
   });
 }

@@ -41,6 +41,35 @@ flutter run -d macos --enable-flutter-gpu
 `--enable-flutter-gpu` is required. `--enable-impeller` is not the flag, and
 the native-assets experiment breaks the build.
 
+One more flag, for the one defect this app is the only way to see:
+
+```sh
+flutter run -d macos --enable-flutter-gpu --dart-define=report_repacks=true
+```
+
+That turns on `debugReportGlyphAtlasRepacks`, which prints each glyph atlas
+repack and the milliseconds its picture took to arrive — 700–850ms here, which
+is not frames, it is a second of a person's attention. Between the two there
+is a window in which a label that has to be baked again has no picture to draw
+from, and **resizing the window is the worst case**. Not because the surfaces
+resize: every one of them here is authored at a fixed size and a fixed unit
+rate, so the 3D layout does not change at all. It is because a resize is a
+storm of widget rebuilds, and this app's theme used to hand the tree a new
+`textRendererFactory` closure on every one of them — which throws away and
+rebuilds every label's renderer in the scene, and a renderer built this frame
+has no mesh to keep and so cannot wait out a repack. The factory is
+`_textRenderer`, a method, for that reason.
+
+If letters come out wrong while a repack's window is open,
+they are that; if they come out wrong with none open, they are something else,
+and that is the more useful half of the answer. The background is *A mesh and
+an atlas texture are a pair* in [docs/traps.md](../../docs/traps.md).
+
+It is a `--dart-define` rather than a line to uncomment because no other lane
+reaches this: `flutter drive` pumps frames slowly enough for the readback to
+land between them, so the window never opens there, and a render probe that
+asserted it would be asserting a race.
+
 `flutter create` writes more than the platform directory — a `.metadata`, an
 `analysis_options.yaml` the repository root already provides, a `.gitignore`,
 and a `widget_test.dart` stub for a `MyApp` this app does not have. All of it

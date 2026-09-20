@@ -151,9 +151,37 @@ flutter drive --driver=test_driver/photograph.dart \
 
 The PNGs land in `build/photographs/` — `gallery.png`, and `gallery_later.png`
 a few seconds on, because the upright screen turns and a turned panel is a
-question of its own. CI uploads both from every run, as the `photographs`
-artifact. The test asserts only the floor a probe asserts, that a frame came
-out; nothing in it is a golden.
+question of its own; then `gallery_dialog_arriving.png` and `gallery_dialog.png`
+with the About dialog over the screen. CI uploads them all from every run, as
+the `photographs` artifact. The test asserts only the floor a probe asserts,
+that a frame came out; nothing in it is a golden.
+
+**`gallery_dialog_arriving` is ten frames after the tap and the number is the
+whole point.** The dialog brings a paragraph of `bodyMedium` — dozens of
+letters the screen behind it has never drawn, in a style it is already using —
+so opening it repacks that atlas, and for the frames the readback takes, every
+coordinate the atlas hands out describes a picture that does not exist yet.
+That is the window a letter used to come back wrong in; see *A mesh and an
+atlas texture are a pair* in [docs/traps.md](../../docs/traps.md). At three
+frames the menu is still closing and at sixty everything has settled, so there
+is one moment worth photographing and it is neither end. Opening the overlay
+several times does not help, which is the obvious thing to try: after the first
+opening every letter is packed and no repack follows.
+
+It stays a photograph rather than becoming a probe, and the reason is worth
+knowing before you try to promote it. With the defect deliberately put back,
+this frame came out *correct* — the window is a race against a texture readback
+and it is not open on every run or every machine. The claim is pinned headless,
+in `packages/flutter_scene_layout3d/test/atlas_text_renderer_test.dart`, which
+drives the same cycle with no clock in it. This is here so a person has
+somewhere to see it.
+
+The one assertion in the file that is not about a frame belongs to the same
+thing: after everything settles, every atlas in `GlyphAtlasCache3d.shared` must
+have rasterized the packing it is handing out. A renderer whose atlas repacked
+waits for the new picture before baking again, and an atlas stuck behind would
+leave it waiting for ever. Nowhere else is there a real screen with real
+overlays over it to ask.
 
 `integration_test/photograph.dart` is the recipe, and it is written to be
 reused for any other screen. Three things in it cost time before it was
@@ -178,6 +206,109 @@ screens here would photograph the copy.
 against the bar's leading edge when there was no leading widget, where Flutter
 insets it by 16dp. No suite or probe asked that question; `AppBar3d` has been
 fixed and `app_bar_test.dart` asks it now.
+
+## Driving the real window
+
+There is a third harness in here, and it exists because the other two cannot
+ask the question.
+
+`flutter test` has no GPU. `flutter drive` has one, but it pumps frames on the
+**test's** clock: `await tester.pump()` runs a frame and then waits, so every
+asynchronous arrival in the engine has landed by the time the next frame is
+built. A defect that lives in the gap between a glyph atlas repacking and its
+texture readback coming back — which measures **785–973ms** on the machine this
+was written against — is never once open under `flutter drive`. Three separate
+rounds of chasing a text artifact failed there for that reason, and the failure
+looks exactly like the defect not existing.
+
+So the third lane is `flutter run`: a real window, the display's own clock,
+real vsync, a real resize. What it does *not* do is click anything through the
+operating system — driving a window that way needs accessibility permissions an
+agent cannot grant itself — so the state changes are **synthesized**:
+
+```sh
+cd examples/render_probe
+flutter run -d macos --enable-flutter-gpu -t lib/main_self_drive.dart
+```
+
+`lib/main_self_drive.dart` is the script and `lib/self_drive.dart` is the
+harness. A step is *an act, then real time, then a photograph*:
+
+```dart
+SelfDriveStep('dialog_arriving',
+    act: () => SelfDrive.tap('About'),
+    settle: const Duration(milliseconds: 120)),
+```
+
+`SelfDrive.tap` aims the way `tap3d` aims in a headless test — the box's
+projected centre, found through the layout tree by semantic label rather than
+hard-coded, so it survives a resize — and then hands a `PointerDownEvent` to
+`GestureBinding`, which is exactly what the platform hands it. Nothing below
+that layer can tell the difference. `scroll` turns a wheel the same way.
+
+**`SelfDrive.zoom` and `restore` go through a method channel** to
+`macos/Runner/MainFlutterWindow.swift`, because Dart cannot resize its own
+window and a resize is the only thing anyone has reproduced these artifacts
+with. `restore` is not optional at the top of a script: macOS restores the
+frame the window last had, so a run following a maximized one starts maximized
+and the recipe's first half silently never happens.
+
+**`SelfDrive.dumpAtlases` writes every glyph atlas out as a PNG** beside the
+photographs. This is the half a picture of the application cannot show: a
+letter drawn wrong is either a wrong coordinate or a wrong picture, and only
+the atlas says which. Open them over a dark background — the rasters are white
+ink on transparent, so a PNG viewer on white shows an empty square.
+
+**And open them even when the console is quiet.** `debugVerifyGlyphAtlasInk`,
+which `lib/main_self_drive.dart` turns on, names glyphs whose cell came back
+*empty* — but a cell full of striped garbage is not empty, so it passes. Two
+separate runs reported no loss at all while the atlas PNG plainly showed five
+letters replaced by stripes and the frame showed them hollow. The counter is a
+lower bound on the damage; the picture is the damage.
+
+The photographs land in the app's sandbox container, which is nowhere a person
+would guess, so the path is printed on the first line of the run. Today that is
+`~/Library/Containers/dev.codenergy.renderProbe/Data/tmp/self_drive`.
+
+**When the suspect is the engine rather than the application**, there is a
+fourth entry point beside the self-driving one:
+
+```sh
+flutter run -d macos --enable-flutter-gpu -t lib/main_engine_probe.dart
+```
+
+It drives the gallery through the same recipe, but what it measures at every
+step is **plain `dart:ui`**: a grid of items drawn into an offscreen picture,
+read back, reported as *which cells came back empty*. Three variants, and they
+are only separable together — text recorded first-to-last, the same text
+recorded last-to-first, and plain rectangles. If reversing the order moves the
+loss to the other end of the image, what is being lost is the draw calls made
+first, and nothing in this repository can be the cause. That is how a
+seven-round text defect was finally placed in `flutter_scene` 0.23.0; see *The
+engine drops the draw calls it encoded first* in
+[docs/traps.md](../../docs/traps.md).
+
+`--dart-define=fast=true` stops right after the first maximize, which is where
+the loss appears and which makes the probe usable for bisecting an engine.
+`--dart-define=photograph=true` turns the photographs back on; they are off by
+default so the harness cannot be mistaken for the thing it is measuring.
+
+`lib/main_minimal_repro.dart` beside it is the pile of **negative** controls,
+each behind a `--dart-define`: a flutter_scene scene with geometry, GPU texture
+churn, `Texture.fromImage`, a window resize, a second offscreen render running
+alongside, a layout surface. None of them reproduces anything on its own, which
+is most of what the round learned, and keeping them costs one file.
+
+**Photograph the application, not a widget of it.** The first run of this
+harness wrapped the gallery's *screen* widget in a `MaterialApp` of its own
+rather than running `Layout3dGalleryApp`, and every glyph in every atlas came
+back with a double rule through its descenders. That is Flutter's
+`_errorTextStyle` — what a `Text` resolves to with no `Material` above it —
+whose `decoration` a `SceneText3d` inherits like any other and the atlas bakes
+into the texture. It is a real trap rather than a harness quirk, and it is
+written up as *An atlas bakes the decoration, and a missing `Material` supplies
+one* in [docs/traps.md](../../docs/traps.md); the point here is that a harness
+which does not run the real application invents defects of its own.
 
 ## The catalogue scenes
 

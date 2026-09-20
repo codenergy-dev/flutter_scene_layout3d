@@ -783,6 +783,278 @@ still had it. The raster is white either way, underline included
 (`GlyphAtlas3d.rasterStyle` whitens the decoration too), so the key must not
 carry a colour the raster does not.
 
+### A mesh and an atlas texture are a pair, and a repack separates them
+
+The half above is about a picture of the atlas being a glyph *short*. This one
+is about it being a picture of **another packing altogether**, and it is the
+same door from the other side.
+
+A repack renumbers every slot the instant it happens. The picture follows only
+when the rasterization lands, and reading a 2048-texel atlas back off the
+raster thread takes frames rather than microseconds. In between, every
+coordinate `slotFor` hands out describes an image that does not exist yet — and
+a mesh baked in that window samples the *previous* picture at the *new*
+coordinates. `GlyphAtlas3d.textureGeneration` is the number that says which
+packing the uploaded texture is of, and `textureIsCurrent` is the question a
+renderer has to ask before it bakes.
+
+The symptom is two symptoms, and neither of them looks like a texture problem:
+
+- a coordinate landing on a neighbour's texels draws a **dark speckled block**
+  the size of the letter — `Notifications` as `Noti▓ications`;
+- one landing on empty atlas draws **nothing**, and the pen still advances —
+  `Ada Lovelace` as `Lovel ce`.
+
+And it reads as a defect **per glyph**, which is what makes it so hard to
+place. The atlas *doubles*, so every coordinate is roughly halved, and the
+letters packed first still land on themselves while the ones packed later do
+not: one label comes out perfect and the one beside it loses a letter, in the
+same frame, out of the same atlas.
+
+The fix is that a renderer already drawing a consistent pair **waits**. It
+keeps the letters it has — they are correct, and a settled label's text is not
+what changed — until the flush lands the new picture, and then both halves move
+forward together. A label with nothing correct to draw binds nothing, because
+`bindAtlas(null)` draws nothing and nothing beats a word with a block in it.
+
+Two things this rests on, and removing either re-opens it:
+
+- **A repack always leaves a raster owing.** `_reset` sets `needsRaster`, and
+  every path that waits says `flush` on the way out. Without both halves a
+  settled panel would hold its old letters for ever, which is worse than the
+  defect being fixed.
+- **`textureGeneration` is about the texture, not about the atlas.** It is not
+  a fourth counter beside `generation`, `revision` and `outlineRevision` — it
+  is the same question those three ask, asked of the picture instead.
+
+**A glyph is a slab, so withholding the face is only half of it.** The face is
+drawn out of the atlas; the wall swept around the silhouette is *geometry with
+no texture in it*, so binding nothing stops the face and leaves the wall
+standing — and a wall without its face is not a letter, it is the dark edge of
+one. On a panel turned even slightly that reads as a smear where the letter
+belongs, hatched rather than solid while the label is arriving, because a fade
+here is coverage. It is the same picture `GlyphWallMaterial3d.fade` exists to
+avoid from the other direction, arrived at from this one, and it is why the
+renderer tells both materials the same thing in one place rather than binding
+a texture and hoping.
+
+**`debugReportGlyphAtlasRepacks` is how you find out whether a text artifact
+is this.** Turn it on, use the application, and each repack pairs with the
+milliseconds its picture took to arrive. Artifacts that coincide with a wide
+window are this family; artifacts with nothing open near them are not, which is
+the more useful half of the answer. Reading a 64-texel atlas back takes ~30ms
+in a headless test; on a real GPU a 512-texel one measures **700–850ms** in
+`examples/layout3d_gallery`, which is not frames, it is a second of a person's
+attention.
+
+**A window resize is the worst case, and the reason is not the obvious one.** A
+surface with *authored* metrics — which is what every surface in the gallery
+has — does not lay out again when the window changes size at all: its extent
+and its unit rate are constants, and the only thing the resize changes is how
+many screen pixels the panel covers. A surface bound to the camera with
+`Layout3dCameraBinding.screenFilling` does, because its metrics come from the
+view's height. And *either* kind lays out again if the widget rebuild that
+arrives with the resize hands the tree a new text renderer factory — which is
+the next trap, and the one that actually bit.
+
+**And this is the one family in the package where an atlas that grows is the
+point.** The trap above needs `initialSize == maxSize`, because a repack hides
+it; this needs a repack, because a repack *is* it. A test written to the other
+rule passes straight through.
+
+### A text renderer is a resource, so the factory has to be one function
+
+`SceneTheme3d.textRendererFactory` and `DefaultTextRenderer3d.factory` are
+functions, and they are compared **by identity**. A `Text3d` handed a different
+function disposes the renderer it has, builds one from the new function, and
+marks itself for layout — because a renderer owns a mesh, two materials and a
+node, and none of those can be handed from one owner to another.
+
+So a closure written in `build`:
+
+```dart
+// Wrong. A new function every build.
+SceneTheme3d(
+  data: theme,
+  textRendererFactory: () => AtlasText3dRenderer(resolution: 3.0),
+  child: screen,
+)
+```
+
+throws away and rebuilds the renderer, the mesh and the materials of **every
+label in the scene, on every build of the widget that wrote it**. Write a
+method or a field instead — `_textRenderer`, or `AtlasText3dRenderer.new` where
+the defaults will do — and the comparison is a no-op. Both classes say this in
+their dartdoc; it is here because of what it costs when it is missed.
+
+**What it costs is not only frames.** A rebuilt renderer cannot take the wait
+in the trap above: keeping a mesh that is drawing correctly is only possible
+for a renderer that *has* one, and a renderer built this frame has nothing to
+keep, so it bakes against whatever packing the atlas is handing out and draws
+nothing until the picture lands. A label is protected from a repack exactly as
+long as it is left alone. That is why this trap sits next to that one, and why
+the gallery — which rebuilt its factory on every hover and on every window
+metric a resize passes through, dozens per drag of a corner — never once
+benefited from the defence written for it.
+
+The rule generalizes past text: **anything a layout owns and disposes wants a
+stable factory**, and a closure in `build` is the reliable way to defeat one.
+
+### The engine drops the draw calls it encoded first
+
+**This is the one the other three in this family were mistaken for**, it cost
+seven rounds, and it is not in this package. It is not about text either.
+
+On `flutter_scene` **0.23.0**, a GPU-bound scene blocks the calling thread on
+the GPU's backlog, and the engine's queue is serialized with the raster
+thread's own submissions. While it is blocked, **draw calls Flutter has already
+encoded into an offscreen `Picture.toImage` are lost — the ones encoded
+first.** A glyph atlas bakes that into a texture and keeps it, so a letter it
+lost is hollow until the atlas repacks.
+
+The measurement that separates it from everything it looks like, taken in the
+gallery just after the window is maximized:
+
+| what is drawn into the picture | cells that came back empty |
+| --- | --- |
+| text, recorded first to last | `[0 … 9]` |
+| text, recorded **last to first** | `[29 … 38]` |
+| plain **rectangles**, first to last | `[0 … 8]` |
+
+Reversing the order of the draw calls, moving nothing, moves the loss to the
+other end of the image; rectangles lose exactly the way glyphs do. So it is not
+a region, not a glyph, not a font and not text.
+
+**Check the engine version before anything else.** `Scene.maxGpuFramesInFlight`
+and its default of 1 fix it; they are on the engine's `master`, in the
+unreleased `## 0.24.0`. On a fixed engine the gallery is clean at every step,
+including the plain Flutter `Text` in its corner — which no amount of work in
+this package could ever have repaired, and which is the proof the cause was
+never here.
+
+**How to tell in one run**, rather than inferring it:
+`examples/render_probe/lib/main_engine_probe.dart` drives the gallery and
+reports the empty cells at every step, with the three-way discrimination above.
+It measures the engine and not this package, so a clean run there means a text
+artifact really is ours. `main_minimal_repro.dart` beside it holds the negative
+controls, switchable by `--dart-define`.
+
+**Why a window resize is how a person reproduces it.** Maximizing to 2880x1694
+on an integrated GPU is what makes the scene GPU-bound in the first place. The
+resize is not a red herring and never was; it is the load.
+
+**What is ruled out, each by measurement rather than argument.** Everything
+here was believed at some point in seven rounds, and the list is what stops the
+next one buying any of it again:
+
+- **The readback.** `toByteData` was suspected of corrupting the pixels, so the
+  texture now wraps the `ui.Image` directly with `gpu.Texture.fromImage` and
+  copies nothing — see [uploadGlyphAtlasPicture]. The artifact was identical.
+- **Disposing each `ui.Paragraph` after `toImage` rather than before it.**
+- **A mip chain**, and every counter in the package: when the letters are
+  wrong, `textureIsCurrent` is *true* and `debugStaleGlyphs` is empty.
+- **The wall and the back face**, turned off separately.
+- **The cell geometry.** Checked headlessly against a real font at five sizes
+  and two scales: no ink lands outside its own cell, ever.
+- **Concurrency between atlases**, serialized process-wide: no change.
+- **`toImageSync`**: same artifact, and it breaks the zero-copy wrap.
+- **Rasterizing one glyph per picture**: far worse, because it draws more.
+- **Anything reproducible without a GPU-bound scene.** None of these reproduce
+  it: plain Flutter with no `flutter_scene`; an empty scene; twelve lit meshes
+  drawing for forty seconds; 200 GPU textures allocated and dropped;
+  `Texture.fromImage` in a loop; 160 offscreen renders at 160 distinct font
+  sizes; three concurrent offscreen renders; a window resized twelve times.
+
+**A detector's blind spot, worth keeping in mind.** `debugVerifyGlyphAtlasInk`
+asks whether a cell holds *any* ink, and a cell of stripes is ink. Two runs
+reported no loss at all while the atlas PNG plainly showed five letters
+replaced by stripes. Look at the picture.
+
+### A glyph is typeset once, and blitted forward after
+
+`GlyphAtlas3d` draws a grapheme into a picture exactly once. Every later
+picture copies that cell out of the previous one with `drawImageRect`, at
+whatever address the new packing gave it; the cells are the same size in both,
+so it is a texel-for-texel blit with nothing for the filter to do.
+
+**This was written as a fix for the trap above and it is not one** — that one
+was never ours to fix. It is kept because a repack that blits is much cheaper
+than a repack that re-typesets an alphabet, and because fewer draw calls in the
+atlas picture is less exposure to anything of that shape.
+
+`GlyphAtlasPicture3d.slots` is what a picture actually drew, which is
+deliberately not "what the atlas has reserved": the two part company across the
+`await` inside the rasterization, and since the next picture blits whatever
+that map names, a grapheme listed there that the image does not hold would be
+copied, empty, for the life of the atlas.
+
+### An atlas bakes the decoration, and a missing `Material` supplies one
+
+`SceneText3d` merges the ambient `DefaultTextStyle` the way a `Text` does —
+that is the point of it, so a `SceneTextStyle3d` above a subtree only has to
+say what differs. `TextStyle.merge` overrides the fields the inner style
+states and keeps the rest, and **`decoration` is one of the ones it keeps.**
+
+`GlyphAtlas3d.rasterStyle` then paints that decoration into the atlas, on
+purpose: `drawParagraph` draws an underline, the raster is the letter, so the
+underline is part of the letter. Every glyph's cell gets its own stroke of it,
+and because the cells sit side by side on a shelf, the strokes line up into one
+rule under a whole word.
+
+The trap is where an unasked-for decoration comes from. Inside a `MaterialApp`,
+a `Text` with no `Material` above it resolves to Flutter's `_errorTextStyle` —
+red, monospace, 48px, `FontWeight.w900`, and
+`decoration: TextDecoration.underline` with `decorationStyle: double`. Flutter
+shows it so you notice. Here you do not notice, because a `Material3d` wraps
+its content in `DefaultTextStyle.merge` with the catalogue's typography: the
+family, the size, the weight and the colour are all corrected, **and the double
+underline is not.** What comes out is type that looks right and has a rule
+drawn through its descenders, in the texture, per glyph — and at small sizes
+that does not read as an underline at all, it reads as letters that are eaten,
+hollow or speckled, which is the symptom of three other defects in this file.
+
+Two things follow:
+
+- **A surface has to be mounted under a `Material`**, or under a
+  `SceneTextStyle3d` that states a `decoration` of its own. The gallery is
+  under a `Scaffold` and is fine; a harness that runs a *screen* widget under a
+  `MaterialApp` of its own is not, and that is how this was found — see
+  *Driving the real window* in
+  [examples/render_probe/README.md](../examples/render_probe/README.md).
+- **`glyphAtlasStyleOf` keeps the decoration in the key**, and it must: two
+  labels that differ by an underline cannot share a raster. So a poisoned style
+  gets an atlas of its own rather than poisoning a neighbour's — which is why
+  one screen can be wrong while the screen behind it is right.
+
+**The way to tell in one look** is `SelfDrive.dumpAtlases`: the rule is in the
+atlas or it is not, and no amount of staring at the application settles it.
+
+### An atlas is not a photograph, and its texture wants no mip chain
+
+`Texture2D.fromPixels` defaults to `TextureSampling()`, which is `mipmaps: true`
+with the full chain and trilinear plus anisotropic filtering. That is the right
+default for an image of something and the wrong one for an **atlas**, and the
+engine says so itself, in the dartdoc of the parameter that exists for this:
+*a texture atlas uses this so tiles stop shrinking before they merge into their
+neighbors across the padding gutter.*
+
+A glyph atlas packs unrelated letters two texels apart. Two texels of gutter
+survive one halving and nothing below it, so from the second level down a glyph
+is averaged with whatever happened to be packed beside it — and
+`assets/text_glyph3d.fmat` discards a fragment whose coverage falls under
+`alpha_cutoff`. The two together do not blur a letter, they **eat** it: thin
+strokes and counters cross the cutoff and vanish while denser letters in the
+same word stay solid, per grapheme, according to the letter's own shape and to
+how many screen pixels the panel happens to cover. `GlyphAtlas3d`'s uploader
+therefore states `const TextureSampling(mipmaps: false)` rather than taking the
+default, and the way to keep type sharp as a panel recedes stays what it was: a
+bigger `GlyphAtlas3d.scale`, or a distance field.
+
+It is also work — a chain cooked on every flush — but do not expect that back:
+the gallery's repack window measures 700–900ms with the chain and without it,
+because what fills the window is the `toImage`/`toByteData` readback and not
+the upload.
+
 ### A glyph's wall arrives with the texture, not with the layout
 
 Type here has a thickness: a glyph is a slab with a front face, a back face and

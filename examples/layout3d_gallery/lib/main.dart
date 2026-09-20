@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart'
+    show debugReportGlyphAtlasRepacks;
 import 'package:flutter_scene_material3d/flutter_scene_material3d.dart'
     show initializeMaterial3d;
 
@@ -6,6 +8,19 @@ import 'gallery.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // `--dart-define=report_repacks=true` prints every glyph atlas repack and
+  // the milliseconds its picture took to arrive.
+  //
+  // It is here rather than in a comment to be uncommented because the thing
+  // it diagnoses cannot be reproduced any other way: the window a repack
+  // opens is a race against a texture readback, so it does not open under
+  // `flutter drive` — which pumps frames slowly enough for the readback to
+  // land between them — and no render probe can be honest about it. A person
+  // running the app and resizing the window is the only lane that sees it,
+  // and this is what lets them say whether the letters they are looking at
+  // are that window or something else. See *A mesh and an atlas texture are a
+  // pair* in `docs/traps.md`.
+  debugReportGlyphAtlasRepacks = const bool.fromEnvironment('report_repacks');
   // The one call a Material application makes. It awaits the engine's static
   // resources — nothing renders until those resolve — and then installs the
   // panel painter, which is what turns a `BoxDecoration3d` from arithmetic
