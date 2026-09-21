@@ -1,8 +1,8 @@
 ---
 status: in progress
-reason: five of the seventeen items are open; the motion lane is closed and so is the colour generator, so what is left is the catalogue batch, more than one screen, more than one language, and the letter someone can type with the keyboard controls behind it
+reason: five of the seventeen items are open; the motion lane is closed and so is the colour generator, so what is left is the catalogue batch — planned in seven phases, the first landed — more than one screen, more than one language, and the letter someone can type with the keyboard controls behind it
 created_at: 2026-09-11T21:20:18Z
-updated_at: 2026-09-20T20:10:00Z
+updated_at: 2026-09-21T16:01:09Z
 commit: abc2469ce5c4ec4c41e2738fc5acf55bcf40640a
 ---
 
@@ -106,7 +106,7 @@ plan, which is the rule phase 0 established and every phase since has obeyed.
 | [An application with more than one screen](#an-application-with-more-than-one-screen) | layout3d | named routes, deep links, the system back button |
 | ~~[A way to test a screen someone else built](#a-way-to-test-a-screen-someone-else-built)~~ | layout3d | **done** — anyone building on this, including us |
 | ~~[The motion tokens](#the-motion-tokens)~~ | material3d | **done** — every overlay in the catalogue arrives instead of appearing |
-| [The components a screen still needs](#the-components-a-screen-still-needs) | material3d | the two thirds of M3 not yet here |
+| [The components a screen still needs](#the-components-a-screen-still-needs) | material3d | **in progress** — [its plan](../../flutter_scene_material3d/plans/2026_09_21_the_components_a_screen_still_needs.md) is seven phases; the first, the alert dialog, the checkbox's third state and the labelled tiles, has landed |
 | ~~[A scheme from one colour](#a-scheme-from-one-colour)~~ | material3d | **done** — any application with a brand |
 | [The controls that wait on a keyboard](#the-controls-that-wait-on-a-keyboard) | material3d | search, dropdowns, date and time entry |
 | [A catalogue that speaks more than one language](#a-catalogue-that-speaks-more-than-one-language) | material3d | every locale, and the strings the catalogue invents |
@@ -204,7 +204,11 @@ was taken first of the two, see
 [its plan](../../flutter_scene_material3d/plans/2026_09_20_a_scheme_from_one_colour.md).
 It was narrow and independent exactly as this said, and it was not deep: the
 depth was all in a library every Flutter application already carries. **The
-catalogue batch is now the only thing left in the middle of this queue.**
+catalogue batch is now the only thing left in the middle of this queue**, and
+it is under way: [its plan](../../flutter_scene_material3d/plans/2026_09_21_the_components_a_screen_still_needs.md) phases it by what each component needs
+underneath it, first the ones a ported screen reaches for first, and phase 1
+— `AlertDialog3d`, the tristate checkbox and the three labelled tiles — has
+landed.
 
 **[A letter someone can type](#a-letter-someone-can-type) last of the large
 items, and it is much larger than anything above it.** It gates
@@ -898,6 +902,15 @@ with their tokens now in hand.
 
 **Package:** `flutter_scene_material3d`.
 **Slug:** `the_components_a_screen_still_needs`.
+**In progress** by [its own plan](../../flutter_scene_material3d/plans/2026_09_21_the_components_a_screen_still_needs.md), in seven phases. Phase 1 has closed
+`AlertDialog3d`, the checkbox's tristate and the `CheckboxListTile3d` family
+from the list below, and answered the judgement this entry asked to be
+revisited: the dialog was built, because the column has one right arrangement
+and a caller writing it by hand gets the actions at the wrong edge. What the
+entry got wrong so far, in short: tristate needed no change to the token
+table, and the labelled tiles did not need an answer to "which of two
+announcements" — they needed there to be only one control. The entry below is
+what the plan was reasoned from.
 
 The catalogue is broad and it is not the catalogue. Missing entirely, from the
 audit: `ProgressIndicator3d` in both forms, `TabBar3d`/`TabBarView3d`,

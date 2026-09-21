@@ -74,7 +74,7 @@ export 'src/components/chip.dart'
     show AssistChip3d, Chip3d, FilterChip3d, InputChip3d, SuggestionChip3d;
 export 'src/components/chip_style.dart'
     show ChipStyle3d, ChipVariant3d, ResolvedChipStyle3d;
-export 'src/components/dialog.dart' show Dialog3d, showDialog3d;
+export 'src/components/dialog.dart' show AlertDialog3d, Dialog3d, showDialog3d;
 export 'src/components/divider.dart' show Divider3d, VerticalDivider3d;
 export 'src/components/buttons.dart'
     show
@@ -116,6 +116,7 @@ export 'src/components/snack_bar.dart'
 export 'src/components/overlay_support.dart' show scrimCoverage3d;
 export 'src/components/overlay_style.dart'
     show
+        AlertDialogStyle3d,
         Arrival3d,
         BottomSheetStyle3d,
         DialogStyle3d,
@@ -124,6 +125,12 @@ export 'src/components/overlay_style.dart'
         TooltipStyle3d;
 export 'src/components/scaffold.dart' show Scaffold3d, Scaffold3dSlot;
 export 'src/components/selection.dart' show Checkbox3d, Radio3d, Switch3d;
+export 'src/components/selection_list_tile.dart'
+    show
+        CheckboxListTile3d,
+        ListTileControlAffinity3d,
+        RadioListTile3d,
+        SwitchListTile3d;
 export 'src/components/slider.dart'
     show SceneSliderGesture3d, Slider3d, SliderGesture3d;
 export 'src/components/selection_style.dart'

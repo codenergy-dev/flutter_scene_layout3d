@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-09-01T19:15:00Z
-updated_at: 2026-09-17T12:15:00Z
+updated_at: 2026-09-21T16:00:54Z
 commit: 52a2ca7b6a176cf70b5bef6b6b92ff7e7cbf82bd
 ---
 
@@ -1728,7 +1728,8 @@ Three things to know before building on any of it:
   phases have one. They are where the reasons live for the gaps a reader will
   otherwise assume are oversights: no `AlertDialog3d`, no tristate checkbox, no
   `flexibleSpace`, no rounded-rectangle clip, no text input anywhere in the
-  stack.
+  stack. *Since closed, the first two:*
+  [the components a screen still needs](2026_09_21_the_components_a_screen_still_needs.md) built both in its phase 1.
 - **`docs/traps.md` is the price of admission.** Every trap on that page was
   paid for once already, and the two this phase added — a lift written into a
   position taking a child out of reach of a ray, and a flex centring a label
@@ -1787,6 +1788,9 @@ reader will look for and not find:
   place of the tick and a `mixed` semantic flag. Neither is hard; it is simply
   a third state in every row of a four-state table, and phase 7's table was
   already the largest in the catalogue.
+  *Since closed:* [the components a screen still needs](2026_09_21_the_components_a_screen_still_needs.md) added it, and the table was the wrong picture — a
+  mixed box is drawn exactly as a checked one, so the style did not change and
+  the third state is a glyph and a flag.
 - **`RadioGroup3d`.** See the finding above: `Radio3d` keeps the spelling
   Flutter deprecated, because the replacement is an inherited widget and a
   registry, and the place that work belongs is beside a `FormField3d` rather
@@ -1828,6 +1832,9 @@ reader will look for and not find:
   announce, so the composition is a caller's — and a component that put a
   checkbox in a tile would have to decide which of the two states its own
   announcement, which is the phase-4 two-labels problem with a worse answer.
+  *Since closed:* [the components a screen still needs](2026_09_21_the_components_a_screen_still_needs.md) built `CheckboxListTile3d` and its two siblings by
+  not having two controls at all — inside a labelled tile the control is only
+  drawn, and the row is the target, the focus and the one announcement.
 
 ## What phase 6 deliberately left out
 
@@ -1840,6 +1847,10 @@ reader will look for and not find:
   component in the catalogue that exists only to save a caller from writing a
   `SceneColumn3d`. `Dialog3d` is what Flutter's own `Dialog` is, and the
   arrangement is a caller's.
+  *Since closed:* [the components a screen still needs](2026_09_21_the_components_a_screen_still_needs.md) reread this with an application's eyes, as the map
+  asked, and built it — not to save a column, but because the column has one
+  right arrangement and a caller writing it by hand gets the actions at the
+  wrong edge.
 - **A menu that reflows to stay inside the panel.** Flutter's
   `PopupMenuButton` shifts its menu against the screen edges. Here the "screen"
   is a surface that may be at any angle in a room, and what "off the edge"

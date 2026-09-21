@@ -436,6 +436,91 @@ void main() {
     });
   });
 
+  group('the checkbox\'s third state', () {
+    test('a press walks Flutter\'s cycle', () {
+      expect(Checkbox3d.next(false, tristate: false), isTrue);
+      expect(Checkbox3d.next(true, tristate: false), isFalse);
+      expect(Checkbox3d.next(false, tristate: true), isTrue);
+      expect(Checkbox3d.next(true, tristate: true), isNull);
+      expect(Checkbox3d.next(null, tristate: true), isFalse);
+    });
+
+    testWidgets('a mixed box is a full one with a dash on it', (tester) async {
+      final it = await pumpComponent(
+        tester,
+        () => Checkbox3d(value: null, tristate: true, onChanged: (_) {}),
+      );
+      final box = it.panels[1].decoration as BoxDecoration3d;
+      expect(box.color, theme.colorScheme.primary);
+      expect(box.border.isNone, isTrue);
+      final mark = oneOf<Text3d>(it.surface);
+      expect(
+        mark.data,
+        String.fromCharCode(Checkbox3d.defaultIndeterminateIcon.codePoint),
+      );
+      expect(mark.style.color, theme.colorScheme.onPrimary);
+    });
+
+    testWidgets('and a ticked tristate box still has the tick', (tester) async {
+      final it = await pumpComponent(
+        tester,
+        () => Checkbox3d(value: true, tristate: true, onChanged: (_) {}),
+      );
+      expect(
+        oneOf<Text3d>(it.surface).data,
+        String.fromCharCode(Checkbox3d.defaultIcon.codePoint),
+      );
+    });
+
+    testWidgets('it says it is mixed, and not that it is checked', (
+      tester,
+    ) async {
+      final mixed = await pumpComponent(
+        tester,
+        () => Checkbox3d(value: null, tristate: true, onChanged: (_) {}),
+      );
+      expect(mixed.semantics.properties.mixed, isTrue);
+      expect(mixed.semantics.properties.checked, isFalse);
+
+      final ticked = await pumpComponent(
+        tester,
+        () => Checkbox3d(value: true, tristate: true, onChanged: (_) {}),
+      );
+      expect(ticked.semantics.properties.mixed, isFalse);
+      expect(ticked.semantics.properties.checked, isTrue);
+
+      final twoState = await pumpComponent(
+        tester,
+        () => Checkbox3d(value: true, onChanged: (_) {}),
+      );
+      expect(
+        twoState.semantics.properties.mixed,
+        isNull,
+        reason: 'a box with no third state does not mention one',
+      );
+    });
+
+    testWidgets('a press on a ticked tristate box makes it mixed', (
+      tester,
+    ) async {
+      final seen = <bool?>[];
+      final it = await pumpComponent(
+        tester,
+        () => Checkbox3d(value: true, tristate: true, onChanged: seen.add),
+      );
+      it.pointer.down(rayAt(it.surface, const Offset3d(2, 1.5, 0)));
+      it.pointer.up();
+      expect(seen, <bool?>[null]);
+    });
+
+    test('a two-state box refuses null', () {
+      expect(
+        () => Checkbox3d(value: null, onChanged: (_) {}),
+        throwsAssertionError,
+      );
+    });
+  });
+
   group('the 48dp target, at its most extreme', () {
     testWidgets('a checkbox answers a press 4dp past its own corner', (
       tester,

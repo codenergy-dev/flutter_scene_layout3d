@@ -381,34 +381,23 @@ Widget overlaidApp(Camera camera, Widget bar, Widget body) => SceneLayout3d(
 Future<void> confirmDelete(BuildContext context) async {
   final deleted = await showDialog3d<bool>(
     context: context,
-    builder: (context) => Dialog3d(
-      semanticLabel: 'Delete this file?',
-      child: SceneColumn3d(
-        mainAxisSize: MainAxisSize3d.min,
-        crossAxisAlignment: CrossAxisAlignment3d.start,
-        spacing: Layout3dMetricsScope.of(context).dp(24),
-        children: <Widget>[
-          const SceneText3d('Delete this file?'),
-          SceneRow3d(
-            mainAxisAlignment: MainAxisAlignment3d.end,
-            spacing: Layout3dMetricsScope.of(context).dp(8),
-            children: <Widget>[
-              TextButton3d(
-                semanticLabel: 'Cancel',
-                onPressed: () =>
-                    Navigator3d.of(SceneOverlay3d.of(context))?.pop(false),
-                child: const SceneText3d('Cancel'),
-              ),
-              FilledButton3d(
-                semanticLabel: 'Delete',
-                onPressed: () =>
-                    Navigator3d.of(SceneOverlay3d.of(context))?.pop(true),
-                child: const SceneText3d('Delete'),
-              ),
-            ],
-          ),
-        ],
-      ),
+    builder: (context) => AlertDialog3d.text(
+      title: 'Delete this file?',
+      content: 'It will be gone from every device.',
+      actions: <Widget>[
+        TextButton3d(
+          semanticLabel: 'Cancel',
+          onPressed: () =>
+              Navigator3d.of(SceneOverlay3d.of(context))?.pop(false),
+          child: const SceneText3d('Cancel'),
+        ),
+        TextButton3d(
+          semanticLabel: 'Delete',
+          onPressed: () =>
+              Navigator3d.of(SceneOverlay3d.of(context))?.pop(true),
+          child: const SceneText3d('Delete'),
+        ),
+      ],
     ),
   );
   if (deleted ?? false) {
@@ -453,7 +442,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
     children: <Widget>[
       Checkbox3d(
         value: _notify,
-        onChanged: (value) => setState(() => _notify = value),
+        onChanged: (value) => setState(() => _notify = value!),
         semanticLabel: 'Notify me',
       ),
       Switch3d(
@@ -475,6 +464,15 @@ class _SettingsPanelState extends State<SettingsPanel> {
     ],
   );
 }
+
+/// A row that is the control.
+Widget notificationsRow(bool notify, ValueChanged<bool> setNotify) =>
+    SwitchListTile3d.text(
+      title: 'Notifications',
+      subtitle: 'Only from people you follow',
+      value: notify,
+      onChanged: setNotify,
+    );
 
 /// The messenger's future, and the reason it carries a reason.
 Future<void> deleteWithUndo(

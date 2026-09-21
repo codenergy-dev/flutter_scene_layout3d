@@ -17,9 +17,11 @@ makes it interactive, `Icon3d` draws a glyph, `SceneTextStyle3d` styles a group
 of labels; Material's seven buttons over one `ButtonStyle3d`; the surfaces and
 rows (`Card3d`, `ListTile3d`, `Divider3d`, `Chip3d`); the structure
 (`Scaffold3d`, `AppBar3d`, `SliverAppBar3d`, `NavigationBar3d`,
-`NavigationRail3d`); the overlays (`Dialog3d`, `Menu3d`, `SnackBar3d`,
-`Tooltip3d`, `BottomSheet3d`); the selection controls (`Checkbox3d`,
-`Radio3d`, `Switch3d`, `Slider3d`); and the press ripple. What is *not* here
+`NavigationRail3d`); the overlays (`Dialog3d` and `AlertDialog3d`,
+`Menu3d`, `SnackBar3d`, `Tooltip3d`, `BottomSheet3d`); the selection controls
+(`Checkbox3d`, `Radio3d`, `Switch3d`, `Slider3d`) and the rows that are one
+(`CheckboxListTile3d`, `SwitchListTile3d`, `RadioListTile3d`); and the press
+ripple. What is *not* here
 is listed honestly at the end of this file, and text input is not planned at
 all.
 
@@ -925,34 +927,23 @@ A dialog is then a call that returns a future:
 Future<void> _confirmDelete(BuildContext context) async {
   final deleted = await showDialog3d<bool>(
     context: context,
-    builder: (context) => Dialog3d(
-      semanticLabel: 'Delete this file?',
-      child: SceneColumn3d(
-        mainAxisSize: MainAxisSize3d.min,
-        crossAxisAlignment: CrossAxisAlignment3d.start,
-        spacing: Layout3dMetricsScope.of(context).dp(24),
-        children: <Widget>[
-          const SceneText3d('Delete this file?'),
-          SceneRow3d(
-            mainAxisAlignment: MainAxisAlignment3d.end,
-            spacing: Layout3dMetricsScope.of(context).dp(8),
-            children: <Widget>[
-              TextButton3d(
-                semanticLabel: 'Cancel',
-                onPressed: () =>
-                    Navigator3d.of(SceneOverlay3d.of(context))?.pop(false),
-                child: const SceneText3d('Cancel'),
-              ),
-              FilledButton3d(
-                semanticLabel: 'Delete',
-                onPressed: () =>
-                    Navigator3d.of(SceneOverlay3d.of(context))?.pop(true),
-                child: const SceneText3d('Delete'),
-              ),
-            ],
-          ),
-        ],
-      ),
+    builder: (context) => AlertDialog3d.text(
+      title: 'Delete this file?',
+      content: 'It will be gone from every device.',
+      actions: <Widget>[
+        TextButton3d(
+          semanticLabel: 'Cancel',
+          onPressed: () =>
+              Navigator3d.of(SceneOverlay3d.of(context))?.pop(false),
+          child: const SceneText3d('Cancel'),
+        ),
+        TextButton3d(
+          semanticLabel: 'Delete',
+          onPressed: () =>
+              Navigator3d.of(SceneOverlay3d.of(context))?.pop(true),
+          child: const SceneText3d('Delete'),
+        ),
+      ],
     ),
   );
   if (deleted ?? false) {
@@ -962,6 +953,18 @@ Future<void> _confirmDelete(BuildContext context) async {
   }
 }
 ```
+
+`AlertDialog3d` is a `Dialog3d` with one arrangement in it, and the
+arrangement is the reason it exists: the title in `headlineSmall`, the body in
+`bodyMedium` and `onSurfaceVariant`, the gaps Material specifies, and — the
+part a hand-written column gets wrong — the actions at the **trailing edge of a
+dialog only as wide as its widest line**. A column aligned to the start puts
+them at the leading edge; a stretched one fills the screen. This one is
+Flutter's answer, an intrinsic width around a stretched column. `.text` names
+the route after its title, because nothing here reads a label out of a widget.
+What it does not have yet is a scrolling body: a body taller than the screen
+is a layout error rather than a scroll. `Dialog3d` is still there for a dialog
+that is not a question.
 
 Every overlay that covers the screen — a dialog, a menu, a modal sheet —
 **takes the focus when it opens and closes on Escape**, which is what
@@ -1184,7 +1187,7 @@ class _SettingsPanelState extends State<SettingsPanel> {
     children: <Widget>[
       Checkbox3d(
         value: _notify,
-        onChanged: (value) => setState(() => _notify = value),
+        onChanged: (value) => setState(() => _notify = value!),
         semanticLabel: 'Notify me',
       ),
       Switch3d(
@@ -1214,6 +1217,38 @@ beside it. What it does not need to be told is the state — a checkbox and a
 radio publish `checked`, a switch publishes `toggled`, and a slider publishes
 `slider` with a formatted `value`. Flutter draws that distinction and it is
 worth keeping: a reader says "ticked" for one and "on" for the other.
+
+The checkbox's `onChanged` takes a `bool?`, which is why the example says
+`value!`. That is Flutter's signature, and it is there for `tristate`: a
+tristate box has a third, *mixed* value, null, drawn as a full box with a dash
+in place of the tick and announced as `mixed` rather than `checked`. A press
+walks Flutter's cycle — empty, ticked, mixed, empty.
+
+### A row that is the control
+
+Most checkboxes are not alone: they are the end of a row whose words say what
+they are for, and a person presses the words. `CheckboxListTile3d`,
+`SwitchListTile3d` and `RadioListTile3d` are that row:
+
+```dart
+SwitchListTile3d.text(
+  title: 'Notifications',
+  subtitle: 'Only from people you follow',
+  value: _notify,
+  onChanged: (value) => setState(() => _notify = value),
+)
+```
+
+**The row is the control, and the switch in it is only its picture.** Flutter
+makes its `SwitchListTile` announce once by merging the row's semantics with
+the switch's, and there is no merge here — a `Semantics3d` gathers nothing —
+so the answer is to have one control to begin with. The switch inside
+publishes nothing, takes no focus and answers no ray; the row does all of it,
+over its whole rectangle, with the switch's `toggled` and the title as the one
+announcement. `.text` composes that label from the title and the subtitle.
+The control goes where Flutter puts it — trailing for a checkbox and a
+switch, leading for a radio — and `controlAffinity` moves it, with `secondary`
+taking the other end.
 
 ### Three rectangles for one control, and why they are three
 
@@ -1634,24 +1669,22 @@ to carry an icon size down a subtree — `Material3d` carries the content
 being told, and `IconButton3d` and `FloatingActionButton3d` state their own
 24dp size.
 
-Six the overlays left, each with a reason in the plan's *What phase 6
-deliberately left out*: there is no **`AlertDialog3d`** (a column and a row
-inside a `Dialog3d`, and nothing about that arrangement is three-dimensional);
-a menu does not **reflow** to stay inside the panel, though it can now be
-*told* which way to open, through `menuCorner` and `anchorCorner`; a tooltip
-has no
-**long-press** trigger, because the innermost recognizer wins the arena and a
+Five the overlays left, each with a reason in the plan's *What phase 6
+deliberately left out*: a menu does not **reflow** to stay inside the panel,
+though it can now be *told* which way to open, through `menuCorner` and
+`anchorCorner`; a tooltip has no **long-press** trigger, because the innermost recognizer wins the arena and a
 tooltip around a button would take the button's own long press; a snack bar has
 no **swipe to dismiss** and no second line; and a sheet has no **drag handle**
 and cannot be dragged to a height, while `showBottomSheet3d` does not shorten
 the screen the way Flutter's `Scaffold.showBottomSheet` does — an overlay is
 not a scaffold slot, by design. What is no longer on that list is animation:
-every one of the six arrives now, out of `theme.motion`.
+every one of the six arrives now, out of `theme.motion`. And no longer on it
+either is `AlertDialog3d`, which phase 6 refused as a column that only saves a
+caller some typing and
+[the next plan](plans/2026_09_21_the_components_a_screen_still_needs.md)
+built as the arrangement a ported screen gets wrong.
 
-Five the selection controls left. A checkbox has no **tristate**: Material's
-third value is an `Icons.remove` in place of the tick and a `mixed` semantic
-flag, and neither is hard — it is simply not what phase 7 was for. There is no
-**`RadioGroup3d`**, so `Radio3d` keeps the `value` / `groupValue` / `onChanged`
+Four the selection controls left. There is no **`RadioGroup3d`**, so `Radio3d` keeps the `value` / `groupValue` / `onChanged`
 spelling that Flutter deprecated after 3.32 in favour of a group ancestor; that
 migration is an inherited widget plus a registry, and it belongs beside a
 `FormField3d` rather than inside a leaf control. A slider has no **tick marks**
@@ -1670,4 +1703,6 @@ a project of its own rather than a component.
 
 The plan is
 [`plans/2026_09_01_flutter_scene_material3d.md`](plans/2026_09_01_flutter_scene_material3d.md),
-and it is kept up to date with what turned out to be wrong.
+and it is kept up to date with what turned out to be wrong. The components
+still missing are phased in
+[`plans/2026_09_21_the_components_a_screen_still_needs.md`](plans/2026_09_21_the_components_a_screen_still_needs.md).

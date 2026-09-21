@@ -23,6 +23,7 @@ import 'package:flutter_scene_layout3d/widgets.dart'
         SceneTapTarget3d;
 
 import '../theme/theme.dart';
+import 'control_in_tile.dart';
 import 'icon.dart';
 import 'ink_well.dart';
 import 'material.dart';
@@ -33,15 +34,19 @@ import 'reading_direction.dart';
 /// Transparent: the colour a wash surface and an empty box are drawn in.
 const Color _none = Color(0x00000000);
 
-/// A box that is empty or has a mark in it.
+/// A box that is empty or has a mark in it — or, when [tristate], a dash.
 ///
 /// ```dart
 /// Checkbox3d(
 ///   value: _subscribed,
-///   onChanged: (value) => setState(() => _subscribed = value),
+///   onChanged: (value) => setState(() => _subscribed = value!),
 ///   semanticLabel: 'Subscribe to updates',
 /// )
 /// ```
+///
+/// The `!` is Flutter's too. [onChanged] takes a `bool?` because a
+/// [tristate] box can be pressed back to null, and it is the signature a
+/// ported screen already has; a two-state box never hands it one.
 ///
 /// 18dp of ink in a 40dp wash in a 48dp touch target, which is three
 /// rectangles for one control and is what Material specifies. All three are
@@ -67,6 +72,15 @@ const Color _none = Color(0x00000000);
 /// `examples/render_probe`'s `checkbox_mark` scene is what settled it, the
 /// same way `icon_glyph` settled the icon question in phase 2.
 ///
+/// ## The third state is a glyph, not a row in the table
+///
+/// A [tristate] box whose [value] is null is *mixed* — the parent of a group
+/// some of which are chosen — and Material draws it exactly as a checked box
+/// is drawn, filled and with no outline, with `Icons.remove` in place of the
+/// tick. So [CheckboxStyle3d] has no third column: a mixed box resolves as a
+/// selected one, and what differs is which glyph goes on it and what it
+/// publishes, which is `mixed` and not `checked`, as Flutter's does.
+///
 /// ## Three slabs, and none of them coplanar
 ///
 /// The wash circle, the box, and the mark are three surfaces drawn one on
@@ -81,13 +95,15 @@ class Checkbox3d extends StatelessWidget {
     super.key,
     required this.value,
     this.onChanged,
+    this.tristate = false,
     this.style,
     this.icon,
+    this.indeterminateIcon,
     this.focusNode,
     this.autofocus = false,
     this.semanticLabel,
     this.textDirection,
-  });
+  }) : assert(tristate || value != null);
 
   /// `Icons.check`'s code point in the `MaterialIcons` font.
   ///
@@ -100,18 +116,35 @@ class Checkbox3d extends StatelessWidget {
     fontFamily: 'MaterialIcons',
   );
 
-  /// Whether the box has a mark in it.
-  final bool value;
+  /// `Icons.remove`'s code point, the dash a mixed box is drawn with.
+  static const IconData defaultIndeterminateIcon = IconData(
+    0xe516,
+    fontFamily: 'MaterialIcons',
+  );
+
+  /// Whether the box has a mark in it, or null for a mixed one.
+  ///
+  /// Null only when [tristate]; a two-state box asserts on it.
+  final bool? value;
 
   /// Called with the value the box would become, or null for a box that
   /// cannot be changed.
-  final ValueChanged<bool>? onChanged;
+  ///
+  /// A press walks Flutter's cycle: empty to checked, checked to mixed when
+  /// [tristate] and to empty otherwise, and mixed to empty.
+  final ValueChanged<bool?>? onChanged;
+
+  /// Whether the box has a third, mixed state, which is a null [value].
+  final bool tristate;
 
   /// The tokens to draw with, or null for the theme's.
   final CheckboxStyle3d? style;
 
   /// The glyph drawn in a full box, or null for [defaultIcon].
   final IconData? icon;
+
+  /// The glyph drawn in a mixed box, or null for [defaultIndeterminateIcon].
+  final IconData? indeterminateIcon;
 
   /// The node holding this control's place in the focus tree.
   final FocusNode? focusNode;
@@ -133,17 +166,32 @@ class Checkbox3d extends StatelessWidget {
   /// Whether the box responds to a pointer.
   bool get enabled => onChanged != null;
 
+  /// What a press makes of [current], in Flutter's order.
+  ///
+  /// Public so the labelled tile walks the same cycle as the box it holds,
+  /// rather than a second copy of it.
+  static bool? next(bool? current, {required bool tristate}) =>
+      switch (current) {
+        false => true,
+        true => tristate ? null : false,
+        null => false,
+      };
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme3d.of(context);
     final metrics = Layout3dMetricsScope.of(context);
     final tokens = style ?? CheckboxStyle3d.of(theme);
+    // A mixed box is drawn as a full one: filled, no outline, a mark on it.
     final resolved = tokens.resolve(
       const {},
-      selected: value,
+      selected: value != false,
       enabled: enabled,
     );
     final changed = onChanged;
+    final tap = changed == null
+        ? null
+        : () => changed(next(value, tristate: tristate));
 
     return _SelectionControl3d(
       extent: tokens.stateLayerSize,
@@ -151,15 +199,17 @@ class Checkbox3d extends StatelessWidget {
       depthStep: tokens.depthStep,
       wash: resolved.wash,
       enabled: enabled,
-      onTap: changed == null ? null : () => changed(!value),
+      onTap: tap,
       focusNode: focusNode,
       autofocus: autofocus,
       properties: SemanticsProperties(
-        checked: value,
+        // Flutter's pair: a mixed box is not checked, and says it is mixed.
+        checked: value ?? false,
+        mixed: tristate ? value == null : null,
         enabled: enabled,
         label: semanticLabel,
         textDirection: readingDirection3d(context, textDirection),
-        onTap: changed == null ? null : () => changed(!value),
+        onTap: tap,
       ),
       children: <Widget>[
         SceneSizedBox3d(
@@ -176,7 +226,9 @@ class Checkbox3d extends StatelessWidget {
         ),
         if (resolved.hasMark)
           Icon3d(
-            icon ?? defaultIcon,
+            value == null
+                ? indeterminateIcon ?? defaultIndeterminateIcon
+                : icon ?? defaultIcon,
             size: tokens.markSize,
             color: resolved.mark,
           ),
@@ -430,7 +482,12 @@ class Switch3d extends StatelessWidget {
     );
     final changed = onChanged;
     final tap = changed == null ? null : () => changed(!value);
+    final inTile = ControlInTile3d.isIn(context);
 
+    final extent = SceneSizedBox3d(
+      width: metrics.dp(tokens.trackWidth),
+      height: metrics.dp(tokens.trackHeight),
+    );
     final track = Material3d(
       color: resolved.track,
       contentColor: resolved.wash,
@@ -440,18 +497,19 @@ class Switch3d extends StatelessWidget {
       border: resolved.border,
       surfaceTint: _none,
       alignment: null,
-      child: InkWell3d(
-        // One target, and it is the one outside this panel.
-        minimumSize: Size3d.zero,
-        enabled: enabled,
-        focusNode: focusNode,
-        autofocus: autofocus,
-        onTap: tap,
-        child: SceneSizedBox3d(
-          width: metrics.dp(tokens.trackWidth),
-          height: metrics.dp(tokens.trackHeight),
-        ),
-      ),
+      // In a labelled tile the row is the control, so the track is only
+      // drawn: see `ControlInTile3d`.
+      child: inTile
+          ? extent
+          : InkWell3d(
+              // One target, and it is the one outside this panel.
+              minimumSize: Size3d.zero,
+              enabled: enabled,
+              focusNode: focusNode,
+              autofocus: autofocus,
+              onTap: tap,
+              child: extent,
+            ),
     );
 
     // Half the travel either way from the middle, which is where layout puts
@@ -488,6 +546,13 @@ class Switch3d extends StatelessWidget {
       ),
     );
 
+    final drawn = SceneStack3d(
+      alignment: Alignment3d.frontCenter,
+      depthStep: metrics.dp(tokens.depthStep),
+      children: <Widget>[track, thumb],
+    );
+    if (inTile) return SceneIgnorePointer3d(child: drawn);
+
     final announced = SceneSemantics3d(
       properties: SemanticsProperties(
         toggled: value,
@@ -496,11 +561,7 @@ class Switch3d extends StatelessWidget {
         textDirection: readingDirection3d(context, textDirection),
         onTap: tap,
       ),
-      child: SceneStack3d(
-        alignment: Alignment3d.frontCenter,
-        depthStep: metrics.dp(tokens.depthStep),
-        children: <Widget>[track, thumb],
-      ),
+      child: drawn,
     );
 
     // Outermost, and doing real work: a switch is 32dp tall against a 48dp
@@ -556,7 +617,12 @@ class _SelectionControl3d extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme3d.of(context);
     final metrics = Layout3dMetricsScope.of(context);
+    final inTile = ControlInTile3d.isIn(context);
 
+    final size = SceneSizedBox3d(
+      width: metrics.dp(extent),
+      height: metrics.dp(extent),
+    );
     // Its own surface, so its own state layer, and transparent so that what
     // shows is the wash and nothing else. An `InkWell3d` finds the enclosing
     // `Material3d`, so this is also what keeps a checkbox in a list tile from
@@ -569,34 +635,37 @@ class _SelectionControl3d extends StatelessWidget {
       thickness: thickness,
       surfaceTint: _none,
       alignment: null,
-      child: InkWell3d(
-        // One target, and it is the one outside this panel.
-        minimumSize: Size3d.zero,
-        enabled: enabled,
-        focusNode: focusNode,
-        autofocus: autofocus,
-        onTap: onTap,
-        child: SceneSizedBox3d(
-          width: metrics.dp(extent),
-          height: metrics.dp(extent),
-        ),
-      ),
+      // In a labelled tile the row is the control and this is only its
+      // picture — no well, so no focus and no wash of its own. The surface
+      // stays, so the control is the same size and depth in a tile as out of
+      // one. See `ControlInTile3d`.
+      child: inTile
+          ? size
+          : InkWell3d(
+              // One target, and it is the one outside this panel.
+              minimumSize: Size3d.zero,
+              enabled: enabled,
+              focusNode: focusNode,
+              autofocus: autofocus,
+              onTap: onTap,
+              child: size,
+            ),
     );
 
-    final announced = SceneSemantics3d(
-      properties: properties,
-      child: SceneStack3d(
-        alignment: Alignment3d.frontCenter,
-        depthStep: metrics.dp(depthStep),
-        children: <Widget>[
-          surface,
-          // The ink answers no ray: everything a pointer needs to find is the
-          // well behind it, and a `Text3d` mark would otherwise answer on its
-          // own account.
-          for (final child in children) SceneIgnorePointer3d(child: child),
-        ],
-      ),
+    final drawn = SceneStack3d(
+      alignment: Alignment3d.frontCenter,
+      depthStep: metrics.dp(depthStep),
+      children: <Widget>[
+        surface,
+        // The ink answers no ray: everything a pointer needs to find is the
+        // well behind it, and a `Text3d` mark would otherwise answer on its
+        // own account.
+        for (final child in children) SceneIgnorePointer3d(child: child),
+      ],
     );
+    if (inTile) return SceneIgnorePointer3d(child: drawn);
+
+    final announced = SceneSemantics3d(properties: properties, child: drawn);
 
     // Outermost, for the reason every component here puts it there: a target
     // reaches past its own extent and its parent does not. A checkbox is

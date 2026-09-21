@@ -363,8 +363,8 @@ by the state it is in.
 | **Buttons** | `FilledButton3d`, `FilledTonalButton3d`, `OutlinedButton3d`, `TextButton3d`, `ElevatedButton3d`, `IconButton3d`, `FloatingActionButton3d` |
 | **Surfaces and rows** | `Card3d`, `ListTile3d`, `Divider3d`, `Chip3d` |
 | **Structure** | `Scaffold3d`, `AppBar3d`, `SliverAppBar3d`, `NavigationBar3d`, `NavigationRail3d` |
-| **Overlays** | `Dialog3d`, `Menu3d`, `PopupMenuButton3d`, `SnackBar3d`, `Tooltip3d`, `BottomSheet3d` |
-| **Selection** | `Checkbox3d`, `Radio3d`, `Switch3d`, `Slider3d` |
+| **Overlays** | `Dialog3d`, `AlertDialog3d`, `Menu3d`, `PopupMenuButton3d`, `SnackBar3d`, `Tooltip3d`, `BottomSheet3d` |
+| **Selection** | `Checkbox3d`, `Radio3d`, `Switch3d`, `Slider3d`, and the rows that are one: `CheckboxListTile3d`, `SwitchListTile3d`, `RadioListTile3d` |
 | **The rest** | `Material3d`, `InkWell3d`, `Icon3d`, `Theme3dData`, `SceneTheme3d` |
 
 Theming is Material 3's, transcribed: forty-six colour roles, the fifteen-style

@@ -1,5 +1,58 @@
 ## Unreleased
 
+- **A question has a dialog of its own.** `AlertDialog3d` is a `Dialog3d`
+  with an icon, a title, a body and a row of actions in it, arranged the way
+  Material and Flutter's `AlertDialog` arrange them, and `AlertDialogStyle3d`
+  carries the three colours and four gaps the arrangement adds. The catalogue
+  refused this once, as a column that only saves a caller some typing; seen
+  from an application porting fifty of them, the column has one arrangement
+  that is right and two obvious ones that are not.
+  - **The actions sit at the trailing edge of a dialog only as wide as its
+    widest line.** A column aligned to the start puts them at the leading
+    edge, and a stretched one fills the screen; this is an intrinsic width
+    around a stretched column, as Flutter's is, and it mirrors in right to
+    left.
+  - **It fills the dialog's 280dp minimum rather than floating in it.**
+    `Dialog3d` centres what it holds in a loose box, so the first version put
+    a short dialog's only action in the middle; the arrangement now carries
+    the minimum inside the padding itself.
+  - **The body is `onSurfaceVariant`, which is M3's token and not Flutter's
+    figure** — Flutter's generated defaults leave it in the text theme's
+    `onSurface`. `.text` names the route after the title, because nothing
+    here reads a label out of a widget.
+  - There is no scrolling body and no `OverflowBar` yet: a body taller than
+    the screen is a layout error, and actions that do not fit a row are not
+    stacked.
+
+- **A checkbox has its third state.** `Checkbox3d.tristate` allows a null
+  `value`, drawn as a full box with `Icons.remove` in place of the tick and
+  published as `mixed` rather than `checked`, which is what Flutter's does. A
+  press walks Flutter's cycle, and `Checkbox3d.next` is that cycle for
+  anything else that has to walk it.
+  - **`onChanged` is now a `ValueChanged<bool?>`**, Flutter's own signature
+    and the one a ported screen already has. A caller of a two-state box
+    writes `value!`, exactly as in Flutter; this is the one change here that
+    breaks existing code.
+  - `CheckboxStyle3d` does not change. A mixed box is drawn as a checked one
+    is, so the third state is a glyph and a flag rather than a column in the
+    token table.
+
+- **A row can be the control it holds.** `CheckboxListTile3d`,
+  `SwitchListTile3d` and `RadioListTile3d` are a `ListTile3d` whose whole
+  rectangle ticks, flips or chooses, with `ListTileControlAffinity3d` saying
+  which end the control goes at — trailing for a checkbox and a switch,
+  leading for a radio, as Flutter's are — and a `.text` constructor each that
+  composes the announcement from the title and the subtitle.
+  - **There is one control, not two made to look like one.** Flutter merges
+    the row's semantics with the control's and excludes the control from
+    focus; there is no merge here, so the control inside a labelled tile is
+    only drawn. It publishes nothing, takes no focus, installs no ink well and
+    answers no ray, and the row does all four over its whole rectangle — one
+    node with the control's `checked`, `mixed` or `toggled` on it, one focus,
+    one target and one wash.
+  - `ListTile3d` takes a `focusNode` and `autofocus`, which it had no way to
+    be given before and which the labelled tiles pass through.
+
 - **A whole scheme from one colour.** `ColorScheme3d.fromSeed` derives all
   forty-six roles from a brand colour, because no real application uses the
   Material baseline and until now there was nothing else to start from. It

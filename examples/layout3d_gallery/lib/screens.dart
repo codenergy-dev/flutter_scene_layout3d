@@ -205,34 +205,31 @@ class _MaterialScreenState extends State<MaterialScreen> {
   }
 
   /// A dialog, which grows and fades in over its own scrim.
+  ///
+  /// An `AlertDialog3d` rather than a column in a `Dialog3d`: the icon and
+  /// the title centred, the body in its own role, and the one action at the
+  /// trailing edge of a dialog only as wide as its widest line — which is the
+  /// arrangement this used to write out by hand and get half right, with the
+  /// body in the title's colour until someone noticed.
   Future<void> _about(BuildContext context) async {
-    final theme = Theme3d.of(context);
     await showDialog3d<void>(
       context: context,
-      builder: (context) => Dialog3d(
+      builder: (context) => AlertDialog3d.text(
+        icon: const Icon3d(Icons.layers),
+        title: 'Material, as geometry',
+        // Short on purpose. An alert dialog has no scrolling body yet, so a
+        // body taller than the screen is a layout error rather than a
+        // scroll — and the headless suite's test font is wide enough that
+        // the old two-clause sentence was, on a 480dp screen.
+        content: 'Every panel here is a slab with a real thickness.',
         semanticLabel: 'About this gallery',
-        child: SceneColumn3d(
-          mainAxisSize: MainAxisSize3d.min,
-          crossAxisAlignment: CrossAxisAlignment3d.start,
-          children: <Widget>[
-            SceneText3d(
-              'Material, as geometry',
-              style: theme.textStyle(
-                Typography3dToken.headlineSmall,
-                color: theme.colorScheme.onSurface,
-              ),
-            ),
-            SceneSizedBox3d(height: _dp(context, 12)),
-            SceneText3d(
-              'Every panel here is a slab with a thickness, and every '
-              'arrival is one duration and one curve out of the theme.',
-              style: theme.textStyle(
-                Typography3dToken.bodyMedium,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-        ),
+        actions: <Widget>[
+          TextButton3d(
+            semanticLabel: 'Close',
+            onPressed: () => Navigator3d.of(SceneOverlay3d.of(context))?.pop(),
+            child: const SceneText3d('Close'),
+          ),
+        ],
       ),
     );
   }
@@ -430,7 +427,7 @@ class _MaterialScreenState extends State<MaterialScreen> {
                         value: _starred.contains(index),
                         semanticLabel: 'Star',
                         onChanged: (value) => setState(() {
-                          if (value) {
+                          if (value!) {
                             _starred.add(index);
                           } else {
                             _starred.remove(index);
@@ -526,26 +523,23 @@ class _MaterialScreenState extends State<MaterialScreen> {
               depthAxisAlignment: CrossAxisAlignment3d.start,
               mainAxisSize: MainAxisSize3d.min,
               children: <Widget>[
-                ListTile3d(
-                  title: const SceneText3d('Notifications'),
-                  trailing: Switch3d(
-                    value: _notify,
-                    semanticLabel: 'Notifications',
-                    onChanged: (value) => setState(() => _notify = value),
-                  ),
+                // The whole row is the switch, not only the 52dp track at its
+                // end: a press on the words flips it, and a screen reader
+                // hears one control rather than a row and a switch.
+                SwitchListTile3d.text(
+                  title: 'Notifications',
+                  value: _notify,
+                  onChanged: (value) => setState(() => _notify = value),
                 ),
                 const Divider3d(),
                 // The brightness of the whole scene, thrown from inside it.
                 // Both surfaces re-theme: the screen this switch is on, and
                 // the table beside it.
-                ListTile3d(
-                  title: const SceneText3d('Dark theme'),
-                  trailing: Switch3d(
-                    value: palette.brightness == Brightness.dark,
-                    semanticLabel: 'Dark theme',
-                    onChanged: (value) => palette.onBrightnessChanged(
-                      value ? Brightness.dark : Brightness.light,
-                    ),
+                SwitchListTile3d.text(
+                  title: 'Dark theme',
+                  value: palette.brightness == Brightness.dark,
+                  onChanged: (value) => palette.onBrightnessChanged(
+                    value ? Brightness.dark : Brightness.light,
                   ),
                 ),
                 const Divider3d(),

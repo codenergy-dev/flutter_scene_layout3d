@@ -1,18 +1,30 @@
+import 'dart:math' as math;
 import 'dart:ui' show Color;
 
 import 'package:flutter/semantics.dart' show SemanticsProperties;
+import 'package:flutter/painting.dart' show TextStyle;
 import 'package:flutter/widgets.dart'
-    show BuildContext, StatelessWidget, TextDirection, Widget;
+    show BuildContext, DefaultTextStyle, StatelessWidget, TextDirection, Widget;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart'
-    show Alignment3d, Constraints3d;
+    show
+        Alignment3d,
+        Constraints3d,
+        CrossAxisAlignment3d,
+        MainAxisAlignment3d,
+        MainAxisSize3d;
 import 'package:flutter_scene_layout3d/widgets.dart'
     show
         Layout3dMetricsScope,
         SceneAlign3d,
+        SceneColumn3d,
         SceneConstrainedBox3d,
+        SceneIntrinsicWidth3d,
         SceneMotionTransition3d,
         ScenePadding3d,
+        SceneRow3d,
         SceneSemantics3d,
+        SceneSizedBox3d,
+        SceneText3d,
         WidgetPageRoute3d;
 
 import '../theme/theme.dart';
@@ -20,6 +32,7 @@ import 'material.dart';
 import 'overlay_style.dart';
 import 'overlay_support.dart';
 import 'reading_direction.dart';
+import 'text_style.dart';
 
 /// A Material dialog: a surface in front of everything, over a scrim.
 ///
@@ -44,10 +57,9 @@ import 'reading_direction.dart';
 /// );
 /// ```
 ///
-/// This is the surface alone, which is what Flutter's own `Dialog` is. There
-/// is no `AlertDialog3d` — see *What phase 6 left out* in the catalogue's
-/// plan: an alert dialog is a column of a title, some text and a row of
-/// buttons, and nothing about that arrangement is three-dimensional.
+/// This is the surface alone, which is what Flutter's own `Dialog` is. The
+/// title, the body and the row of buttons most dialogs are is
+/// [AlertDialog3d], which is this surface with that one arrangement in it.
 ///
 /// ## The depth, which is the part with no Flutter equivalent
 ///
@@ -153,6 +165,221 @@ class Dialog3d extends StatelessWidget {
               heightFactor: 1.0,
               child: child,
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A dialog that asks one question: an icon, a title, a body and a row of
+/// actions, arranged the way Material arranges them.
+///
+/// ```dart
+/// final delete = await showDialog3d<bool>(
+///   context: context,
+///   builder: (context) => AlertDialog3d.text(
+///     title: 'Delete this file?',
+///     content: 'It will be gone from every device.',
+///     actions: <Widget>[
+///       TextButton3d(
+///         onPressed: () => Navigator3d.of(SceneOverlay3d.of(context))?.pop(false),
+///         child: const SceneText3d('Cancel'),
+///       ),
+///       TextButton3d(
+///         onPressed: () => Navigator3d.of(SceneOverlay3d.of(context))?.pop(true),
+///         child: const SceneText3d('Delete'),
+///       ),
+///     ],
+///   ),
+/// );
+/// ```
+///
+/// ## Why it exists, when phase 6 refused it
+///
+/// The catalogue's phase 6 declined this: it is a column of a title, some
+/// text and a row of buttons, nothing about that is three-dimensional, and a
+/// component that exists only to save a caller writing a `SceneColumn3d` is
+/// not worth having. That judgement was a catalogue's. **An application
+/// porting fifty dialogs reads it differently**, because the column has one
+/// arrangement that is right and two obvious ones that are not: a column
+/// aligned to the start puts the actions at the *leading* edge, and a
+/// stretched one without an intrinsic width is as wide as the screen. This is
+/// Flutter's answer — an intrinsic width around a stretched column — so the
+/// dialog is as wide as its widest line and the actions sit at its trailing
+/// edge, which mirrors in right to left.
+///
+/// It adds nothing to the surface. It *is* a [Dialog3d], so its container,
+/// shape, depth, scrim and arrival are [DialogStyle3d]'s; what it adds is in
+/// [AlertDialogStyle3d] — the three colours and the four gaps.
+///
+/// ## The roles, which a hand-written dialog gets wrong silently
+///
+/// The title is `headlineSmall` in `onSurface`, the body `bodyMedium` in
+/// `onSurfaceVariant`, and the icon `secondary`. With an [icon], the icon and
+/// the title are centred and the body is not, which is Material's layout; a
+/// centred title is centred as a box, so a title that wraps keeps its lines
+/// aligned to the start within it.
+///
+/// ## What it announces
+///
+/// A `Semantics3d` gathers nothing, so a dialog built out of widgets announces
+/// a route with no name unless it is given a [semanticLabel]. [AlertDialog3d.text]
+/// takes strings and names the route after its title, the way
+/// `ListTile3d.text` composes a tile's label.
+///
+/// ## What it leaves out
+///
+/// Flutter's `OverflowBar`, which stacks the actions vertically when they do
+/// not fit in one row, and `scrollable`, which puts a long body in a scroll
+/// view. Both are the second dialog a port asks for rather than the first;
+/// until then a body too long for the screen overflows, and a caller who
+/// needs one scrolls it in a `SceneListView3d` of its own.
+class AlertDialog3d extends StatelessWidget {
+  /// Creates an alert dialog out of widgets, announcing [semanticLabel].
+  const AlertDialog3d({
+    super.key,
+    this.icon,
+    this.title,
+    this.content,
+    this.actions,
+    this.style,
+    this.alertStyle,
+    this.semanticLabel,
+    this.textDirection,
+  });
+
+  /// Creates an alert dialog out of strings, named after its [title].
+  ///
+  /// Pass [semanticLabel] to name it something else.
+  AlertDialog3d.text({
+    super.key,
+    this.icon,
+    required String title,
+    String? content,
+    this.actions,
+    this.style,
+    this.alertStyle,
+    String? semanticLabel,
+    this.textDirection,
+  }) : title = SceneText3d(title),
+       content = content == null ? null : SceneText3d(content),
+       semanticLabel = semanticLabel ?? title;
+
+  /// A glyph above the title, usually an `Icon3d`, drawn in the icon colour.
+  final Widget? icon;
+
+  /// The question.
+  final Widget? title;
+
+  /// What the question is about.
+  final Widget? content;
+
+  /// The answers, laid in a row at the trailing edge, first to last.
+  final List<Widget>? actions;
+
+  /// The surface's tokens, or null for the theme's.
+  final DialogStyle3d? style;
+
+  /// The arrangement's tokens, or null for the theme's.
+  final AlertDialogStyle3d? alertStyle;
+
+  /// What a screen reader announces the dialog as. **State it**, or use
+  /// [AlertDialog3d.text].
+  final String? semanticLabel;
+
+  /// The direction [semanticLabel] reads in.
+  final TextDirection? textDirection;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme3d.of(context);
+    final metrics = Layout3dMetricsScope.of(context);
+    final resolved = alertStyle ?? AlertDialogStyle3d.of(theme);
+    final surface = style ?? DialogStyle3d.of(theme);
+    final centred = icon != null;
+    final actions = this.actions ?? const <Widget>[];
+
+    Widget gap(double logical) => SceneSizedBox3d(height: metrics.dp(logical));
+
+    // A centred box in a stretched column: the column hands it the whole
+    // width, and a factor of one on the other two axes keeps it the size of
+    // what it holds rather than filling the dialog's height.
+    Widget centre(Widget child) => SceneAlign3d(
+      alignment: Alignment3d.frontCenter,
+      heightFactor: 1.0,
+      depthFactor: 1.0,
+      child: child,
+    );
+
+    final sections = <Widget>[
+      if (icon != null) ...<Widget>[
+        centre(
+          DefaultTextStyle.merge(
+            style: TextStyle(color: resolved.iconColor),
+            child: icon!,
+          ),
+        ),
+        if (title != null || content != null) gap(resolved.iconGap),
+      ],
+      if (title != null) ...<Widget>[
+        SceneTextStyle3d(
+          style: resolved.titleStyle,
+          color: resolved.titleColor,
+          child: centred ? centre(title!) : title!,
+        ),
+        if (content != null) gap(resolved.titleGap),
+      ],
+      if (content != null)
+        SceneTextStyle3d(
+          style: resolved.contentStyle,
+          color: resolved.contentColor,
+          child: content!,
+        ),
+      if (actions.isNotEmpty) ...<Widget>[
+        if (icon != null || title != null || content != null)
+          gap(resolved.actionsGap),
+        SceneRow3d(
+          mainAxisAlignment: MainAxisAlignment3d.end,
+          depthAxisAlignment: CrossAxisAlignment3d.start,
+          spacing: metrics.dp(resolved.actionsSpacing),
+          children: actions,
+        ),
+      ],
+    ];
+
+    return Dialog3d(
+      style: style,
+      semanticLabel: semanticLabel,
+      textDirection: textDirection,
+      // Flutter's `IntrinsicWidth` around a stretched column, and the reason
+      // this component exists: as wide as the widest section, and every
+      // section that wide — which is what lets the actions reach the
+      // trailing edge without the dialog reaching the screen's.
+      child: SceneIntrinsicWidth3d(
+        // And never narrower than the dialog's own minimum, measured inside
+        // its padding. `Dialog3d` centres what it holds in a loose box, so a
+        // column narrower than 280dp would come out *centred* in the dialog
+        // with its actions short of the trailing edge — the one thing this
+        // arrangement is for. Flutter does not meet this: its `Dialog` hands
+        // the minimum straight down, and `IntrinsicWidth` honours it.
+        child: SceneConstrainedBox3d(
+          constraints: Constraints3d(
+            minWidth: metrics.dp(
+              math.max(
+                0.0,
+                surface.minWidth - surface.padding.left - surface.padding.right,
+              ),
+            ),
+          ),
+          child: SceneColumn3d(
+            mainAxisSize: MainAxisSize3d.min,
+            crossAxisAlignment: CrossAxisAlignment3d.stretch,
+            // On the dialog's front face. A flex centres its children in the
+            // depth of its deepest one, which would sink a label beside a
+            // button into the slab it is drawn on. See `docs/traps.md`.
+            depthAxisAlignment: CrossAxisAlignment3d.start,
+            children: sections,
           ),
         ),
       ),

@@ -158,13 +158,16 @@ const Curve _linear = Cubic(0.0, 0.0, 1.0, 1.0);
 
 /// Everything a [Dialog3d] is made of.
 ///
-/// Checked against Flutter's own `Dialog` defaults in
-/// `test/overlay_defaults_test.dart`, which reads the `Material` a real
-/// `Dialog` renders: `_DialogDefaultsM3` is private and `DialogTheme.of`
-/// answers with an application's overrides rather than the resolved defaults.
-/// That is the weaker of the drift-alarm lanes this package uses, and the
-/// figures it cannot reach — the 560dp maximum width, which is an M3 spec
-/// figure Flutter does not enforce — are transcriptions and say so.
+/// **Every figure here is a transcription**, of `_DialogDefaultsM3` and of
+/// Flutter's `Dialog` constants, pinned by `test/dialog_test.dart`'s *the
+/// tokens* group — which states them rather than reading them off a real
+/// `Dialog`, so it catches a change here and not a change upstream.
+/// `_DialogDefaultsM3` is private and `DialogTheme.of` answers with an
+/// application's overrides rather than the resolved defaults, and the 560dp
+/// maximum width is an M3 spec figure Flutter does not enforce at all. *(This
+/// used to cite a `test/overlay_defaults_test.dart` that read the `Material`
+/// a real `Dialog` renders. No such test has ever existed in this
+/// repository.)*
 ///
 /// Every figure is in **logical pixels**.
 @immutable
@@ -276,14 +279,124 @@ class DialogStyle3d {
   final Arrival3d arrival;
 }
 
+/// What an [AlertDialog3d] arranges inside the [DialogStyle3d] surface it
+/// sits on: the colours of its three kinds of content, and the gaps between
+/// them.
+///
+/// The surface is not repeated here. An alert dialog *is* a `Dialog3d`, so
+/// its container, shape, depth, scrim and arrival stay in [DialogStyle3d],
+/// and this carries only what the arrangement adds.
+///
+/// The gaps are Flutter's `AlertDialog` figures, which are M3's: 16dp from an
+/// icon to the title, 16dp from the title to the body, 24dp from the body to
+/// the actions, and 8dp between one action and the next. Flutter spells them
+/// as paddings on each section inside a dialog with none of its own; here the
+/// 24dp round the edge is already [DialogStyle3d.padding], so what is left is
+/// the gaps between sections, which is the part a caller gets wrong.
+///
+/// Every figure is in **logical pixels**.
+@immutable
+class AlertDialogStyle3d {
+  /// Creates an alert dialog style. Every field is required, for the reason
+  /// [DialogStyle3d]'s are.
+  const AlertDialogStyle3d({
+    required this.iconColor,
+    required this.titleStyle,
+    required this.titleColor,
+    required this.contentStyle,
+    required this.contentColor,
+    required this.iconGap,
+    required this.titleGap,
+    required this.actionsGap,
+    required this.actionsSpacing,
+  }) : assert(iconGap >= 0.0),
+       assert(titleGap >= 0.0),
+       assert(actionsGap >= 0.0),
+       assert(actionsSpacing >= 0.0);
+
+  /// The style Material publishes, out of [theme]'s tokens.
+  factory AlertDialogStyle3d.of(Theme3dData theme) {
+    final scheme = theme.colorScheme;
+    return AlertDialogStyle3d(
+      iconColor: scheme.secondary,
+      titleStyle: Typography3dToken.headlineSmall,
+      titleColor: scheme.onSurface,
+      contentStyle: Typography3dToken.bodyMedium,
+      // M3's `md.comp.dialog.supporting-text.color`. Flutter's generated
+      // defaults take `bodyMedium` without recolouring it, which leaves the
+      // body in the text theme's `onSurface`; the token says otherwise and so
+      // do the gallery's own dialogs, which wrote this role by hand before
+      // there was a component to write it.
+      contentColor: scheme.onSurfaceVariant,
+      iconGap: 16.0,
+      titleGap: 16.0,
+      actionsGap: 24.0,
+      actionsSpacing: 8.0,
+    );
+  }
+
+  /// The icon's colour: `secondary`.
+  ///
+  /// Its size is the icon's own: `Icon3d.defaultSize` is Material's 24dp,
+  /// which is also the dialog's figure.
+  final Color iconColor;
+
+  /// The title's type role: `headlineSmall`.
+  final Typography3dToken titleStyle;
+
+  /// The title's colour: `onSurface`.
+  final Color titleColor;
+
+  /// The body's type role: `bodyMedium`.
+  final Typography3dToken contentStyle;
+
+  /// The body's colour: `onSurfaceVariant`.
+  final Color contentColor;
+
+  /// From the icon to whatever is under it: 16dp.
+  final double iconGap;
+
+  /// From the title to the body: 16dp.
+  final double titleGap;
+
+  /// From the body, or the title when there is no body, to the actions: 24dp.
+  final double actionsGap;
+
+  /// Between one action and the next: 8dp.
+  final double actionsSpacing;
+
+  /// This style with the given fields replaced.
+  AlertDialogStyle3d copyWith({
+    Color? iconColor,
+    Typography3dToken? titleStyle,
+    Color? titleColor,
+    Typography3dToken? contentStyle,
+    Color? contentColor,
+    double? iconGap,
+    double? titleGap,
+    double? actionsGap,
+    double? actionsSpacing,
+  }) => AlertDialogStyle3d(
+    iconColor: iconColor ?? this.iconColor,
+    titleStyle: titleStyle ?? this.titleStyle,
+    titleColor: titleColor ?? this.titleColor,
+    contentStyle: contentStyle ?? this.contentStyle,
+    contentColor: contentColor ?? this.contentColor,
+    iconGap: iconGap ?? this.iconGap,
+    titleGap: titleGap ?? this.titleGap,
+    actionsGap: actionsGap ?? this.actionsGap,
+    actionsSpacing: actionsSpacing ?? this.actionsSpacing,
+  );
+}
+
 /// Everything a [Menu3d] and its items are made of.
 ///
 /// The figures are Flutter's popup-menu constants — 112dp and 280dp are its
 /// `_kMenuMinWidth` and `_kMenuMaxWidth`, 48dp its `_kMenuItemHeight`, 8dp its
 /// `_kMenuVerticalPadding` — and the container, elevation and shape are
-/// `_PopupMenuDefaultsM3`'s. `test/overlay_defaults_test.dart` reads what it
-/// can off a real `PopupMenuButton` and says which of these are
-/// transcriptions.
+/// `_PopupMenuDefaultsM3`'s. All of them are transcriptions, pinned by
+/// `test/menu_test.dart`'s *the tokens* group; nothing reads them off a real
+/// `PopupMenuButton` yet, whatever this said before.
 @immutable
 class MenuStyle3d {
   /// Creates a menu style.

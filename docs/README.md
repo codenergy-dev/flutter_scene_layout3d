@@ -140,7 +140,8 @@ Two entry points:
   [what a real application still needs](../packages/flutter_scene_layout3d/plans/2026_09_11_what_a_real_application_still_needs.md),
   the index of the seventeen plans between a finished catalogue and an
   application people use — **twelve closed, five open**, with the whole motion
-  lane among the closed and the colour generator with it. It is a map rather
+  lane among the closed and the colour generator with it, and the catalogue
+  batch now under way. It is a map rather
   than a work item: each row becomes a plan of its own when it is picked up.
   [An application that does not wire its own rays](../packages/flutter_scene_layout3d/plans/2026_09_11_an_application_that_does_not_wire_its_own_rays.md)
   is the first of them, and it led for the reason the map gave: it is the item
@@ -280,6 +281,22 @@ Two entry points:
   CAM16 colour science stayed unforked. The figure worth carrying: a generated
   scheme costs **679µs**, so `fromSeed` memoizes, because a theme is installed
   from a `build` method and a `build` method runs on frames.
+- **The components a screen still needs** is
+  [the fifteenth](../packages/flutter_scene_material3d/plans/2026_09_21_the_components_a_screen_still_needs.md),
+  and the first on that map to be phased rather than done in one piece: the
+  two thirds of Material not yet here, grouped by what each component needs
+  underneath it and ordered by what a ported screen reaches for first. Phase
+  1 has landed — `AlertDialog3d`, the checkbox's third state, and
+  `CheckboxListTile3d`, `SwitchListTile3d` and `RadioListTile3d`. The dialog
+  is the catalogue reversing itself on purpose: phase 6 refused it as a
+  column that only saves typing, and seen from a port the column has one
+  right arrangement — the actions at the trailing edge of a dialog as wide
+  as its widest line — which the first version of the component *itself* got
+  wrong, because `Dialog3d` centres a narrow child. The labelled tiles answer
+  a question phase 7 thought was about which of two announcements to keep,
+  by having only one control: inside a tile the checkbox is drawn and the row
+  does the rest. It also found two dartdocs citing a drift test that has
+  never existed.
 - **The motion tokens** are
   [the tenth](../packages/flutter_scene_material3d/plans/2026_09_17_the_motion_tokens.md),
   the first plan in the Material package since its own ten phases, and the

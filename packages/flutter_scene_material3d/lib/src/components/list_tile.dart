@@ -4,7 +4,7 @@ import 'package:flutter/gestures.dart'
     show GestureLongPressCallback, GestureTapCallback;
 import 'package:flutter/semantics.dart' show SemanticsProperties;
 import 'package:flutter/widgets.dart'
-    show BuildContext, StatelessWidget, TextDirection, Widget;
+    show BuildContext, FocusNode, StatelessWidget, TextDirection, Widget;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart'
     show
         Constraints3d,
@@ -101,6 +101,8 @@ class ListTile3d extends StatelessWidget {
     this.enabled = true,
     this.onTap,
     this.onLongPress,
+    this.focusNode,
+    this.autofocus = false,
     this.tileColor,
     this.selectedColor,
     this.contentPadding,
@@ -128,6 +130,8 @@ class ListTile3d extends StatelessWidget {
     this.enabled = true,
     this.onTap,
     this.onLongPress,
+    this.focusNode,
+    this.autofocus = false,
     this.tileColor,
     this.selectedColor,
     this.contentPadding,
@@ -227,6 +231,12 @@ class ListTile3d extends StatelessWidget {
   /// Called when the tile is long-pressed.
   final GestureLongPressCallback? onLongPress;
 
+  /// The node holding this tile's place in the focus tree.
+  final FocusNode? focusNode;
+
+  /// Whether the tile takes the focus as soon as it is laid out.
+  final bool autofocus;
+
   /// The slab's colour, or null for a fully transparent one.
   ///
   /// Transparent is Material's own default, and it is what lets a list of
@@ -274,122 +284,159 @@ class ListTile3d extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme3d.of(context);
-    final metrics = Layout3dMetricsScope.of(context);
-    final scheme = theme.colorScheme;
+  Widget build(BuildContext context) => buildListTile3d(
+    context,
+    this,
+    SemanticsProperties(
+      button: interactive ? true : null,
+      enabled: onTap != null || onLongPress != null ? enabled : null,
+      selected: selected ? true : null,
+      label: semanticLabel,
+      textDirection: readingDirection3d(context, textDirection),
+      onTap: interactive ? onTap : null,
+      onLongPress: interactive ? onLongPress : null,
+    ),
+  );
+}
 
-    final Color titleColor;
-    final Color supportColor;
-    if (!enabled) {
-      titleColor = supportColor = scheme.disabledContent;
-    } else if (selected) {
-      titleColor = supportColor = selectedColor ?? scheme.primary;
-    } else {
-      titleColor = scheme.onSurface;
-      supportColor = scheme.onSurfaceVariant;
-    }
+/// [tile], built, announcing [properties] rather than what it would have
+/// announced itself.
+///
+/// Not exported. It is how the labelled tiles are a `ListTile3d` without
+/// being one inside another: wrapping a tile would publish the tile's own
+/// node *and* the labelled tile's over it, and nothing here merges two nodes
+/// into one. `buildNavigationDestination3d` is the same shape for the bar and
+/// the rail.
+Widget buildListTile3d(
+  BuildContext context,
+  ListTile3d tile,
+  SemanticsProperties properties,
+) {
+  final ListTile3d(
+    :leading,
+    :title,
+    :subtitle,
+    :trailing,
+    :selected,
+    :enabled,
+    :onTap,
+    :onLongPress,
+    :focusNode,
+    :autofocus,
+    :tileColor,
+    :selectedColor,
+    :contentPadding,
+    :interactive,
+    :lineHeight,
+  ) = tile;
+  final theme = Theme3d.of(context);
+  final metrics = Layout3dMetricsScope.of(context);
+  final scheme = theme.colorScheme;
 
-    final gap = metrics.dp(horizontalTitleGap);
-    final text = <Widget>[
-      if (title != null)
-        SceneTextStyle3d(
-          style: Typography3dToken.bodyLarge,
-          color: titleColor,
-          child: title!,
-        ),
-      if (subtitle != null)
-        SceneTextStyle3d(
-          style: Typography3dToken.bodyMedium,
-          color: supportColor,
-          child: subtitle!,
-        ),
-    ];
-
-    final row = SceneRow3d(
-      mainAxisAlignment: MainAxisAlignment3d.start,
-      crossAxisAlignment: CrossAxisAlignment3d.center,
-      // The gap is the flex's own `spacing`, which puts 16dp between every
-      // adjacent pair and nothing at the ends — exactly the tile's rule, and
-      // it needs no filler boxes to express.
-      spacing: gap,
-      children: <Widget>[
-        if (leading != null) leading!,
-        SceneExpanded3d(
-          child: SceneColumn3d(
-            mainAxisSize: MainAxisSize3d.min,
-            mainAxisAlignment: MainAxisAlignment3d.center,
-            crossAxisAlignment: CrossAxisAlignment3d.start,
-            children: text,
-          ),
-        ),
-        if (trailing != null) trailing!,
-      ],
-    );
-
-    // The whole row inherits the supporting role, so a bare `SceneText3d` or
-    // an `Icon3d` in the leading or trailing slot is `onSurfaceVariant`
-    // without being told. The title and the subtitle override it above.
-    final content = SceneTextStyle3d(
-      style: Typography3dToken.labelSmall,
-      color: supportColor,
-      child: row,
-    );
-
-    final surface = Material3d(
-      color: tileColor ?? const Color(0x00000000),
-      contentColor: titleColor,
-      shape: theme.shape.none,
-      elevation: theme.elevation.level0,
-      thickness: theme.thickness.standard,
-      padding: contentPadding ?? defaultContentPadding,
-      // The row fills the tile rather than being centred in it, so a trailing
-      // control really does sit at the trailing edge.
-      alignment: null,
-      surfaceTint: const Color(0x00000000),
-      child: interactive
-          ? InkWell3d(
-              // One target, and it is the one outside this panel.
-              minimumSize: Size3d.zero,
-              enabled: enabled,
-              onTap: onTap,
-              onLongPress: onLongPress,
-              child: content,
-            )
-          : content,
-    );
-
-    // The density is applied through the theme's own arithmetic rather than
-    // by adding `4 * density` here, so there is one implementation of what a
-    // density means and the theme is the stated winner over the metrics.
-    final constrained = SceneConstrainedBox3d(
-      constraints: theme.effectiveConstraints(
-        Constraints3d(minHeight: metrics.dp(lineHeight)),
-        metrics,
-      ),
-      child: surface,
-    );
-
-    final announced = SceneSemantics3d(
-      properties: SemanticsProperties(
-        button: interactive ? true : null,
-        enabled: onTap != null || onLongPress != null ? enabled : null,
-        selected: selected ? true : null,
-        label: semanticLabel,
-        textDirection: readingDirection3d(context, textDirection),
-        onTap: interactive ? onTap : null,
-        onLongPress: interactive ? onLongPress : null,
-      ),
-      child: constrained,
-    );
-
-    if (!interactive) return announced;
-    // Outermost, for the reason `Button3d`'s is: a target reaches past its
-    // own extent and every ancestor gates a ray on its own extent. A tile is
-    // 56dp tall and needs none of the reach vertically — it is here so that
-    // the rule holds everywhere rather than only where it is load-bearing,
-    // and so a `dense` 48dp tile is exactly at the minimum rather than under
-    // it.
-    return SceneTapTarget3d(child: announced);
+  final Color titleColor;
+  final Color supportColor;
+  if (!enabled) {
+    titleColor = supportColor = scheme.disabledContent;
+  } else if (selected) {
+    titleColor = supportColor = selectedColor ?? scheme.primary;
+  } else {
+    titleColor = scheme.onSurface;
+    supportColor = scheme.onSurfaceVariant;
   }
+
+  final gap = metrics.dp(ListTile3d.horizontalTitleGap);
+  final text = <Widget>[
+    if (title != null)
+      SceneTextStyle3d(
+        style: Typography3dToken.bodyLarge,
+        color: titleColor,
+        child: title,
+      ),
+    if (subtitle != null)
+      SceneTextStyle3d(
+        style: Typography3dToken.bodyMedium,
+        color: supportColor,
+        child: subtitle,
+      ),
+  ];
+
+  final row = SceneRow3d(
+    mainAxisAlignment: MainAxisAlignment3d.start,
+    crossAxisAlignment: CrossAxisAlignment3d.center,
+    // The gap is the flex's own `spacing`, which puts 16dp between every
+    // adjacent pair and nothing at the ends — exactly the tile's rule, and
+    // it needs no filler boxes to express.
+    spacing: gap,
+    children: <Widget>[
+      ?leading,
+      SceneExpanded3d(
+        child: SceneColumn3d(
+          mainAxisSize: MainAxisSize3d.min,
+          mainAxisAlignment: MainAxisAlignment3d.center,
+          crossAxisAlignment: CrossAxisAlignment3d.start,
+          children: text,
+        ),
+      ),
+      ?trailing,
+    ],
+  );
+
+  // The whole row inherits the supporting role, so a bare `SceneText3d` or
+  // an `Icon3d` in the leading or trailing slot is `onSurfaceVariant`
+  // without being told. The title and the subtitle override it above.
+  final content = SceneTextStyle3d(
+    style: Typography3dToken.labelSmall,
+    color: supportColor,
+    child: row,
+  );
+
+  final surface = Material3d(
+    color: tileColor ?? const Color(0x00000000),
+    contentColor: titleColor,
+    shape: theme.shape.none,
+    elevation: theme.elevation.level0,
+    thickness: theme.thickness.standard,
+    padding: contentPadding ?? ListTile3d.defaultContentPadding,
+    // The row fills the tile rather than being centred in it, so a trailing
+    // control really does sit at the trailing edge.
+    alignment: null,
+    surfaceTint: const Color(0x00000000),
+    child: interactive
+        ? InkWell3d(
+            // One target, and it is the one outside this panel.
+            minimumSize: Size3d.zero,
+            enabled: enabled,
+            focusNode: focusNode,
+            autofocus: autofocus,
+            onTap: onTap,
+            onLongPress: onLongPress,
+            child: content,
+          )
+        : content,
+  );
+
+  // The density is applied through the theme's own arithmetic rather than
+  // by adding `4 * density` here, so there is one implementation of what a
+  // density means and the theme is the stated winner over the metrics.
+  final constrained = SceneConstrainedBox3d(
+    constraints: theme.effectiveConstraints(
+      Constraints3d(minHeight: metrics.dp(lineHeight)),
+      metrics,
+    ),
+    child: surface,
+  );
+
+  final announced = SceneSemantics3d(
+    properties: properties,
+    child: constrained,
+  );
+
+  if (!interactive) return announced;
+  // Outermost, for the reason `Button3d`'s is: a target reaches past its
+  // own extent and every ancestor gates a ray on its own extent. A tile is
+  // 56dp tall and needs none of the reach vertically — it is here so that
+  // the rule holds everywhere rather than only where it is load-bearing,
+  // and so a `dense` 48dp tile is exactly at the minimum rather than under
+  // it.
+  return SceneTapTarget3d(child: announced);
 }
