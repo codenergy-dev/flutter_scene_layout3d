@@ -1,5 +1,21 @@
 ## Unreleased
 
+- **A label can say how far it grows with the reader's font setting.**
+  `Text3d.textScaler` and `RichText3d.textScaler`, with the same parameter on
+  `SceneText3d` and `SceneRichText3d`, replace the surface's scaler for one
+  label — Flutter's `Text.textScaler` — and `SceneTextScaling3d.clamped` does
+  it for every widget-built label below it, which is
+  `MediaQuery.withClampedTextScaling`. Null, the default, follows the surface
+  as before.
+  - **The setting still has one home.** `Layout3dMetrics.textScaler` is the
+    reader's scale and the surface's; the scope carries what a subtree does
+    with it, so a component clamps its labels without restating the setting
+    and a surface that changes it is still followed.
+  - The first customers are the Material catalogue's icons, which must not
+    grow at all, and its navigation bar and app bar, which stop where
+    Flutter's do. An imperative `Text3d` has no `BuildContext` and sees no
+    scope; it takes a `textScaler` directly.
+
 - **A hero flies between two routes, and what flies is built rather than
   moved.** `Hero3d` matches a box on an arriving route with one carrying the
   same `tag` on the route it covers, and puts a flight between them for as

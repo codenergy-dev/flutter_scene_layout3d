@@ -93,6 +93,7 @@ class NavigationStyle3d {
       required double extent,
       required double elevation,
       required Size3d indicatorSize,
+      required EdgeInsets3d padding,
     }) => NavigationStyle3d(
       container: container,
       contentColor: scheme.onSurfaceVariant,
@@ -110,7 +111,7 @@ class NavigationStyle3d {
       // to clear is half the pill. `thin` clears it twice over and keeps the
       // icon visibly on the pill rather than hovering above it.
       indicatorDepthStep: theme.thickness.thin,
-      padding: const EdgeInsets3d.symmetric(horizontal: 8.0, vertical: 12.0),
+      padding: padding,
       labelGap: 4.0,
     );
 
@@ -120,12 +121,22 @@ class NavigationStyle3d {
         extent: barExtent,
         elevation: theme.elevation.level2,
         indicatorSize: barIndicatorSize,
+        // No vertical padding, as Flutter's bar has none: its 52dp of pill,
+        // gap and label are *centred* in the 80dp, which puts the pill 14dp
+        // from the top exactly where 12dp of padding plus centring did. The
+        // difference is what happens when the label grows. A padded bar had
+        // 4dp to spare and overflowed at a 1.3 font setting — the very
+        // setting Flutter clamps the label to — where a centred one has 28.
+        padding: const EdgeInsets3d.symmetric(horizontal: 8.0),
       ),
       NavigationVariant3d.rail => common(
         container: scheme.surface,
         extent: railExtent,
         elevation: theme.elevation.level0,
         indicatorSize: railIndicatorSize,
+        // The rail's destinations start at its top rather than centring, so
+        // here the 12dp is a real inset.
+        padding: const EdgeInsets3d.symmetric(horizontal: 8.0, vertical: 12.0),
       ),
     };
   }

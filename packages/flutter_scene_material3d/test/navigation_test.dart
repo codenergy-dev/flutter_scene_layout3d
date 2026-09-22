@@ -342,7 +342,7 @@ void main() {
   });
 
   group('the navigation tokens', () {
-    test('a bar and a rail differ in exactly four figures', () {
+    test('a bar and a rail differ in exactly five figures', () {
       final bar = NavigationStyle3d.of(_theme, NavigationVariant3d.bar);
       final rail = NavigationStyle3d.of(_theme, NavigationVariant3d.rail);
       expect(bar.container, _theme.colorScheme.surfaceContainer);
@@ -351,6 +351,14 @@ void main() {
       expect(rail.elevation, _theme.elevation.level0);
       expect(bar.indicatorSize, NavigationStyle3d.barIndicatorSize);
       expect(rail.indicatorSize, NavigationStyle3d.railIndicatorSize);
+      // The fifth: a bar centres its destinations in its height and has no
+      // vertical inset, as Flutter's has none; a rail starts its column at
+      // the top, 12dp in.
+      expect(bar.padding, const EdgeInsets3d.symmetric(horizontal: 8));
+      expect(
+        rail.padding,
+        const EdgeInsets3d.symmetric(horizontal: 8, vertical: 12),
+      );
       // And in nothing else.
       expect(
         rail.copyWith(
@@ -358,6 +366,7 @@ void main() {
           elevation: bar.elevation,
           indicatorSize: bar.indicatorSize,
           extent: bar.extent,
+          padding: bar.padding,
         ),
         bar,
       );

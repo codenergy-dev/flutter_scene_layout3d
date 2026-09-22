@@ -1,5 +1,35 @@
 ## Unreleased
 
+- **A screen spends the safe area the way Flutter's does.** On a surface
+  that stands in for the view, `AppBar3d` and `SliverAppBar3d` are taller by
+  the status bar and draw their container under it with the toolbar below,
+  `NavigationBar3d` grows over the home indicator, `NavigationRail3d` clears
+  the notch on its leading side, and `Scaffold3d` takes from the body what its
+  bars took and keeps the floating action button clear of the bottom and
+  trailing insets. Everywhere else every inset is zero and nothing moves.
+  - **`primary`** on both app bars is Flutter's: false for a bar that is not
+    at the top of anything.
+  - **The floating action button stands at the trailing corner**, which in
+    right to left is the left one. It used to stand at the right whatever
+    the direction; the right-to-left work had missed it.
+  - A body that runs behind a bar with `extendBody` or
+    `extendBodyBehindAppBar` is told about the platform's inset and not the
+    bar's height, which Flutter adds and this does not yet.
+
+- **Icons do not grow with the reader's font setting, and two bars stop their
+  labels.** `Icon3d` states `TextScaler.noScaling`, because Flutter's `Icon`
+  never grows with type; a navigation bar's labels stop at
+  `NavigationBar3d.maxLabelTextScaleFactor`, 1.3, and an app bar's title at
+  `AppBar3d.maxTitleTextScaleFactor`, 1.34 — Flutter's own ceilings.
+  - **The navigation bar overflowed at a 1.3 setting**, the one component in
+    the catalogue that did, and for two reasons at once: its icons grew, and
+    12dp of vertical padding left 4dp to spare. **The bar has no vertical
+    padding now**, as Flutter's has none — its destinations are centred in
+    the 80dp, which puts the pill exactly where it was — and
+    `NavigationStyle3d`'s bar and rail now differ in their padding too.
+  - Everything else was measured at 1.3 and at twice the size and fits,
+    because the catalogue's heights are minimums.
+
 - **A question has a dialog of its own.** `AlertDialog3d` is a `Dialog3d`
   with an icon, a title, a body and a row of actions in it, arranged the way
   Material and Flutter's `AlertDialog` arrange them, and `AlertDialogStyle3d`
@@ -231,12 +261,12 @@ that reasoning lives.
   changed to make it so: `Layout3dMetrics` carries a `TextScaler` now, a
   `SceneLayout3d` writes the ambient `MediaQuery.textScalerOf` into it, and
   every label in the catalogue is a `Text3d` that measures through it. What is
-  worth knowing is the component side of it — a control whose height is a
-  fixed dp figure does not grow with its label, exactly as in Flutter, so a
-  48dp row of 14sp text at a large setting is a row the text overflows.
-  `Scaffold3d` does not consume the safe area either: on a surface bound to
-  the camera, wrap the screen in `SceneSafeArea3d` yourself. Both belong to
-  the components plan rather than to the theme.
+  worth knowing is the component side of it, which the entries above now
+  cover: the catalogue's controls have minimum heights and grow with their
+  labels, icons do not grow, the two bars stop their labels where Flutter
+  does, and `Scaffold3d` consumes the safe area. *(This entry used to say a
+  48dp row of 14sp text overflows at a large setting. Measured, none did; the
+  one component that overflowed was the navigation bar.)*
 - **The catalogue mirrors in a right-to-left application.** Its rows follow
   the ambient `Directionality` on their own now that the layout package's do,
   so what changed here is everything that would otherwise have been left on

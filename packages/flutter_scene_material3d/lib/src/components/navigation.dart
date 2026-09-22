@@ -3,7 +3,7 @@ import 'dart:ui' show Color;
 import 'package:flutter/foundation.dart' show immutable;
 import 'package:flutter/semantics.dart' show SemanticsProperties;
 import 'package:flutter/widgets.dart'
-    show BuildContext, StatelessWidget, TextDirection, Widget;
+    show BuildContext, Directionality, StatelessWidget, TextDirection, Widget;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart'
     show
         Alignment3d,
@@ -22,8 +22,11 @@ import 'package:flutter_scene_layout3d/widgets.dart'
         SceneSemantics3d,
         SceneSizedBox3d,
         SceneStack3d,
+        MediaQuery3d,
+        SceneSafeArea3d,
         SceneTapTarget3d,
-        SceneText3d;
+        SceneText3d,
+        SceneTextScaling3d;
 
 import '../theme/theme.dart';
 import '../theme/theme_data.dart';
@@ -157,6 +160,16 @@ class NavigationBar3d extends StatelessWidget {
   /// constant expression there, so keeping the widget `const`-constructible
   /// — which is what makes an unchanged rebuild free — means the check moves
   /// to `build`. The same is true of `NavigationRail3d`.
+  /// How far a destination's label grows with the reader's font setting:
+  /// 1.3, Flutter's `_kMaxLabelTextScaleFactor`.
+  ///
+  /// The labels grow, and then stop, so that a bar of 12sp labels under 24dp
+  /// icons keeps that hierarchy at any setting. The icons do not grow at
+  /// all, which is `Icon3d`'s own rule. The rail has no ceiling, as
+  /// Flutter's has none: its destinations stack along its length, which has
+  /// room for them.
+  static const double maxLabelTextScaleFactor = 1.3;
+
   static const String tooFewDestinations =
       'A NavigationBar3d needs at least two destinations. Material has no '
       'appearance for a bar with one, and a bar that cannot take you '
@@ -201,9 +214,17 @@ class NavigationBar3d extends StatelessWidget {
     final theme = Theme3d.of(context);
     final metrics = Layout3dMetricsScope.of(context);
     final resolved = styleOf(theme);
+    final inset = MediaQuery3d.of(context).padding;
 
+    // Grown by the part of the surface the platform has spent at the bottom,
+    // as Flutter's bar is: the container runs down behind the home indicator
+    // and the destinations stay clear of it. The top inset is normally zero
+    // by the time a bar sees it — a `Scaffold3d` takes it away from this
+    // slot — and is added for the same reason if it is not.
     return SceneSizedBox3d(
-      height: metrics.dp(height ?? resolved.extent),
+      height: metrics.dp(
+        (height ?? resolved.extent) + inset.top + inset.bottom,
+      ),
       child: Material3d(
         color: backgroundColor ?? resolved.container,
         contentColor: resolved.contentColor,
@@ -213,25 +234,28 @@ class NavigationBar3d extends StatelessWidget {
         surfaceTint: const Color(0x00000000),
         padding: resolved.padding,
         alignment: null,
-        child: SceneRow3d(
-          mainAxisSize: MainAxisSize3d.max,
-          crossAxisAlignment: CrossAxisAlignment3d.center,
-          children: <Widget>[
-            for (var i = 0; i < destinations.length; i++)
-              SceneExpanded3d(
-                child: buildNavigationDestination3d(
-                  context,
-                  theme: theme,
-                  style: resolved,
-                  destination: destinations[i],
-                  selected: i == selectedIndex,
-                  onSelected: onDestinationSelected == null
-                      ? null
-                      : () => onDestinationSelected!(i),
-                  textDirection: textDirection,
+        child: SceneSafeArea3d(
+          child: SceneRow3d(
+            mainAxisSize: MainAxisSize3d.max,
+            crossAxisAlignment: CrossAxisAlignment3d.center,
+            children: <Widget>[
+              for (var i = 0; i < destinations.length; i++)
+                SceneExpanded3d(
+                  child: buildNavigationDestination3d(
+                    context,
+                    theme: theme,
+                    style: resolved,
+                    destination: destinations[i],
+                    maxLabelTextScaleFactor: maxLabelTextScaleFactor,
+                    selected: i == selectedIndex,
+                    onSelected: onDestinationSelected == null
+                        ? null
+                        : () => onDestinationSelected!(i),
+                    textDirection: textDirection,
+                  ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -333,9 +357,15 @@ class NavigationRail3d extends StatelessWidget {
     final theme = Theme3d.of(context);
     final metrics = Layout3dMetricsScope.of(context);
     final resolved = styleOf(theme);
+    final inset = MediaQuery3d.of(context).padding;
+    final rightToLeft = Directionality.maybeOf(context) == TextDirection.rtl;
+    final leadingInset = rightToLeft ? inset.right : inset.left;
 
+    // Grown by the inset on its leading side and no other, as Flutter's rail
+    // is: a rail stands against the leading edge of a landscape phone, which
+    // is where the notch is, and the edge it does not touch is the body's.
     return SceneSizedBox3d(
-      width: metrics.dp(width ?? resolved.extent),
+      width: metrics.dp((width ?? resolved.extent) + leadingInset),
       child: Material3d(
         color: backgroundColor ?? resolved.container,
         contentColor: resolved.contentColor,
@@ -345,27 +375,31 @@ class NavigationRail3d extends StatelessWidget {
         surfaceTint: const Color(0x00000000),
         padding: resolved.padding,
         alignment: null,
-        child: SceneColumn3d(
-          mainAxisSize: MainAxisSize3d.max,
-          mainAxisAlignment: MainAxisAlignment3d.start,
-          crossAxisAlignment: CrossAxisAlignment3d.center,
-          spacing: metrics.dp(resolved.labelGap),
-          children: <Widget>[
-            if (leading != null) leading!,
-            for (var i = 0; i < destinations.length; i++)
-              buildNavigationDestination3d(
-                context,
-                theme: theme,
-                style: resolved,
-                destination: destinations[i],
-                selected: i == selectedIndex,
-                onSelected: onDestinationSelected == null
-                    ? null
-                    : () => onDestinationSelected!(i),
-                textDirection: textDirection,
-              ),
-            if (trailing != null) trailing!,
-          ],
+        child: SceneSafeArea3d(
+          left: !rightToLeft,
+          right: rightToLeft,
+          child: SceneColumn3d(
+            mainAxisSize: MainAxisSize3d.max,
+            mainAxisAlignment: MainAxisAlignment3d.start,
+            crossAxisAlignment: CrossAxisAlignment3d.center,
+            spacing: metrics.dp(resolved.labelGap),
+            children: <Widget>[
+              if (leading != null) leading!,
+              for (var i = 0; i < destinations.length; i++)
+                buildNavigationDestination3d(
+                  context,
+                  theme: theme,
+                  style: resolved,
+                  destination: destinations[i],
+                  selected: i == selectedIndex,
+                  onSelected: onDestinationSelected == null
+                      ? null
+                      : () => onDestinationSelected!(i),
+                  textDirection: textDirection,
+                ),
+              if (trailing != null) trailing!,
+            ],
+          ),
         ),
       ),
     );
@@ -385,6 +419,7 @@ Widget buildNavigationDestination3d(
   required bool selected,
   required void Function()? onSelected,
   TextDirection? textDirection,
+  double? maxLabelTextScaleFactor,
 }) {
   final metrics = Layout3dMetricsScope.of(context);
   final enabled = destination.enabled && onSelected != null;
@@ -439,7 +474,14 @@ Widget buildNavigationDestination3d(
       SceneTextStyle3d(
         style: style.labelStyle,
         color: content,
-        child: SceneIgnorePointer3d(child: SceneText3d(destination.label)),
+        child: SceneIgnorePointer3d(
+          child: maxLabelTextScaleFactor == null
+              ? SceneText3d(destination.label)
+              : SceneTextScaling3d.clamped(
+                  maxScaleFactor: maxLabelTextScaleFactor,
+                  child: SceneText3d(destination.label),
+                ),
+        ),
       ),
     ],
   );

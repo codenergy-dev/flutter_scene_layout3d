@@ -105,6 +105,18 @@ looks for the other:
   exactly that and keeps its cheap path; a `RichText3d` cannot, holding spans
   of several sizes, so its painter measures at the scaled sizes instead — and
   a change of scale re-measures the paragraph there.
+- **A label can opt out of the setting, and an icon does.** `Text3d.textScaler`
+  and `SceneText3d(textScaler: …)` replace the surface's scaler for one label,
+  and `SceneTextScaling3d.clamped(maxScaleFactor: …)` does it for every
+  widget-built label below it — Flutter's `Text.textScaler` and
+  `MediaQuery.withClampedTextScaling`. The setting itself stays on the
+  metrics; this is what one label does with it. `Icon3d` states
+  `TextScaler.noScaling`, because Flutter's `Icon` is a `RichText` and never
+  grows with type. **An icon of your own built out of `SceneText3d` grows**
+  unless it says the same thing, and a bar of icons that grows is a bar that
+  overflows: that is exactly how `NavigationBar3d` overflowed at a 1.3
+  setting before it was fixed. A `Text3d` built imperatively has no
+  `BuildContext` and does not see a `SceneTextScaling3d` at all.
 
 **A safe area belongs to the view, not to the plane.** `MediaQuery3d.padding`
 is non-zero only under a surface bound by
@@ -112,8 +124,11 @@ is non-zero only under a surface bound by
 window; a panel on a wall reports zero, and that is an answer rather than an
 omission. So `SceneSafeArea3d` is a no-op on most surfaces **and should still
 be written**: the same screen ported onto a camera-bound surface needs it, and
-it costs one box that insets by nothing. The catalogue does not do it for you
-— `Scaffold3d` does not consume the padding the way Flutter's does.
+it costs one box that insets by nothing. The catalogue does it for a
+`Scaffold3d`'s own slots the way Flutter's does — an `AppBar3d` runs up under
+the status bar, a `NavigationBar3d` grows over the home indicator, and the body
+is told only what neither bar took — so the case left to you is a screen with
+no bars, or content outside a scaffold.
 
 ## Staying off the relayout path
 

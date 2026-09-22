@@ -3,13 +3,14 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart'
     show
         DiagnosticPropertiesBuilder,
+        DiagnosticsProperty,
         DoubleProperty,
         EnumProperty,
         FlagProperty,
         IntProperty,
         StringProperty;
 import 'package:flutter/painting.dart'
-    show TextAlign, TextDirection, TextOverflow, TextStyle;
+    show TextAlign, TextDirection, TextOverflow, TextScaler, TextStyle;
 
 import '../geometry/constraints3d.dart';
 import '../geometry/offset3d.dart';
@@ -80,8 +81,10 @@ class Text3d extends Layout3d {
     TextMeasurement3d? measurement,
     Text3dRenderer? renderer,
     Text3dRendererFactory? rendererFactory,
+    TextScaler? textScaler,
     super.name,
   }) : _data = data,
+       _textScaler = textScaler,
        _style = style,
        _textAlign = textAlign,
        _textDirection = textDirection,
@@ -137,6 +140,34 @@ class Text3d extends Layout3d {
     _style = value;
     _invalidatePrepared();
   }
+
+  TextScaler? _textScaler;
+
+  /// How far this label grows with the reader's font setting, or null for
+  /// the surface's own [Layout3dMetrics.textScaler].
+  ///
+  /// Flutter's `Text.textScaler`, and there for the same two reasons. An
+  /// **icon** is a glyph of a font and must not grow with type — Flutter's
+  /// `Icon` is a `RichText`, whose scaler is `TextScaler.noScaling` — so an
+  /// icon states that here. And a **component** that keeps its visual
+  /// hierarchy by capping how far a label grows — a navigation bar's labels
+  /// stop at 1.3 in Flutter — states the ambient scaler clamped.
+  ///
+  /// Not a second home for the reader's setting: the setting is still the
+  /// surface's, and this is what one label does with it. The widget layer
+  /// fills it from `SceneTextScaling3d`, so a component clamps a subtree
+  /// without reaching every label in it.
+  TextScaler? get textScaler => _textScaler;
+
+  set textScaler(TextScaler? value) {
+    if (_textScaler == value) return;
+    _textScaler = value;
+    _invalidateLayout();
+  }
+
+  /// The scaler this box actually measures with: [textScaler], or the
+  /// surface's when that is null.
+  TextScaler get effectiveTextScaler => _textScaler ?? metrics.textScaler;
 
   TextAlign _textAlign;
 
@@ -316,9 +347,16 @@ class Text3d extends Layout3d {
   /// box's own type by ([Layout3dMetrics.textScaleFor] of the style's font
   /// size, or of the 14 logical pixels the engine assumes when a style names
   /// none).
-  double get logicalPixelScale =>
-      metrics.unitsPerLogicalPixel *
-      metrics.textScaleFor(_style.fontSize ?? _assumedFontSize);
+  double get logicalPixelScale {
+    final fontSize = _style.fontSize ?? _assumedFontSize;
+    final scaler = _textScaler;
+    if (scaler == null) {
+      return metrics.unitsPerLogicalPixel * metrics.textScaleFor(fontSize);
+    }
+    // `Layout3dMetrics.textScaleFor`'s arithmetic, over this box's scaler.
+    final grows = fontSize <= 0.0 ? 1.0 : scaler.scale(fontSize) / fontSize;
+    return metrics.unitsPerLogicalPixel * grows;
+  }
 
   /// The font size a style that names none is measured at.
   ///
@@ -510,5 +548,12 @@ class Text3d extends Layout3d {
       IntProperty('lines', textLayout?.lines.length, defaultValue: null),
     );
     properties.add(DoubleProperty('logicalPixelScale', logicalPixelScale));
+    properties.add(
+      DiagnosticsProperty<TextScaler>(
+        'textScaler',
+        textScaler,
+        defaultValue: null,
+      ),
+    );
   }
 }

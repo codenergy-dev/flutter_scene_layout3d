@@ -120,6 +120,7 @@ class RichText3d extends Layout3d {
     int maxWallSegments = defaultMaxWallSegments,
     StrutStyle? strutStyle,
     TextWidthBasis textWidthBasis = TextWidthBasis.parent,
+    TextScaler? textScaler,
     double resolution = 2.0,
     double depthOffset = 0.2,
     WidgetUpdatePolicy update = WidgetUpdatePolicy.everyFrame,
@@ -136,6 +137,7 @@ class RichText3d extends Layout3d {
        _maxWallSegments = maxWallSegments,
        _strutStyle = strutStyle,
        _textWidthBasis = textWidthBasis,
+       _textScaler = textScaler,
        _resolution = resolution,
        _depthOffset = depthOffset,
        _update = update,
@@ -164,6 +166,25 @@ class RichText3d extends Layout3d {
   /// and rasterized again — which is what separates it from a change of
   /// `unitsPerLogicalPixel`, where the same capture is simply drawn bigger.
   TextScaler? _capturedScaler;
+
+  TextScaler? _textScaler;
+
+  /// How far this paragraph grows with the reader's font setting, or null
+  /// for the surface's own [Layout3dMetrics.textScaler].
+  ///
+  /// `Text3d.textScaler`'s counterpart, for the same reasons, and filled from
+  /// `SceneTextScaling3d` by the widget layer in the same way.
+  TextScaler? get textScaler => _textScaler;
+
+  set textScaler(TextScaler? value) {
+    if (_textScaler == value) return;
+    _textScaler = value;
+    markNeedsLayout();
+  }
+
+  /// The scaler this box actually measures with: [textScaler], or the
+  /// surface's when that is null.
+  TextScaler get effectiveTextScaler => _textScaler ?? metrics.textScaler;
 
   InlineSpan _text;
 
@@ -475,7 +496,7 @@ class RichText3d extends Layout3d {
   void _layoutPainter(double minWidth, double maxWidth) {
     _painter
       ..text = _text
-      ..textScaler = metrics.textScaler
+      ..textScaler = effectiveTextScaler
       ..textAlign = _textAlign
       ..textDirection = _textDirection
       ..maxLines = _maxLines
@@ -546,7 +567,7 @@ class RichText3d extends Layout3d {
 
   @override
   void performLayout() {
-    final scaler = metrics.textScaler;
+    final scaler = effectiveTextScaler;
     if (_capturedScaler != null && _capturedScaler != scaler) {
       _releaseSurface();
     }
@@ -756,7 +777,7 @@ class RichText3d extends Layout3d {
         textWidthBasis: _textWidthBasis,
         // The same scaler the painter measured with, so the picture and the
         // geometry it lands on are the same paragraph.
-        textScaler: metrics.textScaler,
+        textScaler: effectiveTextScaler,
       ),
     ),
   );

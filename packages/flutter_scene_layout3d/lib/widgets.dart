@@ -164,6 +164,7 @@ export 'src/overlay/overlay.dart'
         OverlayLayer3d;
 export 'src/widgets/media_query.dart'
     show MediaQuery3d, MediaQuery3dData, SceneSafeArea3d;
+export 'src/widgets/text_scaling.dart' show SceneTextScaling3d;
 export 'src/widgets/overlay.dart'
     show
         Overlay3dContentSlot3d,

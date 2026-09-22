@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-09-16T16:12:00Z
-updated_at: 2026-09-16T18:05:00Z
+updated_at: 2026-09-21T16:25:00Z
 commit: 141b71dc2792e7ccf468cf887bee36e2a9bd2a5a
 ---
 
@@ -225,7 +225,11 @@ same fallback `MediaQuery.textScalerOf` gives every Flutter `Text`.
   (does an app bar extend *under* the status bar or stop at it) and it belongs
   to [the components a screen still needs](2026_09_11_what_a_real_application_still_needs.md#the-components-a-screen-still-needs).
   Until then a ported screen writes `SceneSafeArea3d` itself, which is what
-  half of Flutter does anyway.
+  half of Flutter does anyway. *Since closed:* phase 2 of
+  [the components a screen still needs](../../flutter_scene_material3d/plans/2026_09_21_the_components_a_screen_still_needs.md)
+  did it, and the token question turned out to have Material's answer
+  already — the bar is drawn *under* the status bar — so it was a
+  transcription of Flutter's arithmetic rather than a decision.
 - **No imperative `SafeArea3d` box.** See the boundary above.
 
 ## The work

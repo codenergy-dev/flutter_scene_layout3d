@@ -41,6 +41,7 @@ import 'package:flutter/widgets.dart'
         TextAlign,
         TextDirection,
         TextOverflow,
+        TextScaler,
         TextStyle,
         TextWidthBasis,
         ValueChanged,
@@ -112,6 +113,7 @@ import '../text/text_measurement.dart';
 import '../text/text_renderer.dart';
 import 'default_text_renderer.dart';
 import 'framework.dart';
+import 'text_scaling.dart';
 
 /// Puts engine content into a declarative layout, the widget form of
 /// [NodeBox3d].
@@ -2486,6 +2488,7 @@ class SceneText3d extends Layout3dWidget {
     this.rules = TextBreakRules3d.standard,
     this.measurement,
     this.renderer,
+    this.textScaler,
   });
 
   /// The string to lay out.
@@ -2525,6 +2528,12 @@ class SceneText3d extends Layout3dWidget {
   /// label's box, so do not hand the same instance to two of them; install a
   /// [DefaultTextRenderer3d] instead, which gives each label one of its own.
   final Text3dRenderer? renderer;
+
+  /// How far this label grows with the reader's font setting, or null for
+  /// the ambient [SceneTextScaling3d], and failing that the surface's own.
+  ///
+  /// Flutter's `Text.textScaler`. An icon states `TextScaler.noScaling`.
+  final TextScaler? textScaler;
 
   /// Writes whichever of the two renderer sources applies onto [layout].
   ///
@@ -2571,6 +2580,7 @@ class SceneText3d extends Layout3dWidget {
     rendererFactory: renderer == null
         ? DefaultTextRenderer3d.maybeOf(context)
         : null,
+    textScaler: textScaler ?? SceneTextScaling3d.maybeOf(context),
   );
 
   @override
@@ -2585,7 +2595,8 @@ class SceneText3d extends Layout3dWidget {
       ..maxLines = maxLines
       ..depth = depth
       ..rules = rules
-      ..measurement = measurement ?? SegmentedTextMeasurement3d.shared;
+      ..measurement = measurement ?? SegmentedTextMeasurement3d.shared
+      ..textScaler = textScaler ?? SceneTextScaling3d.maybeOf(context);
     _applyRenderer(context, layout);
   }
 }
@@ -2632,6 +2643,7 @@ class SceneRichText3d extends Layout3dWidget {
     this.maxWallSegments = RichText3d.defaultMaxWallSegments,
     this.strutStyle,
     this.textWidthBasis = TextWidthBasis.parent,
+    this.textScaler,
     this.resolution = 2.0,
     this.depthOffset = 0.2,
     this.update = WidgetUpdatePolicy.everyFrame,
@@ -2675,6 +2687,10 @@ class SceneRichText3d extends Layout3dWidget {
   /// allowed to be.
   final TextWidthBasis textWidthBasis;
 
+  /// How far this paragraph grows with the reader's font setting, or null for
+  /// the ambient [SceneTextScaling3d], and failing that the surface's own.
+  final TextScaler? textScaler;
+
   /// How many texture pixels are captured per logical pixel.
   final double resolution;
 
@@ -2702,6 +2718,7 @@ class SceneRichText3d extends Layout3dWidget {
     maxWallSegments: maxWallSegments,
     strutStyle: strutStyle,
     textWidthBasis: textWidthBasis,
+    textScaler: textScaler ?? SceneTextScaling3d.maybeOf(context),
     resolution: resolution,
     depthOffset: depthOffset,
     update: update,
@@ -2722,6 +2739,7 @@ class SceneRichText3d extends Layout3dWidget {
       ..maxWallSegments = maxWallSegments
       ..strutStyle = strutStyle
       ..textWidthBasis = textWidthBasis
+      ..textScaler = textScaler ?? SceneTextScaling3d.maybeOf(context)
       ..resolution = resolution
       ..depthOffset = depthOffset
       ..update = update;

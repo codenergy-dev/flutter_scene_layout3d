@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-09-15T19:50:41Z
-updated_at: 2026-09-15T20:17:56Z
+updated_at: 2026-09-21T16:25:00Z
 commit: af086f9de841081071e99089ea8b0d91e220ccf9
 ---
 
@@ -278,3 +278,10 @@ depend on the ambient direction.
 `ListView` in Flutter starts at the right in right to left, by reversing its
 axis. No view here has `reverse` at all, so there was no direction to thread;
 it is recorded on the map beside the carousel that will want it.
+
+*Since found:* the floating action button was missed. `Scaffold3d` put it at
+the right whatever the reading direction, where Flutter's `endFloat` is the
+trailing corner; the rows, paddings and corners above were all covered, and
+the button is a delegate's arithmetic rather than any of them. Phase 2 of
+[the components a screen still needs](../../flutter_scene_material3d/plans/2026_09_21_the_components_a_screen_still_needs.md)
+mirrored it while giving it a side for the trailing inset.

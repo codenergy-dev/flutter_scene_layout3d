@@ -1,8 +1,8 @@
 ---
 status: in progress
-reason: five of the seventeen items are open; the motion lane is closed and so is the colour generator, so what is left is the catalogue batch — planned in seven phases, the first landed — more than one screen, more than one language, and the letter someone can type with the keyboard controls behind it
+reason: five of the seventeen items are open; the motion lane is closed and so is the colour generator, so what is left is the catalogue batch — planned in seven phases, two landed — more than one screen, more than one language, and the letter someone can type with the keyboard controls behind it
 created_at: 2026-09-11T21:20:18Z
-updated_at: 2026-09-21T16:01:09Z
+updated_at: 2026-09-21T16:25:00Z
 commit: abc2469ce5c4ec4c41e2738fc5acf55bcf40640a
 ---
 
@@ -106,7 +106,7 @@ plan, which is the rule phase 0 established and every phase since has obeyed.
 | [An application with more than one screen](#an-application-with-more-than-one-screen) | layout3d | named routes, deep links, the system back button |
 | ~~[A way to test a screen someone else built](#a-way-to-test-a-screen-someone-else-built)~~ | layout3d | **done** — anyone building on this, including us |
 | ~~[The motion tokens](#the-motion-tokens)~~ | material3d | **done** — every overlay in the catalogue arrives instead of appearing |
-| [The components a screen still needs](#the-components-a-screen-still-needs) | material3d | **in progress** — [its plan](../../flutter_scene_material3d/plans/2026_09_21_the_components_a_screen_still_needs.md) is seven phases; the first, the alert dialog, the checkbox's third state and the labelled tiles, has landed |
+| [The components a screen still needs](#the-components-a-screen-still-needs) | material3d | **in progress** — [its plan](../../flutter_scene_material3d/plans/2026_09_21_the_components_a_screen_still_needs.md) is seven phases; two have landed — the alert dialog, the tristate box and the labelled tiles, then the safe area and type that grows |
 | ~~[A scheme from one colour](#a-scheme-from-one-colour)~~ | material3d | **done** — any application with a brand |
 | [The controls that wait on a keyboard](#the-controls-that-wait-on-a-keyboard) | material3d | search, dropdowns, date and time entry |
 | [A catalogue that speaks more than one language](#a-catalogue-that-speaks-more-than-one-language) | material3d | every locale, and the strings the catalogue invents |
@@ -206,9 +206,9 @@ It was narrow and independent exactly as this said, and it was not deep: the
 depth was all in a library every Flutter application already carries. **The
 catalogue batch is now the only thing left in the middle of this queue**, and
 it is under way: [its plan](../../flutter_scene_material3d/plans/2026_09_21_the_components_a_screen_still_needs.md) phases it by what each component needs
-underneath it, first the ones a ported screen reaches for first, and phase 1
-— `AlertDialog3d`, the tristate checkbox and the three labelled tiles — has
-landed.
+underneath it, first the ones a ported screen reaches for first. Phase 1
+— `AlertDialog3d`, the tristate checkbox and the three labelled tiles — and
+phase 2 — the safe area and type that grows — have landed.
 
 **[A letter someone can type](#a-letter-someone-can-type) last of the large
 items, and it is much larger than anything above it.** It gates
@@ -283,7 +283,11 @@ are where a first implementer's decision becomes someone else's constraint.
   [the components a screen still needs](#the-components-a-screen-still-needs),
   which owns the two things that plan deliberately left: a `Scaffold3d` that
   consumes the safe area the way Flutter's does, and whatever a breakpoint
-  turns out to mean for a panel in a room.
+  turns out to mean for a panel in a room. **The first is settled**, and it
+  added a third thing to the channel question: *what one label does with* the
+  reader's setting — an icon that ignores it, a bar that clamps it — belongs
+  on neither channel. It is `SceneTextScaling3d` in the widget layer, and a
+  per-box `textScaler`, with the setting itself still on the metrics.
 - **Motion and the relayout path.** The animation tiers exist and are the whole
   reason a ripple is affordable: repaint-only, node-only, and implicit for when
   a size really changed. Every item in the motion lane must land on the first
@@ -970,6 +974,11 @@ should be grouped by what they actually need:
   screen writes `SceneSafeArea3d` itself until this is taken. The same entry
   owns a control that grows with its label: a 48dp row of 14sp type at a large
   accessibility setting is a row the text overflows, here as in Flutter.
+  *Since closed, both, by phase 2:* the safe area was Flutter's arithmetic
+  rather than a decision, and **the sentence about the row is wrong** —
+  measured, no row overflows, because the catalogue's heights are minimums.
+  The one component that did was the navigation bar, whose icons grew with
+  type when Flutter's never do.
 - `AlertDialog3d` is a column and a row inside `Dialog3d` and phase 6
   deliberately refused it as the first component that exists only to save a
   caller writing a `SceneColumn3d`. **Revisit that judgement with an

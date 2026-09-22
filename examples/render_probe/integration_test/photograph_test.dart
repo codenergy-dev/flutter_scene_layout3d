@@ -101,7 +101,7 @@ void main() {
     await tester.tap3d(find3d.bySemanticsLabel('About'));
 
     // **And the dialog while it is still arriving**, which is a different
-    // question from the dialog. The About dialog carries a paragraph of
+    // question from the dialog. The About dialog carries a sentence of
     // `bodyMedium` — dozens of letters the screen behind it has never drawn,
     // in a style it is already using — so opening it repacks that style's
     // atlas, and for the few frames the rasterization takes, every coordinate

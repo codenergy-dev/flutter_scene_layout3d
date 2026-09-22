@@ -1,6 +1,6 @@
 import 'dart:ui' show Color;
 
-import 'package:flutter/painting.dart' show TextStyle;
+import 'package:flutter/painting.dart' show TextScaler, TextStyle;
 import 'package:flutter/semantics.dart' show SemanticsProperties;
 import 'package:flutter/widgets.dart'
     show
@@ -111,6 +111,12 @@ class Icon3d extends StatelessWidget {
     final inherited = DefaultTextStyle.of(context).style;
     final glyph = SceneText3d(
       String.fromCharCode(icon.codePoint),
+      // An icon is a glyph of a font and not a line of type, so the reader's
+      // font setting does not grow it — Flutter's `Icon` is a `RichText`,
+      // whose scaler is `noScaling`. Left to follow the surface, a 24dp
+      // navigation icon was 48dp at double-size type, and the bar it sits in
+      // overflowed at 1.3.
+      textScaler: TextScaler.noScaling,
       style: TextStyle(
         // The font the icon's own IconData names, with its package, which is
         // what makes an icon from a third-party set work. Flutter's own icons

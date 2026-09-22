@@ -256,6 +256,26 @@ survives a change of scale and the font is never consulted again. A
 `RichText3d` holds spans of several sizes and cannot do that, so its painter
 takes the scaler and each span is measured at its own scaled size.
 
+One label can do something else with the setting, and some have to. An icon
+is a glyph of a font, and Flutter's never grows with type; a component that
+keeps its hierarchy — a navigation bar whose 12sp labels sit under 24dp icons
+— lets its labels grow and then stops them. Both are Flutter's own spelling:
+
+```dart
+// One label: the reader's setting does not reach it.
+SceneText3d(glyph, textScaler: TextScaler.noScaling)
+
+// Every label built below: it grows, and stops at 1.3.
+SceneTextScaling3d.clamped(maxScaleFactor: 1.3, child: labels)
+```
+
+`SceneTextScaling3d` is `MediaQuery.withClampedTextScaling` without a second
+home for the setting: the surface still owns the scaler, and the scope carries
+what the labels below it do with it, which `SceneText3d` and `SceneRichText3d`
+hand to their box as `textScaler`. A clamp inside a clamp narrows it. An
+imperative `Text3d` has no `BuildContext` and sees none of this — give it a
+`textScaler` directly.
+
 ### Reading the contract from a `build` method
 
 A `Layout3d` reads the metrics inside `performLayout` and a widget cannot, so

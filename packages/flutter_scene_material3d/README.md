@@ -854,6 +854,32 @@ measurement back on the relayout path. The collapse that *does* happen is
 expressed through the constraints the header hands its child: the surface
 fills what it is offered and the toolbar stays at the bottom.
 
+### The safe area, and the reader's type
+
+Both are Flutter's arithmetic, carried over, and both only show on a surface
+that asks for them.
+
+**The safe area is non-zero only where a surface stands in for the view**, a
+`Layout3dCameraBinding.screenFilling` one. There, a `Scaffold3d` spends it the
+way Flutter's does: an `AppBar3d` is taller by the status bar and draws its
+container *under* it, with the toolbar below — Material's answer to whether a
+bar stops at the status bar — and a `NavigationBar3d` grows over the home
+indicator with its destinations above it. Each bar takes its edge away from
+the body, so a body under both is told only about the notch at its sides, and
+the floating action button stays 16dp clear of whatever is below it and of
+the trailing inset. An app bar that is not at the top of anything says
+`primary: false`. A screen with no bars is told about everything and puts
+`SceneSafeArea3d` where it wants the room.
+
+**Type grows with the reader's setting, and three things do not follow it all
+the way.** Icons do not grow at all, because Flutter's never do. A navigation
+bar's labels stop at 1.3 and an app bar's title at 1.34, Flutter's own
+ceilings, through the layout package's `SceneTextScaling3d.clamped`, so the
+bars keep their hierarchy at any setting. Everything else — buttons, chips,
+tiles, menus, dialogs — has a *minimum* height rather than a fixed one and
+grows with its label; `test/type_that_grows_test.dart` lays a screen's worth
+of them out at 1.3 and at twice the size and asks that nothing overflows.
+
 ### Navigation, and the pill
 
 `NavigationBar3d` and `NavigationRail3d` are the same component with its axes
@@ -1397,6 +1423,12 @@ letter's own upper left, so it turns with the glyph instead of dimming.
 
 And `IconData.matchTextDirection` is not honoured: a mirrored icon needs a
 negative scale on the glyph quad, which the atlas renderer does not express.
+
+What an icon does *not* inherit from being text is the reader's font setting.
+Flutter's `Icon` is a `RichText`, whose scaler is `noScaling`, so its icons
+stay the size they were given however large the type around them grows; an
+`Icon3d` states the same thing. It did not at first, and a navigation bar of
+24dp icons that became 31dp at a 1.3 setting was a bar that overflowed.
 
 ## Naming a type style instead of building one
 

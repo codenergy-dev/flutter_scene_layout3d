@@ -19,7 +19,9 @@ import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart'
 import 'package:flutter_scene_layout3d/widgets.dart'
     show
         Layout3dMetricsScope,
+        MediaQuery3d,
         SceneAlign3d,
+        SceneSafeArea3d,
         SceneConstrainedBox3d,
         SceneCustomMultiChildLayout3d,
         SceneExpanded3d,
@@ -30,7 +32,8 @@ import 'package:flutter_scene_layout3d/widgets.dart'
         SceneSizedBox3d,
         SceneSliverPersistentHeader3d,
         SceneSpacer3d,
-        SceneText3d;
+        SceneText3d,
+        SceneTextScaling3d;
 
 import '../theme/theme.dart';
 import '../theme/theme_data.dart';
@@ -93,6 +96,7 @@ class AppBar3d extends StatelessWidget {
     this.elevation,
     this.thickness,
     this.centerTitle,
+    this.primary = true,
     this.semanticLabel,
     this.textDirection,
   });
@@ -111,10 +115,18 @@ class AppBar3d extends StatelessWidget {
     this.elevation,
     this.thickness,
     this.centerTitle,
+    this.primary = true,
     String? semanticLabel,
     this.textDirection,
   }) : title = SceneText3d(title),
        semanticLabel = semanticLabel ?? title;
+
+  /// How far the title grows with the reader's font setting: 1.34,
+  /// Flutter's `_kMaxTitleTextScaleFactor`.
+  ///
+  /// A `SliverAppBar3d`'s expanded title stops at the same figure, as
+  /// Flutter's does. The actions are icons, and do not grow at all.
+  static const double maxTitleTextScaleFactor = 1.34;
 
   /// What sits at the leading edge: a menu button, a back button.
   final Widget? leading;
@@ -156,6 +168,18 @@ class AppBar3d extends StatelessWidget {
   /// centring would put it under one of them.
   final bool? centerTitle;
 
+  /// Whether this bar is at the top of the screen, and so runs up behind
+  /// what the platform has spent there.
+  ///
+  /// Flutter's `AppBar.primary`, and true for the same reason. A primary bar
+  /// is taller by `MediaQuery3d.of(context).padding.top` — its container is
+  /// drawn *under* the status bar, which is Material's answer to whether a
+  /// bar stops at it — and its toolbar keeps clear of that inset and of the
+  /// ones at either side. On a surface that does not stand in for the view,
+  /// every inset is zero and this changes nothing. False for a bar that is
+  /// not at the top of anything, such as one inside a dialog.
+  final bool primary;
+
   /// What a screen reader announces this bar as.
   final String? semanticLabel;
 
@@ -170,7 +194,8 @@ class AppBar3d extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme3d.of(context);
     final resolved = styleOf(theme);
-    final height = toolbarHeight ?? resolved.toolbarHeight;
+    final height =
+        (toolbarHeight ?? resolved.toolbarHeight) + _topInset(context);
     return announce(
       context,
       SceneSizedBox3d(
@@ -202,9 +227,19 @@ class AppBar3d extends StatelessWidget {
     final spacing = metrics.dp(style.titleSpacing);
     final barHeight = toolbarHeight ?? style.toolbarHeight;
 
+    // The title grows with the reader's font setting and stops at
+    // `AppBar3d.maxTitleTextScaleFactor`, as Flutter's does: past it, a bar
+    // of fixed height would be nothing but title.
     final titled = title == null
         ? null
-        : SceneTextStyle3d(style: titleStyle, color: content, child: title!);
+        : SceneTextStyle3d(
+            style: titleStyle,
+            color: content,
+            child: SceneTextScaling3d.clamped(
+              maxScaleFactor: AppBar3d.maxTitleTextScaleFactor,
+              child: title!,
+            ),
+          );
 
     final centred = centerTitle ?? style.centerTitle;
     // The toolbar's own order follows the application, as Flutter's
@@ -283,9 +318,22 @@ class AppBar3d extends StatelessWidget {
       // depth: a toolbar centred in an 8dp slab is 4dp inside it, where the
       // surface it is drawn on wins the depth test and the title vanishes
       // with nothing to say why.
-      child: SceneAlign3d(alignment: const Alignment3d(0, 1, -1), child: line),
+      child: _clearOfTheStatusBar(
+        SceneAlign3d(alignment: const Alignment3d(0, 1, -1), child: line),
+      ),
     );
   }
+
+  /// How much taller a [primary] bar is than its toolbar, in logical pixels.
+  double _topInset(BuildContext context) =>
+      primary ? MediaQuery3d.of(context).padding.top : 0.0;
+
+  /// [toolbar], kept clear of the insets at the top and the sides when the
+  /// bar is [primary] — and the surface behind it left to run up under the
+  /// status bar, which is the difference between this and a
+  /// `SceneSafeArea3d` around the whole bar.
+  Widget _clearOfTheStatusBar(Widget toolbar) =>
+      primary ? SceneSafeArea3d(bottom: false, child: toolbar) : toolbar;
 
   /// [leading] in its slot: [AppBarStyle3d.leadingWidth] from the bar's
   /// leading edge, the bar's padding on that edge counted toward it, with the
@@ -440,6 +488,7 @@ class SliverAppBar3d extends StatelessWidget {
     this.elevation,
     this.thickness,
     this.centerTitle,
+    this.primary = true,
     this.lift,
     this.semanticLabel,
     this.textDirection,
@@ -462,6 +511,7 @@ class SliverAppBar3d extends StatelessWidget {
     this.elevation,
     this.thickness,
     this.centerTitle,
+    this.primary = true,
     this.lift,
     String? semanticLabel,
     this.textDirection,
@@ -516,6 +566,21 @@ class SliverAppBar3d extends StatelessWidget {
   /// centring would put it under one of them.
   final bool? centerTitle;
 
+  /// Whether this bar is at the top of the screen, and so runs up behind
+  /// what the platform has spent there.
+  ///
+  /// Flutter's `AppBar.primary`, and true for the same reason. A primary bar
+  /// is taller by `MediaQuery3d.of(context).padding.top` — its container is
+  /// drawn *under* the status bar, which is Material's answer to whether a
+  /// bar stops at it — and its toolbar keeps clear of that inset and of the
+  /// ones at either side. On a surface that does not stand in for the view,
+  /// every inset is zero and this changes nothing. False for a bar that is
+  /// not at the top of anything, such as one inside a dialog.
+  ///
+  /// Both of its heights grow by the inset, as Flutter's do, so the bar
+  /// collapses to the toolbar *plus* the status bar rather than into it.
+  final bool primary;
+
   /// How far toward the viewer the bar's geometry is pulled while it is
   /// covering content, in **logical pixels**, or null for the theme's
   /// `thickness.depthStep`.
@@ -567,9 +632,11 @@ class SliverAppBar3d extends StatelessWidget {
       elevation: elevation,
       thickness: thickness,
       centerTitle: centerTitle,
+      primary: primary,
       semanticLabel: semanticLabel,
       textDirection: textDirection,
     );
+    final inset = primary ? MediaQuery3d.of(context).padding.top : 0.0;
 
     // The surface takes every bit of the extent the header offers it, which
     // is how the collapse happens without anything rebuilding: the header
@@ -586,8 +653,8 @@ class SliverAppBar3d extends StatelessWidget {
     );
 
     return SceneSliverPersistentHeader3d(
-      minExtent: metrics.dp(collapsed),
-      maxExtent: metrics.dp(expanded),
+      minExtent: metrics.dp(collapsed + inset),
+      maxExtent: metrics.dp(expanded + inset),
       pinned: pinned,
       floating: floating,
       lift: metrics.dp(lift ?? theme.thickness.depthStep),

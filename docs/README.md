@@ -296,7 +296,16 @@ Two entry points:
   a question phase 7 thought was about which of two announcements to keep,
   by having only one control: inside a tile the checkbox is drawn and the row
   does the rest. It also found two dartdocs citing a drift test that has
-  never existed.
+  never existed. Phase 2 — the safe area and type that grows — began with a
+  measurement instead of the map's sentence, which said a 48dp row
+  overflows at a large setting: none does, and the one component that did
+  was the navigation bar, whose icons grew with type when Flutter's never do.
+  That needed a change here, planned as
+  [a label that says how far it grows](../packages/flutter_scene_layout3d/plans/2026_09_21_a_label_that_says_how_far_it_grows.md):
+  a per-box `textScaler` and `SceneTextScaling3d.clamped`, with the reader's
+  setting still living only on the metrics. The safe area half is Flutter's
+  `Scaffold` arithmetic, and has no lane that draws it yet — nothing in
+  `examples/` stands in for the view.
 - **The motion tokens** are
   [the tenth](../packages/flutter_scene_material3d/plans/2026_09_17_the_motion_tokens.md),
   the first plan in the Material package since its own ten phases, and the

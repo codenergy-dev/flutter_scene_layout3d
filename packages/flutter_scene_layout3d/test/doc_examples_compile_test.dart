@@ -136,7 +136,15 @@ Widget fadeExamples(
   ],
 );
 
+/// `SceneTextScaling3d`'s dartdoc example.
+Widget navigationLabel(String label) =>
+    SceneTextScaling3d.clamped(maxScaleFactor: 1.3, child: SceneText3d(label));
+
 void main() {
+  test('the text scaling dartdoc example compiles as written', () {
+    expect(navigationLabel('Inbox'), isNotNull);
+  });
+
   test('the fade dartdoc and README examples compile as written', () {
     expect(fadeExamples, isNotNull);
   });

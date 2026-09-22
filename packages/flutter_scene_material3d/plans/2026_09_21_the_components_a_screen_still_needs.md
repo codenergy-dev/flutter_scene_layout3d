@@ -1,8 +1,8 @@
 ---
 status: in progress
-reason: phase 1 has landed — the alert dialog, the checkbox's third state and the three labelled tiles; phases 2 to 7 are open, and phase 1 was only tried headlessly, not in a window
+reason: phases 1 and 2 have landed — the alert dialog, the tristate box, the labelled tiles, the safe area and type that grows; phases 3 to 7 are open, and phase 2's safe area has no lane that draws it
 created_at: 2026-09-21T15:46:07Z
-updated_at: 2026-09-21T16:00:28Z
+updated_at: 2026-09-21T16:25:00Z
 commit: 763e3dff41a1c75ac35997cf9244e101bb7250bf
 ---
 
@@ -35,8 +35,8 @@ written by hand here today.
 
 | Phase | What it needs underneath | Components |
 | --- | --- | --- |
-| 1 | nothing | `AlertDialog3d`, the checkbox's third state, `CheckboxListTile3d`, `SwitchListTile3d`, `RadioListTile3d` |
-| 2 | the safe area, and type that grows | `Scaffold3d` consuming `MediaQuery3d.padding`; a control that grows with its label |
+| 1 | nothing | `AlertDialog3d`, the checkbox's third state, `CheckboxListTile3d`, `SwitchListTile3d`, `RadioListTile3d` — **landed** |
+| 2 | the safe area, and type that grows | `Scaffold3d` consuming `MediaQuery3d.padding`; a control that grows with its label — **landed** |
 | 3 | the node tier, with a clock | `LinearProgressIndicator3d`, `CircularProgressIndicator3d`, the switch's growing thumb, the chip's press lift |
 | 4 | nothing, but more of it | `Badge3d`, `MaterialBanner3d`, `BottomAppBar3d`, `NavigationDrawer3d`, `ExpansionTile3d`, a snack bar's second line |
 | 5 | one choice over many options | `SegmentedButton3d`, `TabBar3d` and `TabBarView3d`, `RadioGroup3d` |
@@ -232,6 +232,10 @@ thing for whichever phase next touches an overlay.
 
 ### What phase 1 did not do
 
+*Since done, for the photograph lane:* phase 2 began by running it over the
+committed phase 1, and the dialog and the switch rows draw as laid out. The
+gallery itself has still not been run by a person.
+
 **It was not looked at in a window.** The gallery's settings rows and about
 dialog changed, and the headless suite and `standsOnItsPanel3d` are green over
 them; nobody has run the gallery or the photograph lane on these changes yet.
@@ -240,18 +244,98 @@ arrangement is layout and is asserted headlessly, and nothing in this phase
 draws in a new way, but the icon glyph centred above a title and a switch
 drawn without its ink well are both new pictures.
 
-## Phases 2 to 7
+## Phase 2: the safe area, and type that grows
+
+*Written when the phase was picked up, after phase 1 was photographed: the
+photograph lane ran over the committed phase 1, and the alert dialog and the
+two switch rows draw as the tests say they are laid out.*
+
+Two things
+[a screen that knows how big it is](../../flutter_scene_layout3d/plans/2026_09_16_a_screen_that_knows_how_big_it_is.md)
+left to this plan by name.
+
+**The safe area.** That plan published `MediaQuery3d.padding` and
+`SceneSafeArea3d` and left the catalogue alone, because "whether an app bar
+stops at the status bar or is drawn under it is a component decision with
+tokens attached". It is not, in the end, a decision: Material's answer is
+*under*, and Flutter's `Scaffold` has the arithmetic. So this phase transcribes
+it rather than inventing one. `AppBar3d` and `SliverAppBar3d` take `primary`
+and grow by the top inset with the toolbar below it; `NavigationBar3d` grows by
+the bottom inset; `NavigationRail3d` clears its leading side; `Scaffold3d`
+takes away from each slot what the other slots consumed, and puts the floating
+action button `endFloat`'s distance from the bottom and trailing insets.
+
+**A control that grows with its label.** The map's entry said "a 48dp row of
+14sp type at a large accessibility setting is a row the text overflows, here as
+in Flutter", and named no component. So the phase began with a measurement: a
+screen's worth of the catalogue laid out at 1.0, 1.3 and 2.0, reporting which
+overflowed. **The sentence was wrong** — no row did, because every height in
+the catalogue that holds a label is a minimum — and one component overflowed
+that the sentence did not predict: `NavigationBar3d`, already at 1.3. Flutter's
+does not, and the reasons were in Flutter's source: icons never grow with type,
+and a navigation bar clamps its labels to 1.3 and an app bar its title to 1.34.
+Neither was expressible in the layout package, so it got
+[a plan of its own there](../../flutter_scene_layout3d/plans/2026_09_21_a_label_that_says_how_far_it_grows.md):
+a per-label `textScaler`, and `SceneTextScaling3d.clamped` for a subtree.
+
+The measurement is now `test/type_that_grows_test.dart`, and the safe area is
+`test/safe_area_test.dart`.
+
+## What phase 2 found
+
+The Material suite is **667**, the layout suite **1299**. Four findings.
+
+### 1. The overflow was two defects that each looked like enough
+
+With `Icon3d` no longer growing, the bar still overflowed at 1.3 — by 0.8dp.
+The second cause was its **12dp of vertical padding**. Flutter's bar has none:
+its 52dp of pill, gap and label are *centred* in 80, which at 1.0 puts the pill
+14dp down, exactly where 12dp of padding plus centring put it here. The two
+arrangements are indistinguishable until the label grows, and then one has
+28dp to spare and the other 4. The bar's vertical padding is gone and a test
+pins the pill at 14dp; the rail keeps its 12, because a rail starts at its top
+rather than centring.
+
+### 2. The floating action button had never mirrored
+
+`Scaffold3d` put the button at the right whatever the reading direction.
+Flutter's `endFloat` is the trailing corner, and
+[the right-to-left plan](../../flutter_scene_layout3d/plans/2026_09_15_a_row_that_reads_right_to_left.md)
+had not reached it — it went through the catalogue's rows, paddings and
+corners, and the button is a delegate's arithmetic rather than any of those.
+It was found because the trailing *inset* needed a side, and asking which side
+asked the older question too.
+
+### 3. The safe area has no lane that draws it
+
+Nothing in `examples/` binds a surface with
+`Layout3dCameraBinding.screenFilling`, so `MediaQuery3d.padding` is zero in
+every window this repository opens, and the whole of this half is proven
+headlessly and nowhere else. The tests state their own insets through
+`MediaQuery3d`, which is honest about what they prove — the arithmetic — and
+silent about whether a status bar's worth of app bar looks right on a phone.
+**That wants a mobile run of the gallery on a screen-filling surface**, which
+is a gallery change and a device, and neither was in this phase.
+
+### 4. What was left, and why
+
+- **`extendBody` and `extendBodyBehindAppBar`** tell a body that runs behind a
+  bar about the platform's inset and not about the bar. Flutter adds the bar's
+  height to the padding; nothing here uses either flag with a safe area, and
+  the arithmetic wants a real screen to check against.
+- **A control that grows with its label** turned out to need nothing from
+  this plan beyond the navigation bar, because the catalogue's heights were
+  already minimums. What it does leave is the rail: at twice the size the
+  test font wraps 'Inbox' onto three lines in an 80dp rail, and so, less
+  dramatically, would a real one. Flutter's rail does the same.
+
+## Phases 3 to 7
 
 Written when each is picked up. What the map already knows about each, so
 that writing it is an afternoon:
 
 - **Phase 1's second finding moves `scrollable`** for `AlertDialog3d` out of
   phase 7 and into the next phase that touches a dialog.
-- **Phase 2** owns what
-  [a screen that knows how big it is](../../flutter_scene_layout3d/plans/2026_09_16_a_screen_that_knows_how_big_it_is.md)
-  deliberately left: whether an app bar stops at the status bar or is drawn
-  under it is a component decision with tokens attached. A ported screen
-  writes `SceneSafeArea3d` itself until this is taken.
 - **Phase 3**'s motion is all on tiers that exist. A thumb growing from 16dp
   to 24dp is drawn at one size and scaled on the node tier, which the hero now
   has a shipped example of; a chip's lift is a distance on the node tier; an

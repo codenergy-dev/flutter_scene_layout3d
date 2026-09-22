@@ -2,12 +2,13 @@ import 'dart:math' as math;
 import 'dart:ui' show Color;
 
 import 'package:flutter/widgets.dart'
-    show BuildContext, StatelessWidget, Widget;
+    show BuildContext, Directionality, StatelessWidget, TextDirection, Widget;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart'
     show Constraints3d, MultiChildLayout3dDelegate, Offset3d, Size3d;
 import 'package:flutter_scene_layout3d/widgets.dart'
     show
         Layout3dMetricsScope,
+        MediaQuery3d,
         SceneClipBox3d,
         SceneCustomMultiChildLayout3d,
         SceneLayoutId3d,
@@ -133,6 +134,36 @@ enum Scaffold3dSlot {
 /// A row's `Material3d` honours the plane block; a leaf holding an
 /// application's own mesh does not, and will draw through the edge.
 ///
+/// ## The safe area, which each slot spends once
+///
+/// On a surface that stands in for the view — one bound with
+/// `Layout3dCameraBinding.screenFilling` — `MediaQuery3d` reports the parts
+/// of it the platform has spent: the status bar, the notch, the home
+/// indicator. Everywhere else it reports zero, and none of this does
+/// anything.
+///
+/// Where it is not zero, the scaffold does what Flutter's does. The
+/// [appBar] is told about the top and the sides and not the bottom, and an
+/// `AppBar3d` runs its container up under the status bar and keeps its
+/// toolbar clear of it. The [bottomNavigationBar] is told about the bottom
+/// and the sides and not the top, and a `NavigationBar3d` grows by the home
+/// indicator. The [body] is told about whatever neither bar took — the top
+/// when there is no app bar, the bottom when there is no navigation bar, the
+/// sides always, because no bar in this arrangement stands at a side — so a
+/// screen with both bars has a body told only about the notch at its sides,
+/// and a screen with neither has a body told about all of it, which puts
+/// `SceneSafeArea3d` wherever it wants the room.
+///
+/// The [floatingActionButton] stays [floatingActionButtonMargin] clear of
+/// the bottom inset when nothing else is, and clear of the trailing one,
+/// which is Flutter's `endFloat` arithmetic. It stands at the **trailing**
+/// corner, so in right to left it is the left one.
+///
+/// What this does not do is Flutter's arithmetic for [extendBody] and
+/// [extendBodyBehindAppBar], which tells a body that runs behind a bar how
+/// tall the bar is by adding it to the padding. Here a body that runs
+/// behind a bar is told about the platform's inset and not the bar's.
+///
 /// ## What phase 6 puts on top of this
 ///
 /// Dialogs, sheets, snack bars and menus are **not** scaffold slots. They go
@@ -214,7 +245,8 @@ class Scaffold3d extends StatelessWidget {
   /// The bar across the bottom, usually a `NavigationBar3d`.
   final Widget? bottomNavigationBar;
 
-  /// The button floating over the body at the trailing bottom corner.
+  /// The button floating over the body at the trailing bottom corner — the
+  /// right one, or the left in right to left.
   final Widget? floatingActionButton;
 
   /// The backing's colour, or null for `colorScheme.surface`.
@@ -270,6 +302,25 @@ class Scaffold3d extends StatelessWidget {
     // labels the same way. `docs/traps.md` states the rule in general: two
     // surfaces of different depths are siblings in a stack, never one inside
     // the other.
+    final inset = MediaQuery3d.of(context).padding;
+    final rightToLeft = Directionality.maybeOf(context) == TextDirection.rtl;
+
+    // Each slot hears about the edges it is responsible for and not the
+    // others, which is Flutter's `Scaffold` exactly: a bar that has taken an
+    // inset takes it away from the body.
+    Widget told(
+      Widget child, {
+      bool removeTop = false,
+      bool removeBottom = false,
+    }) => removeTop || removeBottom
+        ? MediaQuery3d.removePadding(
+            context: context,
+            removeTop: removeTop,
+            removeBottom: removeBottom,
+            child: child,
+          )
+        : child;
+
     return SceneStack3d(
       fit: StackFit3d.expand,
       children: <Widget>[
@@ -291,6 +342,9 @@ class Scaffold3d extends StatelessWidget {
         SceneCustomMultiChildLayout3d(
           delegate: _Scaffold3dLayout(
             fabMargin: metrics.dp(floatingActionButtonMargin),
+            bottomInset: metrics.dp(inset.bottom),
+            trailingInset: metrics.dp(rightToLeft ? inset.left : inset.right),
+            rightToLeft: rightToLeft,
             extendBody: extendBody,
             extendBodyBehindAppBar: extendBodyBehindAppBar,
           ),
@@ -301,16 +355,26 @@ class Scaffold3d extends StatelessWidget {
                 metrics.dp(step),
                 // The window. Without it a list taller than its slot draws
                 // over the bars instead of ending at them.
-                SceneClipBox3d(child: body!),
+                SceneClipBox3d(
+                  child: told(
+                    body!,
+                    removeTop: appBar != null,
+                    removeBottom: bottomNavigationBar != null,
+                  ),
+                ),
               ),
             if (bottomNavigationBar != null)
               _lifted(
                 Scaffold3dSlot.bottomNavigationBar,
                 metrics.dp(step),
-                bottomNavigationBar!,
+                told(bottomNavigationBar!, removeTop: true),
               ),
             if (appBar != null)
-              _lifted(Scaffold3dSlot.appBar, metrics.dp(step), appBar!),
+              _lifted(
+                Scaffold3dSlot.appBar,
+                metrics.dp(step),
+                told(appBar!, removeBottom: true),
+              ),
             if (floatingActionButton != null)
               _lifted(
                 Scaffold3dSlot.floatingActionButton,
@@ -362,12 +426,24 @@ class Scaffold3d extends StatelessWidget {
 class _Scaffold3dLayout extends MultiChildLayout3dDelegate {
   _Scaffold3dLayout({
     required this.fabMargin,
+    required this.bottomInset,
+    required this.trailingInset,
+    required this.rightToLeft,
     required this.extendBody,
     required this.extendBodyBehindAppBar,
   });
 
   /// The floating action button's inset, in world units.
   final double fabMargin;
+
+  /// What the platform has spent at the bottom, in world units.
+  final double bottomInset;
+
+  /// What the platform has spent at the trailing edge, in world units.
+  final double trailingInset;
+
+  /// Whether the trailing edge is the left one.
+  final bool rightToLeft;
 
   final bool extendBody;
   final bool extendBodyBehindAppBar;
@@ -426,11 +502,18 @@ class _Scaffold3dLayout extends MultiChildLayout3dDelegate {
         Scaffold3dSlot.floatingActionButton,
         Constraints3d.loose(size),
       );
+      // Flutter's `endFloat`: the margin from whatever is below — the bar,
+      // or the edge — and never less than the margin from the bottom inset,
+      // which a navigation bar has already grown over and nothing else has.
+      final fromBottom = math.max(fabMargin, bottomInset - bottom + fabMargin);
+      final fromEnd = fabMargin + trailingInset;
       positionChild(
         Scaffold3dSlot.floatingActionButton,
         Offset3d(
-          math.max(0.0, size.width - fab.width - fabMargin),
-          math.max(0.0, size.height - bottom - fab.height - fabMargin),
+          rightToLeft
+              ? math.min(fromEnd, math.max(0.0, size.width - fab.width))
+              : math.max(0.0, size.width - fab.width - fromEnd),
+          math.max(0.0, size.height - bottom - fab.height - fromBottom),
           0,
         ),
       );
@@ -440,6 +523,9 @@ class _Scaffold3dLayout extends MultiChildLayout3dDelegate {
   @override
   bool shouldRelayout(_Scaffold3dLayout oldDelegate) =>
       oldDelegate.fabMargin != fabMargin ||
+      oldDelegate.bottomInset != bottomInset ||
+      oldDelegate.trailingInset != trailingInset ||
+      oldDelegate.rightToLeft != rightToLeft ||
       oldDelegate.extendBody != extendBody ||
       oldDelegate.extendBodyBehindAppBar != extendBodyBehindAppBar;
 }
