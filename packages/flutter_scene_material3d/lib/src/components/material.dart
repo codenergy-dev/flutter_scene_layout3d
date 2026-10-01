@@ -176,8 +176,14 @@ class Material3d extends StatefulWidget {
   /// in-plane axes: `EdgeInsets3d.symmetric(horizontal: 24, vertical: 10)`.
   ///
   /// An `EdgeInsetsDirectional3d` puts its start on the side the ambient
-  /// `Directionality` reads from, which is how a list tile keeps its 16dp
-  /// before the leading icon in a right-to-left application.
+  /// `Directionality` reads from.
+  ///
+  /// **An interactive surface wants its padding inside its `InkWell3d`, not
+  /// here.** This panel answers a ray on its own account, so a padding
+  /// between it and the well is a rim that takes a press and does nothing
+  /// with it. Every button, chip and tile in the catalogue had one until a
+  /// press near a control's edge found it; they now pad inside the well, as
+  /// Flutter's do, and this is for surfaces nothing presses.
   final EdgeInsetsGeometry3d padding;
 
   /// Where the child sits inside the padded surface.

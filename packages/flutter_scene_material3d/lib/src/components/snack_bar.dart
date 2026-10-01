@@ -1,10 +1,12 @@
 import 'dart:async' show Completer, Timer;
 import 'dart:collection' show Queue;
+import 'dart:math' as math;
 import 'dart:ui' show Color;
 
 import 'package:flutter/animation.dart'
     show AnimationController, AnimationStatus;
 import 'package:flutter/foundation.dart' show VoidCallback;
+import 'package:flutter/painting.dart' show TextPainter, TextSpan, TextStyle;
 import 'package:flutter/semantics.dart' show SemanticsProperties;
 import 'package:flutter/widgets.dart'
     show
@@ -21,20 +23,27 @@ import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart'
         Alignment3d,
         Constraints3d,
         CrossAxisAlignment3d,
+        Layout3dMetrics,
+        MainAxisAlignment3d,
         MainAxisSize3d,
         Overlay3d,
         Size3d;
 import 'package:flutter_scene_layout3d/widgets.dart'
     show
         Layout3dMetricsScope,
+        MediaQuery3d,
         SceneAlign3d,
+        SceneColumn3d,
         SceneConstrainedBox3d,
+        SceneExpanded3d,
+        SceneFlexible3d,
         SceneIgnorePointer3d,
         SceneMotionTransition3d,
         SceneOverlay3d,
         ScenePadding3d,
         SceneRow3d,
         SceneSemantics3d,
+        SceneSizedBox3d,
         SceneText3d,
         WidgetOverlay3dEntry;
 
@@ -361,6 +370,17 @@ class _ScaffoldMessenger3dScope extends InheritedWidget {
 /// The message is a **string** rather than a widget, for the reason
 /// `ListTile3d`'s title is: a `Semantics3d` gathers nothing from the labels
 /// below it, and a message nobody can hear is not a message.
+///
+/// ## A second line, and where the action goes
+///
+/// A message too long for one line wraps, and the bar grows to hold it. The
+/// action stays beside the message unless it is wider than
+/// [SnackBarStyle3d.actionOverflowThreshold] of the bar — a quarter, by
+/// default — in which case it goes on a line of its own under the message, at
+/// the trailing edge, and the message wraps in the 60% of the bar Flutter
+/// leaves it above. That is Flutter's arrangement, decided Flutter's way: the
+/// action's label is measured once in `build`, so the choice is made before
+/// layout and never flips back and forth as the bar settles.
 class SnackBar3d extends StatelessWidget {
   /// Creates a snack bar.
   const SnackBar3d({
@@ -370,11 +390,16 @@ class SnackBar3d extends StatelessWidget {
     this.onAction,
     this.duration,
     this.style,
+    this.actionOverflowThreshold,
     this.semanticLabel,
     this.textDirection,
   }) : assert(
          actionLabel == null || onAction != null,
          'A snack bar with an action label needs something for it to do.',
+       ),
+       assert(
+         actionOverflowThreshold == null ||
+             (actionOverflowThreshold >= 0.0 && actionOverflowThreshold <= 1.0),
        );
 
   /// What the bar says.
@@ -393,6 +418,10 @@ class SnackBar3d extends StatelessWidget {
 
   /// The tokens to draw with, or null for the theme's.
   final SnackBarStyle3d? style;
+
+  /// How wide the action may be, as a share of the bar, before it moves onto
+  /// a line of its own, or null for the style's quarter.
+  final double? actionOverflowThreshold;
 
   /// What a screen reader announces, or null for [message].
   final String? semanticLabel;
@@ -416,34 +445,73 @@ class _SnackBar3dFrame extends StatelessWidget {
   final SnackBar3d bar;
   final VoidCallback? onAction;
 
+  /// How wide the action is, in logical pixels, the way Flutter reckons it:
+  /// the label laid out once at the reader's type setting, plus half the
+  /// bar's horizontal padding — and not the button's own padding, which
+  /// Flutter leaves out, so a port breaks its bars where it did before.
+  static double _actionWidth(
+    String label,
+    TextStyle style,
+    Layout3dMetrics metrics,
+    SnackBarStyle3d resolved,
+  ) {
+    final painter = TextPainter(
+      text: TextSpan(text: label, style: style),
+      maxLines: 1,
+      textDirection: TextDirection.ltr,
+      textScaler: metrics.textScaler,
+    )..layout();
+    final width = painter.width;
+    painter.dispose();
+    return width + resolved.padding.left / 2.0;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme3d.of(context);
     final metrics = Layout3dMetricsScope.of(context);
     final resolved = bar.style ?? SnackBarStyle3d.of(theme);
     final hasAction = bar.actionLabel != null && onAction != null;
+    final actionStyle = theme.textStyle(
+      resolved.actionTextStyle,
+      color: resolved.actionColor,
+    );
 
-    final content = SceneRow3d(
-      mainAxisSize: MainAxisSize3d.min,
-      crossAxisAlignment: CrossAxisAlignment3d.center,
-      spacing: metrics.dp(16),
-      children: <Widget>[
-        SceneIgnorePointer3d(
-          child: SceneText3d(
-            bar.message,
-            style: theme.textStyle(
-              resolved.textStyle,
-              color: resolved.contentColor,
-            ),
-          ),
+    // How wide the bar can be, in logical pixels: its own maximum, or the
+    // screen less its margins when that is narrower — which is the width
+    // Flutter compares the action against.
+    final screen = MediaQuery3d.maybeOf(context)?.size.width;
+    final barWidth = math.min(
+      resolved.maxWidth,
+      screen == null
+          ? resolved.maxWidth
+          : screen - resolved.margin.left - resolved.margin.right,
+    );
+    final actionOnItsOwnLine =
+        hasAction &&
+        _actionWidth(bar.actionLabel!, actionStyle, metrics, resolved) /
+                barWidth >
+            (bar.actionOverflowThreshold ?? resolved.actionOverflowThreshold);
+
+    // The message is flexible, so a long one wraps rather than running off
+    // the end of the bar.
+    final message = SceneIgnorePointer3d(
+      child: SceneText3d(
+        bar.message,
+        style: theme.textStyle(
+          resolved.textStyle,
+          color: resolved.contentColor,
         ),
-        if (hasAction)
-          // The action is a second affordance *inside* a component, which
-          // `docs/traps.md` says gets neither a 48dp reach nor a wash of its
-          // own — the enclosing Material3d would light the whole bar up. A
-          // bar is `raised`, deep enough to afford the answer a navigation
-          // destination uses: a thin slab of its own, standing clear.
-          Material3d(
+      ),
+    );
+
+    final Widget? action = hasAction
+        // The action is a second affordance *inside* a component, which
+        // `docs/traps.md` says gets neither a 48dp reach nor a wash of its
+        // own — the enclosing Material3d would light the whole bar up. A bar
+        // is `raised`, deep enough to afford the answer a navigation
+        // destination uses: a thin slab of its own, standing clear.
+        ? Material3d(
             color: const Color(0x00000000),
             contentColor: resolved.actionColor,
             shape: theme.shape.extraSmall,
@@ -469,21 +537,54 @@ class _SnackBar3dFrame extends StatelessWidget {
                   child: ScenePadding3d(
                     padding: metrics.dpInsets(resolved.actionPadding),
                     child: SceneIgnorePointer3d(
-                      child: SceneText3d(
-                        bar.actionLabel!,
-                        style: theme.textStyle(
-                          resolved.textStyle,
-                          color: resolved.actionColor,
-                        ),
-                      ),
+                      child: SceneText3d(bar.actionLabel!, style: actionStyle),
                     ),
                   ),
                 ),
               ),
             ),
+          )
+        : null;
+
+    final Widget content;
+    if (actionOnItsOwnLine) {
+      // Flutter's two rows: the message, wrapping in what is left beside a
+      // spacer 40% of the bar wide, and the action under it at the trailing
+      // edge. The bar is as wide as it may be, as Flutter's is.
+      content = SceneColumn3d(
+        mainAxisSize: MainAxisSize3d.min,
+        crossAxisAlignment: CrossAxisAlignment3d.stretch,
+        depthAxisAlignment: CrossAxisAlignment3d.start,
+        children: <Widget>[
+          SceneRow3d(
+            crossAxisAlignment: CrossAxisAlignment3d.center,
+            depthAxisAlignment: CrossAxisAlignment3d.start,
+            children: <Widget>[
+              SceneExpanded3d(child: message),
+              SceneSizedBox3d(width: metrics.dp(barWidth * 0.4)),
+            ],
           ),
-      ],
-    );
+          // The gap Flutter gets from the message's own vertical padding.
+          SceneSizedBox3d(height: metrics.dp(resolved.padding.top)),
+          SceneRow3d(
+            mainAxisAlignment: MainAxisAlignment3d.end,
+            depthAxisAlignment: CrossAxisAlignment3d.start,
+            children: <Widget>[action!],
+          ),
+        ],
+      );
+    } else {
+      content = SceneRow3d(
+        mainAxisSize: MainAxisSize3d.min,
+        crossAxisAlignment: CrossAxisAlignment3d.center,
+        depthAxisAlignment: CrossAxisAlignment3d.start,
+        spacing: metrics.dp(16),
+        children: <Widget>[
+          SceneFlexible3d(child: message),
+          ?action,
+        ],
+      );
+    }
 
     return SceneSemantics3d(
       properties: SemanticsProperties(

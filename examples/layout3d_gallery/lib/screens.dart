@@ -124,6 +124,12 @@ class _MaterialScreenState extends State<MaterialScreen> {
   final Set<int> _starred = <int>{1};
   int _filter = 0;
 
+  /// The messages someone has opened, which is what the badge on the inbox
+  /// counts down from.
+  final Set<int> _opened = <int>{};
+
+  int get _unread => _messages.length - _opened.length;
+
   // The settings.
   bool _notify = true;
   double _volume = 0.65;
@@ -168,6 +174,13 @@ class _MaterialScreenState extends State<MaterialScreen> {
           appBar: AppBar3d.text(
             title: _tab == 0 ? 'Inbox' : 'Settings',
             variant: AppBarVariant3d.small,
+            // The way to the navigation drawer, which slides in from the edge
+            // reading starts at — the right one in a right-to-left locale.
+            leading: IconButton3d(
+              icon: Icons.menu,
+              semanticLabel: 'Menu',
+              onPressed: () => _menu(context),
+            ),
             actions: <Widget>[
               // A tooltip, because a hover is the only arrival in the
               // catalogue that needs no press at all: rest a pointer here and
@@ -206,12 +219,9 @@ class _MaterialScreenState extends State<MaterialScreen> {
           bottomNavigationBar: NavigationBar3d(
             selectedIndex: _tab,
             onDestinationSelected: (index) => setState(() => _tab = index),
-            destinations: const <NavigationDestination3d>[
-              NavigationDestination3d(
-                icon: Icon3d(Icons.inbox),
-                label: 'Inbox',
-              ),
-              NavigationDestination3d(
+            destinations: <NavigationDestination3d>[
+              NavigationDestination3d(icon: _inboxIcon(), label: 'Inbox'),
+              const NavigationDestination3d(
                 icon: Icon3d(Icons.tune),
                 label: 'Settings',
               ),
@@ -219,10 +229,68 @@ class _MaterialScreenState extends State<MaterialScreen> {
           ),
           floatingActionButton: FloatingActionButton3d(
             semanticLabel: 'Compose',
-            onPressed: () => _say(context, 'Composing a message'),
+            // Long on purpose: a message that does not fit one line wraps,
+            // and the bar grows to hold it.
+            onPressed: () => _say(
+              context,
+              'Composing is not part of this gallery, so a draft would '
+              'have nowhere to go',
+            ),
             child: const Icon3d(Icons.edit),
           ),
         ),
+      ),
+    );
+  }
+
+  /// The inbox's glyph, with a badge counting the messages nobody has
+  /// opened. It goes when the last one is read.
+  ///
+  /// The badge stands in front of the icon by a real distance — a glyph has a
+  /// wall that reaches toward the viewer, and a badge resting on the icon's
+  /// plane would have the icon's corner standing through it.
+  Widget _inboxIcon() => Badge3d.count(
+    count: _unread,
+    isLabelVisible: _unread > 0,
+    child: const Icon3d(Icons.inbox),
+  );
+
+  /// The navigation drawer: the same two places the bar goes, as a list.
+  ///
+  /// It is shown rather than being a slot, because an overlay belongs to the
+  /// surface here and not to the screen; the destination closes it, as an
+  /// application's does in Flutter.
+  Future<void> _menu(BuildContext context) async {
+    final theme = Theme3d.of(context);
+    await showDrawer3d<void>(
+      context: context,
+      builder: (context) => NavigationDrawer3d(
+        semanticLabel: 'Gallery',
+        selectedIndex: _tab,
+        onDestinationSelected: (index) {
+          setState(() => _tab = index);
+          Navigator3d.of(SceneOverlay3d.of(context))?.pop();
+        },
+        header: ScenePadding3d(
+          padding: _insets(
+            context,
+            const EdgeInsets3d.only(left: 28, top: 16, right: 16, bottom: 10),
+          ),
+          child: SceneText3d(
+            'Gallery',
+            style: theme.textStyle(
+              Typography3dToken.titleSmall,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+        children: <Widget>[
+          NavigationDrawerDestination3d(icon: _inboxIcon(), label: 'Inbox'),
+          const NavigationDrawerDestination3d(
+            icon: Icon3d(Icons.tune),
+            label: 'Settings',
+          ),
+        ],
       ),
     );
   }
@@ -265,6 +333,7 @@ class _MaterialScreenState extends State<MaterialScreen> {
   /// dialog is done growing.
   Future<void> _openMessage(BuildContext context, int index) async {
     final theme = Theme3d.of(context);
+    setState(() => _opened.add(index));
     await showDialog3d<void>(
       context: context,
       builder: (context) => Dialog3d(
@@ -532,6 +601,22 @@ class _MaterialScreenState extends State<MaterialScreen> {
         crossAxisAlignment: CrossAxisAlignment3d.stretch,
         spacing: _dp(context, 8),
         children: <Widget>[
+          // A banner while notifications are off, which is what one is for: a
+          // message that stays until someone acts on it. Flat, with its rule,
+          // because that is what Flutter's draws.
+          if (!_notify)
+            MaterialBanner3d.text(
+              key: const ValueKey<String>('banner'),
+              content: 'Notifications are off. New mail will not be announced.',
+              leading: const Icon3d(Icons.notifications_off),
+              actions: <Widget>[
+                TextButton3d(
+                  semanticLabel: 'Turn on',
+                  onPressed: () => setState(() => _notify = true),
+                  child: const SceneText3d('Turn on'),
+                ),
+              ],
+            ),
           FilledCard3d(
             key: const ValueKey<String>('preferences'),
             child: SceneColumn3d(
@@ -659,6 +744,24 @@ class _MaterialScreenState extends State<MaterialScreen> {
               ),
             ],
           ),
+          // A tile that opens. Its reveal is the one animation in the catalogue
+          // that lays out on every frame — the rows under it really do move —
+          // and it builds nothing while it runs.
+          ExpansionTile3d.text(
+            key: const ValueKey<String>('about'),
+            title: 'About',
+            subtitle: 'What this is drawn with',
+            children: <Widget>[
+              ListTile3d.text(
+                title: 'flutter_scene_material3d',
+                subtitle: 'Material 3, as geometry',
+              ),
+              ListTile3d.text(
+                title: 'flutter_scene_layout3d',
+                subtitle: 'Box layout in three dimensions',
+              ),
+            ],
+          ),
         ],
       ),
     );
@@ -675,9 +778,16 @@ class _MaterialScreenState extends State<MaterialScreen> {
 ///
 /// One of the three cards standing at `level5` while the other two rest at
 /// `level1` is therefore not an ornament: it is the claim, drawn. Tap a card,
-/// or the floating action button, and the raised one moves. That button stands
-/// furthest off the table of anything on the screen, which is what
-/// `Scaffold3d`'s depth ordering says it should do.
+/// one of the bar's buttons or the floating action button, and the raised one
+/// moves.
+///
+/// **The bar is a bottom app bar, and it is the only bar.** The table is
+/// 217dp from front to back, and an app bar and Flutter's 80dp bottom bar
+/// together leave its cards too little room for their three lines. And a
+/// floating action button above a bottom app bar, at `endFloat`, stands over
+/// the third card. So the button goes *in* the bar, at its trailing end —
+/// Material 3's own arrangement for a bar of actions, which Flutter calls
+/// `endContained` and `Scaffold3d` does not have, written out by hand.
 class TableScreen extends StatefulWidget {
   const TableScreen({super.key});
 
@@ -696,15 +806,30 @@ class _TableScreenState extends State<TableScreen> {
       // designed to keep two slabs out of each other's depth test, not to
       // decide how a screen *looks*, and four steps of it is 48dp — a seventh
       // of a phone's width, and on a table it is 48dp of **height**, which
-      // leaves the title bar hanging in the air above the thing it belongs
-      // to. Eight still clears the six a `thickness.structural` bar over a
+      // leaves a bar hanging in the air above the thing it belongs to. Eight still clears the six a `thickness.structural` bar over a
       // `thickness.raised` card needs, and `Scaffold3d` asserts as much.
       depthStep: 8,
-      appBar: AppBar3d.text(title: 'On the table', centerTitle: true),
-      floatingActionButton: FloatingActionButton3d(
-        semanticLabel: 'Lift the next card',
-        onPressed: () => setState(() => _lifted = (_lifted + 1) % 3),
-        child: const Icon3d(Icons.layers),
+      // A bar of actions rather than destinations, lying flat with everything
+      // else: each icon lifts its card, and the button at the end lifts the
+      // next one.
+      bottomNavigationBar: BottomAppBar3d(
+        child: SceneRow3d(
+          spacing: _dp(context, 8),
+          children: <Widget>[
+            for (var index = 0; index < 3; index++)
+              IconButton3d(
+                icon: _tableIcons[index],
+                semanticLabel: 'Lift ${_tableLabels[index]}',
+                onPressed: () => setState(() => _lifted = index),
+              ),
+            const SceneSpacer3d(),
+            FloatingActionButton3d(
+              semanticLabel: 'Lift the next card',
+              onPressed: () => setState(() => _lifted = (_lifted + 1) % 3),
+              child: const Icon3d(Icons.layers),
+            ),
+          ],
+        ),
       ),
       body: ScenePadding3d(
         padding: _insets(context, const EdgeInsets3d.all(8)),

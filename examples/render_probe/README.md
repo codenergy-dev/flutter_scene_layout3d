@@ -154,7 +154,15 @@ a few seconds on, because the upright screen turns and a turned panel is a
 question of its own; then `gallery_dialog_arriving.png` and `gallery_dialog.png`
 with the About dialog over the screen; then `gallery_picker.png` and
 `gallery_reseeded.png`, the settings tab before and after a colour swatch is
-pressed. CI uploads them all from every run, as the `photographs` artifact.
+pressed; then `gallery_banner.png` with notifications off,
+`gallery_drawer_arriving.png` and `gallery_drawer.png` with the navigation
+drawer coming in and open, and `gallery_snack_bar.png` with a message two lines
+long. CI uploads them all from every run, as the `photographs` artifact.
+
+**The drawer pair earned its place on its first run.** The drawer drew its
+header and an inbox badge and none of its destinations: a list centres its
+items in depth unless told otherwise, and inside the drawer's 8dp slab every
+row sat behind the face. Every headless test of the drawer had passed.
 The test asserts only the floor a probe asserts, that a frame came out;
 nothing in it is a golden.
 

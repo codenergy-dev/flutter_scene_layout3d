@@ -307,4 +307,95 @@ void main() {
       ).primary,
     );
   });
+
+  group('phase 4 of the components a screen still needs', () {
+    /// Every label on [surface], in tree order.
+    List<String> labels(Layout3dSurface surface) {
+      final found = <String>[];
+      void walk(Layout3d box) {
+        if (box is Text3d) found.add(box.data);
+        box.visitChildren(walk);
+      }
+
+      walk(surface);
+      return found;
+    }
+
+    testWidgets('the inbox badge counts what nobody has opened', (
+      tester,
+    ) async {
+      final surface = await pumpScreen(tester, const MaterialScreen());
+      expect(labels(surface), contains('5'));
+
+      await tester.tap3d(find3d.bySemanticsLabel('Ada Lovelace'));
+      await tester.pumpAndSettle();
+      Navigator3d.of(
+        tester.layout3d<Layout3d>(find3d.bySubtype<ModalBarrier3d>()),
+      )!.pop();
+      await tester.pumpAndSettle();
+      expect(labels(surface), contains('4'));
+      expect(labels(surface), isNot(contains('5')));
+    });
+
+    testWidgets('the menu opens a drawer, and a destination in it changes '
+        'the tab and closes it', (tester) async {
+      await pumpScreen(tester, const MaterialScreen());
+      expect(find3d.bySemanticsLabel('Gallery'), findsNothing);
+
+      await tester.tap3d(find3d.bySemanticsLabel('Menu'));
+      await tester.pumpAndSettle();
+      expect(find3d.bySemanticsLabel('Gallery'), findsOne);
+
+      // The drawer's own Settings, which is the last one in the tree: the
+      // overlay is built after the screen it is in front of.
+      await tester.tap3d(find3d.bySemanticsLabel('Settings').last);
+      await tester.pumpAndSettle();
+      expect(find3d.bySemanticsLabel('Gallery'), findsNothing);
+      expect(find3d.bySemanticsLabel('Volume'), findsOne);
+    });
+
+    testWidgets('turning notifications off raises a banner that turns them '
+        'back on', (tester) async {
+      await pumpScreen(tester, const MaterialScreen());
+      await tester.tap3d(find3d.bySemanticsLabel('Settings'));
+      await tester.pump();
+      expect(find3d.bySemanticsLabel('Turn on'), findsNothing);
+
+      await tester.tap3d(find3d.bySemanticsLabel('Notifications'));
+      await tester.pumpAndSettle();
+      expect(find3d.bySemanticsLabel('Turn on'), isReachable3d);
+      expect(find3d.bySemanticsLabel('Turn on'), standsOnItsPanel3d);
+
+      await tester.tap3d(find3d.bySemanticsLabel('Turn on'));
+      await tester.pumpAndSettle();
+      expect(find3d.bySemanticsLabel('Turn on'), findsNothing);
+    });
+
+    testWidgets('the table\'s bar lifts the card its button names', (
+      tester,
+    ) async {
+      final surface = await pumpScreen(
+        tester,
+        const TableScreen(),
+        size: const Size3d(4.6, 2.6, 0.6),
+        basis: LayoutBasis3d.xz,
+        metrics: const Layout3dMetrics(unitsPerLogicalPixel: 0.012),
+      );
+      for (final label in <String>[
+        'Lift Route',
+        'Lift Break',
+        'Lift Agenda',
+        'Lift the next card',
+      ]) {
+        expect(find3d.bySemanticsLabel(label), isReachable3d);
+      }
+      await tester.tap3d(find3d.bySemanticsLabel('Lift Agenda'));
+      await tester.pump();
+      // The labels read card by card, and the third now says it is up.
+      final levels = labels(
+        surface,
+      ).where((label) => label.startsWith('level')).toList();
+      expect(levels, <String>['level 1', 'level 1', 'level 5']);
+    });
+  });
 }

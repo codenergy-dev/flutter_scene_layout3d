@@ -249,8 +249,9 @@ void main() {
       tester,
     ) async {
       final it = await pumpComponent(tester, () => ListTile3d.text(title: 'x'));
-      final container = oneOf<Container3d>(it.surface);
-      final padding = container.padding.resolve(container.textDirection);
+      // Inside the ink well, so the margins are part of what a press reaches.
+      final box = oneOf<Padding3d>(it.surface);
+      final padding = box.padding.resolve(box.textDirection);
       expect(padding.left, closeTo(0.16, 1e-9));
       expect(padding.right, closeTo(0.24, 1e-9));
       expect(

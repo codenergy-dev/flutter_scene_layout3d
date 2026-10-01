@@ -26,14 +26,26 @@ Future<void> setUpApplication() async {
 // ------------------------------------------------------------- Material3d,
 // and everything that is one.
 
-Widget filledButton(Theme3dData theme, VoidCallback submit) => Material3d(
+Widget filledButton(
+  Theme3dData theme,
+  Layout3dMetrics metrics,
+  VoidCallback submit,
+) => Material3d(
   color: theme.colorScheme.primary,
   contentColor: theme.colorScheme.onPrimary,
   shape: theme.shape.full,
   elevation: theme.elevation.level1,
   thickness: theme.thickness.standard,
-  padding: const EdgeInsets3d.symmetric(horizontal: 24, vertical: 10),
-  child: InkWell3d(onTap: submit, child: const SceneText3d('Continue')),
+  alignment: null,
+  child: InkWell3d(
+    onTap: submit,
+    child: ScenePadding3d(
+      padding: metrics.dpInsets(
+        const EdgeInsets3d.symmetric(horizontal: 24, vertical: 10),
+      ),
+      child: const SceneText3d('Continue'),
+    ),
+  ),
 );
 
 // ----------------------------------------------------- The seven buttons,

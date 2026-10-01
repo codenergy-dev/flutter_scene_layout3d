@@ -656,6 +656,18 @@ by hand. `Thickness3d.stepOver(back, front)` is it: twice
 by hand for two equal slabs. Reach for it rather than picking a figure, and
 `Thickness3d.separates` is how a component says the figure still works.
 
+**A list centres its items in depth, and inside a slab that hides them.**
+`ListView3d.depthAxisAlignment` defaults to `center`, on purpose — a list of
+objects in a room wants them centred — and a `Flex3d`'s defaults to `start`.
+So a list put inside a `Material3d` gets the slab's whole depth and centres
+each item in it: a navigation drawer is 8dp deep, and every destination in it
+sat 3.5dp behind the face that hid it, while the drawer's header, in a column,
+stood on that face. The photograph showed a drawer with a header and an inbox
+badge — which stood proud only because a badge is lifted — and nothing else;
+every headless test passed, because none asked whether the rows stood on the
+drawer. A list of rows on a surface says `depthAxisAlignment: start`, and
+`standsOnItsPanel3d` is the question to ask of it.
+
 **A line's depth cross axis starts at the front, and the other one centres.**
 `Flex3d.depthAxisAlignment` is `CrossAxisAlignment3d.start` while
 `crossAxisAlignment` is `center`, and the asymmetry is the point: the viewer is
@@ -1234,6 +1246,21 @@ remains a reservation of space and `glyphDepth` is the figure that draws.
   it, and a surface clamps every ray to its own box before anything below sees
   it — so **geometry drawn in front of a surface is out of reach of a ray by
   construction**, which an overlay lifted out of its panel is.
+- **A control's padding has to be inside its ink well, or it is a rim that
+  swallows the press.** A `DecoratedBox3d` answers a ray on its own account —
+  `hitTestSelf` is true — so a press that reaches a panel and misses every
+  child stops there, on the panel, where no recognizer is listening. Put the
+  padding *between* the panel and the well, which is what
+  `Material3d(padding: …, child: InkWell3d(…))` does, and the padding is
+  exactly that rim. Every button, chip and list tile in
+  `flutter_scene_material3d` was built that way for nine phases: a floating
+  action button answered only at its middle, a list tile not in its 16dp
+  leading margin, a navigation destination not beside its pill. Every suite
+  pressed controls at their centres, so nothing said so until a press through
+  the camera, at the corner of a lifted bar, landed on a rim. Flutter's
+  `InkWell` sits outside its button's padding; put yours there too, and
+  `test/the_whole_face_test.dart` in that package is the check — every
+  control pressed a few logical pixels inside each edge of its face.
 - **A tap target with no depth is a slab no ray intersects.** The companion to
   the rule above, and the one that gets you when the outer target is right.
   A target shrink-wraps what is inside it, and half the things a component

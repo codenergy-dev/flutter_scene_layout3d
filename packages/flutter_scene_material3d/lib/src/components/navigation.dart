@@ -497,18 +497,22 @@ Widget buildNavigationDestination3d(
     thickness: style.destinationThickness,
     surfaceTint: const Color(0x00000000),
     alignment: null,
-    child: SceneAlign3d(
-      alignment: Alignment3d.frontCenter,
-      child: onSelected == null
-          ? labelled
-          : InkWell3d(
-              // One target, and it is the one outside this panel.
-              minimumSize: Size3d.zero,
-              enabled: enabled,
-              onTap: enabled ? onSelected : null,
+    // The align goes inside the well, so the well fills the destination: a
+    // press anywhere in it is a press on it, as in Flutter. Outside, the well
+    // shrink-wrapped the pill and the label, and a press beside them landed
+    // on the destination's own panel and went no further.
+    child: onSelected == null
+        ? SceneAlign3d(alignment: Alignment3d.frontCenter, child: labelled)
+        : InkWell3d(
+            // One target, and it is the one outside this panel.
+            minimumSize: Size3d.zero,
+            enabled: enabled,
+            onTap: enabled ? onSelected : null,
+            child: SceneAlign3d(
+              alignment: Alignment3d.frontCenter,
               child: labelled,
             ),
-    ),
+          ),
   );
 
   final announced = SceneSemantics3d(

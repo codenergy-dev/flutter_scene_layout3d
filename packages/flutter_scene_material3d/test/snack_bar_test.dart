@@ -1,4 +1,4 @@
-import 'package:flutter/widgets.dart' show Builder;
+import 'package:flutter/widgets.dart' show Builder, Widget;
 import 'package:flutter_scene/scene.dart' show Node;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
 import 'package:flutter_scene_layout3d/testing.dart';
@@ -334,6 +334,141 @@ void main() {
       final action = pumped.panels.last.decoration as BoxDecoration3d;
       expect(action.elevation, greaterThan(0));
       expect(action.color.a, 0);
+    });
+  });
+
+  group('a second line', () {
+    /// Where [box]'s origin is on the surface.
+    Offset3d originOf(Layout3d box) {
+      var at = Offset3d.zero;
+      Layout3d? walk = box;
+      while (walk != null) {
+        at += walk.offset;
+        walk = walk.parent;
+      }
+      return at;
+    }
+
+    /// A bar at the foot of the overlay, the way the messenger puts it: the
+    /// surface's own constraints are tight, and a bar pumped straight onto
+    /// them would be the size of the surface.
+    Widget atFoot(SnackBar3d bar) =>
+        SceneAlign3d(alignment: const Alignment3d(0, 1, -1), child: bar);
+
+    Text3d labelled(Layout3dSurface surface, String text) =>
+        boxesOf<Text3d>(surface).singleWhere((box) => box.data == text);
+
+    const long =
+        'This message is long enough that it has to be broken onto a second '
+        'line to fit';
+
+    testWidgets('a long message wraps, and the bar grows to hold it', (
+      tester,
+    ) async {
+      final short = await pumpOverlay(
+        tester,
+        child: atFoot(const SnackBar3d(message: 'Saved')),
+      );
+      final oneLine = short.panels.first.size.height;
+
+      final pumped = await pumpOverlay(
+        tester,
+        child: atFoot(const SnackBar3d(message: long)),
+      );
+      final bar = pumped.panels.first;
+      expect(bar.size.height, greaterThan(oneLine));
+      // And no wider than a bar may be: 600dp, inside the overlay.
+      expect(bar.size.width, lessThanOrEqualTo(6.0 + 1e-9));
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a wide action goes on a line of its own, under the message', (
+      tester,
+    ) async {
+      final pumped = await pumpOverlay(
+        tester,
+        child: atFoot(
+          SnackBar3d(
+            message: 'Notifications are off',
+            actionLabel: 'Open the notification settings',
+            onAction: () {},
+          ),
+        ),
+      );
+      final message = labelled(pumped.surface, 'Notifications are off');
+      final action = labelled(pumped.surface, 'Open the notification settings');
+      final messageAt = originOf(message);
+      final actionAt = originOf(action);
+      expect(
+        actionAt.y,
+        greaterThanOrEqualTo(messageAt.y + message.size.height),
+        reason: 'the action is under the message',
+      );
+      // At the trailing edge of a bar as wide as it may be.
+      final bar = pumped.panels.first;
+      expect(bar.size.width, closeTo(6.0, 1e-9));
+      final barAt = originOf(bar);
+      expect(
+        actionAt.x + action.size.width,
+        greaterThan(barAt.x + bar.size.width * 0.75),
+      );
+    });
+
+    testWidgets('a narrow one stays beside it', (tester) async {
+      final pumped = await pumpOverlay(
+        tester,
+        child: atFoot(
+          SnackBar3d(message: 'Deleted', actionLabel: 'Undo', onAction: () {}),
+        ),
+      );
+      final message = labelled(pumped.surface, 'Deleted');
+      final action = labelled(pumped.surface, 'Undo');
+      final messageAt = originOf(message);
+      final actionAt = originOf(action);
+      expect(actionAt.x, greaterThan(messageAt.x + message.size.width));
+      expect(actionAt.y, lessThan(messageAt.y + message.size.height));
+      expect(actionAt.y + action.size.height, greaterThan(messageAt.y));
+    });
+
+    testWidgets('the threshold is the bar\'s to change', (tester) async {
+      final pumped = await pumpOverlay(
+        tester,
+        child: atFoot(
+          SnackBar3d(
+            message: 'Notifications are off',
+            actionLabel: 'Open the notification settings',
+            onAction: () {},
+            actionOverflowThreshold: 1.0,
+          ),
+        ),
+      );
+      final message = labelled(pumped.surface, 'Notifications are off');
+      final action = labelled(pumped.surface, 'Open the notification settings');
+      expect(originOf(action).x, greaterThan(originOf(message).x));
+      expect(
+        originOf(action).y,
+        lessThan(originOf(message).y + message.size.height),
+      );
+    });
+
+    testWidgets('the action is labelLarge, as a TextButton\'s label is', (
+      tester,
+    ) async {
+      final pumped = await pumpOverlay(
+        tester,
+        child: atFoot(
+          SnackBar3d(message: 'Deleted', actionLabel: 'Undo', onAction: () {}),
+        ),
+      );
+      const theme = Theme3dData.light;
+      final style = SnackBarStyle3d.of(theme);
+      expect(style.actionTextStyle, Typography3dToken.labelLarge);
+      expect(style.actionOverflowThreshold, 0.25);
+      final undo = labelled(pumped.surface, 'Undo').style;
+      final large = theme.textStyle(Typography3dToken.labelLarge);
+      expect(undo.fontSize, large.fontSize);
+      expect(undo.fontWeight, large.fontWeight);
+      expect(undo.color, style.actionColor);
     });
   });
 }

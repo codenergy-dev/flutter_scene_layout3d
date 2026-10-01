@@ -1,5 +1,105 @@
 ## Unreleased
 
+- **A press anywhere on a control is a press on it.** Every button, chip,
+  list tile and labelled tile, and every navigation bar and rail destination,
+  used to answer a press on its content and swallow one on its padding: the
+  ink well sat inside the padding, and the panel around it answers a ray on
+  its own account, so a press on the rim reached the panel and went no
+  further. A floating action button answered only at its middle; a 72dp
+  filled button not 14dp from its centre; a list tile not in its 16dp
+  leading margin; a navigation destination not beside its pill. The padding
+  is inside the well now, as Flutter's is, and a destination's well fills the
+  destination. Nothing about how any of them looks or lays out has changed.
+  - A test that read a list tile's padding off its `Container3d` finds it on
+    the `Padding3d` inside the ink well.
+  - `Material3d.padding` says what this means for a surface of your own: an
+    interactive one wants its padding inside its `InkWell3d`, and the README's
+    example of the primitive, which had the rim, does that now.
+
+- **A badge.** `Badge3d` is Flutter's: a 6dp dot, or a 16dp stadium with a
+  `labelSmall` count in it, `error` on `onError`, at the top-end corner of
+  whatever it decorates, mirrored in right to left. `Badge3d.count` caps at
+  `999+`, `isLabelVisible` takes it away, and `BadgeStyle3d` is the table.
+  - **It stands in front of what it decorates by a real distance.** An icon
+    here is a glyph with a wall reaching a tenth of its size toward the
+    viewer, so a badge resting on its plane would have the icon's corner
+    through it. `BadgeStyle3d.depthStep` clears a 24dp icon's wall, on the
+    node tier, so the badge moves nothing and takes no press.
+  - It may be wider than its child, and it stays a stadium at any type
+    setting — never narrower than it is tall, as Flutter's is not.
+  - It announces nothing unless given a `semanticLabel`, as an `Icon3d` does.
+
+- **A banner.** `MaterialBanner3d` is Flutter's static banner: content, an
+  optional leading widget, and one action beside the content or several in a
+  52dp bar under it at the trailing edge. `MaterialBanner3d.text` announces
+  the content. `MaterialBannerStyle3d` is the table.
+  - **Flat by default, with a rule under it**, which is what Flutter's draws:
+    its token table says 1dp, and `MaterialBanner.build` never reads it.
+    Given an elevation, it loses the rule and gains Flutter's 10dp margin.
+  - Not here: `ScaffoldMessenger.showMaterialBanner`, which slides one in
+    under the app bar through a scaffold slot `Scaffold3d` does not have.
+
+- **A bottom app bar.** `BottomAppBar3d` is Flutter's Material 3 bar of
+  actions: 80dp of `surfaceContainer` at level 2, holding what it is given
+  12dp from its top and 16dp from its sides, grown by the home indicator on a
+  surface that stands in for the view. It goes in
+  `Scaffold3d.bottomNavigationBar`. `BottomAppBarStyle3d` is the table.
+  - No notch, which Material 3's default shape has none of either, and no
+    `endContained` button location: a button meant to sit in the bar goes in
+    the bar's own row.
+
+- **A drawer, shown from the edge reading starts at.** `Drawer3d` is the
+  surface — 304dp of `surfaceContainerLow` at level 1, full height, rounded
+  16dp on the side away from its edge — and `NavigationDrawer3d` is one with
+  Material's destinations in it, with Flutter's API: `children` is a list of
+  widgets, and the `NavigationDrawerDestination3d`s among them are numbered
+  past the headings and dividers between them. `showDrawer3d` slides either in
+  over Flutter's `Colors.black54` scrim and returns what it is popped with;
+  `DrawerAlignment3d.start` is the right edge in right to left.
+  `DrawerStyle3d` and `NavigationDrawerStyle3d` are the tables.
+  - **Shown, not slotted.** Flutter's drawer is a `Scaffold` slot opened with
+    `openDrawer`; here every overlay belongs to the surface rather than the
+    screen, so there is no `Scaffold3d.drawer`.
+  - A selected destination is its own surface in `secondaryContainer` rather
+    than a pill behind it: Flutter's indicator is wider than its tile, so it
+    fills it.
+  - Not here: opening a drawer with a swipe from the edge, and Flutter's
+    localized "Navigation menu" announcement — name the route with
+    `semanticLabel`.
+
+- **A tile that opens.** `ExpansionTile3d` is Flutter's: a list tile whose
+  chevron turns half a turn as its children are revealed under it, over 200ms
+  on `Curves.easeIn`, with a rule of `outline` above and below an open tile —
+  `ThemeData.dividerColor` in Material 3, not the `outlineVariant` a
+  `Divider3d` draws in. `ExpansionTile3d.text` composes the announcement, and
+  the header publishes `expanded`. `ExpansionTileStyle3d` is the table.
+  - **The first animation in the catalogue that lays out on every frame**,
+    because the tile grows and the rows under it move, and only layout can
+    move them. A frame of the reveal builds nothing and measures no text: a box
+    writes an `Align3d`'s height factor from the clock, and the chevron turns
+    on the node tier. The children leave the tree when a close finishes,
+    unless `maintainState`.
+  - The colours change when it is pressed rather than easing over the run,
+    and it takes no `ExpansibleController`, which postdates this package's
+    Flutter floor.
+
+- **A snack bar has a second line.** A message longer than a line wraps and
+  the bar grows to hold it, where it used to run off the end. An action wider
+  than a quarter of the bar — Flutter's `actionOverflowThreshold`, measured
+  Flutter's way in `build` — goes on its own line under the message, at the
+  trailing edge, and `SnackBar3d.actionOverflowThreshold` moves the line. The
+  action's label is `labelLarge` now, as a `TextButton`'s is; it was the
+  message's `bodyMedium`.
+  - `SnackBarStyle3d` has two more required figures, `actionTextStyle` and
+    `actionOverflowThreshold`, so a style built with the constructor rather
+    than `SnackBarStyle3d.of` has to state them.
+
+- **`DialogStyle3d` and `MenuStyle3d` are checked against Flutter at last.**
+  Both were described as read off a real `Dialog` and a real popup menu by a
+  test that never existed; `test/phase_4_defaults_test.dart` now reads the
+  colour, the elevation, the corner, the minimum width and the item height off
+  the `Material`s those widgets build. Every figure agreed.
+
 - **Progress, both ways Flutter draws it.** `LinearProgressIndicator3d` and
   `CircularProgressIndicator3d` take Flutter's own parameters — a `value`, or
   none for an indeterminate one, `color`, `backgroundColor`, `minHeight`,

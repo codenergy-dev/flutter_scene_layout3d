@@ -1,8 +1,8 @@
 ---
 status: in progress
-reason: phases 1 to 3 have landed — the alert dialog and the labelled tiles, the safe area and type that grows, the switch's thumb, the chip's lift and both progress indicators; phases 4 to 7 are open, and phase 2's safe area has no lane that draws it
+reason: phases 1 to 4 have landed — the alert dialog and the labelled tiles, the safe area and type that grows, the switch's thumb, the chip's lift and both progress indicators, and the badge, the banner, the bottom app bar, the drawer, the expansion tile and the snack bar's second line; phases 5 to 7 are open, and phase 2's safe area has no lane that draws it
 created_at: 2026-09-21T15:46:07Z
-updated_at: 2026-09-30T21:30:00Z
+updated_at: 2026-10-01T12:00:00Z
 commit: 763e3dff41a1c75ac35997cf9244e101bb7250bf
 ---
 
@@ -38,7 +38,7 @@ written by hand here today.
 | 1 | nothing | `AlertDialog3d`, the checkbox's third state, `CheckboxListTile3d`, `SwitchListTile3d`, `RadioListTile3d` — **landed** |
 | 2 | the safe area, and type that grows | `Scaffold3d` consuming `MediaQuery3d.padding`; a control that grows with its label — **landed** |
 | 3 | the node tier, with a clock | `LinearProgressIndicator3d`, `CircularProgressIndicator3d`, the switch's growing thumb, the chip's press lift — **landed** |
-| 4 | nothing, but more of it | `Badge3d`, `MaterialBanner3d`, `BottomAppBar3d`, `NavigationDrawer3d`, `ExpansionTile3d`, a snack bar's second line |
+| 4 | nothing, but more of it | `Badge3d`, `MaterialBanner3d`, `BottomAppBar3d`, `NavigationDrawer3d`, `ExpansionTile3d`, a snack bar's second line — **landed** |
 | 5 | one choice over many options | `SegmentedButton3d`, `TabBar3d` and `TabBarView3d`, `RadioGroup3d` |
 | 6 | a scroll view that runs backwards | `reverse` in the layout package, `Carousel3d`, `Scrollbar3d`, `RefreshIndicator3d` |
 | 7 | a second arena, or a design answer | `RangeSlider3d`, `DataTable3d`, `Stepper3d`, the slider's ticks and value indicator, a tooltip on long press, a draggable sheet |
@@ -574,13 +574,345 @@ is for.
   is nothing to see; a held press is a harness change.
 - Phase 2's safe area still has no lane that draws it.
 
-## Phases 4 to 7
+## Phase 4: nothing new underneath, and more of it
+
+*Written when the phase was picked up, against `e1f2931`.*
+
+Six things, and the table's claim about them is that none needs anything the
+catalogue does not already have: each is a `Material3d` with a token set, a
+row or a column, and — for two of them — a clock. That claim is checked
+below rather than assumed, because the last time this plan said "nothing
+new", phase 3's ring needed a border painted by a gradient. **Every figure
+is Flutter's**, read off `flutter/lib/src/material` at 3.47.1, and each
+style's dartdoc says which grade it is — read off a laid-out Flutter widget,
+read off a public API, or transcribed from a private constant — because
+phase 1 found two token sets described as drift-checked that never were.
+
+### `Badge3d`
+
+A stadium at the top-end corner of whatever it decorates: 6dp and no label,
+or 16dp tall with a `labelSmall` count in it, `error` on `onError`.
+`Badge3d.count` caps at `maxCount` and writes `999+`, as Flutter's does.
+
+It is **not** a `Stack3d` with a `Positioned3d` in it, which is the first
+thing to write and the wrong one. A stack caps a positioned child's unpinned
+axes at its own size, so a three-digit badge on a 24dp icon would be squeezed
+to 24dp wide — and an icon is a glyph with no depth, so the badge's slab would
+be squeezed to none. Flutter meets the first half of that with a render
+object of its own, `_RenderBadge`, which fills the stack and lays the badge
+out unconstrained; this does the same, with a private box under a
+`Positioned3d` that fills the stack and places the badge by Flutter's
+arithmetic — `alignment.alongOffset(size − widthOffset)` plus `(4, 4)` mirrored,
+minus half the badge's height for a labelled one.
+
+The depth is the part with no Flutter equivalent. A badge is drawn **over**
+its child, and here that is a distance: the icon under it is a glyph whose
+wall grows toward the viewer by a tenth of its size, so a badge resting on
+the icon's plane would have the icon's corner standing through it.
+`BadgeStyle3d.depthStep` puts the badge's back face clear of a 24dp icon's
+wall, on the node tier, through the stack's own step.
+
+The label grows with type, as Flutter's does, and stays a stadium: at a
+large setting a one-digit badge is taller than it is wide, and Flutter's
+`_IntrinsicHorizontalStadium` widens it to a circle. Here that is a minimum
+width equal to the height, which a box that knows the label's laid-out height
+can state and a `build` method cannot.
+
+It announces nothing unless told, which is `Icon3d`'s rule and for the same
+reason: a `Semantics3d` gathers nothing, and a badge does not know what it is
+counting. `semanticLabel` puts one on it.
+
+### `MaterialBanner3d`
+
+Flutter's banner, static: a `surfaceContainerLow` strip with an optional
+leading widget, `bodyMedium` content clamped to 1.5× type, and its actions
+either beside the content — one action, `start: 16, top: 2` — or in a 52dp bar
+below it, at the trailing edge, `start: 16, top: 24, end: 16, bottom: 4`. A
+divider under it only at elevation zero, and Flutter's 10dp bottom margin at
+any other elevation, which is room for a shadow Flutter draws and this does
+not; it is kept because it is space a ported screen already lays out around.
+
+**Static, and that is a boundary rather than an omission.** Flutter shows an
+animated banner through `ScaffoldMessenger.showMaterialBanner`, which puts it
+in a scaffold slot under the app bar. A `Scaffold3d` has no such slot and a
+`ScaffoldMessenger3d` has no way to reach one; both are a change to the
+scaffold rather than a component, and a banner written into a body's column
+is what Flutter's own documentation calls the "static banner for backwards
+compatibility". The messenger half is left out, and the dartdoc says so.
+
+`MaterialBanner3d.text` takes the content as a string and announces it, for
+`ListTile3d.text`'s reason.
+
+### `BottomAppBar3d`
+
+An 80dp `surfaceContainer` bar at elevation level 2, with 12dp by 16dp of
+padding, grown by the bottom inset the way `NavigationBar3d` is — Flutter's
+`SafeArea` inside a `SizedBox(height: 80)`. It goes in
+`Scaffold3d.bottomNavigationBar`, which is where Flutter puts it, and it is
+`thickness.structural` for the reason every bar is.
+
+**No notch.** Flutter's M3 default shape is an `AutomaticNotchedShape` around
+a plain rectangle with no guest, which draws no notch at all; a notch is a
+hole cut out of a panel, and a hole is not a convex clip or a corner radius,
+so there is nothing here that could draw one. The `shape` parameter is not
+taken. Nor is `FloatingActionButtonLocation.endContained`, which is how
+Flutter's own sample sits a button *inside* the bar: `Scaffold3d` has one
+location, Flutter's default `endFloat`, and a second is a scaffold change.
+
+### `NavigationDrawer3d`, and the drawer it is made of
+
+Three exported things, because Flutter's are three:
+
+- **`Drawer3d`**, the surface: 304dp wide (Flutter's `_kWidth`; M3's spec
+  says 360, and a ported screen lays out at 304), `surfaceContainerLow`,
+  level 1, the two corners away from its edge rounded 16dp — `shape.large` —
+  and full height. It is `thickness.structural`, for the reason a sheet is.
+- **`NavigationDrawer3d`**, which is a `Drawer3d` holding an optional header,
+  a scrolling list and an optional footer, with Flutter's own API: `children`
+  is a list of widgets, and the ones that are a
+  `NavigationDrawerDestination3d` are numbered and selected by
+  `selectedIndex` — so a ported drawer keeps its section headings and
+  dividers between destinations exactly where they were.
+- **`showDrawer3d`**, which slides either one in from an edge over a scrim and
+  returns what it is popped with.
+
+The destination is a 56dp stadium-shaped tile with 12dp of padding either
+side, an icon 16dp in and a `labelLarge` label 12dp after it — and **its
+indicator is its own colour**. Flutter's indicator is a 336 by 56 pill in a
+tile only 280 wide, so it fills the tile; here that is the destination's own
+`Material3d` taking `secondaryContainer` when selected, and no second slab,
+which is the navigation bar's pill without the depth step it needed. The
+label is a string, for the reason the bar's is.
+
+**A drawer is an overlay here, and a scaffold slot in Flutter**, and that is
+a decision this package made before this phase:
+`Scaffold3d`'s own dartdoc says sheets, dialogs and menus are not slots,
+because an overlay belongs to the surface so that it can outlive the screen.
+So there is no `Scaffold3d.drawer` and no `openDrawer`; there is
+`showDrawer3d`, which is `showModalBottomSheet3d` on the leading edge with
+the drawer's own figures — and the leading edge is the right one in right to
+left, which a sheet's `Sheet3dEdge.left` is not. `DrawerAlignment3d` says
+start or end, as Flutter's `DrawerAlignment` does.
+
+The scrim is **black at 54%**, Flutter's `Colors.black54`, not Material's
+32% — a drawer dims more than a dialog in Flutter and a port should not
+notice the difference. The 246ms of Flutter's `_kBaseSettleDuration` is
+`medium1` here; Flutter opens with a critically damped spring rather than a
+curve, and the emphasized curves are the catalogue's nearest word for it.
+
+What is not here: the edge swipe that opens a drawer, which is a drag lane
+item like a sheet's handle; and the drawer's announcement, Flutter's
+localized "Navigation menu", which is a string the catalogue would invent and
+[the language item](../../flutter_scene_layout3d/plans/2026_09_11_what_a_real_application_still_needs.md#a-catalogue-that-speaks-more-than-one-language)
+owns. `semanticLabel` names the route, as a dialog's does.
+
+### `ExpansionTile3d`
+
+A `ListTile3d` whose trailing chevron turns half a turn and whose children
+are revealed under it, over Flutter's 200ms on `Curves.easeIn`: the title
+stays `onSurface`, the chevron goes from `onSurfaceVariant` to `primary`,
+and an expanded tile has a rule of `outlineVariant` above and below it —
+Flutter's border in `dividerColor`, which in M3 is that role.
+
+**This is the first component in the catalogue whose animation is a size
+that really changes**, and that is the design question. Every motion so far
+has been kept off the relayout tier, because none of them changed a size. A
+reveal does: the tile grows, and every row under it moves, and only layout
+can move them. Flutter relayouts too. So the reveal is tier 3, honestly, and
+the phase's claim for it is the narrower one that still matters — **it lays
+out on every frame and builds on none**: a private box listens to the
+controller and writes an `Align3d`'s `heightFactor` inside a `ClipBox3d`, and
+no label is measured again. The chevron's half turn is the node tier, a
+rotation about its own centre. The tile rebuilds once when it starts and once
+when a collapse finishes, which is when the children leave the tree, as
+Flutter's do unless `maintainState`.
+
+Two things a reader should know. **A label straddling the reveal's edge draws
+whole** for the frames it straddles: the panel shader cuts at a clip plane
+and the glyph shader does not, so a half-revealed row has its panel cut and
+its text culled only once it is wholly outside — the same thing a scrolling
+list here does at its edge. And it announces `expanded` on the tile's node,
+which Flutter publishes as a localized hint string; the flag says the same
+thing without inventing one.
+
+It does not take Flutter's `ExpansibleController`, which postdates this
+package's Flutter floor of 3.29; `initiallyExpanded` and
+`onExpansionChanged` are the API until the floor moves, and moving it is the
+user's call rather than this phase's.
+
+### A snack bar's second line
+
+`SnackBar3d` lays its message out in a row that shrink-wraps, so a message
+longer than the bar is one line that overflows rather than two that wrap. The
+fix is Flutter's arrangement: the message is flexible and wraps, and an
+action wider than **a quarter of the bar** — Flutter's
+`actionOverflowThreshold`, measured with a `TextPainter` in `build` exactly as
+Flutter measures it — goes on its own line under the message, at the trailing
+edge, with the message wrapping in 60% of the width above it. The action's
+label is `labelLarge`, which is what Flutter's `TextButton` draws it in; it
+was `bodyMedium` here, in the message's style.
+
+The swipe that dismisses a bar stays out, as the catalogue plan left it.
+
+### What it does not do
+
+**`AlertDialog3d.scrollable` stays where phase 1 put it**, in the next phase
+that touches a dialog: a drawer is a modal route and not a dialog. The
+`DialogStyle3d` and `MenuStyle3d` drift test phase 1 found missing is a
+different matter — this phase touches two overlays, the snack bar and the
+drawer, and phase 1 said that was the phase to write it in. It is written.
+
+### Tests
+
+- Each style against Flutter's figures, by the best grade available, in a
+  `phase_4_defaults_test.dart` beside the existing drift tests — and the
+  dialog's and the menu's, read off a real `Dialog` and a real popup menu.
+- The badge: the corner it sits at in both directions, the 6dp dot, a label
+  wider than the icon it is on, `999+`, a stadium at twice the type, the
+  depth step clearing a default icon's wall, `isLabelVisible`.
+- The banner: both arrangements, the divider at elevation zero only, the
+  margin, the announcement.
+- The bottom app bar: the height, the role, the safe area, and a slot in a
+  `Scaffold3d` whose buttons can be pressed.
+- The drawer: the width and shape at each edge in both directions, the
+  destinations numbered past a heading, the selected one's colour, a press
+  calling back with the right index, the route's arrival from the leading
+  edge, the scrim, and Escape and a tap outside closing it.
+- The expansion tile: collapsed and expanded heights, the reveal part way,
+  **nothing built across the run and the paragraph count unmoved**, the
+  chevron's turn, the rules, the children leaving the tree after a collapse,
+  `maintainState`, `expanded` in its semantics, and right to left.
+- The snack bar: a long message wrapping to a second line, a wide action
+  moving under it, a narrow one staying beside it.
+
+### The gallery
+
+The inbox's navigation destination carries a badge counting the messages
+nobody has opened, which goes down as they are opened. The app bar's leading
+slot opens a navigation drawer with the same two destinations. The settings
+screen shows a banner while notifications are off, and an expansion tile at
+its foot. The table screen gets a bottom app bar whose buttons lift the
+cards, lying flat on the ground with everything else. And composing a
+message says so in two lines.
+
+## What phase 4 found
+
+All six shipped, and the claim the table makes for them held: **nothing in
+the layout package changed**. What each needed underneath it was a private box
+or two in the catalogue — the badge's placement and its stadium, the reveal
+and the chevron's turn. The Material suite is **799**, up from 714; the layout
+suite **1311**, unchanged; the gallery **12**, up from 8; and the photograph
+lane takes four more frames. Seven findings, and the first is larger than the
+phase.
+
+### 1. A press on a control's padding went nowhere, everywhere
+
+The bottom app bar's test pressed its leading icon button through the camera
+and the press did nothing, though `isReachable3d` said the button was there.
+The same was true of an app bar's leading button and its actions, and not of
+a button in the body. The hit path said why: the ray reached the button's
+**panel** and nothing inside it. A `DecoratedBox3d` answers a hit on its own
+account, and every button, chip and list tile in the catalogue put its ink
+well *inside* `Material3d.padding` — so the padding was a rim that took a
+press and did nothing with it. Measured across every interactive component's
+face, the floating action button answered only at its middle, a 72dp filled
+button not 14dp from its centre, a list tile and every labelled tile not in
+their 16dp and 24dp margins, a navigation destination not beside its pill.
+Cards, the selection controls, menu items and the new drawer were whole.
+
+**It had been true for nine phases, and nothing could have said so**, because
+every press in every suite was aimed at a control's centre. The corner of a
+lifted bar is where it surfaced, because there a press through the camera
+lands off-centre: a slot is drawn its lift in front of where it is pressed,
+which `docs/traps.md` records for overlays, and an elevated bar adds its own.
+That drift is still there and is not this phase's to close; with the whole
+face answering, it no longer lands on a dead rim.
+
+The fix is Flutter's arrangement: the padding goes inside the well, and a
+destination's well fills the destination. `test/the_whole_face_test.dart`
+presses ten kinds of control a few logical pixels inside each edge of its
+face. The README's own example of `Material3d` had the rim and teaches the
+other way now; `docs/traps.md` has the rule under *Pointers*.
+
+### 2. Flutter's banner does not read its own token table
+
+The plan read `_BannerDefaultsM3`'s elevation of 1 as a banner's default,
+and so expected a margin under it rather than a rule. The defaults do pass
+1.0 — and `MaterialBanner.build` reads
+`widget.elevation ?? bannerTheme.elevation ?? 0.0`, never the defaults' figure.
+A Material 3 banner in Flutter is flat, with its rule and no margin, and the
+drift test found it by reading the `Material` a real one builds.
+`MaterialBannerStyle3d.elevation` is zero, and says why.
+
+### 3. An open expansion tile's rules are `outline`
+
+The plan said `outlineVariant`, which is a `Divider`'s colour. Flutter's tile
+draws its border in `ThemeData.dividerColor`, and Material 3 sets that to
+`outline`. The drift test read both. A third, smaller one of the same kind:
+`Colors.black54` is `0x8A` alpha, a hair over the 0.54 written first.
+
+### 4. A drawer's destinations were inside the drawer
+
+The first photograph of the open drawer showed its header, an inbox badge,
+and nothing else. A list centres its items in depth unless it is told
+otherwise — `ListView3d`'s deliberate default, for lists of objects — and the
+drawer is an 8dp slab, so every destination sat 3.5dp behind the face that
+hid it. The badge showed only because a badge is lifted clear of its icon.
+**Every headless test of the drawer passed**, because none asked whether the
+rows stood on it; one does now, with `standsOnItsPanel3d`, and failed before
+the fix. That is the third lane doing the thing `AGENTS.md` says it is for,
+and `docs/traps.md` has the list's default beside the flex's.
+
+### 5. The table cannot hold two bars
+
+The gallery's table is 217dp from front to back. An app bar and Flutter's
+80dp bottom bar leave its cards too little room for their three lines, and a
+floating action button at `endFloat` above the bar stands over the third
+card. So the bottom app bar replaced the table's app bar, with the button
+inside it at the trailing end — Material 3's contained arrangement, which
+Flutter calls `endContained` and `Scaffold3d` does not have, written out by
+hand in the bar's row. The plan said the table "gets a bottom app bar"; it
+got one instead of its other bar.
+
+### 6. The reveal is the first relayout on purpose, and it costs what it should
+
+The expansion tile lays out on every frame of its 200ms, which is the first
+motion in the catalogue to do so and the honest tier for it. The test watches
+at the source, with `watchFrames`: frames on which something was laid out —
+not empty, and it should not be — no widget rebuilt, and
+`debugTextParagraphCount` unmoved. The reveal opens from its middle, because
+Flutter's is an `Align` at its default centre.
+
+### 7. The drift test phase 1 owed found nothing wrong with the dialog or menu
+
+`test/phase_4_defaults_test.dart` reads `DialogStyle3d` and `MenuStyle3d`
+off the `Material`s a real `Dialog` and a real popup menu build — colour,
+elevation, corner, minimum width, item height — and every figure agreed. Their
+dartdoc no longer has to apologise for a test that did not exist.
+
+### What phase 4 did not do
+
+- **No render probe asks a question of any of the six.** The badge standing in
+  front of its icon and the drawer's destinations on its face are photographed
+  and asserted headlessly, not probed; a probe that the badge's colour wins at
+  its centre over a turned icon would be the sharp form of the first.
+- **The expansion tile is not photographed open.** It is at the foot of the
+  settings list, below the fold of the panel, and the lane does not scroll.
+- **The banner through the messenger**, the drawer's **edge swipe**,
+  `ExpansibleController`, the bottom app bar's **notch** and
+  **`endContained`**: each is in its dartdoc with its reason.
+- **`AlertDialog3d.scrollable`** is still waiting for a phase that touches a
+  dialog.
+- Nobody has run the gallery in a window on this phase; the photographs are
+  the lane that looked.
+
+## Phases 5 to 7
 
 Written when each is picked up. What the map already knows about each, so
 that writing it is an afternoon:
 
 - **Phase 1's second finding moves `scrollable`** for `AlertDialog3d` out of
-  phase 7 and into the next phase that touches a dialog.
+  phase 7 and into the next phase that touches a dialog. Phase 4 did not.
 - **Phase 5**'s `TabBar3d` meets the rounded clip that does not exist — an
   indicator inside a rounded bar — and should check whether the picture's
   answer, carving it in the panel's own signed distance field, reaches it.

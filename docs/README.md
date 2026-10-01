@@ -323,6 +323,17 @@ Two entry points:
   to its top on every rebuild above it, which
   [the plan that set the rule](../packages/flutter_scene_layout3d/plans/2026_08_25_scroll_controller_ownership.md)
   now corrects.
+  Phase 4 — nothing new underneath — added `Badge3d`, `MaterialBanner3d`,
+  `BottomAppBar3d`, the drawer and `NavigationDrawer3d`, `ExpansionTile3d`
+  and a snack bar's second line, with no change here, and found the largest
+  defect of the batch on the way: every button, chip and list tile had put
+  its ink well inside its padding, and a panel answers a ray on its own
+  account, so a press on any control's rim reached the panel and did
+  nothing. Every suite had pressed controls at their centres. Its drift test
+  also found that Flutter's own banner never reads its token table's
+  elevation, and its first photograph a drawer whose destinations sat inside
+  the slab — a list centres its items in depth. All three are in
+  [traps.md](traps.md) or the plan.
 - **The motion tokens** are
   [the tenth](../packages/flutter_scene_material3d/plans/2026_09_17_the_motion_tokens.md),
   the first plan in the Material package since its own ten phases, and the

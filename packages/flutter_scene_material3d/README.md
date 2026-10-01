@@ -15,9 +15,10 @@ those honestly. The other half is a long, ordinary list of components.
 primitive every component is made of — `Material3d` is the surface, `InkWell3d`
 makes it interactive, `Icon3d` draws a glyph, `SceneTextStyle3d` styles a group
 of labels; Material's seven buttons over one `ButtonStyle3d`; the surfaces and
-rows (`Card3d`, `ListTile3d`, `Divider3d`, `Chip3d`); the structure
-(`Scaffold3d`, `AppBar3d`, `SliverAppBar3d`, `NavigationBar3d`,
-`NavigationRail3d`); the overlays (`Dialog3d` and `AlertDialog3d`,
+rows (`Card3d`, `ListTile3d`, `ExpansionTile3d`, `Divider3d`, `Chip3d`,
+`Badge3d`, `MaterialBanner3d`); the structure (`Scaffold3d`, `AppBar3d`,
+`SliverAppBar3d`, `BottomAppBar3d`, `NavigationBar3d`, `NavigationRail3d`,
+`Drawer3d` and `NavigationDrawer3d`); the overlays (`Dialog3d` and `AlertDialog3d`,
 `Menu3d`, `SnackBar3d`, `Tooltip3d`, `BottomSheet3d`); the selection controls
 (`Checkbox3d`, `Radio3d`, `Switch3d`, `Slider3d`) and the rows that are one
 (`CheckboxListTile3d`, `SwitchListTile3d`, `RadioListTile3d`); the two
@@ -281,18 +282,31 @@ Material3d(
   shape: theme.shape.full,
   elevation: theme.elevation.level1,
   thickness: theme.thickness.standard,
-  padding: const EdgeInsets3d.symmetric(horizontal: 24, vertical: 10),
+  alignment: null,
   child: InkWell3d(
     onTap: _submit,
-    child: const SceneText3d('Continue'),
+    child: ScenePadding3d(
+      padding: metrics.dpInsets(
+        const EdgeInsets3d.symmetric(horizontal: 24, vertical: 10),
+      ),
+      child: const SceneText3d('Continue'),
+    ),
   ),
 )
 ```
 
-Everything it takes is in logical pixels, including the padding and the
+Everything it takes is in logical pixels, including its own `padding` and the
 thickness, which it converts through `Layout3dMetricsScope.of(context)` — so
 **a `Material3d` has to be built inside a `SceneLayout3d`**, and asserts when
 it is not.
+
+**An interactive surface puts its padding inside the well**, as above, and
+not in `Material3d.padding`. A panel answers a ray on its own account, so a
+padding outside the well is a rim that takes a press and does nothing with
+it — every button, chip and tile in this catalogue had one until phase 4 of
+[the components plan](plans/2026_09_21_the_components_a_screen_still_needs.md)
+pressed a control near its edge. `ScenePadding3d` takes world units, which is
+why the example converts.
 
 `contentColor` does two jobs, which is why it is one property: it is the
 colour of the state-layer wash (Material's own rule — a wash is the surface's
@@ -530,6 +544,17 @@ target outermost — outside the panel *and* outside the semantics box — and
 asks the ink well inside for `minimumSize: Size3d.zero`, so there is one
 target rather than two nested ones disagreeing about where the control is.
 
+**And the padding goes inside the well**, which is the half of the rule that
+was missed for nine phases. A panel answers a ray on its own account, so a
+well sitting inside the button's padding left a rim that took the press and
+did nothing with it: a filled button answered on its label and not beside it,
+a floating action button only at its middle, a list tile not in its 16dp
+leading margin. Every suite pressed controls at their centres, so nothing
+said so until a press through the camera landed on a rim. Flutter's
+`InkWell` is outside its button's padding, and so is this one now;
+`test/the_whole_face_test.dart` presses every interactive component a few
+logical pixels inside each edge of its face.
+
 ### What a state costs
 
 A hover, a focus and a press write the wash through the ink controller and
@@ -607,6 +632,48 @@ raised through parallax and occlusion.
 appearance, no hovered container and no focused outline, so every state goes
 through the ink controller — one shader uniform, no rebuild, no layout. A
 filled button cannot say that, because its elevation moves with a hover.
+
+### A badge, a banner, and a tile that opens
+
+`Badge3d` is Flutter's: a 6dp dot, or a 16dp stadium with a count in it,
+`error` on `onError`, at the top-end corner of whatever it decorates —
+`Badge3d.count` writes `999+` past its maximum.
+
+```dart
+NavigationDestination3d(
+  icon: Badge3d.count(count: unread, isLabelVisible: unread > 0, child: const Icon3d(Icons.inbox)),
+  label: 'Inbox',
+)
+```
+
+**It stands in front of what it decorates by a real distance**, because an
+icon here is not flat: a glyph's wall reaches a tenth of its size toward the
+viewer, so a badge resting on a 24dp icon's plane would have the icon's
+corner standing through it. `BadgeStyle3d.depthStep` clears that wall, on the
+node tier. It may be wider than its child — a three-digit count on a 24dp
+icon — which is why it is placed by a box of its own rather than by a
+`Positioned3d`: a stack caps a positioned child at its own size. And it
+announces nothing unless given a `semanticLabel`, because "3" is not a thing a
+reader can act on and only the application knows what it counts.
+
+`MaterialBanner3d` is the static banner a screen writes into its own column:
+one action beside the content, two or more in a 52dp bar under it at the
+trailing edge. **It is flat by default, with a rule under it**, which is what
+Flutter's draws — Flutter's token table gives a banner an elevation of 1 and
+its build never reads it. Given an elevation, it loses the rule and gains
+Flutter's 10dp margin. What it does not have is Flutter's
+`ScaffoldMessenger.showMaterialBanner`, which slides one in under the app bar
+through a scaffold slot this package's scaffold does not have.
+
+`ExpansionTile3d` is a list tile whose chevron turns half a turn as its
+children are revealed under it, on Flutter's 200ms and `Curves.easeIn`, with a
+rule of `outline` above and below an open tile. **It is the one animation in
+the catalogue that lays out on every frame**, and it should: the tile grows,
+the rows under it move, and only layout moves them. What it keeps is that a
+frame of the reveal builds nothing and measures no text — a box writes an
+`Align3d`'s height factor from the clock, and the chevron turns on the node
+tier. The children leave the tree once a close finishes, unless
+`maintainState`.
 
 ### A card inside a scrolling list keeps its depth
 
@@ -863,6 +930,50 @@ pass, and a bar that rebuilt every frame of a scroll would be putting text
 measurement back on the relayout path. The collapse that *does* happen is
 expressed through the constraints the header hands its child: the surface
 fills what it is offered and the toolbar stays at the bottom.
+
+### A bottom app bar, and a drawer that is shown
+
+`BottomAppBar3d` is Flutter's Material 3 bar of actions: 80dp of
+`surfaceContainer` at level 2, holding what it is given 12dp from its top and
+16dp from its sides, in `Scaffold3d.bottomNavigationBar`. It has no notch — a
+notch is a hole in a panel, which nothing here can cut, and Material 3's
+default shape has none anyway — and `Scaffold3d` has no `endContained`
+location, so a button meant to sit inside the bar goes in the bar's own row.
+
+A drawer is **shown**, not slotted:
+
+```dart
+IconButton3d(
+  icon: Icons.menu,
+  semanticLabel: 'Menu',
+  onPressed: () => showDrawer3d<void>(
+    context: context,
+    builder: (context) => NavigationDrawer3d(
+      selectedIndex: _screen,
+      onDestinationSelected: (index) {
+        setState(() => _screen = index);
+        Navigator3d.of(SceneOverlay3d.of(context))?.pop();
+      },
+      semanticLabel: 'Mail',
+      children: const <Widget>[
+        NavigationDrawerDestination3d(icon: Icon3d(Icons.inbox), label: 'Inbox'),
+        NavigationDrawerDestination3d(icon: Icon3d(Icons.send), label: 'Sent'),
+      ],
+    ),
+  ),
+)
+```
+
+Flutter's drawer is a `Scaffold` slot opened with `openDrawer`. Here every
+overlay belongs to the surface rather than to the screen, so `showDrawer3d`
+slides a `Drawer3d` — or a `NavigationDrawer3d`, which is one with
+Material's destinations in it — in from the edge reading starts at, over
+Flutter's `Colors.black54` scrim, and returns what it is popped with. The
+start edge is the right one in right to left, which is what a drawer has that
+a side sheet's `Sheet3dEdge.left` does not. A selected destination is its own
+surface in `secondaryContainer`: Flutter's indicator is wider than the tile it
+is in, so it fills it, and here that is one slab rather than a pill and a
+step.
 
 ### The safe area, and the reader's type
 
@@ -1130,6 +1241,12 @@ leaves the tree. A bar rises a quarter of a second, waits four, and sinks; the
 screen asks for no frames between the two ends. The queue knows one thing
 about that: a bar on its way out is still in the overlay, so the next one
 waits for it rather than arriving on top of it.
+
+A message longer than a line wraps, and the bar grows to hold it. An action
+wider than a quarter of the bar — Flutter's `actionOverflowThreshold`,
+measured Flutter's way, once, in `build` — goes on a line of its own under
+the message at the trailing edge, and its label is `labelLarge`, as a
+`TextButton`'s is.
 
 `Tooltip3d` keeps the same promise where it matters most, because a hover is a
 per-pointer path: a pointer entering starts a `Timer` and a pointer leaving
@@ -1745,12 +1862,12 @@ alignment**, the centred one, where Flutter has four. And a card has no
 carves its own radius, but a *child* overflowing a rounded card is not clipped
 to it.
 
-Four the structure left. A scaffold has no **drawer** and no `endDrawer` —
-which is now a smaller gap than it was, since `showModalBottomSheet3d` on
-`Sheet3dEdge.left` is most of one. There is
+Four the structure left. A drawer is **shown** with `showDrawer3d` rather
+than being a scaffold slot, and nothing opens one with a swipe from the edge,
+which is a drag-lane item like a sheet's handle. There is
 no **`FloatingActionButtonLocation`** — the button sits at the trailing bottom
 corner, above the navigation bar, and a screen wanting it elsewhere positions
-its own. A `SliverAppBar3d` has no **`flexibleSpace`** and no `bottom`, so a
+its own; a bottom app bar's contained button goes in the bar's own row. A `SliverAppBar3d` has no **`flexibleSpace`** and no `bottom`, so a
 tab bar under a title is not expressible yet. And a navigation bar has one
 **label behaviour**, always-show, where Flutter has three: the other two hide
 labels on unselected destinations, which changes a destination's height as the
@@ -1770,7 +1887,8 @@ deliberately left out*: a menu does not **reflow** to stay inside the panel,
 though it can now be *told* which way to open, through `menuCorner` and
 `anchorCorner`; a tooltip has no **long-press** trigger, because the innermost recognizer wins the arena and a
 tooltip around a button would take the button's own long press; a snack bar has
-no **swipe to dismiss** and no second line; and a sheet has no **drag handle**
+no **swipe to dismiss**; a banner cannot be **shown through the messenger**,
+which wants a scaffold slot under the app bar; and a sheet has no **drag handle**
 and cannot be dragged to a height, while `showBottomSheet3d` does not shorten
 the screen the way Flutter's `Scaffold.showBottomSheet` does — an overlay is
 not a scaffold slot, by design. What is no longer on that list is animation:
@@ -1788,6 +1906,11 @@ for its divisions and no **value indicator** above the thumb, both of which are
 ornament on the component whose design question here was the drag. And a slider takes an explicit **width** rather than
 filling its parent, because the thumb's position is written before layout
 rather than after it.
+
+One the expansion tile left. It takes no **`ExpansibleController`**, which is
+Flutter's own and postdates this package's Flutter floor of 3.29;
+`initiallyExpanded` and `onExpansionChanged` are the API until the floor
+moves, and moving it is a publishing decision rather than a component one.
 
 Two the progress indicators left. They draw Flutter's default design and not
 its **2024** one, which adds a gap before the track, a dot at its end and round

@@ -166,6 +166,45 @@ void main() {
     keep(reseeded);
     expectAFrame(reseeded);
 
+    // Phase 4 of the components a screen still needs, in the states a person
+    // would have to put the gallery into to see them. The badge on the inbox
+    // and the table's bottom app bar are in every frame above.
+    //
+    // A banner, which the settings show while notifications are off: flat,
+    // with its rule, because that is what Flutter's draws.
+    await tester.tap3d(find3d.bySemanticsLabel('Notifications'));
+    await pumpFrames(tester, 40);
+    final banner = await photographAgain(tester, name: 'gallery_banner');
+    keep(banner);
+    expectAFrame(banner);
+
+    // The navigation drawer, arriving and then open: a structural slab from
+    // the leading edge over a scrim that keeps 54% of its fragments.
+    await tester.tap3d(find3d.bySemanticsLabel('Menu'));
+    keep(
+      await photographAgain(tester, name: 'gallery_drawer_arriving', frames: 2),
+    );
+    final drawer = await photographAgain(
+      tester,
+      name: 'gallery_drawer',
+      frames: 40,
+    );
+    keep(drawer);
+    expectAFrame(drawer);
+
+    // Back to the inbox through the drawer, and a message long enough to need
+    // a second line.
+    await tester.tap3d(find3d.bySemanticsLabel('Inbox').last);
+    await pumpFrames(tester, 40);
+    await tester.tap3d(find3d.bySemanticsLabel('Compose'));
+    final snackBar = await photographAgain(
+      tester,
+      name: 'gallery_snack_bar',
+      frames: 40,
+    );
+    keep(snackBar);
+    expectAFrame(snackBar);
+
     // The one thing here that is a probe rather than a photograph, and it is
     // in this lane because nowhere else is there a real screen with real
     // overlays over it. A label whose atlas has repacked waits for the new

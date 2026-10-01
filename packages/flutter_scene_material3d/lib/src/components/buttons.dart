@@ -21,6 +21,7 @@ import 'package:flutter_scene_layout3d/widgets.dart'
         Layout3dMetricsScope,
         SceneAlign3d,
         SceneConstrainedBox3d,
+        ScenePadding3d,
         SceneSemantics3d,
         SceneTapTarget3d;
 
@@ -223,7 +224,6 @@ class _Button3dState extends State<Button3d> {
             elevation: resolved.elevation,
             thickness: style.thickness,
             border: resolved.border,
-            padding: style.padding,
             textStyle: theme.textStyle(
               style.labelStyle,
               color: resolved.content,
@@ -255,11 +255,19 @@ class _Button3dState extends State<Button3d> {
                 _note(Material3dState.focused, focused);
                 widget.onFocusChange?.call(focused);
               },
-              child: SceneAlign3d(
-                alignment: Alignment3d.frontCenter,
-                widthFactor: 1.0,
-                heightFactor: 1.0,
-                child: widget.child,
+              // The padding is **inside** the well, as Flutter's is inside
+              // its `InkWell`. Outside it, the well covered the label alone
+              // and a press on the button's padding landed on the panel and
+              // went no further: a 56dp floating action button answered only
+              // at its middle.
+              child: ScenePadding3d(
+                padding: metrics.dpInsets(style.padding),
+                child: SceneAlign3d(
+                  alignment: Alignment3d.frontCenter,
+                  widthFactor: 1.0,
+                  heightFactor: 1.0,
+                  child: widget.child,
+                ),
               ),
             ),
           ),

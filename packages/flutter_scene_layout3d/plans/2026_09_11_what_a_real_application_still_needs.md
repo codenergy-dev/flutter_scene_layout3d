@@ -1,8 +1,8 @@
 ---
 status: in progress
-reason: five of the seventeen items are open; the motion lane is closed and so is the colour generator, so what is left is the catalogue batch — planned in seven phases, three landed — more than one screen, more than one language, and the letter someone can type with the keyboard controls behind it
+reason: five of the seventeen items are open; the motion lane is closed and so is the colour generator, so what is left is the catalogue batch — planned in seven phases, four landed — more than one screen, more than one language, and the letter someone can type with the keyboard controls behind it
 created_at: 2026-09-11T21:20:18Z
-updated_at: 2026-09-30T21:30:00Z
+updated_at: 2026-10-01T12:00:00Z
 commit: abc2469ce5c4ec4c41e2738fc5acf55bcf40640a
 ---
 
@@ -106,7 +106,7 @@ plan, which is the rule phase 0 established and every phase since has obeyed.
 | [An application with more than one screen](#an-application-with-more-than-one-screen) | layout3d | named routes, deep links, the system back button |
 | ~~[A way to test a screen someone else built](#a-way-to-test-a-screen-someone-else-built)~~ | layout3d | **done** — anyone building on this, including us |
 | ~~[The motion tokens](#the-motion-tokens)~~ | material3d | **done** — every overlay in the catalogue arrives instead of appearing |
-| [The components a screen still needs](#the-components-a-screen-still-needs) | material3d | **in progress** — [its plan](../../flutter_scene_material3d/plans/2026_09_21_the_components_a_screen_still_needs.md) is seven phases; three have landed — the alert dialog, the tristate box and the labelled tiles; the safe area and type that grows; the switch's thumb, the chip's lift and both progress indicators |
+| [The components a screen still needs](#the-components-a-screen-still-needs) | material3d | **in progress** — [its plan](../../flutter_scene_material3d/plans/2026_09_21_the_components_a_screen_still_needs.md) is seven phases; four have landed — the alert dialog, the tristate box and the labelled tiles; the safe area and type that grows; the switch's thumb, the chip's lift and both progress indicators; the badge, the banner, the bottom app bar, the drawer, the expansion tile and the snack bar's second line |
 | ~~[A scheme from one colour](#a-scheme-from-one-colour)~~ | material3d | **done** — any application with a brand |
 | [The controls that wait on a keyboard](#the-controls-that-wait-on-a-keyboard) | material3d | search, dropdowns, date and time entry |
 | [A catalogue that speaks more than one language](#a-catalogue-that-speaks-more-than-one-language) | material3d | every locale, and the strings the catalogue invents |
@@ -210,9 +210,13 @@ underneath it, first the ones a ported screen reaches for first. Phase 1
 — `AlertDialog3d`, the tristate checkbox and the three labelled tiles —
 phase 2 — the safe area and type that grows — and phase 3 — the switch's
 thumb, the chip's lift and both progress indicators, all on the node tier —
-have landed. Phase 3 needed one change here,
+have landed, and so has phase 4 — the badge, the banner, the bottom app bar,
+the drawer, the expansion tile and the snack bar's second line. Phase 3
+needed one change here,
 [a border painted by a gradient](2026_09_30_a_border_painted_by_a_gradient.md),
-because nothing in the panel shader could draw an arc.
+because nothing in the panel shader could draw an arc; phase 4 needed none,
+and found on the way that every button, chip and tile in the catalogue had
+been swallowing a press on its padding.
 
 **[A letter someone can type](#a-letter-someone-can-type) last of the large
 items, and it is much larger than anything above it.** It gates
@@ -917,8 +921,10 @@ revisited: the dialog was built, because the column has one right arrangement
 and a caller writing it by hand gets the actions at the wrong edge. What the
 entry got wrong so far, in short: tristate needed no change to the token
 table, and the labelled tiles did not need an answer to "which of two
-announcements" — they needed there to be only one control. The entry below is
-what the plan was reasoned from.
+announcements" — they needed there to be only one control. Phase 4 has since
+closed `Badge3d`, `MaterialBanner3d`, `BottomAppBar3d`, `NavigationDrawer3d`,
+`ExpansionTile3d` and a snack bar's second line, with no change to this
+package. The entry below is what the plan was reasoned from.
 
 The catalogue is broad and it is not the catalogue. Missing entirely, from the
 audit: `ProgressIndicator3d` in both forms, `TabBar3d`/`TabBarView3d`,

@@ -41,8 +41,8 @@ void main() {
       () => ListTile3d.text(title: 'x'),
       textDirection: _rtl,
     );
-    final container = oneOf<Container3d>(it.surface);
-    final padding = container.padding.resolve(container.textDirection);
+    final box = oneOf<Padding3d>(it.surface);
+    final padding = box.padding.resolve(box.textDirection);
     expect(padding.right, closeTo(0.16, 1e-9));
     expect(padding.left, closeTo(0.24, 1e-9));
   });

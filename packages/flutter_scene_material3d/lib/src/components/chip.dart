@@ -29,6 +29,7 @@ import 'package:flutter_scene_layout3d/widgets.dart'
         SceneAnimatedSlide3d,
         SceneConstrainedBox3d,
         SceneGestureDetector3d,
+        ScenePadding3d,
         SceneRow3d,
         SceneSemantics3d,
         SceneTapTarget3d;
@@ -308,6 +309,18 @@ class _Chip3dState extends State<Chip3d> {
       ],
     );
 
+    // The padding is inside the well, so a press anywhere on the chip is a
+    // press on the chip; see `Button3d`, which had the same rim.
+    final padded = ScenePadding3d(
+      padding: metrics.dpInsets(tokens.padding),
+      child: SceneAlign3d(
+        alignment: Alignment3d.frontCenter,
+        widthFactor: 1.0,
+        heightFactor: 1.0,
+        child: row,
+      ),
+    );
+
     final surface = Material3d(
       color: resolved.container,
       contentColor: resolved.content,
@@ -315,7 +328,6 @@ class _Chip3dState extends State<Chip3d> {
       elevation: theme.elevation.level0,
       thickness: tokens.thickness,
       border: resolved.border,
-      padding: tokens.padding,
       textStyle: theme.textStyle(tokens.labelStyle, color: resolved.content),
       // The chip shrink-wraps its label, so the alignment happens below the
       // ink well with a width factor, exactly as a button's does.
@@ -330,19 +342,9 @@ class _Chip3dState extends State<Chip3d> {
               autofocus: autofocus,
               onTap: tap,
               onHighlightChanged: _handleHighlight,
-              child: SceneAlign3d(
-                alignment: Alignment3d.frontCenter,
-                widthFactor: 1.0,
-                heightFactor: 1.0,
-                child: row,
-              ),
+              child: padded,
             )
-          : SceneAlign3d(
-              alignment: Alignment3d.frontCenter,
-              widthFactor: 1.0,
-              heightFactor: 1.0,
-              child: row,
-            ),
+          : padded,
     );
 
     final constrained = SceneConstrainedBox3d(

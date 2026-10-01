@@ -6,8 +6,12 @@ all hit-testable:
 - **Left**, a Material screen standing upright on a panel that turns. It is a
   `Scaffold3d` — an app bar, a body, a navigation bar and a floating action
   button — with filter chips over a scrolling list of cards on one tab and the
-  settings on the other. Turning is the plane node's business, so the layout
-  does not re-run to make it happen.
+  settings on the other. The inbox's destination carries a badge counting the
+  messages nobody has opened, the app bar's menu button slides a navigation
+  drawer in from the leading edge, the settings raise a banner while
+  notifications are off, and an *About* tile at their foot opens. Turning is
+  the plane node's business, so the layout does not re-run to make it
+  happen.
 
   (Left, because `flutter_scene` builds its view matrix as
   `right = up × forward`: a camera out on `+z` has a right vector of `-x`, so
@@ -17,7 +21,10 @@ all hit-testable:
   makes layout's "down" run away from the camera, and that is the whole
   difference: the widgets do not know. It is the case a 2D toolkit has no
   answer for, and the elevations on it are heights rather than shadows — tap a
-  card and it rises off the table.
+  card, or one of the bottom app bar's buttons, and it rises off the table.
+  The bar is the screen's only one, with its floating action button inside
+  it: the table is 217dp from front to back, too short for an app bar and an
+  80dp bottom bar both.
 - **Right**, a scrolling list of real meshes, described declaratively. It is
   deliberately *not* Material: the same protocol arranges an application's own
   geometry, and having both in one frame is what says so.
@@ -26,7 +33,9 @@ Hovering names what is under the cursor — a Material component announces
 itself through `Semantics3d`, so the readout says "Ada Lovelace" or "Compose"
 rather than the name of a box — and pressing anything works: the switches
 throw, the slider drags, the chips select, and the floating action button
-raises a snack bar.
+raises a snack bar two lines long. A press lands anywhere on a control's face,
+its padding included — which was not true of any button, chip or tile here
+until the bottom app bar's corner button turned out not to be pressable.
 
 ## Changing the colours while it is running
 

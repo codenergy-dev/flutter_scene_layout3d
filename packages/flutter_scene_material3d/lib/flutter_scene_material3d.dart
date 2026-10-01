@@ -29,10 +29,10 @@
 ///   child: SceneTheme3d(
 ///     data: Theme3dData.dark,
 ///     textRendererFactory: AtlasText3dRenderer.new,
-///     child: Material3d(
-///       shape: Theme3dData.dark.shape.full,
-///       padding: const EdgeInsets3d.symmetric(horizontal: 24, vertical: 10),
-///       child: InkWell3d(onTap: submit, child: const SceneText3d('Continue')),
+///     child: FilledButton3d(
+///       onPressed: submit,
+///       semanticLabel: 'Continue',
+///       child: const SceneText3d('Continue'),
 ///     ),
 ///   ),
 /// )
@@ -63,6 +63,12 @@ export 'src/app/setup.dart'
         loadPanelMaterialFactory;
 export 'src/components/app_bar.dart' show AppBar3d, SliverAppBar3d;
 export 'src/components/app_bar_style.dart' show AppBarStyle3d, AppBarVariant3d;
+export 'src/components/badge.dart' show Badge3d;
+export 'src/components/badge_style.dart' show BadgeStyle3d;
+export 'src/components/banner.dart' show MaterialBanner3d;
+export 'src/components/banner_style.dart' show MaterialBannerStyle3d;
+export 'src/components/bottom_app_bar.dart'
+    show BottomAppBar3d, BottomAppBarStyle3d;
 export 'src/components/bottom_sheet.dart'
     show BottomSheet3d, Sheet3dEdge, showBottomSheet3d, showModalBottomSheet3d;
 export 'src/components/button_style.dart'
@@ -76,6 +82,15 @@ export 'src/components/chip_style.dart'
     show ChipStyle3d, ChipVariant3d, ResolvedChipStyle3d;
 export 'src/components/dialog.dart' show AlertDialog3d, Dialog3d, showDialog3d;
 export 'src/components/divider.dart' show Divider3d, VerticalDivider3d;
+export 'src/components/drawer.dart'
+    show
+        Drawer3d,
+        DrawerAlignment3d,
+        NavigationDrawer3d,
+        NavigationDrawerDestination3d,
+        showDrawer3d;
+export 'src/components/drawer_style.dart'
+    show DrawerStyle3d, NavigationDrawerStyle3d;
 export 'src/components/buttons.dart'
     show
         Button3d,
@@ -86,6 +101,8 @@ export 'src/components/buttons.dart'
         IconButton3d,
         OutlinedButton3d,
         TextButton3d;
+export 'src/components/expansion_tile.dart'
+    show ExpansionTile3d, ExpansionTileStyle3d;
 export 'src/components/icon.dart' show Icon3d;
 export 'src/components/ink.dart'
     show InkController3d, InkController3dScope, MutableInkController3d;

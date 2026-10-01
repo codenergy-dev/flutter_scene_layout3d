@@ -158,16 +158,15 @@ const Curve _linear = Cubic(0.0, 0.0, 1.0, 1.0);
 
 /// Everything a [Dialog3d] is made of.
 ///
-/// **Every figure here is a transcription**, of `_DialogDefaultsM3` and of
-/// Flutter's `Dialog` constants, pinned by `test/dialog_test.dart`'s *the
-/// tokens* group — which states them rather than reading them off a real
-/// `Dialog`, so it catches a change here and not a change upstream.
 /// `_DialogDefaultsM3` is private and `DialogTheme.of` answers with an
-/// application's overrides rather than the resolved defaults, and the 560dp
-/// maximum width is an M3 spec figure Flutter does not enforce at all. *(This
-/// used to cite a `test/overlay_defaults_test.dart` that read the `Material`
-/// a real `Dialog` renders. No such test has ever existed in this
-/// repository.)*
+/// application's overrides rather than the resolved defaults, so the figures
+/// are transcribed — and then checked: `test/phase_4_defaults_test.dart`
+/// reads the colour, the elevation, the 28dp corner and the 280dp minimum
+/// width off the `Material` a real `Dialog` lays out. The inset padding is
+/// private and stated there as such, and the 560dp maximum width is an M3
+/// spec figure Flutter does not enforce at all. *(This used to cite a
+/// `test/overlay_defaults_test.dart` that had never existed; phase 4 of the
+/// components plan wrote the test it described.)*
 ///
 /// Every figure is in **logical pixels**.
 @immutable
@@ -395,8 +394,9 @@ class AlertDialogStyle3d {
 /// `_kMenuMinWidth` and `_kMenuMaxWidth`, 48dp its `_kMenuItemHeight`, 8dp its
 /// `_kMenuVerticalPadding` — and the container, elevation and shape are
 /// `_PopupMenuDefaultsM3`'s. All of them are transcriptions, pinned by
-/// `test/menu_test.dart`'s *the tokens* group; nothing reads them off a real
-/// `PopupMenuButton` yet, whatever this said before.
+/// `test/menu_test.dart`'s *the tokens* group, and the container, elevation,
+/// corner, minimum width and item height are also read off a real open
+/// `PopupMenuButton` in `test/phase_4_defaults_test.dart`.
 @immutable
 class MenuStyle3d {
   /// Creates a menu style.
@@ -512,9 +512,11 @@ class MenuStyle3d {
 
 /// Everything a [SnackBar3d] is made of.
 ///
-/// Read off Flutter's `_SnackbarDefaultsM3` where it is reachable through a
-/// real `SnackBar`'s rendered `Material`; the two durations are Flutter's own
-/// private constants, transcribed, and the tests say so.
+/// Transcribed from Flutter's `_SnackbarDefaultsM3` and its private
+/// constants, and the tests say so; `test/phase_4_defaults_test.dart` reads
+/// the action's label style off a real `SnackBar`, which is the one figure
+/// here a laid-out snack bar shows. *(This used to say the figures were read
+/// off a real snack bar's `Material`. Nothing ever did.)*
 @immutable
 class SnackBarStyle3d {
   /// Creates a snack bar style.
@@ -532,9 +534,12 @@ class SnackBarStyle3d {
     required this.maxWidth,
     required this.displayDuration,
     required this.textStyle,
+    required this.actionTextStyle,
+    required this.actionOverflowThreshold,
     required this.arrival,
   }) : assert(elevation >= 0.0),
-       assert(thickness >= 0.0);
+       assert(thickness >= 0.0),
+       assert(actionOverflowThreshold >= 0.0 && actionOverflowThreshold <= 1.0);
 
   /// The style Material publishes, out of [theme]'s tokens.
   factory SnackBarStyle3d.of(Theme3dData theme) {
@@ -553,6 +558,8 @@ class SnackBarStyle3d {
       maxWidth: 600.0,
       displayDuration: const Duration(milliseconds: 4000),
       textStyle: Typography3dToken.bodyMedium,
+      actionTextStyle: Typography3dToken.labelLarge,
+      actionOverflowThreshold: 0.25,
       // Flutter's `_snackBarTransitionDuration`, which is `medium1`. It rises
       // by a *fraction* of its own height rather than by a figure, which is
       // the case `Motion3d.fraction` exists for: a two-line bar is taller and
@@ -610,6 +617,19 @@ class SnackBarStyle3d {
 
   /// The type the message is drawn in.
   final Typography3dToken textStyle;
+
+  /// The type the action's label is drawn in: `labelLarge`, which is what
+  /// Flutter's `TextButton` draws it in.
+  final Typography3dToken actionTextStyle;
+
+  /// How wide the action may be, as a share of the bar, before it moves onto
+  /// a line of its own under the message: a quarter, Flutter's
+  /// `actionOverflowThreshold`.
+  ///
+  /// Measured the way Flutter measures it — the label laid out once in
+  /// `build`, plus half the bar's horizontal padding — so a port breaks its
+  /// bars onto two lines at the same widths it did before.
+  final double actionOverflowThreshold;
 
   /// How the bar arrives and leaves: 250ms, rising one whole height from
   /// below the edge it sits on.

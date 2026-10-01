@@ -20,6 +20,7 @@ import 'package:flutter_scene_layout3d/widgets.dart'
         SceneColumn3d,
         SceneConstrainedBox3d,
         SceneExpanded3d,
+        ScenePadding3d,
         SceneRow3d,
         SceneSemantics3d,
         SceneTapTarget3d,
@@ -307,11 +308,17 @@ class ListTile3d extends StatelessWidget {
 /// node *and* the labelled tile's over it, and nothing here merges two nodes
 /// into one. `buildNavigationDestination3d` is the same shape for the bar and
 /// the rail.
+///
+/// [contentColor], when it is given, is the colour of the title, the
+/// subtitle and whatever is in the slots of an enabled tile — Flutter's
+/// `ListTileTheme.merge(textColor: …)`, which is how an `ExpansionTile`
+/// colours the tile it is built on.
 Widget buildListTile3d(
   BuildContext context,
   ListTile3d tile,
-  SemanticsProperties properties,
-) {
+  SemanticsProperties properties, {
+  Color? contentColor,
+}) {
   final ListTile3d(
     :leading,
     :title,
@@ -337,6 +344,8 @@ Widget buildListTile3d(
   final Color supportColor;
   if (!enabled) {
     titleColor = supportColor = scheme.disabledContent;
+  } else if (contentColor != null) {
+    titleColor = supportColor = contentColor;
   } else if (selected) {
     titleColor = supportColor = selectedColor ?? scheme.primary;
   } else {
@@ -387,7 +396,15 @@ Widget buildListTile3d(
   final content = SceneTextStyle3d(
     style: Typography3dToken.labelSmall,
     color: supportColor,
-    child: row,
+    // The padding is inside the well, so the tile's 16dp and 24dp margins
+    // and its 8dp top and bottom are part of the row a press reaches, as they
+    // are in Flutter. They used to be outside it, and swallowed the press.
+    child: ScenePadding3d(
+      padding: metrics.dpInsets(
+        contentPadding ?? ListTile3d.defaultContentPadding,
+      ),
+      child: row,
+    ),
   );
 
   final surface = Material3d(
@@ -396,7 +413,6 @@ Widget buildListTile3d(
     shape: theme.shape.none,
     elevation: theme.elevation.level0,
     thickness: theme.thickness.standard,
-    padding: contentPadding ?? ListTile3d.defaultContentPadding,
     // The row fills the tile rather than being centred in it, so a trailing
     // control really does sit at the trailing edge.
     alignment: null,
