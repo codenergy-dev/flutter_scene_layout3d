@@ -20,8 +20,9 @@ rows (`Card3d`, `ListTile3d`, `Divider3d`, `Chip3d`); the structure
 `NavigationRail3d`); the overlays (`Dialog3d` and `AlertDialog3d`,
 `Menu3d`, `SnackBar3d`, `Tooltip3d`, `BottomSheet3d`); the selection controls
 (`Checkbox3d`, `Radio3d`, `Switch3d`, `Slider3d`) and the rows that are one
-(`CheckboxListTile3d`, `SwitchListTile3d`, `RadioListTile3d`); and the press
-ripple. What is *not* here
+(`CheckboxListTile3d`, `SwitchListTile3d`, `RadioListTile3d`); the two
+progress indicators (`LinearProgressIndicator3d`,
+`CircularProgressIndicator3d`); and the press ripple. What is *not* here
 is listed honestly at the end of this file, and text input is not planned at
 all.
 
@@ -709,6 +710,15 @@ silently inert; and an ink well there would find the *enclosing* surface's ink
 controller and light the whole chip up. What works is the innermost recognizer
 winning the arena, which it does, exactly as in Flutter.
 
+**A held chip comes toward the finger.** Flutter's assist, filter and
+suggestion chips rise to 1dp while they are pressed, and in Flutter that is a
+shadow in a transparent colour — nothing you can see. Here an elevation is a
+distance, so a held chip really does stand 1dp off the card it is on, and
+settles back when it is let go, over Flutter's 75ms. An input chip stays put,
+as Flutter's does. The lift is a slide on the node tier around the whole chip:
+it rebuilds once when the press starts and once when it ends, and nothing is
+laid out between. `ChipStyle3d.pressElevation` is the figure.
+
 ## Structure: a screen, its bars, and the depths between them
 
 `Scaffold3d` is the screen. It owns three things and merely positions
@@ -1314,11 +1324,22 @@ for. Small type here is not a resolution problem.
 ### The thumb slides on the node tier, and stands proud of its track
 
 `docs/traps.md` lists three tiers of change — repaint only, node only, and a
-real relayout — and a thumb moving along a track is squarely the second. So the
-slide is a `nodeOffset` and the slider's *fill* is a `nodeTransform`, both
-written by `SceneNodeShift3d`, and neither calls `markNeedsLayout`. Layout
-centres the thumb on the track; the shift carries it half the travel either
-way.
+real relayout — and a thumb moving along a track is squarely the second. So a
+slider's thumb is a `nodeOffset` and its *fill* a `nodeTransform`, both written
+by `SceneNodeShift3d`, and neither calls `markNeedsLayout`.
+
+A switch's thumb does more, and all of it on the same tier. A toggle is
+Flutter's three motions over `theme.motion.medium2`: the thumb **slides** on an
+overshooting curve, so it runs a little past the end and settles; it **grows**
+from 16dp off to 24dp on, passing through a 34 by 22 stretch on the way; and
+while it is **held** it swells to 28dp. The thumb is laid out once, at 24dp in
+the middle of the track, and a private box above it listens to the switch's
+clocks and writes an offset for the slide and a scale about the thumb's centre
+for everything else. So a toggle rebuilds the switch once, for its colours —
+which change at once, where Flutter cross-fades them — and the 300ms after it
+lay nothing out and build nothing; `test/selection_test.dart` watches every
+frame of one to say so. The scale is why the stretch is an **ellipse**, where
+Flutter's is a stadium: a scale stretches the corner radius with the box.
 
 The fill is the part worth pausing on. The obvious way to fill a track is to
 give a box a width and change it, which is a relayout on every frame of a drag.
@@ -1378,19 +1399,62 @@ straight out of Flutter — `Checkbox.width`, `kRadialReactionRadius`,
 real Flutter control with `tester.getSize`, and the rest are transcriptions
 that say so in the test.
 
-Two deliberate departures. A switch's thumb is **one size**, Material's
-selected 24dp, where Material grows it from 16dp as it crosses. The tokens for
-that growth exist now — it is one of `MotionScheme3d`'s customers in waiting —
-but landing them was never the whole of it: a size that changes every frame is
-a relayout every frame, which is the one tier this catalogue keeps off the
-interaction path, and a thumb that *jumped* between two sizes would be worse
-than one that does not move. It wants a thumb drawn at one size and scaled on
-the node tier, which is a change to how the control is built rather than a
-duration. And the slider is Material's **round-thumb** one
+One deliberate departure: the slider is Material's **round-thumb** one
 (a 4dp track and a 20dp thumb) rather than the 2024 bar-handle one, because a
 thumb standing proud of a track is what this catalogue's third dimension is
 for, while a handle inset into a track of its own height is a picture a 3D
 scene has nothing to add to.
+
+## Progress: a bar that scales and a ring that is a border
+
+`LinearProgressIndicator3d` and `CircularProgressIndicator3d` are Flutter's,
+parameter for parameter, over one `ProgressIndicatorStyle3d`:
+
+```dart
+SceneColumn3d(
+  crossAxisAlignment: CrossAxisAlignment3d.stretch,
+  children: <Widget>[
+    LinearProgressIndicator3d(
+      value: _received / _total,
+      semanticsLabel: 'Downloading',
+    ),
+    // No value: something is under way and nobody knows how long it takes.
+    const CircularProgressIndicator3d(semanticsLabel: 'Loading'),
+  ],
+)
+```
+
+The design is the one Flutter draws by default, which it calls `year2023`: a
+4dp bar of `primary` on a `secondaryContainer` track with square ends, and a
+4dp stroke on a 36dp circle with no track. A determinate one announces a
+progress bar from 0 to 100, an indeterminate one a loading spinner.
+
+**Neither lays anything out while it moves**, and each gets there differently.
+The bar is the slider's fill again — a slab as long as the track, stretched on
+the node tier from the end it grows from — except that a bar fills its parent,
+so it does not know its width until it is laid out. A private box holds the
+span as two fractions and turns them into a matrix once it has a size, and
+whenever they change after. The indeterminate bar is Flutter's two lines on
+Flutter's four curves, each a span box listening to the clock.
+
+The ring cannot be drawn by stretching anything, and needed one thing from the
+layout package: **a border painted by a gradient**. A transparent circle with
+a 4dp border is a ring, and a `SweepGradient` on that border with a hard stop
+at the value is the arc; the rest of the ring is not drawn at all, or is the
+track when `backgroundColor` asks for one — the same ramp, so the track and the
+arc are one slab and cannot z-fight. A sweep starts at three o'clock and the
+shader cannot turn it, so the ring is turned on the node tier to twelve
+o'clock, and an indeterminate arc's length and start are a shader parameter
+and a matrix written every frame. The ring overhangs its box by half a stroke,
+because Flutter centres its stroke on the box's circle: a 36dp indicator draws
+a ring 40dp across, and a screen lays out against the 36.
+
+Two things to know. **An indeterminate indicator never settles**, exactly as
+Flutter's does not, so a test that calls `pumpAndSettle` with one on screen
+spins until it times out — pump a duration instead. And both indicators'
+motion is checked against Flutter's own: `test/progress_indicator_test.dart`
+draws a real `LinearProgressIndicator` and `CircularProgressIndicator` and
+asks their painters where the lines and the arc went.
 
 ## Icons are a font, and it was checked rather than assumed
 
@@ -1716,17 +1780,22 @@ caller some typing and
 [the next plan](plans/2026_09_21_the_components_a_screen_still_needs.md)
 built as the arrangement a ported screen gets wrong.
 
-Four the selection controls left. There is no **`RadioGroup3d`**, so `Radio3d` keeps the `value` / `groupValue` / `onChanged`
+Three the selection controls left. There is no **`RadioGroup3d`**, so `Radio3d` keeps the `value` / `groupValue` / `onChanged`
 spelling that Flutter deprecated after 3.32 in favour of a group ancestor; that
 migration is an inherited widget plus a registry, and it belongs beside a
 `FormField3d` rather than inside a leaf control. A slider has no **tick marks**
 for its divisions and no **value indicator** above the thumb, both of which are
-ornament on the component whose design question here was the drag. A switch has
-no **growing thumb**, and neither it nor the chip that should lift under a
-press moves yet: both want a node-tier answer rather than a token, and the
-tokens are the only half that has landed. And a slider takes an explicit **width** rather than
+ornament on the component whose design question here was the drag. And a slider takes an explicit **width** rather than
 filling its parent, because the thumb's position is written before layout
 rather than after it.
+
+Two the progress indicators left. They draw Flutter's default design and not
+its **2024** one, which adds a gap before the track, a dot at its end and round
+caps — nothing about it is out of reach, and `circularTrackColor` is its first
+half. And the two ends of an arc are a hard stop in a ramp, so they are **not
+anti-aliased** the way the ring's edges are: at a 4dp stroke that is a few
+stair steps, and feathering them wants the shader to know which gradients want
+it.
 
 Text input is not planned at all: there is no `EditableText3d`, no selection,
 no cursor and no text-input client anywhere in the stack — the keyboard

@@ -9,6 +9,7 @@ import 'package:flutter_scene/scene.dart'
         PhysicallyBasedMaterial,
         SphereGeometry;
 import 'dart:async' show Completer;
+import 'dart:math' as math;
 import 'dart:typed_data' show Uint8List;
 import 'dart:ui' as ui;
 
@@ -28,13 +29,14 @@ import 'package:flutter/painting.dart'
         LinearGradient,
         OneFrameImageStreamCompleter,
         RadialGradient,
+        SweepGradient,
         TextAlign,
         TextSpan,
         TextStyle;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
 import 'package:flutter_scene_material3d/flutter_scene_material3d.dart';
 import 'package:vector_math/vector_math.dart'
-    show Quaternion, Ray, Vector3, Vector4;
+    show Matrix4, Quaternion, Ray, Vector3, Vector4;
 
 import 'probe_scene.dart';
 
@@ -2179,6 +2181,20 @@ final List<ProbeScene> kProbeScenes = <ProbeScene>[
         );
         _switchProbes[trackName] = track;
         _switchProbes[thumbName] = thumb;
+
+        // An off thumb is drawn at its own 16dp by scaling the 24dp box about
+        // its centre, which is `Switch3d`'s arithmetic; an on one is not
+        // scaled at all.
+        Layout3d sized(Layout3d box) {
+          if (value) return box;
+          final s = style.unselectedThumbSize / style.thumbSize;
+          final c = style.thumbSize * rate / 2.0;
+          return NodeShift3d()
+            ..nodeTransform = (Matrix4.diagonal3Values(s, s, 1.0)
+              ..setTranslationRaw(c * (1.0 - s), c * (1.0 - s), 0.0))
+            ..child = box;
+        }
+
         return SizedBox3d(
           width: style.trackWidth * rate,
           height: style.trackHeight * rate,
@@ -2192,9 +2208,11 @@ final List<ProbeScene> kProbeScenes = <ProbeScene>[
                 depth: style.trackThickness * rate,
                 child: track,
               ),
-              // The node tier: layout centres the thumb and this carries it
-              // half the travel. No box changes size, which is the whole
-              // reason a switch may one day animate for free.
+              // The node tier, as `Switch3d` writes it: layout centres the
+              // thumb at its on size, an offset carries it half the travel,
+              // and an off thumb is the same box scaled to its own size about
+              // its centre. No box changes size, which is why the switch
+              // animates for free.
               NodeShift3d(
                   shift: Offset3d(
                     style.travel * rate / 2.0 * (value ? 1.0 : -1.0),
@@ -2202,11 +2220,13 @@ final List<ProbeScene> kProbeScenes = <ProbeScene>[
                     0.0,
                   ),
                 )
-                ..child = SizedBox3d(
-                  width: style.thumbSize * rate,
-                  height: style.thumbSize * rate,
-                  depth: style.thumbThickness * rate,
-                  child: thumb,
+                ..child = sized(
+                  SizedBox3d(
+                    width: style.thumbSize * rate,
+                    height: style.thumbSize * rate,
+                    depth: style.thumbThickness * rate,
+                    child: thumb,
+                  ),
                 ),
             ],
           ),
@@ -2941,7 +2961,73 @@ final List<ProbeScene> kProbeScenes = <ProbeScene>[
     ),
     preload: installPanelPainter,
   ),
+
+  // ── An arc: a sweep on a ring's border ───────────────────────────────
+  //
+  // The one thing the circular progress indicator needed from this package.
+  // A transparent circle with a border is a ring, and a sweep on that border
+  // with a hard stop is the part of the ring the ramp is opaque over; the
+  // rest must not be drawn at all. So the claims are about *where there is
+  // ink*: in the quadrant the arc covers, and nowhere else on the ring nor in
+  // its middle.
+  ProbeScene(
+    'arc_on_a_ring',
+    () => _ringScene(),
+    preload: installPanelPainter,
+    // A quarter of a ring is a small thing in a frame this size.
+    minCoverage: 0.01,
+  ),
+
+  ProbeScene(
+    'arc_turned',
+    // The same ring turned a quarter back on the node tier, which is how the
+    // indicator puts its arc's start at twelve o'clock: the shader cannot
+    // rotate a sweep, and a circle's distance field does not care which way
+    // it faces. `arc_on_a_ring` is its control — the ink moves quadrant.
+    () => _ringScene(turn: -math.pi / 2),
+    preload: installPanelPainter,
+    minCoverage: 0.01,
+  ),
 ];
+
+/// A square panel drawn as a ring whose first quarter, clockwise from three
+/// o'clock, is an arc in [_panelBorder] and the rest nothing — turned by
+/// [turn] radians about its centre, on the node tier.
+ProbeSceneContent _ringScene({double turn = 0.0}) {
+  final ring = DecoratedBox3d(
+    decoration: BoxDecoration3d(
+      color: const Color(0x00000000),
+      borderRadius: const BorderRadius3d.circular(9999),
+      border: Border3d(
+        width: 30,
+        gradient: SweepGradient(
+          colors: <Color>[
+            _panelBorder,
+            _panelBorder,
+            _panelBorder.withValues(alpha: 0.0),
+            _panelBorder.withValues(alpha: 0.0),
+          ],
+          stops: const <double>[0.0, 0.25, 0.25, 1.0],
+        ),
+      ),
+    ),
+    name: 'ring',
+  );
+  if (turn != 0.0) {
+    ring.nodeTransform = Matrix4.translationValues(0.9, 0.9, 0.0)
+      ..rotateZ(turn)
+      ..translateByDouble(-0.9, -0.9, 0.0, 1.0);
+  }
+  return ProbeSceneContent(
+    surfaces: [
+      Layout3dSurface(
+        constraints: Constraints3d.tight(const Size3d(1.8, 1.8, 0.1)),
+        child: ring,
+      ),
+    ],
+    probes: {'ring': ring},
+  );
+}
 
 /// One letter, small enough that three of them fit across a slab and big
 /// enough for a probe disc to land inside one.

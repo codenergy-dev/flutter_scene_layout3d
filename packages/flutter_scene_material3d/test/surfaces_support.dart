@@ -6,8 +6,15 @@
 // laid-out tree what came out — while `support.dart` is mostly imperative
 // helpers the token tests use.
 
+import 'package:flutter/scheduler.dart' show Ticker;
 import 'package:flutter/widgets.dart'
-    show BuildContext, Directionality, StatelessWidget, TextDirection, Widget;
+    show
+        BuildContext,
+        Directionality,
+        StatelessWidget,
+        TextDirection,
+        Widget,
+        debugOnRebuildDirtyWidget;
 import 'package:flutter_scene/scene.dart' show Node;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
 import 'package:flutter_scene_layout3d/widgets.dart';
@@ -63,6 +70,98 @@ NodeShift3d oneComponentShift(Layout3dSurface surface) {
     );
   }
   return found.single;
+}
+
+/// The one box in [surface] whose node is called [name].
+///
+/// How a test reaches a box a component built privately — a switch's thumb,
+/// a progress bar's span — which has no type a test can name.
+Layout3d namedBox(Layout3dSurface surface, String name) {
+  final found = boxesOf<Layout3d>(
+    surface,
+  ).where((box) => box.node.name == name).toList();
+  if (found.length != 1) {
+    throw StateError('expected one box called "$name", found ${found.length}');
+  }
+  return found.single;
+}
+
+/// What [watchFrames] saw: how many frames it watched, the frames on which
+/// something in the surface was marked for layout, and the widgets that
+/// rebuilt.
+typedef FramesWatched = ({int ticks, List<int> laidOut, List<String> rebuilt});
+
+/// Pumps [frames] frames of [step] each, watching what every animation
+/// running when it started costs on each of them.
+///
+/// **`needsFlush` after a `pump` proves nothing**, because the frame that
+/// pump drew has already laid the surface out. The dirt has to be caught when
+/// it is raised, and there is one place every piece of it passes: a box
+/// marked for layout asks its surface for a visual update, and at that
+/// moment the surface needs a flush. So this listens on
+/// `Layout3dSurface.onNeedVisualUpdate` — which a node-tier write or a
+/// repaint also calls, with nothing to flush — and records the frames on
+/// which the surface was dirty when it was called. That catches dirt from a
+/// tick and dirt from a rebuild alike. The builds are counted through
+/// Flutter's own `debugOnRebuildDirtyWidget`, which every dirty element
+/// reports to as it rebuilds, and a ticker of its own counts the frames.
+Future<FramesWatched> watchFrames(
+  WidgetTester tester,
+  Layout3dSurface surface, {
+  int frames = 60,
+  Duration step = const Duration(milliseconds: 16),
+}) async {
+  var ticks = 0;
+  final laidOut = <int>{};
+  final rebuilt = <String>[];
+  final previousRebuild = debugOnRebuildDirtyWidget;
+  debugOnRebuildDirtyWidget = (element, builtOnce) {
+    rebuilt.add('${element.widget.runtimeType} on frame $ticks');
+  };
+  final previousUpdate = surface.onNeedVisualUpdate;
+  surface.onNeedVisualUpdate = () {
+    if (surface.needsFlush) laidOut.add(ticks);
+    previousUpdate?.call();
+  };
+  final watcher = Ticker((_) => ticks++)..start();
+  try {
+    for (var i = 0; i < frames; i++) {
+      await tester.pump(step);
+    }
+  } finally {
+    debugOnRebuildDirtyWidget = previousRebuild;
+    surface.onNeedVisualUpdate = previousUpdate;
+    watcher
+      ..stop()
+      ..dispose();
+  }
+  return (ticks: ticks, laidOut: laidOut.toList(), rebuilt: rebuilt);
+}
+
+/// [watchFrames], failing if anything was laid out on any frame — or, unless
+/// [allowBuilds], if any widget was rebuilt.
+Future<void> expectNothingLaidOut(
+  WidgetTester tester,
+  Layout3dSurface surface, {
+  int frames = 60,
+  Duration step = const Duration(milliseconds: 16),
+  bool allowBuilds = false,
+}) async {
+  final watched = await watchFrames(
+    tester,
+    surface,
+    frames: frames,
+    step: step,
+  );
+  expect(watched.ticks, greaterThan(0), reason: 'the watcher saw no frames');
+  expect(
+    watched.laidOut,
+    isEmpty,
+    reason: 'frames on which something was laid out',
+  );
+  if (!allowBuilds) {
+    expect(watched.rebuilt, isEmpty, reason: 'widgets rebuilt');
+  }
 }
 
 /// A pumped component and the handles a test wants on it.

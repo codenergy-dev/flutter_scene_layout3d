@@ -2,7 +2,9 @@
 // height the 48dp target has to cover, the delete affordance, and what a chip
 // announces.
 
-import 'package:flutter/widgets.dart' show Widget;
+import 'package:flutter/gestures.dart' show kPressTimeout;
+import 'package:flutter/material.dart' as material;
+import 'package:flutter/widgets.dart' show FocusManager, Widget;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
 import 'package:flutter_scene_layout3d/testing.dart';
 import 'package:flutter_scene_layout3d/widgets.dart';
@@ -312,6 +314,153 @@ void main() {
       expect(it.builds[0], built, reason: 'nothing rebuilt');
       expect(it.surface.needsFlush, isFalse, reason: 'nothing laid out');
     });
+  });
+
+  group('a held chip rises', () {
+    // A pointer held on a control takes the focus, and the focus outlives
+    // the test that took it unless it is let go of.
+    tearDown(() {
+      FocusManager.instance.primaryFocus?.unfocus();
+      FocusManager.instance.applyFocusChangesIfNeeded();
+    });
+
+    /// Holds a pointer on the chip until its press has reported and the lift
+    /// has had time to finish.
+    Future<void> hold(WidgetTester tester, PumpedSurface it) async {
+      it.pointer.down(rayAt(it.surface, const Offset3d(2, 1.5, 0)));
+      // A press reports itself when the tap recognizer's deadline passes;
+      // see `InkWell3d.onHighlightChanged`.
+      await tester.pump(kPressTimeout);
+      await tester.pump();
+    }
+
+    double liftOf(PumpedSurface it) =>
+        oneOf<NodeTransform3d>(it.surface).nodeOffset.z;
+
+    for (final variant in ChipVariant3d.values) {
+      testWidgets('$variant by its press elevation, and settles back', (
+        tester,
+      ) async {
+        final style = ChipStyle3d.of(theme, variant);
+        final it = await pumpComponent(
+          tester,
+          () => chipFor(variant, onPressed: () {}, onSelected: (_) {}),
+        );
+        expect(liftOf(it), 0.0, reason: 'at rest on whatever it is on');
+
+        await hold(tester, it);
+        await tester.pump(Chip3d.pressDuration * 2);
+        // Toward the viewer is negative depth, and the step is in world
+        // units: a hundredth of a unit to the logical pixel here.
+        expect(liftOf(it), closeTo(-style.pressElevation / 100.0, 1e-9));
+
+        it.pointer.cancel();
+        await tester.pumpAndSettle();
+        expect(liftOf(it), closeTo(0.0, 1e-12));
+      });
+    }
+
+    test('which is a millimetre for three of them and nothing for input', () {
+      for (final variant in ChipVariant3d.values) {
+        expect(
+          ChipStyle3d.of(theme, variant).pressElevation,
+          variant == ChipVariant3d.input ? 0.0 : 1.0,
+          reason: '$variant',
+        );
+      }
+    });
+
+    testWidgets('and the rise lays nothing out and builds nothing', (
+      tester,
+    ) async {
+      // The press rebuilds the chip once, to start the slide; the frames of
+      // the slide itself are one matrix each.
+      final it = await pumpComponent(
+        tester,
+        () => chipFor(ChipVariant3d.assist, onPressed: () {}),
+      );
+      await hold(tester, it);
+      await expectNothingLaidOut(tester, it.surface, frames: 8);
+      expect(liftOf(it), lessThan(0.0));
+      it.pointer.cancel();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('a disabled chip does not rise', (tester) async {
+      final it = await pumpComponent(
+        tester,
+        () => chipFor(ChipVariant3d.assist, enabled: false, onPressed: () {}),
+      );
+      await hold(tester, it);
+      await tester.pump(Chip3d.pressDuration * 2);
+      expect(liftOf(it), 0.0);
+      it.pointer.cancel();
+      await tester.pumpAndSettle();
+    });
+  });
+
+  group('the lift, against Flutter\'s own chips', () {
+    // The drift alarm. Neither figure is public in Flutter —
+    // `pressedAnimationDuration` is a constant on the private `_RawChipState`,
+    // and the elevation is `_FilterChipDefaultsM3`'s — but both are facts
+    // about a real chip: they are what the `Material` inside a held one is
+    // given, so they are read off that.
+    Future<material.Material> heldMaterialOf(
+      WidgetTester tester,
+      Widget chip,
+    ) async {
+      await tester.pumpWidget(
+        material.MaterialApp(
+          theme: material.ThemeData(useMaterial3: true),
+          home: material.Scaffold(body: material.Center(child: chip)),
+        ),
+      );
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byWidget(chip)),
+      );
+      await tester.pump(kPressTimeout);
+      await tester.pump(const Duration(milliseconds: 200));
+      final held = tester.widget<material.Material>(
+        find
+            .descendant(
+              of: find.byWidget(chip),
+              matching: find.byType(material.Material),
+            )
+            .first,
+      );
+      await gesture.up();
+      await tester.pumpAndSettle();
+      return held;
+    }
+
+    final flutterChips = <ChipVariant3d, Widget Function()>{
+      // Flutter has no suggestion chip; Material's guidance draws one with an
+      // action chip, which is also what an assist chip is.
+      ChipVariant3d.assist: () => material.ActionChip(
+        label: const material.Text('a'),
+        onPressed: () {},
+      ),
+      ChipVariant3d.filter: () => material.FilterChip(
+        label: const material.Text('f'),
+        onSelected: (_) {},
+      ),
+      ChipVariant3d.input: () =>
+          material.InputChip(label: const material.Text('i'), onPressed: () {}),
+      ChipVariant3d.suggestion: () => material.ActionChip(
+        label: const material.Text('s'),
+        onPressed: () {},
+      ),
+    };
+
+    for (final entry in flutterChips.entries) {
+      testWidgets('${entry.key} rises as far as Flutter\'s does, as fast', (
+        tester,
+      ) async {
+        final held = await heldMaterialOf(tester, entry.value());
+        expect(ChipStyle3d.of(theme, entry.key).pressElevation, held.elevation);
+        expect(Chip3d.pressDuration, held.animationDuration);
+      });
+    }
   });
 
   group('the delete affordance', () {

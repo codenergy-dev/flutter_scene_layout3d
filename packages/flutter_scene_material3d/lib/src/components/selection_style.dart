@@ -597,15 +597,15 @@ class ResolvedRadioStyle3d {
 /// figures, and the only two-part control in the catalogue whose parts move
 /// relative to each other.
 ///
-/// ## The thumb is one size, and Material's is two
+/// ## The thumb is drawn at one size, and Material's is four
 ///
-/// Material grows the thumb from 16dp to 24dp as it slides across, and
-/// shrinks it again on the way back. That is an **animation**, and this
-/// package has no motion tokens — the same reason phase 6 shipped a dialog
-/// that appears rather than one that grows. A thumb that jumped between two
-/// sizes on a toggle would also put a size change on the interaction path,
-/// where every other state in this catalogue is a colour. So [thumbSize] is
-/// one figure, Material's selected 24dp, and what moves is the position.
+/// Material's thumb is 16dp when the switch is off, 24dp when it is on, 28dp
+/// while it is held, and stretches to 34 by 22 on its way across. A size that
+/// changed every frame would be a relayout every frame, so the thumb is laid
+/// out once, at [thumbSize], and every other size is a **scale** of it on the
+/// node tier. [unselectedThumbSize], [pressedThumbSize] and the two
+/// transitional figures are therefore not sizes any box is given: they are
+/// what the scale is aiming at. See `Switch3d` for the motion itself.
 ///
 /// Every figure is in logical pixels.
 @immutable
@@ -616,6 +616,10 @@ class SwitchStyle3d {
     required this.trackHeight,
     required this.trackShape,
     required this.thumbSize,
+    required this.unselectedThumbSize,
+    required this.pressedThumbSize,
+    required this.transitionalThumbWidth,
+    required this.transitionalThumbHeight,
     required this.track,
     required this.selectedTrack,
     required this.disabledTrack,
@@ -638,6 +642,10 @@ class SwitchStyle3d {
        assert(thumbSize > 0.0),
        assert(thumbSize <= trackHeight),
        assert(thumbSize <= trackWidth),
+       assert(unselectedThumbSize > 0.0),
+       assert(pressedThumbSize <= trackHeight),
+       assert(transitionalThumbWidth <= trackWidth),
+       assert(transitionalThumbHeight <= trackHeight),
        assert(trackOutlineWidth >= 0.0),
        assert(trackThickness >= 0.0),
        assert(thumbThickness >= 0.0),
@@ -659,6 +667,10 @@ class SwitchStyle3d {
       trackHeight: defaultTrackHeight,
       trackShape: theme.shape.full,
       thumbSize: defaultThumbSize,
+      unselectedThumbSize: defaultUnselectedThumbSize,
+      pressedThumbSize: defaultPressedThumbSize,
+      transitionalThumbWidth: 34.0,
+      transitionalThumbHeight: 22.0,
       track: scheme.surfaceContainerHighest,
       selectedTrack: scheme.primary,
       // Flutter's figure: the resting track at Material's 12% container
@@ -697,6 +709,12 @@ class SwitchStyle3d {
   /// Material's selected thumb diameter, in logical pixels: 24dp.
   static const double defaultThumbSize = 24.0;
 
+  /// Material's unselected thumb diameter, in logical pixels: 16dp.
+  static const double defaultUnselectedThumbSize = 16.0;
+
+  /// Material's thumb diameter while it is held, in logical pixels: 28dp.
+  static const double defaultPressedThumbSize = 28.0;
+
   /// How wide the track is, in logical pixels.
   final double trackWidth;
 
@@ -706,8 +724,31 @@ class SwitchStyle3d {
   /// The track's corner radii: `shape.full`, which makes a stadium.
   final BorderRadius3d trackShape;
 
-  /// How wide the thumb is, in logical pixels.
+  /// How wide the thumb is laid out, in logical pixels, which is also how
+  /// wide it is drawn when the switch is on.
+  ///
+  /// A thumb with an icon on it is this size in both states, as Flutter's
+  /// is, so that the glyph is never shrunk.
   final double thumbSize;
+
+  /// How wide the thumb is drawn when the switch is off, in logical pixels:
+  /// 16dp.
+  final double unselectedThumbSize;
+
+  /// How wide the thumb is drawn while it is held, in logical pixels: 28dp,
+  /// whichever way the switch is set.
+  final double pressedThumbSize;
+
+  /// How wide the thumb is drawn at its most stretched, part way across, in
+  /// logical pixels: 34dp.
+  ///
+  /// Flutter's stretch is a stadium; this one is the round thumb scaled, so
+  /// it is an ellipse, for the thirtieth of a second it is at its widest.
+  final double transitionalThumbWidth;
+
+  /// How tall the thumb is drawn at its most stretched, in logical pixels:
+  /// 22dp.
+  final double transitionalThumbHeight;
 
   /// The track's colour when the switch is off: `surfaceContainerHighest`.
   final Color track;
@@ -787,6 +828,10 @@ class SwitchStyle3d {
     double? trackHeight,
     BorderRadius3d? trackShape,
     double? thumbSize,
+    double? unselectedThumbSize,
+    double? pressedThumbSize,
+    double? transitionalThumbWidth,
+    double? transitionalThumbHeight,
     Color? track,
     Color? selectedTrack,
     Color? disabledTrack,
@@ -809,6 +854,12 @@ class SwitchStyle3d {
     trackHeight: trackHeight ?? this.trackHeight,
     trackShape: trackShape ?? this.trackShape,
     thumbSize: thumbSize ?? this.thumbSize,
+    unselectedThumbSize: unselectedThumbSize ?? this.unselectedThumbSize,
+    pressedThumbSize: pressedThumbSize ?? this.pressedThumbSize,
+    transitionalThumbWidth:
+        transitionalThumbWidth ?? this.transitionalThumbWidth,
+    transitionalThumbHeight:
+        transitionalThumbHeight ?? this.transitionalThumbHeight,
     track: track ?? this.track,
     selectedTrack: selectedTrack ?? this.selectedTrack,
     disabledTrack: disabledTrack ?? this.disabledTrack,
@@ -864,6 +915,10 @@ class SwitchStyle3d {
       other.trackHeight == trackHeight &&
       other.trackShape == trackShape &&
       other.thumbSize == thumbSize &&
+      other.unselectedThumbSize == unselectedThumbSize &&
+      other.pressedThumbSize == pressedThumbSize &&
+      other.transitionalThumbWidth == transitionalThumbWidth &&
+      other.transitionalThumbHeight == transitionalThumbHeight &&
       other.track == track &&
       other.selectedTrack == selectedTrack &&
       other.disabledTrack == disabledTrack &&
@@ -887,7 +942,13 @@ class SwitchStyle3d {
     trackWidth,
     trackHeight,
     trackShape,
-    thumbSize,
+    Object.hash(
+      thumbSize,
+      unselectedThumbSize,
+      pressedThumbSize,
+      transitionalThumbWidth,
+      transitionalThumbHeight,
+    ),
     track,
     selectedTrack,
     disabledTrack,

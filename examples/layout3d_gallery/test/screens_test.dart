@@ -121,6 +121,39 @@ void main() {
     expect(find3d.bySubtype<Text3d>(), standsOnItsPanel3d);
   });
 
+  testWidgets('save spins for a moment, and the volume has a bar', (
+    tester,
+  ) async {
+    // The headless half of the two indicators the gallery shows: the spinner
+    // replaces the button's label while the pretend save runs and gives it
+    // back, and the bar follows the slider. Whether the arc reads as turning
+    // is a question only the window answers.
+    await pumpScreen(tester, const MaterialScreen());
+    await tester.tap3d(find3d.bySemanticsLabel('Settings'));
+    await tester.pump();
+    expect(find3d.bySemanticsLabel('Volume level'), standsOnItsPanel3d);
+
+    // The settings are a list taller than the screen, and the actions are
+    // its last row: under the navigation bar until it is scrolled to, which
+    // is what a person does too.
+    await tester.scroll3d(
+      find3d.bySemanticsLabel('Volume'),
+      const Offset(0, 400),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap3d(find3d.bySemanticsLabel('Save'));
+    await tester.pump();
+    expect(find3d.bySemanticsLabel('Saving'), findsOne);
+    // Not settled: an indeterminate spinner never settles, exactly as
+    // Flutter's does not.
+    await tester.pump(const Duration(milliseconds: 1300));
+    expect(find3d.bySemanticsLabel('Saving'), findsNothing);
+    // And the snack bar it ends with, arrived and gone again.
+    await tester.pumpAndSettle(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('the table screen lays out on the ground plane', (tester) async {
     final surface = await pumpScreen(
       tester,

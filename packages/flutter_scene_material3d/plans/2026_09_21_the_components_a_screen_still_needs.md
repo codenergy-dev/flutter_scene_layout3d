@@ -1,8 +1,8 @@
 ---
 status: in progress
-reason: phases 1 and 2 have landed — the alert dialog, the tristate box, the labelled tiles, the safe area and type that grows; phases 3 to 7 are open, and phase 2's safe area has no lane that draws it
+reason: phases 1 to 3 have landed — the alert dialog and the labelled tiles, the safe area and type that grows, the switch's thumb, the chip's lift and both progress indicators; phases 4 to 7 are open, and phase 2's safe area has no lane that draws it
 created_at: 2026-09-21T15:46:07Z
-updated_at: 2026-09-21T16:25:00Z
+updated_at: 2026-09-30T21:30:00Z
 commit: 763e3dff41a1c75ac35997cf9244e101bb7250bf
 ---
 
@@ -37,7 +37,7 @@ written by hand here today.
 | --- | --- | --- |
 | 1 | nothing | `AlertDialog3d`, the checkbox's third state, `CheckboxListTile3d`, `SwitchListTile3d`, `RadioListTile3d` — **landed** |
 | 2 | the safe area, and type that grows | `Scaffold3d` consuming `MediaQuery3d.padding`; a control that grows with its label — **landed** |
-| 3 | the node tier, with a clock | `LinearProgressIndicator3d`, `CircularProgressIndicator3d`, the switch's growing thumb, the chip's press lift |
+| 3 | the node tier, with a clock | `LinearProgressIndicator3d`, `CircularProgressIndicator3d`, the switch's growing thumb, the chip's press lift — **landed** |
 | 4 | nothing, but more of it | `Badge3d`, `MaterialBanner3d`, `BottomAppBar3d`, `NavigationDrawer3d`, `ExpansionTile3d`, a snack bar's second line |
 | 5 | one choice over many options | `SegmentedButton3d`, `TabBar3d` and `TabBarView3d`, `RadioGroup3d` |
 | 6 | a scroll view that runs backwards | `reverse` in the layout package, `Carousel3d`, `Scrollbar3d`, `RefreshIndicator3d` |
@@ -329,18 +329,258 @@ is a gallery change and a device, and neither was in this phase.
   test font wraps 'Inbox' onto three lines in an 80dp rail, and so, less
   dramatically, would a real one. Flutter's rail does the same.
 
-## Phases 3 to 7
+## Phase 3: the node tier, with a clock
+
+*Written when the phase was picked up, against `2f227ef`.*
+
+Four things, and what they share is that each one moves every frame for a
+while and none of them changes a size. That is the node tier —
+`docs/traps.md`'s second of three — and the phase's claim is that all four
+can live there: **no box is laid out again from the first frame of any of
+them to the last.** Each suite asserts it.
+
+### The switch's thumb, which slides, grows and swells
+
+`Switch3d` does not animate at all today: it is a stateless widget whose
+thumb jumps from one end to the other on a toggle. Flutter's M3 switch does
+three things over 300ms, and they are all transcribed from `_SwitchConfigM3`
+and `_MaterialSwitchPainter`:
+
+- **The slide**, on `Curves.easeOutBack` forward and its flip backward, so the
+  thumb overshoots the end a little and settles.
+- **The growth.** An off thumb is 16dp, an on one 24dp, and in between the
+  thumb passes through a **34 by 22** stretch on a three-part sequence —
+  11% of the run to the stretch, 72% to the far size, 17% held. A thumb with
+  an icon is 24dp in both states, and does not grow.
+- **The press.** A held thumb is 28dp, whichever way the switch is set.
+
+The switch keeps its colours as a token substitution, as it does today, so
+the track and the thumb change colour on the first frame and the geometry
+takes the 300ms. Flutter cross-fades the colours as well; here a cross-fade is
+either a rebuild every frame or a decoration channel `Material3d` does not
+have, and the phase would rather ship the motion on the cheap tier and name
+the difference.
+
+**The thumb is drawn at 24dp and scaled.** A node-tier scale about the thumb's
+centre is `T(c)·S·T(−c)` on a proxy above it, written by a private box that
+listens to two controllers — the toggle's and the press's — so the switch
+builds once for a toggle and not at all while it moves. The scale stretches a
+circle into an **ellipse** at 34 by 22, where Flutter's stretch is a stadium,
+because the corner radius scales with the box. At its widest that is a
+millimetre of difference for a thirtieth of a second, mid-flight.
+
+The figures go into `SwitchStyle3d` beside the existing `thumbSize`:
+`unselectedThumbSize`, `pressedThumbSize`, and the transitional width and
+height. The run's duration is `theme.motion.medium2`, which is Flutter's
+300ms, and the press takes `short2`, Flutter's `kRadialReactionDuration`.
+
+Inside a labelled tile the switch still slides — Flutter's does — and does not
+swell, because the row is the control and the switch installs no well.
+
+### The chip that lifts under a press
+
+Flutter's M3 action, filter and choice chips rest at 0 and rise to **1dp**
+while pressed, over `RawChip.pressedAnimationDuration` — 75ms — on
+`Curves.fastOutSlowIn`, which is `Material`'s own animation curve. Its input
+chip does not rise at all. In Flutter that 1dp is a shadow with a transparent
+colour, which is to say nothing; here an elevation is a distance, so the lift
+is real.
+
+It goes on the node tier as a `SceneAnimatedSlide3d` around the chip's
+`Material3d`, which is Flutter's `AnimatedPhysicalModel` without the rebuild:
+the chip rebuilds once when the press starts and once when it ends, and the
+75ms in between are a matrix. `ChipStyle3d.pressElevation` carries the figure
+per variant. Two of these are public in Flutter — `RawChip`'s duration and,
+through a real pressed chip's `Material`, the elevation itself — so the drift
+test reads both rather than transcribing them.
+
+### `LinearProgressIndicator3d`
+
+Flutter's default is the one it calls `year2023`: a 4dp bar, `primary` on a
+`secondaryContainer` track, square ends, and neither the 2024 gap nor its stop
+dot. That is what a ported screen already draws, so that is what this draws.
+
+**A bar that fills is a scale, not a width** — `docs/traps.md` says it, and
+`Slider3d` is the precedent. The difference is that a slider has a fixed width
+and a progress bar fills its parent, so the span's position in world units is
+not known until layout. A private box holds a span as two fractions and writes
+`T(x₀·w)·S(x₁−x₀)` from its own `performLayout` and from its setters, which is
+`MotionTransition3d`'s answer to an animation that needs a size. In right to
+left the span is mirrored inside the box, as Flutter's painter mirrors it.
+
+**Indeterminate** is Flutter's two lines on Flutter's four intervals over
+1800ms, repeating, each line one span box listening to the controller. The
+track is drawn whole behind them rather than in the pieces Flutter paints
+between them, because the track is a slab and the lines stand one
+`stepOver` in front of it.
+
+### `CircularProgressIndicator3d`
+
+The one component in the phase the layout package could not draw, and it got
+[a plan there](../../flutter_scene_layout3d/plans/2026_09_30_a_border_painted_by_a_gradient.md):
+**a border painted by a gradient**. A transparent circle with a 4dp border is
+a ring, and a `SweepGradient` border with a hard stop is the arc of it. The
+arc always starts at three o'clock in the panel's own frame; the component
+turns the panel on the node tier to where the arc should start — twelve
+o'clock for a determinate one, and wherever Flutter's head and tail have got
+to for an indeterminate one. The determinate value's track, when a
+`backgroundColor` is given, is the rest of the same ramp, so the track and the
+value are one slab rather than two that could z-fight.
+
+Flutter's default geometry is kept, down to its one oddity: the box is 36dp
+and the stroke is centred on its circle, so the ring's outside is 40dp and
+overhangs the box by half a stroke. A ported screen lays out against the 36.
+An indeterminate arc's square caps are the arc extended by half a stroke at
+each end, which is what a square cap on a circle nearly is.
+
+An indeterminate spinner is a decoration written every frame, which is the
+repaint tier — cheaper still than the node tier — plus the turn.
+
+### One style for both indicators
+
+`ProgressIndicatorStyle3d` is Flutter's `ProgressIndicatorThemeData`
+resolved: the colour, the two tracks, the bar's height, the circle's size and
+stroke, and the slab thickness and step the catalogue adds. Both widgets take
+Flutter's own parameters — `value`, `color`, `backgroundColor`, `minHeight`,
+`strokeWidth`, `semanticsLabel`, `semanticsValue` — and publish Flutter's
+semantics: a progress bar with a value between 0 and 100 when determinate, a
+loading spinner when not.
+
+### Tests
+
+- The switch: the thumb at each end at rest and its size there; the overshoot
+  past the end on the way; the stretch part way; the icon thumb not growing;
+  the press swelling it and letting it go; right to left; **nothing laid out
+  and nothing built** across the run; and the tile's switch sliding without
+  swelling.
+- The chip: the lift while pressed and the return, per variant, with the
+  input chip not moving; nothing laid out; the drift test against Flutter's
+  pressed chips and `RawChip.pressedAnimationDuration`.
+- The indicators: the determinate span at a value and mirrored; the
+  indeterminate lines at known points of Flutter's timeline; the arc's
+  gradient and turn; the overhang; the semantics; the defaults against
+  Flutter's; and nothing laid out across a second of either spinner.
+
+### The gallery
+
+The settings screen's Save button shows a spinner for a moment before the snack
+bar, the way an application that talks to a server does, and a determinate bar
+follows the volume, so that a person running the gallery can see both.
+
+## What phase 3 found
+
+All of it shipped as described above, and the phase's claim holds: from the
+first frame of any of the four motions to the last, **nothing is laid out and
+nothing is built**. The Material suite is **714**, up from 667; the layout
+suite **1311**; the render probe **112**, with two new scenes; the gallery **8**.
+Seven findings, and the last is the one that mattered most.
+
+### 1. The check every "nothing laid out" test made could not fail
+
+The first draft of this phase's tests did what the suites here have always
+done: pump a frame, then assert `needsFlush` is false. **That is false after
+any pump whatever happened**, because the frame the pump drew has already laid
+the surface out. The first replacement watched from a ticker scheduled after
+the component's — which catches dirt raised by a tick — and a control test
+written to prove the watcher worked found it **blind to a relayout that
+arrives through a rebuild**, which is how an implicit animation relayouts. The
+instrument that works listens where every piece of dirt passes: a box marked
+for layout asks its surface for an update, and at that moment the surface
+needs a flush. `watchFrames` in `test/surfaces_support.dart` is that, with
+Flutter's `debugOnRebuildDirtyWidget` counting the builds beside it and two
+control tests — a tick that resizes a box, and a rebuild that does — proving
+it sees both.
+
+The older claims were rechecked with it rather than assumed. The slider's
+twenty frames of drag and the ripple's whole run both lay nothing out, as their
+documentation says; the slider's test now watches at the source, since
+`docs/traps.md` cites it as the evidence.
+
+### 2. A box cannot keep a layout child the widget layer did not build
+
+The ring was first a box that made its own `DecoratedBox3d` and adopted it, so
+that it could write the panel's border and turn every frame. It laid out at
+the right size and drew nothing, and the tree had no panel in it: the layout
+tree under a `SceneLayout3d` is **mirrored** from the render tree, so every
+pass handed the ring the widget layer's child list — empty — in place of its
+own. It is now a frame box with a real widget child, and a leaf panel that
+*is* a `DecoratedBox3d` and writes its own decoration. `docs/traps.md` has it,
+because the imperative version of the same box works and nothing says why the
+declarative one does not.
+
+### 3. The drift tests found a transcription error the arithmetic tests could not
+
+Flutter's head, tail and turn are private, so the plan transcribed them, and
+the headless tests checked the ring against the transcription. The drift test
+that reads `drawArc`'s arguments off a real `CircularProgressIndicator` found
+the turn written as `rotation × 4π` where Flutter's is `× 2π` — an arc turning
+twice as fast as Flutter's, and every other test agreeing with it. The bar's
+lines are checked the same way, against the rectangles a real
+`LinearProgressIndicator` draws, and were right first time.
+
+### 4. `pressedAnimationDuration` is not public
+
+The plan said two of the chip's figures were public in Flutter. Neither is:
+the 75ms is a constant on the private `_RawChipState`, and the 1dp is
+`_FilterChipDefaultsM3`'s. Both are still facts about a real chip — they are
+what Flutter hands the `Material` inside a held one — so the drift test reads
+them off that, which is the grade `DialogStyle3d` claimed and never had.
+
+### 5. Flutter's thumb sequence is not a mirror image
+
+The plan's reading of `_MaterialSwitchPainter` said the thumb holds its on size
+for the first part of a run toward off. It does not: both directions stretch
+**early** and hold **late** — the reverse sequence is traversed from its end
+as the controller runs down — and the first version of the test asserted the
+wrong one. And a `Cubic` is solved to a thousandth, so a thumb at rest read
+through the curves came out a hair off its size and never lost its transform;
+the size function pins its two ends exactly.
+
+### 6. A switch told a new value animates to it
+
+Tests that pumped a component twice — an off switch, then an on one — found
+the thumb at the start of a run, because the second pump updates the same
+`Switch3d` and it runs rather than jumps. That is the feature, and those tests
+settle now; it is worth knowing for any test that re-pumps a switch.
+
+### 7. The window found a defect in the layout package
+
+Driving the gallery in a real window — scroll the settings to Save, press it,
+photograph the spinner — produced a photograph of the settings list **back at
+its top**, Save under the navigation bar and the spinner out of sight. The list
+had lost its scroll position when the screen rebuilt. The cause was the
+controller ownership rule: `controller = null` made a fresh position, and a
+widget with no controller writes null on every update, so any `setState` above
+a `SceneListView3d` without a controller sent it to the top. The layout
+package's rule is corrected — null when a view already owns its position is no
+change — with tests on all four views and one through a rebuild, and
+[the plan that set the rule](../../flutter_scene_layout3d/plans/2026_08_25_scroll_controller_ownership.md)
+says so. No headless test had scrolled a list and then rebuilt above it, and
+the gallery's own rebuilds — starring a row — happen at the top of a list. The
+headless gallery test for this phase pressed Save and passed; it never looked
+where the list had gone. That is the third lane doing what `AGENTS.md` says it
+is for.
+
+### What phase 3 did not do
+
+- **The colours do not cross-fade**, as planned: they change on the toggle's
+  first frame. Doing it on the repaint tier wants a decoration channel into
+  `Material3d` that nothing else needs yet.
+- **Flutter's 2024 indicators**, with a gap, a stop dot and round caps, are not
+  here. The arc's ends are a hard stop and are not anti-aliased; at the
+  gallery's 20dp spinner nothing showed, and nobody has looked at a large one.
+- **The chip's lift was not photographed.** `SelfDrive.tap` presses and lets
+  go in one turn, and a press that short reports no highlight at all, so there
+  is nothing to see; a held press is a harness change.
+- Phase 2's safe area still has no lane that draws it.
+
+## Phases 4 to 7
 
 Written when each is picked up. What the map already knows about each, so
 that writing it is an afternoon:
 
 - **Phase 1's second finding moves `scrollable`** for `AlertDialog3d` out of
   phase 7 and into the next phase that touches a dialog.
-- **Phase 3**'s motion is all on tiers that exist. A thumb growing from 16dp
-  to 24dp is drawn at one size and scaled on the node tier, which the hero now
-  has a shipped example of; a chip's lift is a distance on the node tier; an
-  indeterminate progress indicator is a timeline with no layout in it, the
-  ripple's shape.
 - **Phase 5**'s `TabBar3d` meets the rounded clip that does not exist — an
   indicator inside a rounded bar — and should check whether the picture's
   answer, carving it in the panel's own signed distance field, reaches it.

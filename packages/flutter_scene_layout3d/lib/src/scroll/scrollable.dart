@@ -134,12 +134,16 @@ Future<void> ensureVisible3d(
 ///  * a constructor given null makes a controller and owns it;
 ///  * `controller = other` detaches from the old one, disposes it only if the
 ///    view owned it, and does not take ownership of `other`;
-///  * `controller = null` makes a fresh one and owns that;
+///  * `controller = null` makes a fresh one and owns that — **unless the view
+///    already owns one**, which it keeps;
 ///  * [dispose] detaches, and disposes only what the view owned.
 ///
 /// So a declarative caller that stops passing a controller gets a working
 /// view with a fresh position, rather than one still driven by the controller
-/// it passed two rebuilds ago.
+/// it passed two rebuilds ago — and a caller that never passed one keeps its
+/// position through every rebuild. The second half was missing at first: a
+/// widget writes its controller on every update, so a list with none was told
+/// null on every `setState` above it and jumped back to the top each time.
 ///
 /// A view mixes this in, calls [initController] from its constructor body,
 /// and supplies [scrollAxis] itself.
@@ -160,9 +164,14 @@ mixin Scroll3dHolderMixin on Layout3dLayoutPassMixin implements Scrollable3d {
   }
 
   /// Sets the position, or hands ownership back with null.
+  ///
+  /// Null when the view already owns its position is **no change**: it is
+  /// what a widget with no controller writes on every rebuild, and a fresh
+  /// position there would send the view back to its start each time.
   set controller(Scroll3dController? value) {
     final held = controller;
     if (identical(held, value)) return;
+    if (value == null && _ownsController) return;
     held.removeListener(_handleScrollChanged);
     if (_ownsController) held.dispose();
     _ownsController = value == null;

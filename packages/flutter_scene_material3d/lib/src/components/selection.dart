@@ -1,5 +1,14 @@
 import 'dart:ui' show Color;
 
+import 'package:flutter/animation.dart'
+    show
+        Animation,
+        AnimationController,
+        AnimationStatus,
+        Cubic,
+        Curve,
+        CurvedAnimation,
+        Curves;
 import 'package:flutter/foundation.dart' show ValueChanged;
 import 'package:flutter/semantics.dart' show SemanticsProperties;
 import 'package:flutter/widgets.dart'
@@ -8,11 +17,14 @@ import 'package:flutter/widgets.dart'
         Directionality,
         FocusNode,
         IconData,
+        State,
+        StatefulWidget,
         StatelessWidget,
         TextDirection,
+        TickerProviderStateMixin,
         Widget;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart'
-    show Alignment3d, Offset3d, Size3d;
+    show Alignment3d, Offset3d, ProxyLayout3d, Size3d;
 import 'package:flutter_scene_layout3d/widgets.dart'
     show
         Layout3dMetricsScope,
@@ -20,14 +32,15 @@ import 'package:flutter_scene_layout3d/widgets.dart'
         SceneSemantics3d,
         SceneSizedBox3d,
         SceneStack3d,
-        SceneTapTarget3d;
+        SceneTapTarget3d,
+        SingleChildLayout3dWidget;
+import 'package:vector_math/vector_math.dart' show Matrix4;
 
 import '../theme/theme.dart';
 import 'control_in_tile.dart';
 import 'icon.dart';
 import 'ink_well.dart';
 import 'material.dart';
-import 'node_shift.dart';
 import 'selection_style.dart';
 import 'reading_direction.dart';
 
@@ -386,24 +399,45 @@ class Radio3d<T> extends StatelessWidget {
 /// )
 /// ```
 ///
-/// A 52 by 32 track with a 24dp thumb on it, Material's own figures, all in
+/// A 52 by 32 track with a thumb on it, Material's own figures, all in
 /// [SwitchStyle3d].
 ///
-/// ## The slide is on the node tier, and that is not an optimisation
+/// ## The thumb moves on the node tier, and that is not an optimisation
 ///
-/// The thumb's position is a `nodeOffset` — one matrix, written by
-/// [SceneNodeShift3d], with no relayout at all — and `docs/traps.md`'s three
-/// tiers are why. A control that moved its thumb by laying the track out
-/// again would relayout on every toggle, and the moment this package grows
-/// motion tokens it would do so on every frame of the transition. Layout
-/// centres the thumb on the track; the shift carries it half the travel
-/// either way.
+/// A toggle is three motions at once, all transcribed from Flutter's M3
+/// switch and all over `theme.motion.medium2`, which is Flutter's 300ms:
 ///
-/// The consequence to know before probing one: **`worldTransform` undoes a
-/// `nodeOffset`**, so `screenCenter` on the thumb reports the middle of the
-/// track whichever way the switch is set. A picture of a switch has to take
-/// its oracle from the *track*, which is the same finding phase 6 wrote down
-/// about an anchored menu.
+///  * **The slide**, on `Curves.easeOutBack` forward and its flip backward,
+///    so the thumb runs a little past the end and settles.
+///  * **The growth**: 16dp off and 24dp on, passing through a 34 by 22
+///    stretch on the way — Flutter's three-part sequence, 11% of the run to
+///    the stretch, 72% to the far size and 17% held.
+///  * **The press**: a held thumb swells to 28dp over `theme.motion.short2`,
+///    and lets go the same way.
+///
+/// None of that lays anything out. The thumb is laid out once, at 24dp, in
+/// the middle of the track; a private box above it listens to the switch's
+/// two controllers and writes a `nodeOffset` for the slide and a
+/// `nodeTransform` scaling about the thumb's centre for everything else. A
+/// toggle rebuilds the switch once, for its colours, and the 300ms after it
+/// are matrices — `docs/traps.md`'s second tier, which is what a thumb moving
+/// along a track is.
+///
+/// Two consequences to know before probing one. **`worldTransform` undoes
+/// both channels**, so `screenCenter` on the thumb reports the middle of the
+/// track whichever way the switch is set; a picture of a switch takes its
+/// oracle from the *track*. And a stretched thumb is an **ellipse**, where
+/// Flutter's is a stadium, because a scale stretches the corner radius with
+/// the box — for the thirtieth of a second it is at its widest.
+///
+/// ## The colours change at once
+///
+/// Flutter cross-fades the track and the thumb over the same 300ms. Here a
+/// colour is a token on a `Material3d`, and fading one means rebuilding it
+/// every frame — so the colours change on the toggle's first frame and the
+/// geometry takes the time. The motion reads as a thumb crossing a track that
+/// has already changed, which is most of what Flutter's reads as too, since
+/// its fade is on `Curves.easeOut`.
 ///
 /// ## The thumb stands proud of the track
 ///
@@ -413,13 +447,7 @@ class Radio3d<T> extends StatelessWidget {
 /// [Thickness3d.stepOver] of the two thicknesses rather than a constant. This
 /// is the same rule `Divider3d` found for a rule on a card and
 /// `NavigationStyle3d` found for a glyph on a pill.
-///
-/// ## What Material animates and this does not
-///
-/// Material's thumb grows from 16dp to 24dp as it crosses. That is an
-/// animation, and this package has no motion tokens — so the thumb is one
-/// size and what moves is where it is. See [SwitchStyle3d] for the argument.
-class Switch3d extends StatelessWidget {
+class Switch3d extends StatefulWidget {
   /// Creates a switch.
   const Switch3d({
     super.key,
@@ -447,7 +475,8 @@ class Switch3d extends StatelessWidget {
   ///
   /// Material's optional thumb icon — a tick when on, a cross when off. It is
   /// drawn in the track's colour, so it reads as a hole in the thumb rather
-  /// than as a mark on it.
+  /// than as a mark on it. A thumb with an icon is full size in both states,
+  /// as Flutter's is, so the glyph is never shrunk.
   final IconData? thumbIcon;
 
   /// The node holding this control's place in the focus tree.
@@ -470,19 +499,86 @@ class Switch3d extends StatelessWidget {
   /// Whether the switch responds to a pointer.
   bool get enabled => onChanged != null;
 
+  /// The curve the thumb slides on toward on: Flutter's M3 switch's.
+  ///
+  /// It overshoots, so the thumb runs past the end and settles. Toward off
+  /// the thumb takes its flip, so it overshoots the other end.
+  static const Curve slideCurve = Curves.easeOutBack;
+
+  @override
+  State<Switch3d> createState() => _Switch3dState();
+}
+
+class _Switch3dState extends State<Switch3d> with TickerProviderStateMixin {
+  /// How far across the thumb is, from 0 at off to 1 at on, before any curve.
+  ///
+  /// The growth is read off this raw value and the slide off [_slide], which
+  /// is Flutter's split: its size sequence animates the controller and its
+  /// position the curved animation.
+  late final AnimationController _position = AnimationController(
+    value: widget.value ? 1.0 : 0.0,
+    vsync: this,
+  );
+
+  late final CurvedAnimation _slide = CurvedAnimation(
+    parent: _position,
+    curve: Switch3d.slideCurve,
+    reverseCurve: Switch3d.slideCurve.flipped,
+  );
+
+  /// How far the held thumb has swollen, from 0 to 1.
+  late final AnimationController _press = AnimationController(vsync: this);
+
+  @override
+  void didUpdateWidget(Switch3d oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.value == oldWidget.value) return;
+    if (widget.value) {
+      _position.forward();
+    } else {
+      _position.reverse();
+    }
+  }
+
+  @override
+  void dispose() {
+    _slide.dispose();
+    _position.dispose();
+    _press.dispose();
+    super.dispose();
+  }
+
+  void _pressed(bool down) {
+    // A gesture can be delivered after the switch has left the tree; see
+    // `Button3d`'s `_note`.
+    if (!mounted) return;
+    if (down) {
+      _press.forward();
+    } else {
+      _press.reverse();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme3d.of(context);
     final metrics = Layout3dMetricsScope.of(context);
-    final tokens = style ?? SwitchStyle3d.of(theme);
+    final tokens = widget.style ?? SwitchStyle3d.of(theme);
+    final value = widget.value;
+    final enabled = widget.enabled;
     final resolved = tokens.resolve(
       const {},
       selected: value,
       enabled: enabled,
     );
-    final changed = onChanged;
+    final changed = widget.onChanged;
     final tap = changed == null ? null : () => changed(!value);
     final inTile = ControlInTile3d.isIn(context);
+
+    // Read here rather than once, so a theme that slows motion down reaches
+    // the next toggle.
+    _position.duration = theme.motion.medium2;
+    _press.duration = theme.motion.short2;
 
     final extent = SceneSizedBox3d(
       width: metrics.dp(tokens.trackWidth),
@@ -498,32 +594,40 @@ class Switch3d extends StatelessWidget {
       surfaceTint: _none,
       alignment: null,
       // In a labelled tile the row is the control, so the track is only
-      // drawn: see `ControlInTile3d`.
+      // drawn: see `ControlInTile3d`. With no well there is no press either,
+      // so a switch in a tile slides and does not swell — Flutter's doesn't.
       child: inTile
           ? extent
           : InkWell3d(
               // One target, and it is the one outside this panel.
               minimumSize: Size3d.zero,
               enabled: enabled,
-              focusNode: focusNode,
-              autofocus: autofocus,
+              focusNode: widget.focusNode,
+              autofocus: widget.autofocus,
               onTap: tap,
+              onHighlightChanged: _pressed,
               child: extent,
             ),
     );
 
-    // Half the travel either way from the middle, which is where layout puts
-    // it. A `nodeOffset`: no relayout, and nothing under it is measured
-    // again. On is toward the end of the reading direction, so in right to
-    // left it is the left, as Flutter's switch has it.
-    final towardEnd = Directionality.maybeOf(context) == TextDirection.rtl
-        ? -1.0
-        : 1.0;
-    final shift =
-        metrics.dp(tokens.travel) / 2.0 * (value ? towardEnd : -towardEnd);
+    final icon = widget.thumbIcon;
     final thumb = SceneIgnorePointer3d(
-      child: SceneNodeShift3d(
-        shift: Offset3d(shift, 0.0, 0.0),
+      child: _SceneSwitchThumb3d(
+        slide: _slide,
+        position: _position,
+        press: _press,
+        // On is toward the end of the reading direction, so in right to left
+        // it is the left, as Flutter's switch has it.
+        rtl: Directionality.maybeOf(context) == TextDirection.rtl,
+        travel: tokens.travel,
+        drawn: tokens.thumbSize,
+        unselected: icon == null
+            ? tokens.unselectedThumbSize
+            : tokens.thumbSize,
+        selected: tokens.thumbSize,
+        pressed: tokens.pressedThumbSize,
+        stretchWidth: tokens.transitionalThumbWidth,
+        stretchHeight: tokens.transitionalThumbHeight,
         child: SceneSizedBox3d(
           width: metrics.dp(tokens.thumbSize),
           height: metrics.dp(tokens.thumbSize),
@@ -534,10 +638,10 @@ class Switch3d extends StatelessWidget {
             elevation: theme.elevation.level0,
             thickness: tokens.thumbThickness,
             surfaceTint: _none,
-            child: thumbIcon == null
+            child: icon == null
                 ? null
                 : Icon3d(
-                    thumbIcon!,
+                    icon,
                     size: tokens.thumbSize * 2.0 / 3.0,
                     color: resolved.track,
                   ),
@@ -557,8 +661,8 @@ class Switch3d extends StatelessWidget {
       properties: SemanticsProperties(
         toggled: value,
         enabled: enabled,
-        label: semanticLabel,
-        textDirection: readingDirection3d(context, textDirection),
+        label: widget.semanticLabel,
+        textDirection: readingDirection3d(context, widget.textDirection),
         onTap: tap,
       ),
       child: drawn,
@@ -568,6 +672,241 @@ class Switch3d extends StatelessWidget {
     // minimum, so the reach is eight logical pixels above and below that no
     // box in the layout knows about.
     return SceneTapTarget3d(child: announced);
+  }
+}
+
+/// Flutter's thumb size at [t] of a run toward on, and toward off when
+/// [forward] is false: `_MaterialSwitchPainter`'s three-part sequence.
+///
+/// Every figure in logical pixels, as a width and a height. At rest a run
+/// toward on is at 0 and one toward off at 1, and both read the size the
+/// switch is resting at.
+(double, double) _thumbSizeAt(
+  double t, {
+  required bool forward,
+  required double unselected,
+  required double selected,
+  required double stretchWidth,
+  required double stretchHeight,
+}) {
+  (double, double) lerp(double aw, double ah, double bw, double bh, double f) =>
+      (aw + (bw - aw) * f, ah + (bh - ah) * f);
+  // The ends exactly, rather than through the curves: a `Cubic` is solved
+  // to within a thousandth, so a thumb at rest would otherwise be drawn a
+  // hair off its size and never lose its transform.
+  if (t <= 0.0) return (unselected, unselected);
+  if (t >= 1.0) return (selected, selected);
+  const out = Cubic(0.31, 0.0, 0.56, 1.0);
+  const settle = Cubic(0.2, 0.0, 0.0, 1.0);
+  // The weights are Flutter's: 11, 72 and 17 parts of a hundred.
+  if (forward) {
+    if (t < 0.11) {
+      return lerp(
+        unselected,
+        unselected,
+        stretchWidth,
+        stretchHeight,
+        out.transform(t / 0.11),
+      );
+    }
+    if (t < 0.83) {
+      return lerp(
+        stretchWidth,
+        stretchHeight,
+        selected,
+        selected,
+        settle.transform((t - 0.11) / 0.72),
+      );
+    }
+    return (selected, selected);
+  }
+  if (t < 0.17) return (unselected, unselected);
+  if (t < 0.89) {
+    return lerp(
+      unselected,
+      unselected,
+      stretchWidth,
+      stretchHeight,
+      settle.flipped.transform((t - 0.17) / 0.72),
+    );
+  }
+  return lerp(
+    stretchWidth,
+    stretchHeight,
+    selected,
+    selected,
+    out.flipped.transform((t - 0.89) / 0.11),
+  );
+}
+
+/// The switch's thumb, moved and scaled on the node tier from the switch's
+/// clocks.
+///
+/// Laid out as its child is — the thumb at its full size, centred on the
+/// track — and never laid out again by any of this: a tick writes
+/// [Layout3d.nodeOffset] for where the thumb is along the track and
+/// [Layout3d.nodeTransform] for how big it is drawn, scaled about its own
+/// centre. Every figure it is given is in logical pixels, converted through
+/// the surface's metrics when it is written.
+class _SwitchThumb3d extends ProxyLayout3d {
+  _SwitchThumb3d({
+    required Animation<double> slide,
+    required AnimationController position,
+    required Animation<double> press,
+    required this.rtl,
+    required this.travel,
+    required this.drawn,
+    required this.unselected,
+    required this.selected,
+    required this.pressed,
+    required this.stretchWidth,
+    required this.stretchHeight,
+  }) : _slide = slide,
+       _position = position,
+       _press = press,
+       super(name: 'Switch3d thumb') {
+    _slide.addListener(_apply);
+    _press.addListener(_apply);
+  }
+
+  Animation<double> _slide;
+  AnimationController _position;
+  Animation<double> _press;
+
+  bool rtl;
+  double travel;
+  double drawn;
+  double unselected;
+  double selected;
+  double pressed;
+  double stretchWidth;
+  double stretchHeight;
+
+  void update({
+    required Animation<double> slide,
+    required AnimationController position,
+    required Animation<double> press,
+  }) {
+    if (!identical(slide, _slide)) {
+      _slide.removeListener(_apply);
+      _slide = slide..addListener(_apply);
+    }
+    _position = position;
+    if (!identical(press, _press)) {
+      _press.removeListener(_apply);
+      _press = press..addListener(_apply);
+    }
+    _apply();
+  }
+
+  @override
+  void performLayout() {
+    super.performLayout();
+    _apply();
+  }
+
+  void _apply() {
+    if (!hasSize) return;
+    final metrics = this.metrics;
+
+    // Where along the track: half the travel either side of the middle,
+    // which is where layout put the thumb. The curved value, so it overshoots.
+    final along = rtl ? 1.0 - _slide.value : _slide.value;
+    nodeOffset = Offset3d(metrics.dp(travel) * (along - 0.5), 0.0, 0.0);
+
+    // How big: Flutter's sequence off the raw value, in whichever direction
+    // the run is going — a switch at rest on reads the sequence toward off
+    // at its start, which is the on size — and then toward the held size by
+    // however far the press has got.
+    final forward =
+        _position.status == AnimationStatus.forward ||
+        _position.status == AnimationStatus.dismissed;
+    final (width, height) = _thumbSizeAt(
+      _position.value,
+      forward: forward,
+      unselected: unselected,
+      selected: selected,
+      stretchWidth: stretchWidth,
+      stretchHeight: stretchHeight,
+    );
+    final swell = _press.value;
+    final sx = (width + (pressed - width) * swell) / drawn;
+    final sy = (height + (pressed - height) * swell) / drawn;
+
+    // About the thumb's centre: the node transform pivots on its origin
+    // corner, so the corner moves in by what the scale takes off each side.
+    final centre = size.width / 2.0;
+    if (sx == 1.0 && sy == 1.0) {
+      nodeTransform = null;
+      return;
+    }
+    nodeTransform = Matrix4.diagonal3Values(sx, sy, 1.0)
+      ..setTranslationRaw(centre * (1.0 - sx), centre * (1.0 - sy), 0.0);
+  }
+
+  @override
+  void dispose() {
+    _slide.removeListener(_apply);
+    _press.removeListener(_apply);
+    super.dispose();
+  }
+}
+
+class _SceneSwitchThumb3d extends SingleChildLayout3dWidget {
+  const _SceneSwitchThumb3d({
+    required this.slide,
+    required this.position,
+    required this.press,
+    required this.rtl,
+    required this.travel,
+    required this.drawn,
+    required this.unselected,
+    required this.selected,
+    required this.pressed,
+    required this.stretchWidth,
+    required this.stretchHeight,
+    super.child,
+  });
+
+  final Animation<double> slide;
+  final AnimationController position;
+  final Animation<double> press;
+  final bool rtl;
+  final double travel;
+  final double drawn;
+  final double unselected;
+  final double selected;
+  final double pressed;
+  final double stretchWidth;
+  final double stretchHeight;
+
+  @override
+  _SwitchThumb3d createLayout(BuildContext context) => _SwitchThumb3d(
+    slide: slide,
+    position: position,
+    press: press,
+    rtl: rtl,
+    travel: travel,
+    drawn: drawn,
+    unselected: unselected,
+    selected: selected,
+    pressed: pressed,
+    stretchWidth: stretchWidth,
+    stretchHeight: stretchHeight,
+  );
+
+  @override
+  void updateLayout(BuildContext context, _SwitchThumb3d layout) {
+    layout
+      ..rtl = rtl
+      ..travel = travel
+      ..drawn = drawn
+      ..unselected = unselected
+      ..selected = selected
+      ..pressed = pressed
+      ..stretchWidth = stretchWidth
+      ..stretchHeight = stretchHeight
+      ..update(slide: slide, position: position, press: press);
   }
 }
 

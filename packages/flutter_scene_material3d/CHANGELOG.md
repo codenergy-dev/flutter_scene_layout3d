@@ -1,5 +1,60 @@
 ## Unreleased
 
+- **Progress, both ways Flutter draws it.** `LinearProgressIndicator3d` and
+  `CircularProgressIndicator3d` take Flutter's own parameters — a `value`, or
+  none for an indeterminate one, `color`, `backgroundColor`, `minHeight`,
+  `strokeWidth`, `semanticsLabel` and `semanticsValue` — and draw Flutter's
+  default design: a 4dp bar of `primary` on `secondaryContainer` with square
+  ends, and a 4dp stroke on a 36dp circle with no track.
+  `ProgressIndicatorStyle3d` is the table both read, Flutter's
+  `ProgressIndicatorThemeData` resolved.
+  - **Neither lays anything out while it moves.** The bar's filled part is a
+    slab as long as the track, stretched on the node tier by a box that
+    turns its span into a matrix once it knows its width — so a value that
+    follows a drag, and an indeterminate bar's two lines, are one matrix a
+    frame. The ring's arc is a sweep on a ring's border — the layout
+    package's new `Border3d.gradient` — written into a shader parameter each
+    frame, and turned to where it starts on the node tier.
+  - **The geometry is Flutter's, checked against Flutter's.** The bar's two
+    lines follow its four private curves over 1800ms and the arc its head,
+    tail and turn; both are compared with where a real Flutter indicator
+    draws them. The ring overhangs its 36dp box by half a stroke, because
+    Flutter centres its stroke on the box's circle.
+  - A determinate indicator announces a progress bar from 0 to 100 and an
+    indeterminate one a loading spinner, as Flutter's do. An indeterminate
+    indicator never settles, exactly as Flutter's does not.
+  - Not here: Flutter's 2024 design, with a gap before the track, a stop dot
+    and round caps. The ends of an arc are a hard stop in a ramp and are not
+    anti-aliased.
+
+- **A switch's thumb moves.** It used to jump. It now slides over
+  `theme.motion.medium2` on Flutter's overshooting curve, grows from 16dp off
+  to 24dp on through Flutter's 34 by 22 stretch, and swells to 28dp while it
+  is held — all on the node tier, so a toggle rebuilds the switch once and the
+  300ms after it lay nothing out and build nothing. The thumb is laid out at
+  24dp and drawn at every other size by a scale about its centre, so its
+  stretch is an ellipse where Flutter's is a stadium.
+  - **`SwitchStyle3d` has four more figures**: `unselectedThumbSize`,
+    `pressedThumbSize`, `transitionalThumbWidth` and
+    `transitionalThumbHeight`. They are required, so a style built with the
+    constructor rather than `SwitchStyle3d.of` has to state them.
+  - The colours still change on the toggle's first frame, where Flutter
+    cross-fades them. A thumb with an icon is full size in both states, and a
+    switch in a labelled tile slides without swelling, both as Flutter's do.
+  - A test reading the thumb's position finds it on the box named
+    `Switch3d thumb` rather than on a `NodeShift3d`.
+
+- **A held chip comes toward the finger.** An assist, filter or suggestion
+  chip rises 1dp while it is pressed and settles back after, over Flutter's
+  75ms on `Curves.fastOutSlowIn`; an input chip does not rise, as Flutter's
+  does not. In Flutter that elevation is a shadow in a transparent colour;
+  here it is a distance, so it is seen. It is a node-tier slide around the
+  chip, so it lays nothing out. `ChipStyle3d.pressElevation` is the figure
+  and `Chip3d.pressDuration` the time, and both are checked against the
+  `Material` inside a real held Flutter chip.
+  - `ChipStyle3d.pressElevation` is required, so a style built with the
+    constructor has to state it.
+
 - **A screen spends the safe area the way Flutter's does.** On a surface
   that stands in for the view, `AppBar3d` and `SliverAppBar3d` are taller by
   the status bar and draw their container under it with the toolbar below,

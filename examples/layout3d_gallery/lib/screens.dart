@@ -1,3 +1,4 @@
+import 'dart:async' show Timer;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show SynchronousFuture;
@@ -126,6 +127,28 @@ class _MaterialScreenState extends State<MaterialScreen> {
   // The settings.
   bool _notify = true;
   double _volume = 0.65;
+
+  /// The pretend save under way, or null when there is none: a second and a
+  /// bit of a spinner in the button, the way an application waiting on a
+  /// server shows one.
+  Timer? _saving;
+
+  @override
+  void dispose() {
+    _saving?.cancel();
+    super.dispose();
+  }
+
+  void _save(BuildContext context) {
+    if (_saving != null) return;
+    setState(() {
+      _saving = Timer(const Duration(milliseconds: 1200), () {
+        if (!mounted) return;
+        setState(() => _saving = null);
+        _say(context, 'Saved');
+      });
+    });
+  }
 
   static const List<(String, String)> _messages = <(String, String)>[
     ('Ada Lovelace', 'The engine weaves algebraic patterns'),
@@ -588,6 +611,12 @@ class _MaterialScreenState extends State<MaterialScreen> {
                       onChanged: (value) => setState(() => _volume = value),
                     ),
                   ),
+                  // A bar that fills is a scale and not a width, so following
+                  // a drag lays nothing out: every frame of it is one matrix.
+                  LinearProgressIndicator3d(
+                    value: _volume,
+                    semanticsLabel: 'Volume level',
+                  ),
                 ],
               ),
             ),
@@ -611,8 +640,22 @@ class _MaterialScreenState extends State<MaterialScreen> {
                 child: const SceneText3d('Reset'),
               ),
               FilledButton3d(
-                onPressed: () => _say(context, 'Saved'),
-                child: const SceneText3d('Save'),
+                onPressed: () => _save(context),
+                semanticLabel: 'Save',
+                // The spinner Flutter applications put in a button: small,
+                // thin, and in the button's own content colour. Its arc is a
+                // gradient on a ring's border, turned on the node tier.
+                child: _saving == null
+                    ? const SceneText3d('Save')
+                    : SceneSizedBox3d(
+                        width: _dp(context, 20),
+                        height: _dp(context, 20),
+                        child: CircularProgressIndicator3d(
+                          strokeWidth: 2,
+                          color: Theme3d.of(context).colorScheme.onPrimary,
+                          semanticsLabel: 'Saving',
+                        ),
+                      ),
               ),
             ],
           ),

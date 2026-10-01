@@ -97,7 +97,10 @@ material {
 
     // The gradient that fills the panel in place of `color`: x its kind (0 for
     // none, 1 linear, 2 radial, 3 sweep), y its tile mode (0 clamp, 1
-    // repeated, 2 mirror, 3 decal), z how many stops are in use.
+    // repeated, 2 mirror, 3 decal), z how many stops are in use, and w what
+    // it paints — 0 the fill, 1 the border's band in place of
+    // `border_color`. One ramp per panel, so never both: a transparent
+    // circle with a sweep on its border is how an arc is drawn.
     { type: vec4, name: gradient, default: [0, 0, 0, 0] },
     // The gradient's geometry, in the box's own frame (origin at the corner).
     // Linear: the start point in xy and the end point in zw. Radial: the
@@ -362,7 +365,14 @@ fragment {
     // gradient in its place, and then the picture over whichever it was. The
     // border, the tint, the state layer and the ripple all go on top, so a
     // photograph on a card is washed by a hover exactly as its colour is.
+    //
+    // The border's paint is chosen here too, because the one ramp may be
+    // its instead of the fill's. A band painted by a sweep with a hard stop
+    // is an arc: the fragments the ramp leaves transparent fall through to
+    // the discard below with the transparent middle, so nothing but the arc
+    // writes depth.
     vec4 fill = material_params.color;
+    vec4 border_paint = material_params.border_color;
     if (material_params.gradient.x > 0.5) {
       float t = GradientT(clip_p.xy);
       float tile = material_params.gradient.y;
@@ -378,7 +388,12 @@ fragment {
         visible = t < 0.0 || t > 1.0 ? 0.0 : 1.0;
       }
       vec4 ramp = GradientAt(t);
-      fill = vec4(SRGBToLinear(ramp.rgb), ramp.a * visible);
+      vec4 painted = vec4(SRGBToLinear(ramp.rgb), ramp.a * visible);
+      if (material_params.gradient.w > 0.5) {
+        border_paint = painted;
+      } else {
+        fill = painted;
+      }
     }
 
     // The picture is sampled whatever its opacity, before any branch, so the
@@ -407,7 +422,7 @@ fragment {
       fill.a = over;
     }
 
-    vec4 base = mix(fill, material_params.border_color, border_mix);
+    vec4 base = mix(fill, border_paint, border_mix);
     base.rgb = mix(base.rgb, material_params.surface_tint.rgb, material_params.surface_tint.a);
     base.rgb = mix(base.rgb, material_params.state_layer.rgb, material_params.state_layer.a);
 

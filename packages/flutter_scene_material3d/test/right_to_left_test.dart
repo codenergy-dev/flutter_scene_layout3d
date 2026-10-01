@@ -241,13 +241,21 @@ void main() {
       () => Switch3d(value: true, onChanged: (_) {}),
       textDirection: _rtl,
     );
-    expect(oneComponentShift(on.surface).shift.x, closeTo(-travel / 2, 1e-9));
+    expect(
+      namedBox(on.surface, 'Switch3d thumb').nodeOffset.x,
+      closeTo(-travel / 2, 1e-9),
+    );
     final off = await pumpComponent(
       tester,
       () => Switch3d(value: false, onChanged: (_) {}),
       textDirection: _rtl,
     );
-    expect(oneComponentShift(off.surface).shift.x, closeTo(travel / 2, 1e-9));
+    // The same switch, turned off: it runs there rather than jumping.
+    await tester.pumpAndSettle();
+    expect(
+      namedBox(off.surface, 'Switch3d thumb').nodeOffset.x,
+      closeTo(travel / 2, 1e-9),
+    );
   });
 
   testWidgets('a menu hangs from its button\'s leading corner, on the right', (

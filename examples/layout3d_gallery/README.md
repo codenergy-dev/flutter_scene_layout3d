@@ -71,6 +71,20 @@ drawing it, which is the whole point of `Layout3dOverflow` — a box that
 overflows looks exactly like a box that fits until its content is standing
 through the front of a panel.
 
+At the bottom of that list, **Save** spins for a moment before its snack bar,
+the way an application waiting on a server does: a `CircularProgressIndicator3d`
+in the button's own content colour, whose arc is a gradient on a ring's border
+turned on the node tier. Under the volume slider a `LinearProgressIndicator3d`
+follows it, one matrix a frame. And the switches no longer jump: a thumb slides
+past the end and settles, growing from 16dp to 24dp as it crosses, and swells
+under a held finger.
+
+Scrolling down to Save is also how a month-old defect was found. Pressing it
+rebuilt the screen, and the list — which has no controller of its own — went
+back to its top with the button under the navigation bar: every `setState`
+above a controller-less list used to reset it. The layout package now keeps a
+view's own position through a rebuild.
+
 ## Running it
 
 This app commits no platform scaffolding, so generate the platform you want

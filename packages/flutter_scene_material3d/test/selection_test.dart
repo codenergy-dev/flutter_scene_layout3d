@@ -6,13 +6,21 @@
 // `Slider3d` is next door in `slider_test.dart`: it is a drag rather than a
 // press, and what it has to prove is about the gesture arena.
 
+import 'package:flutter/gestures.dart' show kPressTimeout;
 import 'package:flutter/widgets.dart'
-    show BuildContext, State, StatefulWidget, Widget;
+    show
+        BuildContext,
+        FocusManager,
+        State,
+        StatefulWidget,
+        TextDirection,
+        Widget;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
 import 'package:flutter_scene_layout3d/testing.dart';
 import 'package:flutter_scene_layout3d/widgets.dart';
 import 'package:flutter_scene_material3d/flutter_scene_material3d.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:vector_math/vector_math.dart' show Vector3;
 
 import 'support.dart';
 import 'surfaces_support.dart';
@@ -336,22 +344,39 @@ void main() {
       );
     });
 
-    testWidgets('slides its thumb on the node tier, half the travel each way', (
+    testWidgets('rests its thumb half the travel each way, at its size', (
       tester,
     ) async {
       final off = await pumpComponent(
         tester,
         () => Switch3d(value: false, onChanged: (_) {}),
       );
-      final shiftOff = oneComponentShift(off.surface).shift;
-      expect(shiftOff.x, closeTo(-dp(switchStyle.travel) / 2, 1e-9));
+      final thumbOff = namedBox(off.surface, 'Switch3d thumb');
+      expect(thumbOff.nodeOffset.x, closeTo(-dp(switchStyle.travel) / 2, 1e-9));
+      // Laid out at 24dp and drawn at 16: a scale, about its own centre.
+      expect(thumbOff.size.width, closeTo(dp(24), 1e-9));
+      expect(scaleOf(thumbOff).$1, closeTo(16 / 24, 1e-6));
+      expect(scaleOf(thumbOff).$2, closeTo(16 / 24, 1e-6));
+      expect(
+        centreStays(thumbOff),
+        isTrue,
+        reason: 'the thumb shrinks toward its centre, not its corner',
+      );
 
+      // The same switch, told it is on: it runs there rather than jumping,
+      // so let it arrive.
       final on = await pumpComponent(
         tester,
         () => Switch3d(value: true, onChanged: (_) {}),
       );
-      final shiftOn = oneComponentShift(on.surface).shift;
-      expect(shiftOn.x, closeTo(dp(switchStyle.travel) / 2, 1e-9));
+      await tester.pumpAndSettle();
+      final thumbOn = namedBox(on.surface, 'Switch3d thumb');
+      expect(thumbOn.nodeOffset.x, closeTo(dp(switchStyle.travel) / 2, 1e-9));
+      expect(
+        thumbOn.nodeTransform,
+        isNull,
+        reason: 'an on thumb is drawn at the size it is laid out at',
+      );
       expect(
         switchStyle.travel,
         closeTo(20.0, 1e-9),
@@ -359,39 +384,44 @@ void main() {
       );
     });
 
-    testWidgets('and layout never hears about it', (tester) async {
-      // The claim the node tier exists for. A toggle rebuilds the widget —
-      // its tokens really do change — and writes one matrix; no box under it
-      // is laid out again.
+    testWidgets('a thumb with an icon is full size either way', (tester) async {
+      // Flutter's `thumbRadiusWithIcon`: a glyph is never shrunk.
+      final off = await pumpComponent(
+        tester,
+        () => Switch3d(
+          value: false,
+          thumbIcon: Checkbox3d.defaultIcon,
+          onChanged: (_) {},
+        ),
+      );
+      expect(namedBox(off.surface, 'Switch3d thumb').nodeTransform, isNull);
+    });
+
+    testWidgets('and layout never hears about a toggle', (tester) async {
+      // The claim the node tier exists for. A toggle rebuilds the switch once
+      // — its colours really do change — and the 300ms after it are
+      // matrices: no box is laid out and no widget is built on any of them.
       var value = false;
-      late void Function(void Function()) rebuild;
       final it = await pumpComponent(tester, () {
         return _Toggling(
-          builder: (context, setState) {
-            rebuild = setState;
-            return Switch3d(
-              value: value,
-              onChanged: (next) => setState(() => value = next),
-            );
-          },
+          builder: (context, setState) => Switch3d(
+            value: value,
+            onChanged: (next) => setState(() => value = next),
+          ),
         );
       });
       final track = it.panels[0];
-      final laidOut = layoutCountOf(it.surface);
-      expect(oneComponentShift(it.surface).shift.x, lessThan(0.0));
 
       it.pointer.down(rayAt(it.surface, const Offset3d(2, 1.5, 0)));
       it.pointer.up();
       await tester.pump();
-
       expect(value, isTrue);
-      expect(oneComponentShift(it.surface).shift.x, greaterThan(0.0));
-      expect(it.surface.needsFlush, isFalse, reason: 'nothing was laid out');
-      expect(layoutCountOf(it.surface), laidOut);
+
+      await expectNothingLaidOut(tester, it.surface, frames: 25);
+      final thumb = namedBox(it.surface, 'Switch3d thumb');
+      expect(thumb.nodeOffset.x, closeTo(dp(switchStyle.travel) / 2, 1e-9));
+      expect(thumb.nodeTransform, isNull);
       expect(identical(it.panels[0], track), isTrue, reason: 'the same boxes');
-      rebuild(() {});
-      await tester.pump();
-      expect(it.surface.needsFlush, isFalse);
     });
 
     testWidgets('a disabled switch keeps its position and loses its colour', (
@@ -407,7 +437,7 @@ void main() {
         theme.colorScheme.surface,
       );
       expect(
-        oneComponentShift(it.surface).shift.x,
+        namedBox(it.surface, 'Switch3d thumb').nodeOffset.x,
         greaterThan(0.0),
         reason: 'a disabled switch still says which way it is set',
       );
@@ -432,6 +462,171 @@ void main() {
         (on.panels[0].decoration as BoxDecoration3d).border.isNone,
         isTrue,
         reason: 'a filled track is the signal; an edge round it competes',
+      );
+    });
+  });
+
+  group('the switch moves', () {
+    // A pointer held on a control takes the focus, and the focus outlives
+    // the test that took it unless it is let go of.
+    tearDown(() {
+      FocusManager.instance.primaryFocus?.unfocus();
+      FocusManager.instance.applyFocusChangesIfNeeded();
+    });
+
+    Future<PumpedSurface> toggling(
+      WidgetTester tester, {
+      bool value = false,
+      TextDirectionHolder? direction,
+    }) async {
+      var current = value;
+      return pumpComponent(
+        tester,
+        () => _Toggling(
+          builder: (context, setState) => Switch3d(
+            value: current,
+            onChanged: (next) => setState(() => current = next),
+          ),
+        ),
+        textDirection: direction?.value,
+      );
+    }
+
+    Future<void> tap(PumpedSurface it) async {
+      it.pointer.down(rayAt(it.surface, const Offset3d(2, 1.5, 0)));
+      it.pointer.up();
+    }
+
+    testWidgets('slides past the end and settles', (tester) async {
+      // Flutter's M3 curve is `easeOutBack`, which overshoots: the thumb
+      // runs a little past where it will rest before it comes back.
+      final it = await toggling(tester);
+      await tap(it);
+      // A ticker's first tick is its own zero; see `docs/traps.md`.
+      await tester.pump();
+      final end = dp(switchStyle.travel) / 2;
+      var furthest = double.negativeInfinity;
+      for (var i = 0; i < 40; i++) {
+        await tester.pump(const Duration(milliseconds: 8));
+        final x = namedBox(it.surface, 'Switch3d thumb').nodeOffset.x;
+        if (x > furthest) furthest = x;
+      }
+      expect(furthest, greaterThan(end + 1e-6), reason: 'it overshot');
+      await tester.pumpAndSettle();
+      expect(
+        namedBox(it.surface, 'Switch3d thumb').nodeOffset.x,
+        closeTo(end, 1e-9),
+      );
+    });
+
+    testWidgets('takes the theme\'s medium2 to cross', (tester) async {
+      final it = await toggling(tester);
+      await tap(it);
+      await tester.pump();
+      final end = dp(switchStyle.travel) / 2;
+      await tester.pump(
+        theme.motion.medium2 - const Duration(milliseconds: 20),
+      );
+      expect(
+        namedBox(it.surface, 'Switch3d thumb').nodeOffset.x,
+        isNot(closeTo(end, 1e-6)),
+        reason: 'not there yet: still coming back from the overshoot',
+      );
+      await tester.pump(const Duration(milliseconds: 40));
+      final thumb = namedBox(it.surface, 'Switch3d thumb');
+      expect(thumb.nodeTransform, isNull);
+      expect(thumb.nodeOffset.x, closeTo(end, 1e-9));
+    });
+
+    testWidgets('stretches to 34 by 22 on its way across', (tester) async {
+      // Flutter's sequence reaches the stretch at 11% of a run toward on.
+      final it = await toggling(tester);
+      await tap(it);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 33));
+      final (sx, sy) = scaleOf(namedBox(it.surface, 'Switch3d thumb'));
+      expect(sx, closeTo(34 / 24, 0.02));
+      expect(sy, closeTo(22 / 24, 0.02));
+      expect(centreStays(namedBox(it.surface, 'Switch3d thumb')), isTrue);
+    });
+
+    testWidgets('and back through it toward off', (tester) async {
+      // Toward off the sequence runs the other way round the same shape:
+      // 11% of the run to the stretch, 72% down to 16dp, 17% held there.
+      final it = await toggling(tester, value: true);
+      await tap(it);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 33));
+      final (sx, sy) = scaleOf(namedBox(it.surface, 'Switch3d thumb'));
+      expect(sx, closeTo(34 / 24, 0.02));
+      expect(sy, closeTo(22 / 24, 0.02));
+      await tester.pumpAndSettle();
+      final (rest, _) = scaleOf(namedBox(it.surface, 'Switch3d thumb'));
+      expect(rest, closeTo(16 / 24, 1e-6));
+    });
+
+    testWidgets('swells to 28dp while it is held, and lets go', (tester) async {
+      final it = await toggling(tester);
+      it.pointer.down(rayAt(it.surface, const Offset3d(2, 1.5, 0)));
+      // A press reports itself when the tap recognizer's deadline passes;
+      // see `InkWell3d.onHighlightChanged`.
+      await tester.pump(kPressTimeout);
+      await tester.pump();
+      await tester.pump(theme.motion.short2 + const Duration(milliseconds: 10));
+      final (sx, sy) = scaleOf(namedBox(it.surface, 'Switch3d thumb'));
+      expect(sx, closeTo(28 / 24, 1e-6));
+      expect(sy, closeTo(28 / 24, 1e-6));
+
+      it.pointer.cancel();
+      await tester.pumpAndSettle();
+      final (after, _) = scaleOf(namedBox(it.surface, 'Switch3d thumb'));
+      expect(after, closeTo(16 / 24, 1e-6), reason: 'back to an off thumb');
+    });
+
+    testWidgets('slides toward the left in right to left', (tester) async {
+      final it = await toggling(
+        tester,
+        direction: const TextDirectionHolder(TextDirection.rtl),
+      );
+      final thumb = namedBox(it.surface, 'Switch3d thumb');
+      expect(thumb.nodeOffset.x, closeTo(dp(switchStyle.travel) / 2, 1e-9));
+      await tap(it);
+      await tester.pumpAndSettle();
+      expect(
+        namedBox(it.surface, 'Switch3d thumb').nodeOffset.x,
+        closeTo(-dp(switchStyle.travel) / 2, 1e-9),
+      );
+    });
+
+    testWidgets('in a tile it slides and does not swell', (tester) async {
+      // The row is the control: the switch installs no well, so there is no
+      // press for it to swell under — Flutter's tile does the same.
+      var value = false;
+      final it = await pumpComponent(
+        tester,
+        () => _Toggling(
+          builder: (context, setState) => SceneSizedBox3d(
+            width: 3.6,
+            child: SwitchListTile3d.text(
+              title: 'Wi-Fi',
+              value: value,
+              onChanged: (next) => setState(() => value = next),
+            ),
+          ),
+        ),
+      );
+      it.pointer.down(rayAt(it.surface, const Offset3d(1, 1.5, 0)));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 150));
+      final (held, _) = scaleOf(namedBox(it.surface, 'Switch3d thumb'));
+      expect(held, closeTo(16 / 24, 1e-6));
+
+      it.pointer.up();
+      await tester.pumpAndSettle();
+      expect(value, isTrue);
+      expect(
+        namedBox(it.surface, 'Switch3d thumb').nodeOffset.x,
+        closeTo(dp(switchStyle.travel) / 2, 1e-9),
       );
     });
   });
@@ -771,4 +966,29 @@ class _Toggling extends StatefulWidget {
 class _TogglingState extends State<_Toggling> {
   @override
   Widget build(BuildContext context) => widget.builder(context, setState);
+}
+
+/// The x and y scale a box's node transform draws it at, or one each for
+/// none.
+(double, double) scaleOf(Layout3d box) {
+  final transform = box.nodeTransform;
+  if (transform == null) return (1.0, 1.0);
+  return (transform.entry(0, 0), transform.entry(1, 1));
+}
+
+/// Whether [box]'s node transform leaves the centre of the box where it was.
+bool centreStays(Layout3d box) {
+  final transform = box.nodeTransform;
+  if (transform == null) return true;
+  final c = box.size.center;
+  final moved = transform.transform3(Vector3(c.x, c.y, c.z));
+  // A node transform is single precision.
+  return (moved.x - c.x).abs() < 1e-6 && (moved.y - c.y).abs() < 1e-6;
+}
+
+/// A reading direction a helper can default to null.
+class TextDirectionHolder {
+  const TextDirectionHolder(this.value);
+
+  final TextDirection value;
 }

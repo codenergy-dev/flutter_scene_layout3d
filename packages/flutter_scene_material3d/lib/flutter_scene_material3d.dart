@@ -123,6 +123,10 @@ export 'src/components/overlay_style.dart'
         MenuStyle3d,
         SnackBarStyle3d,
         TooltipStyle3d;
+export 'src/components/progress_indicator.dart'
+    show CircularProgressIndicator3d, LinearProgressIndicator3d;
+export 'src/components/progress_indicator_style.dart'
+    show ProgressIndicatorStyle3d;
 export 'src/components/scaffold.dart' show Scaffold3d, Scaffold3dSlot;
 export 'src/components/selection.dart' show Checkbox3d, Radio3d, Switch3d;
 export 'src/components/selection_list_tile.dart'

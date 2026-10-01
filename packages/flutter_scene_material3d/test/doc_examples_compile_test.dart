@@ -486,6 +486,36 @@ Future<void> deleteWithUndo(
   if (await shown.closed == SnackBar3dClosedReason.timeout) commit();
 }
 
+// ------------------------------------------ Progress: a bar that scales and
+// a ring that is a border.
+
+/// The README's two indicators, one with a value and one without, in the
+/// state class the example's `_received` and `_total` belong to.
+class DownloadDemo extends StatefulWidget {
+  const DownloadDemo({super.key});
+
+  @override
+  State<DownloadDemo> createState() => _DownloadDemoState();
+}
+
+class _DownloadDemoState extends State<DownloadDemo> {
+  final int _received = 3;
+  final int _total = 10;
+
+  @override
+  Widget build(BuildContext context) => SceneColumn3d(
+    crossAxisAlignment: CrossAxisAlignment3d.stretch,
+    children: <Widget>[
+      LinearProgressIndicator3d(
+        value: _received / _total,
+        semanticsLabel: 'Downloading',
+      ),
+      // No value: something is under way and nobody knows how long it takes.
+      const CircularProgressIndicator3d(semanticsLabel: 'Loading'),
+    ],
+  );
+}
+
 // ------------------------------------------------- The root README's whole
 // first application, start to finish.
 
@@ -543,6 +573,7 @@ void main() {
     expect(inboxCard, isNotNull);
     expect(ChipDemo.new, isNotNull);
     expect(ScreenDemo.new, isNotNull);
+    expect(DownloadDemo.new, isNotNull);
     expect(boundScreen, isNotNull);
     expect(railAndBody, isNotNull);
     expect(overlaidApp, isNotNull);

@@ -349,17 +349,25 @@ void main() {
           Offset3d(gesture.padding, gesture.size.height / 2.0, 0.0);
       final track = it.panels[1];
 
+      // Watched where the dirt is raised rather than after the frame: a box
+      // marked for layout asks the surface for an update, and at that moment
+      // the surface needs a flush. `needsFlush` read after a `pump` would be
+      // false whatever happened, because the pump's frame laid it out.
+      var step = 0;
+      final dirty = <int>[];
+      final forward = it.surface.onNeedVisualUpdate;
+      it.surface.onNeedVisualUpdate = () {
+        if (it.surface.needsFlush) dirty.add(step);
+        forward?.call();
+      };
       it.pointer.down(rayAt(it.surface, left));
-      for (var step = 1; step <= 20; step++) {
+      for (step = 1; step <= 20; step++) {
         it.pointer.move(rayAt(it.surface, left + Offset3d(step * 0.06, 0, 0)));
         await tester.pump();
-        expect(
-          it.surface.needsFlush,
-          isFalse,
-          reason: 'step $step laid something out',
-        );
         expect(identical(it.panels[1], track), isTrue);
       }
+      it.surface.onNeedVisualUpdate = forward;
+      expect(dirty, isEmpty, reason: 'steps that laid something out');
       it.pointer.up();
       await tester.pump();
 

@@ -961,6 +961,32 @@ reported once in a debug build rather than silently applied: **eight stops**,
 past which the ramp is resampled, and no `GradientTransform` or focal radial
 gradient.
 
+**A border can be painted by a gradient too**, and that is how a panel draws
+an arc. A transparent circle with a `Border3d` is a ring; give the border a
+`SweepGradient` with a hard stop in it and only the part of the ring the ramp
+is opaque over is drawn — the rest is discarded, as a transparent fill is:
+
+```dart
+BoxDecoration3d(
+  color: const Color(0x00000000),
+  borderRadius: const BorderRadius3d.circular(9999),
+  border: Border3d(
+    width: 4,
+    gradient: SweepGradient(
+      colors: [primary, primary, clear, clear],
+      stops: const [0.0, 0.3, 0.3, 1.0],   // 30% of a turn, from 3 o'clock
+    ),
+  ),
+)
+```
+
+A panel has **one ramp**, because the shader has room for one set of stops, so
+a decoration with a gradient on its fill and one on its border asserts. And a
+sweep starts at three o'clock and cannot be rotated here, so an arc that starts
+anywhere else turns the panel instead, on the node tier: a circle's distance
+field does not care which way it faces. The Material catalogue's circular
+progress indicator is exactly this, turned to twelve o'clock.
+
 **A picture arrives after the frame that asked for it.** An `ImageProvider`
 resolves asynchronously and the pixels have to reach the GPU, so a decorated
 box draws its colour first and its picture a frame or two later.

@@ -744,6 +744,113 @@ void main() {
     });
   });
 
+  group('a border painted by a gradient', () {
+    const clear = Color(0x00FF0000);
+    const red = Color(0xFFFF0000);
+    // A third of a turn from three o'clock, and nothing after it: an arc.
+    const arc = SweepGradient(
+      colors: <Color>[red, red, clear, clear],
+      stops: <double>[0.0, 1 / 3, 1 / 3, 1.0],
+    );
+    const ring = BoxDecoration3d(
+      color: Color(0x00000000),
+      borderRadius: BorderRadius3d.circular(9999),
+      border: Border3d(width: 4, gradient: arc),
+    );
+
+    test('the ramp goes to the band, and says so', () {
+      final uniforms = BoxDecoration3dUniforms.resolve(
+        decoration: ring,
+        size: const Size3d(0.4, 0.4, 0.02),
+        metrics: metrics,
+      );
+      expect(uniforms.gradient, isNotNull);
+      expect(uniforms.gradient!.kind, GradientKind3d.sweep);
+      // Measured round the box's centre, as a fill's sweep is.
+      expect(uniforms.gradient!.origin.dx, closeTo(0.2, 1e-9));
+      expect(uniforms.gradient!.origin.dy, closeTo(0.2, 1e-9));
+      expect(uniforms.gradient!.stops, <double>[0.0, 1 / 3, 1 / 3, 1.0]);
+      expect(uniforms.gradientPaintsBorder, isTrue);
+      expect(uniforms.borderWidth, closeTo(metrics.dp(4), 1e-12));
+    });
+
+    test('a fill gradient still paints the fill', () {
+      final uniforms = BoxDecoration3dUniforms.resolve(
+        decoration: const BoxDecoration3d(gradient: arc),
+        size: const Size3d(0.4, 0.4, 0.02),
+        metrics: metrics,
+      );
+      expect(uniforms.gradient, isNotNull);
+      expect(uniforms.gradientPaintsBorder, isFalse);
+    });
+
+    test('a border with no width has no ramp to paint', () {
+      // Otherwise the flag would send the ramp to a band that is not there
+      // and the fill would draw its plain colour — correct by accident.
+      final uniforms = BoxDecoration3dUniforms.resolve(
+        decoration: const BoxDecoration3d(border: Border3d(gradient: arc)),
+        size: const Size3d(0.4, 0.4, 0.02),
+        metrics: metrics,
+      );
+      expect(uniforms.gradient, isNull);
+      expect(uniforms.gradientPaintsBorder, isFalse);
+    });
+
+    test('one panel has one ramp', () {
+      expect(
+        () => BoxDecoration3dUniforms.resolve(
+          decoration: const BoxDecoration3d(
+            gradient: LinearGradient(colors: <Color>[red, clear]),
+            border: Border3d(width: 2, gradient: arc),
+          ),
+          size: const Size3d(0.4, 0.4, 0.02),
+          metrics: metrics,
+        ),
+        throwsAssertionError,
+      );
+    });
+
+    test('a transparent colour is not no border when there is a gradient', () {
+      expect(const Border3d(width: 4, color: clear).isNone, isTrue);
+      expect(
+        const Border3d(width: 4, color: clear, gradient: arc).isNone,
+        isFalse,
+      );
+      expect(const Border3d(gradient: arc).isNone, isTrue);
+      expect(
+        const Border3d(width: 4, gradient: arc).toString(),
+        contains('Sweep'),
+      );
+    });
+
+    test('the gradient is part of the value', () {
+      expect(
+        const Border3d(width: 4, gradient: arc),
+        isNot(const Border3d(width: 4)),
+      );
+      expect(
+        const Border3d(width: 4, gradient: arc).hashCode,
+        const Border3d(width: 4, gradient: arc).hashCode,
+      );
+    });
+
+    test('it interpolates through Flutter’s own lerp', () {
+      const blue = SweepGradient(
+        colors: <Color>[Color(0xFF0000FF), Color(0xFF0000FF)],
+      );
+      const redRamp = SweepGradient(colors: <Color>[red, red]);
+      final half = Border3d.lerp(
+        const Border3d(width: 2, gradient: redRamp),
+        const Border3d(width: 4, gradient: blue),
+        0.5,
+      );
+      expect(half.width, 3);
+      final gradient = half.gradient! as SweepGradient;
+      expect(gradient.colors.first.r, closeTo(0.5, 0.05));
+      expect(gradient.colors.first.b, closeTo(0.5, 0.05));
+    });
+  });
+
   group('the seam a late picture arrives through', () {
     test('a painter is handed a way to ask for another paint', () {
       final box = DecoratedBox3d(decoration: const _SeamDecoration());

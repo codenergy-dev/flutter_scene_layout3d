@@ -383,10 +383,22 @@ reading in both scenes is taken as a fraction along one of those.
 `switch_thumb` draws an on switch and an off one and asserts the thumb ends up
 at opposite ends, by two directions with **opposite signs**: on, the thumb is
 `onPrimary` on a `primary` track and reads lighter; off, it is `outline` on a
-near-white track and reads darker. `slider_drag` is mid-interaction, like the
+near-white track and reads darker. Its off thumb is drawn at 16dp by scaling
+the 24dp box about its centre, which is what `Switch3d` itself does now that
+its thumb grows. `slider_drag` is mid-interaction, like the
 drag scenes: it drives a real `Layout3dPointer` through the component's own
 `SliderGesture3d` three quarters of the way across, then asks whether the
 active track stops where the thumb is.
+
+`arc_on_a_ring` and `arc_turned` are the circular progress indicator's one
+new picture: a transparent circle whose border is painted by a
+`SweepGradient` with a hard stop a quarter of the way round. The claims are
+about **where there is ink** — in the quadrant the arc covers, and nowhere
+else on the ring nor in its middle — because the feature is as much about what
+is not drawn as what is. The turned scene is the same ring rotated a quarter
+back on the node tier, and the ink has to have moved to the top-right quadrant
+rather than the bottom-left, which is the only way to learn which way a turn
+goes; the layout oracle cannot, since `worldTransform` undoes the turn.
 
 `slider_in_a_padded_card` is the slider again, in the place the gallery put
 it, and it is a scene about a padding rather than about a control. Two outlined

@@ -1,8 +1,8 @@
 ---
 status: in progress
-reason: five of the seventeen items are open; the motion lane is closed and so is the colour generator, so what is left is the catalogue batch — planned in seven phases, two landed — more than one screen, more than one language, and the letter someone can type with the keyboard controls behind it
+reason: five of the seventeen items are open; the motion lane is closed and so is the colour generator, so what is left is the catalogue batch — planned in seven phases, three landed — more than one screen, more than one language, and the letter someone can type with the keyboard controls behind it
 created_at: 2026-09-11T21:20:18Z
-updated_at: 2026-09-21T16:25:00Z
+updated_at: 2026-09-30T21:30:00Z
 commit: abc2469ce5c4ec4c41e2738fc5acf55bcf40640a
 ---
 
@@ -106,7 +106,7 @@ plan, which is the rule phase 0 established and every phase since has obeyed.
 | [An application with more than one screen](#an-application-with-more-than-one-screen) | layout3d | named routes, deep links, the system back button |
 | ~~[A way to test a screen someone else built](#a-way-to-test-a-screen-someone-else-built)~~ | layout3d | **done** — anyone building on this, including us |
 | ~~[The motion tokens](#the-motion-tokens)~~ | material3d | **done** — every overlay in the catalogue arrives instead of appearing |
-| [The components a screen still needs](#the-components-a-screen-still-needs) | material3d | **in progress** — [its plan](../../flutter_scene_material3d/plans/2026_09_21_the_components_a_screen_still_needs.md) is seven phases; two have landed — the alert dialog, the tristate box and the labelled tiles, then the safe area and type that grows |
+| [The components a screen still needs](#the-components-a-screen-still-needs) | material3d | **in progress** — [its plan](../../flutter_scene_material3d/plans/2026_09_21_the_components_a_screen_still_needs.md) is seven phases; three have landed — the alert dialog, the tristate box and the labelled tiles; the safe area and type that grows; the switch's thumb, the chip's lift and both progress indicators |
 | ~~[A scheme from one colour](#a-scheme-from-one-colour)~~ | material3d | **done** — any application with a brand |
 | [The controls that wait on a keyboard](#the-controls-that-wait-on-a-keyboard) | material3d | search, dropdowns, date and time entry |
 | [A catalogue that speaks more than one language](#a-catalogue-that-speaks-more-than-one-language) | material3d | every locale, and the strings the catalogue invents |
@@ -207,8 +207,12 @@ depth was all in a library every Flutter application already carries. **The
 catalogue batch is now the only thing left in the middle of this queue**, and
 it is under way: [its plan](../../flutter_scene_material3d/plans/2026_09_21_the_components_a_screen_still_needs.md) phases it by what each component needs
 underneath it, first the ones a ported screen reaches for first. Phase 1
-— `AlertDialog3d`, the tristate checkbox and the three labelled tiles — and
-phase 2 — the safe area and type that grows — have landed.
+— `AlertDialog3d`, the tristate checkbox and the three labelled tiles —
+phase 2 — the safe area and type that grows — and phase 3 — the switch's
+thumb, the chip's lift and both progress indicators, all on the node tier —
+have landed. Phase 3 needed one change here,
+[a border painted by a gradient](2026_09_30_a_border_painted_by_a_gradient.md),
+because nothing in the panel shader could draw an arc.
 
 **[A letter someone can type](#a-letter-someone-can-type) last of the large
 items, and it is much larger than anything above it.** It gates
@@ -935,7 +939,10 @@ should be grouped by what they actually need:
 
 - `ProgressIndicator3d` and `RefreshIndicator3d` want the motion lane, which
   is **done**: `MotionScheme3d` is on the theme and every overlay already
-  reads it.
+  reads it. *Since closed, the first half, by phase 3:* the motion lane was
+  the easy part. The circular indicator needed an arc, and the panel shader
+  could draw a ring and a wedge but not the two at once — which took a change
+  to the layout package, a gradient on a border.
 - `TabBar3d` wants an indicator that slides (node tier, free) and a rounded
   clip it cannot have (see the seams).
 - `Carousel3d`, and any horizontal list in a right-to-left application, want a
@@ -961,7 +968,10 @@ should be grouped by what they actually need:
   has kept off the interaction path throughout — so it wants a thumb drawn at
   one size and *scaled* on the node tier. A chip's lift is an elevation, which
   here is a distance, so it is node-tier too. Both are changes to how the
-  control is built, with a duration in them.
+  control is built, with a duration in them. *Since closed, both, by phase
+  3,* exactly as this says — and the lift turned out to matter more here
+  than there: in Flutter it is a shadow in a transparent colour, so this is
+  the first place it is seen at all.
 - **`PopupMenuButton3d` cannot put its menu back on the panel**, only be told
   which way to open it: `menuCorner` and `anchorCorner` are forwarded now, and
   *choosing* them is the `off the edge` question this map excludes. Whoever

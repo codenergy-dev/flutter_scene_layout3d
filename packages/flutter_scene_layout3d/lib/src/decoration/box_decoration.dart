@@ -15,14 +15,43 @@ import 'gradient.dart';
 
 /// A line drawn around the outside of a decoration.
 ///
-/// One width and one colour: Material borders are uniform on all four sides,
+/// One width and one paint: Material borders are uniform on all four sides,
 /// and a per-side border in three dimensions would mean six, which no
 /// component in the catalogue asks for. The width is a logical-pixel figure,
 /// like everything else on [BoxDecoration3d].
+///
+/// The paint is [color], or [gradient] in its place — which is the sentence
+/// [BoxDecoration3d.gradient] says about the fill, and is how a panel draws
+/// an **arc**. A transparent circle with a border is a ring; a
+/// [SweepGradient] on that border with a hard stop in it is the part of the
+/// ring the ramp is opaque over, and the rest is not drawn at all:
+///
+/// ```dart
+/// BoxDecoration3d(
+///   color: const Color(0x00000000),
+///   borderRadius: const BorderRadius3d.circular(9999),
+///   border: Border3d(
+///     width: 4,
+///     gradient: SweepGradient(
+///       colors: [primary, primary, clear, clear],
+///       stops: const [0.0, 0.3, 0.3, 1.0], // 30% of a turn, from 3 o'clock
+///     ),
+///   ),
+/// )
+/// ```
+///
+/// A sweep starts at three o'clock and cannot be rotated here — the shader
+/// has no arithmetic for a [Gradient.transform] — so an arc that starts
+/// anywhere else is turned on the node tier: a circle's distance field does
+/// not care which way it faces. The two ends of an arc are a hard stop in the
+/// ramp, and are not feathered the way the outline is.
 class Border3d {
   /// Creates a border.
-  const Border3d({this.width = 0.0, this.color = const Color(0xFF000000)})
-    : assert(width >= 0.0);
+  const Border3d({
+    this.width = 0.0,
+    this.color = const Color(0xFF000000),
+    this.gradient,
+  }) : assert(width >= 0.0);
 
   /// No border, and the default.
   static const Border3d none = Border3d();
@@ -32,26 +61,54 @@ class Border3d {
   final double width;
 
   /// The border's colour.
+  ///
+  /// Ignored when there is a [gradient].
   final Color color;
 
+  /// A gradient painting the border's band in place of [color], or null for
+  /// none.
+  ///
+  /// Evaluated against the whole box, exactly as a fill gradient is — a
+  /// [SweepGradient]'s centre is the box's centre and its angle is measured
+  /// round it — and seen only where the band is. **A panel has one ramp**:
+  /// the shader has room for one set of stops, so a decoration with a
+  /// gradient on its fill *and* on its border asserts. The limits are
+  /// [BoxDecoration3d.gradient]'s: eight stops, and no transform or focal
+  /// point.
+  final Gradient? gradient;
+
   /// Whether this border draws anything.
-  bool get isNone => width <= 0.0 || color.a == 0.0;
+  ///
+  /// A border with a [gradient] may, whatever its [color] says.
+  bool get isNone => width <= 0.0 || (gradient == null && color.a == 0.0);
 
   /// Linearly interpolates between two borders.
+  ///
+  /// The gradients interpolate with [Gradient.lerp], as a fill's do, which
+  /// fades one in from nothing when only one end has one.
   static Border3d lerp(Border3d a, Border3d b, double t) => Border3d(
     width: lerpDouble(a.width, b.width, t)!.clamp(0.0, double.infinity),
     color: Color.lerp(a.color, b.color, t)!,
+    gradient: Gradient.lerp(a.gradient, b.gradient, t),
   );
 
   @override
   bool operator ==(Object other) =>
-      other is Border3d && other.width == width && other.color == color;
+      other is Border3d &&
+      other.width == width &&
+      other.color == color &&
+      other.gradient == gradient;
 
   @override
-  int get hashCode => Object.hash(width, color);
+  int get hashCode => Object.hash(width, color, gradient);
 
   @override
-  String toString() => isNone ? 'Border3d.none' : 'Border3d($width, $color)';
+  String toString() {
+    if (isNone) return 'Border3d.none';
+    return gradient == null
+        ? 'Border3d($width, $color)'
+        : 'Border3d($width, $gradient)';
+  }
 }
 
 /// A panel: a coloured slab with rounded corners, a border, a bevel and an
@@ -113,6 +170,9 @@ class BoxDecoration3d extends Decoration3d implements Decoration3dElevation {
   /// **eight stops** ([GradientUniforms3d.maxStops]), past which the ramp is
   /// resampled, and no [Gradient.transform] or [RadialGradient.focal], which
   /// the shader has no arithmetic for.
+  ///
+  /// And a third, which asserts: a panel has **one ramp**, so a decoration
+  /// with a gradient here cannot have one on its [Border3d.gradient] too.
   final Gradient? gradient;
 
   /// A picture drawn over the fill, or null for none.
@@ -340,6 +400,7 @@ class BoxDecoration3dUniforms {
     required this.clipPlanes,
     this.opacity = 1.0,
     this.gradient,
+    this.gradientPaintsBorder = false,
     this.image = ImageUniforms3d.none,
     this.rippleOrigin = Offset3d.zero,
     this.rippleRadius = 0.0,
@@ -379,7 +440,19 @@ class BoxDecoration3dUniforms {
         : metrics.dp(decoration.border.width).clamp(0.0, halfFace);
     final tint = decoration.surfaceTint;
     final ripple = stateLayer.ripple;
-    final gradient = decoration.gradient;
+    // One ramp per panel: the shader has one set of gradient uniforms, and
+    // they paint the fill or the border's band, never both. Checked here
+    // rather than in the constructor, which is `const` and cannot read a
+    // field of its border.
+    assert(
+      decoration.gradient == null || decoration.border.gradient == null,
+      'A BoxDecoration3d can carry a gradient on its fill or on its border, '
+      'not both: the panel shader has room for one ramp.',
+    );
+    final borderGradient = borderWidth > 0.0
+        ? decoration.border.gradient
+        : null;
+    final gradient = decoration.gradient ?? borderGradient;
     final image = decoration.image;
     return BoxDecoration3dUniforms(
       halfExtent: size * 0.5,
@@ -407,6 +480,8 @@ class BoxDecoration3dUniforms {
               size: size,
               textDirection: textDirection,
             ),
+      gradientPaintsBorder:
+          decoration.gradient == null && borderGradient != null,
       image: image == null
           ? ImageUniforms3d.none
           : ImageUniforms3d.resolve(
@@ -466,10 +541,18 @@ class BoxDecoration3dUniforms {
   /// [Layout3d.inheritedOpacity].
   final double opacity;
 
-  /// The gradient filling the slab, or null for none — including for a
-  /// gradient this package cannot draw, which is reported rather than
-  /// substituted.
+  /// The gradient filling the slab or painting its border — see
+  /// [gradientPaintsBorder] — or null for none, including for a gradient
+  /// this package cannot draw, which is reported rather than substituted.
   final GradientUniforms3d? gradient;
+
+  /// Whether [gradient] paints the border's band rather than the fill.
+  ///
+  /// The shader's one ramp goes to one of the two, and this is which: true
+  /// for a [Border3d.gradient], false for a [BoxDecoration3d.gradient]. It
+  /// travels in the fourth component of the shader's `gradient` vector,
+  /// which had nothing in it.
+  final bool gradientPaintsBorder;
 
   /// Where the picture lands, and how much of it to draw.
   ///
@@ -561,7 +644,12 @@ class BoxDecoration3dUniforms {
     parameters
       ..setVec4(
         'gradient',
-        Vector4(descriptor[0], descriptor[1], descriptor[2], descriptor[3]),
+        Vector4(
+          descriptor[0],
+          descriptor[1],
+          descriptor[2],
+          gradient != null && gradientPaintsBorder ? 1.0 : 0.0,
+        ),
       )
       ..setVec4(
         'gradient_geometry',

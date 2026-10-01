@@ -28,9 +28,11 @@ several files, guidance for using the engine underneath.
 
 - **[traps.md](traps.md)** — what costs real time and is not obvious from the
   code. The unit contract and where the reader's font setting lives, staying
-  off the relayout path, the four transform channels, why nothing draws by
-  default, depth ordering, the clock a picture arrives on, the pointer, drag
-  and clipping edges, and what does and does not mirror in right to left.
+  off the relayout path, why a widget-built box cannot keep a child of its
+  own, the four transform channels, why nothing draws by default, depth
+  ordering, the clock a picture arrives on, the pointer, drag and clipping
+  edges, what does and does not mirror in right to left, and how to tell
+  that a test's "nothing laid out" could have failed.
   If you are about to write a component, read this first.
 - **[engine-rules.md](engine-rules.md)** — `flutter_scene` diverges from
   three.js, Godot and Unity in specific ways, and most first-attempt failures
@@ -306,6 +308,21 @@ Two entry points:
   setting still living only on the metrics. The safe area half is Flutter's
   `Scaffold` arithmetic, and has no lane that draws it yet — nothing in
   `examples/` stands in for the view.
+  Phase 3 — the node tier, with a clock — gave the switch's thumb Flutter's
+  slide, growth and swell, gave a held chip its 1dp lift as a real distance,
+  and added both progress indicators, none of which lays anything out while it
+  moves. The circular one needed a change here, planned as
+  [a border painted by a gradient](../packages/flutter_scene_layout3d/plans/2026_09_30_a_border_painted_by_a_gradient.md):
+  a ring is the radial half of an arc and a sweep the angular half, and a
+  sweep on a ring's *border* is the intersection the shader had no other way
+  to draw. The phase also found that the check every "nothing laid out" test
+  here made — `needsFlush` after a pump — was false whatever happened, and
+  that a box built by a widget cannot keep a layout child of its own making;
+  both are in [traps.md](traps.md). And driving the gallery in a real window
+  found a defect a month old: a list with no controller of its own went back
+  to its top on every rebuild above it, which
+  [the plan that set the rule](../packages/flutter_scene_layout3d/plans/2026_08_25_scroll_controller_ownership.md)
+  now corrects.
 - **The motion tokens** are
   [the tenth](../packages/flutter_scene_material3d/plans/2026_09_17_the_motion_tokens.md),
   the first plan in the Material package since its own ten phases, and the

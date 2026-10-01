@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-09-17T12:12:00Z
-updated_at: 2026-09-17T15:45:00Z
+updated_at: 2026-09-30T21:30:00Z
 commit: 96da2ebad2559275e80cf602240b77215c53cefb
 ---
 
@@ -288,6 +288,13 @@ tokens in hand: the switch's growing thumb, the chip that lifts under a press,
 and the progress and tab indicators. Every one of them wants a node-tier
 answer rather than a duration, so they belong with
 [the components a screen still needs](../../flutter_scene_layout3d/plans/2026_09_11_what_a_real_application_still_needs.md#the-components-a-screen-still-needs).
+
+*Since closed, all but the tab indicator,* by phase 3 of
+[the components a screen still needs](2026_09_21_the_components_a_screen_still_needs.md):
+the thumb and the lift were node-tier answers exactly as this says, and so
+was the progress bar. The circular indicator was not — it needed an arc, which
+the panel shader could not draw until the layout package gave a border a
+gradient. The tab indicator waits for phase 5.
 
 One thing this plan did **not** do and could have: a route's animation runs on
 a bare `Ticker`, because `navigatorOf3d` builds its `Navigator3d` with no

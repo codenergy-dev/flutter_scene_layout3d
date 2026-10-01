@@ -1,5 +1,37 @@
 ## Unreleased
 
+- **A list with no controller keeps its place when something above it
+  rebuilds.** It used to jump back to the top. A widget writes its controller
+  on every update, and with none that is null — which the ownership rule read
+  as "make a fresh position", so every `setState` above a `SceneListView3d`,
+  `SceneGridView3d`, `SceneCustomScrollView3d` or `SceneViewport3d` without a
+  controller of its own threw its scroll offset away. Null when a view already
+  owns its position is now no change. A caller that *stops* passing a
+  controller still gets a fresh one, as before. Found by pressing a button at
+  the bottom of the gallery's settings list, in a window: the headless tests
+  that pressed things there never looked where the list had gone.
+
+- **A border can be painted by a gradient, which is how a panel draws an
+  arc.** `Border3d.gradient` replaces the border's colour in its band, as
+  `BoxDecoration3d.gradient` replaces the fill's: a transparent circle with a
+  `SweepGradient` on its border, hard-stopped at a fraction, is that fraction
+  of a ring and nothing else, because the fragments the ramp leaves
+  transparent are discarded. The Material catalogue's circular progress
+  indicator needed exactly this, and nothing else here could draw it — a
+  ring is the radial half of an arc and a wedge the angular half, and the
+  shader had no way to intersect them.
+  - **A panel has one ramp.** The gradient uniforms paint the fill or the
+    band, never both, and a decoration asking for both asserts when it is
+    resolved; `BoxDecoration3dUniforms.gradientPaintsBorder` says which, and
+    reaches the shader in its `gradient` vector's unused fourth component.
+  - A sweep still cannot be rotated, so an arc that starts anywhere but
+    three o'clock turns its panel on the node tier. The two ends of an arc
+    are a hard stop in the ramp and are not anti-aliased the way the ring's
+    edges are.
+  - `Border3d.isNone` is false for a border with a gradient and a transparent
+    colour, and `Border3d.lerp` interpolates the gradients with Flutter's
+    `Gradient.lerp`.
+
 - **A label can say how far it grows with the reader's font setting.**
   `Text3d.textScaler` and `RichText3d.textScaler`, with the same parameter on
   `SceneText3d` and `SceneRichText3d`, replace the surface's scaler for one

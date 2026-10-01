@@ -2734,6 +2734,75 @@ void main() {
       );
     });
   });
+
+  group('an arc is a sweep on a ring\'s border', () {
+    // Where on the ring there should be ink, as fractions of the panel. The
+    // ring's band runs from a third of the way out to the rim, so its middle
+    // is five twelfths of the panel from the centre; a point at 45° into a
+    // quadrant is that far along the diagonal.
+    const band = 5 / 12;
+    final diagonal = band * math.sqrt1_2;
+    final quadrants = <String, Offset3d>{
+      'bottom right': Offset3d(0.5 + diagonal, 0.5 + diagonal, 0),
+      'bottom left': Offset3d(0.5 - diagonal, 0.5 + diagonal, 0),
+      'top left': Offset3d(0.5 - diagonal, 0.5 - diagonal, 0),
+      'top right': Offset3d(0.5 + diagonal, 0.5 - diagonal, 0),
+    };
+
+    void expectInkOnlyIn(_Capture capture, String inked) {
+      for (final entry in quadrants.entries) {
+        final at = capture.pointOf('ring', entry.value);
+        if (entry.key == inked) {
+          expect(
+            capture.frame.coverageAt(at, radius: 4),
+            greaterThan(0.9),
+            reason: 'no arc in the ${entry.key} quadrant',
+          );
+          final ink = capture.frame.meanColorAt(at, radius: 4)!;
+          expect(
+            ink.r,
+            greaterThan(ink.b),
+            reason: 'the arc is not the ramp\'s colour: $ink',
+          );
+        } else {
+          expect(
+            capture.frame.isClearAt(at, radius: 4),
+            isTrue,
+            reason:
+                'the ${entry.key} quadrant of the ring is drawn, where the '
+                'ramp is transparent and nothing should be',
+          );
+        }
+      }
+      expect(
+        capture.frame.isClearAt(capture.centerOf('ring'), radius: 8),
+        isTrue,
+        reason: 'the middle of the ring is drawn; the fill is transparent',
+      );
+    }
+
+    testWidgets('the arc is the first quarter clockwise from three o\'clock', (
+      tester,
+    ) async {
+      // y runs down on the face, so clockwise from three o'clock is the
+      // bottom-right quadrant, exactly as a `SweepGradient` on a screen.
+      expectInkOnlyIn(
+        await _draw(tester, kProbeScenes.byId('arc_on_a_ring')),
+        'bottom right',
+      );
+    });
+
+    testWidgets('and a quarter turn back puts it at twelve o\'clock', (
+      tester,
+    ) async {
+      // The oracle is layout, and layout does not know about the turn: the
+      // quadrant fractions are the same ones, and the ink has moved.
+      expectInkOnlyIn(
+        await _draw(tester, kProbeScenes.byId('arc_turned')),
+        'top right',
+      );
+    });
+  });
 }
 
 extension on List<ProbeScene> {

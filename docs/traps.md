@@ -188,7 +188,22 @@ corner** — `applyNodeTransform` composes `T(offset + sceneOffset + nodeOffset)
 full-length bar scaled on x keeps its left end exactly where layout put it and
 stops wherever the value says. `flutter_scene_material3d`'s `NodeShift3d` is
 that channel with a name on it, and `Slider3d` fills its track with it: twenty
-frames of drag, `needsFlush` false after every one.
+frames of drag, and nothing is marked for layout on any of them.
+
+**A bar that fills its parent does not know its width when it is built.** A
+slider states its width, so its fill's matrix is written from `build`. A
+progress bar is as wide as it is allowed, which is a fact about layout, so the
+matrix has to be written by a box once it has a size — from its own
+`performLayout`, and from its setters after that — which is the same answer
+`MotionTransition3d` gives an arrival stated as a fraction of its content.
+`LinearProgressIndicator3d` holds its span as two fractions for that reason.
+
+**A size that changes is a scale about the centre.** A node transform pivots
+on the origin corner, so a thumb that grows in place is `T(c) · S · T(−c)`
+— or a scale with its translation set to `c · (1 − s)`, which is the same
+matrix. `Switch3d`'s thumb is laid out at one size and drawn at four this way;
+the price is that a scaled circle stretched unevenly is an ellipse, not a
+stadium, because the corner radius scales with the box.
 
 Never put a new `Text3d.text`, a new `NodeBox3d.content`, or a rebuilt mesh on
 a per-frame path. `test/animation_test.dart` asserts `debugTextParagraphCount`
@@ -253,6 +268,25 @@ long as the view lives** — its whole subtree, its nodes and whatever they hold
 — so keep the handful with a form or a scroll position in them, not a list of
 labels. And setting `keepAlive` back to false **does not release the item
 there and then**: the next pass that finds it outside the window does.
+
+## A widget-built box's children are its widgets' children
+
+The layout tree under a `SceneLayout3d` is **mirrored** from Flutter's render
+tree: on every pass, each hosting render box reads the render children Flutter
+reconciled for it and hands that list to its layout. So a box built by a widget
+cannot keep a child of its own making. Create a `DecoratedBox3d` in a box's
+constructor and adopt it, build that box from a `SingleChildLayout3dWidget` or
+a leaf `Layout3dWidget`, and the first pass replaces the child with the widget
+layer's — none — silently: the box lays out at the right size and draws
+nothing, and a test walking the tree finds no child to ask about.
+
+The same box built imperatively keeps its child, which is what makes this
+expensive: the code is right, and only the host it is mounted under is wrong.
+Two shapes work. Make the part that draws **be** the box — a leaf that extends
+`DecoratedBox3d` and writes its own decoration — and put any layout it needs in
+a real widget parent; that is how `CircularProgressIndicator3d`'s ring is
+built. Or draw with scene nodes rather than layout children, which is what a
+`Text3d` and a decoration's painter do.
 
 ## Four transform channels, and they are not interchangeable
 
@@ -1555,6 +1589,19 @@ Things that cost time, in phase 5 and since, and are invisible from the code.
   `Size3d.zero` — one target rather than two nested ones disagreeing about
   where the control is. A test looking for "the target" wants the one with a
   non-zero minimum.
+- **`needsFlush` read after a `pump` proves nothing.** The frame that pump
+  drew has already laid the surface out, so it is false whether or not
+  anything was dirtied — an animation that relayouts on every frame passes
+  that check on every frame. Catch the dirt where it is raised: a box marked
+  for layout asks its surface for an update, and at that moment
+  `Layout3dSurface.needsFlush` is true. Wrap `surface.onNeedVisualUpdate`,
+  record when it is called with the surface dirty, and forward the call; a
+  node-tier write and a repaint call it too, with nothing to flush, so the
+  check tells them apart. `flutter_scene_material3d`'s
+  `test/surfaces_support.dart` has it as `watchFrames`, with Flutter's
+  `debugOnRebuildDirtyWidget` counting the builds beside it, and a control
+  test that it does see a relayout — from a tick and from a rebuild — so that
+  "nothing laid out" is a claim that could have failed.
 
 ## When probing a rendered frame
 

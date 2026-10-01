@@ -1,5 +1,6 @@
 import 'dart:ui' show Color;
 
+import 'package:flutter/animation.dart' show Curves;
 import 'package:flutter/foundation.dart' show ValueChanged;
 import 'package:flutter/gestures.dart' show GestureTapCallback;
 import 'package:flutter/semantics.dart' show SemanticsProperties;
@@ -8,6 +9,8 @@ import 'package:flutter/widgets.dart'
         BuildContext,
         FocusNode,
         IconData,
+        State,
+        StatefulWidget,
         StatelessWidget,
         TextDirection,
         Widget;
@@ -17,11 +20,13 @@ import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart'
         Constraints3d,
         CrossAxisAlignment3d,
         MainAxisSize3d,
+        Offset3d,
         Size3d;
 import 'package:flutter_scene_layout3d/widgets.dart'
     show
         Layout3dMetricsScope,
         SceneAlign3d,
+        SceneAnimatedSlide3d,
         SceneConstrainedBox3d,
         SceneGestureDetector3d,
         SceneRow3d,
@@ -96,7 +101,21 @@ import 'reading_direction.dart';
 /// `SceneSemantics3d`, takes the tap because the innermost recognizer wins
 /// the arena, and is otherwise plain. That is honest and small; the
 /// alternative is a phase of its own.
-class Chip3d extends StatelessWidget {
+///
+/// ## A held chip comes toward the finger
+///
+/// Flutter's assist, filter and suggestion chips rise from 0 to 1dp while
+/// they are held, over [pressDuration] on `Curves.fastOutSlowIn` — which in
+/// Flutter is a shadow in a transparent colour and draws nothing. Here an
+/// elevation is a distance, so the lift is real: the whole chip, its label
+/// with it, stands [ChipStyle3d.pressElevation] off whatever it is on while
+/// the press lasts. An input chip does not rise, as Flutter's does not.
+///
+/// It is on the **node tier**, Flutter's `AnimatedPhysicalModel` without the
+/// rebuild: the chip rebuilds once when the press starts and once when it
+/// ends, and the 75ms in between are a matrix. Nothing is laid out, and a ray
+/// still finds the chip where layout put it.
+class Chip3d extends StatefulWidget {
   /// Creates a chip of [variant], or drawn with an explicit [style].
   const Chip3d({
     super.key,
@@ -195,8 +214,47 @@ class Chip3d extends StatelessWidget {
   bool get interactive =>
       enabled && (onSelected != null || onPressed != null || onDeleted != null);
 
+  /// How long a held chip takes to rise, and to settle back: 75ms.
+  ///
+  /// Flutter's `pressedAnimationDuration`, which is private to its chip's
+  /// state; `test/chip_test.dart` reads it off the `Material` inside a real
+  /// held chip, which is where Flutter spends it.
+  static const Duration pressDuration = Duration(milliseconds: 75);
+
+  @override
+  State<Chip3d> createState() => _Chip3dState();
+}
+
+class _Chip3dState extends State<Chip3d> {
+  bool _held = false;
+
+  void _handleHighlight(bool held) {
+    // A gesture can be delivered after the chip has left the tree; see
+    // `Button3d`'s `_note`.
+    if (!mounted || held == _held) return;
+    setState(() => _held = held);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final widget = this.widget;
+    final style = widget.style;
+    final variant = widget.variant;
+    final selected = widget.selected;
+    final enabled = widget.enabled;
+    final onSelected = widget.onSelected;
+    final onPressed = widget.onPressed;
+    final onDeleted = widget.onDeleted;
+    final deleteIcon = widget.deleteIcon;
+    final deleteSemanticLabel = widget.deleteSemanticLabel;
+    final textDirection = widget.textDirection;
+    final avatar = widget.avatar;
+    final label = widget.label;
+    final trailing = widget.trailing;
+    final focusNode = widget.focusNode;
+    final autofocus = widget.autofocus;
+    final semanticLabel = widget.semanticLabel;
+    final interactive = widget.interactive;
     final theme = Theme3d.of(context);
     final metrics = Layout3dMetricsScope.of(context);
     final tokens = style ?? ChipStyle3d.of(theme, variant);
@@ -208,7 +266,7 @@ class Chip3d extends StatelessWidget {
 
     final tap = onSelected == null
         ? onPressed
-        : () => onSelected!(!resolved.selected);
+        : () => onSelected(!resolved.selected);
 
     final delete = onDeleted;
     final Widget? deleteAffordance = delete == null
@@ -227,7 +285,7 @@ class Chip3d extends StatelessWidget {
             child: SceneGestureDetector3d(
               onTap: enabled ? delete : null,
               child: Icon3d(
-                deleteIcon ?? defaultDeleteIcon,
+                deleteIcon ?? Chip3d.defaultDeleteIcon,
                 size: tokens.iconSize,
               ),
             ),
@@ -241,12 +299,12 @@ class Chip3d extends StatelessWidget {
       // right against an 18dp icon.
       spacing: metrics.dp(8.0),
       children: <Widget>[
-        if (avatar != null) avatar!,
+        ?avatar,
         label,
         if (deleteAffordance != null)
           deleteAffordance
         else if (trailing != null)
-          trailing!,
+          trailing,
       ],
     );
 
@@ -271,6 +329,7 @@ class Chip3d extends StatelessWidget {
               focusNode: focusNode,
               autofocus: autofocus,
               onTap: tap,
+              onHighlightChanged: _handleHighlight,
               child: SceneAlign3d(
                 alignment: Alignment3d.frontCenter,
                 widthFactor: 1.0,
@@ -294,6 +353,20 @@ class Chip3d extends StatelessWidget {
       child: surface,
     );
 
+    // The press lift, on the node tier: toward the viewer is negative depth.
+    // Only a press the chip itself reported lifts it — a disabled chip has no
+    // well to report one — so this needs no check of its own.
+    final lifted = SceneAnimatedSlide3d(
+      duration: Chip3d.pressDuration,
+      curve: Curves.fastOutSlowIn,
+      offset: Offset3d(
+        0.0,
+        0.0,
+        _held ? -metrics.dp(tokens.pressElevation) : 0.0,
+      ),
+      child: constrained,
+    );
+
     final announced = SceneSemantics3d(
       properties: SemanticsProperties(
         button: true,
@@ -306,7 +379,7 @@ class Chip3d extends StatelessWidget {
         textDirection: readingDirection3d(context, textDirection),
         onTap: enabled ? tap : null,
       ),
-      child: constrained,
+      child: lifted,
     );
 
     // Outermost, and here it is doing real work: a chip is 32dp tall and the

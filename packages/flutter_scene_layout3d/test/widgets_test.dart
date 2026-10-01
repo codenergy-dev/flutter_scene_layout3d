@@ -195,6 +195,39 @@ void main() {
     expect(hit.firstOf<Scrollable3d>(), same(rootOf(controller)));
   });
 
+  testWidgets('a list with no controller keeps its place through a rebuild', (
+    tester,
+  ) async {
+    // Every update of `SceneListView3d` writes its controller, and with none
+    // that is null — which used to mean a fresh position, so any `setState`
+    // above a list sent it back to the top.
+    final controller = Layout3dController();
+    Widget build() => SceneLayout3d(
+      parent: Node(),
+      size: const Size3d(4, 4, 1),
+      controller: controller,
+      child: SceneListView3d(
+        children: [
+          for (var i = 0; i < 6; i++)
+            SceneNodeBox3d(
+              key: ValueKey<int>(i),
+              content: Node(),
+              explicitSize: const Size3d(4, 2, 1),
+            ),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(build());
+    final list = rootOf(controller) as Scrollable3d;
+    list.controller.jumpTo(3);
+    await tester.pump();
+
+    // A new widget for the same list, as any `setState` above it produces.
+    await tester.pumpWidget(build());
+    expect(list.controller.offset, 3);
+  });
+
   testWidgets('SceneIgnorePointer3d takes its subtree out of reach', (
     tester,
   ) async {

@@ -631,6 +631,25 @@ void main() {
         supplied.dispose();
       });
 
+      test('$name keeps its own position when told null again', () {
+        // What a widget with no controller writes on every rebuild. A fresh
+        // position here sends the view back to its start whenever anything
+        // above it calls `setState`, which the gallery's settings list did
+        // until a person pressed a button at the bottom of it.
+        final probe = TestBox(const Size3d(2, 10, 2));
+        final view = build(null, probe);
+        final surface = laidOut(view, constraints: window);
+        final own = view.controller;
+        own.jumpTo(3);
+        surface.flush();
+
+        view.controller = null;
+        expect(surface.needsFlush, isFalse, reason: 'nothing changed');
+        expect(identical(view.controller, own), isTrue);
+        expect(isDisposed(own), isFalse);
+        expect(probe.offset.y, -3);
+      });
+
       test('$name takes a fresh controller back when given null', () {
         final supplied = Scroll3dController();
         final probe = TestBox(const Size3d(2, 10, 2));

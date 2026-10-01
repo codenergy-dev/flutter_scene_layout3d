@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-08-25T15:21:54Z
-updated_at: 2026-08-25T18:04:00Z
+updated_at: 2026-09-30T21:30:00Z
 commit: f1225b07925a18ca3418da10312eb982e2aa4bc1
 ---
 
@@ -130,7 +130,8 @@ which for a controller is one the view owns.
 - Constructor with null: the view makes one and owns it.
 - `controller = someController`: the view detaches from the old one, disposes it
   only if it owned it, and does not own the new one.
-- `controller = null`: the view makes a fresh one and owns it.
+- `controller = null`: the view makes a fresh one and owns it. *Corrected
+  since — see the end of this plan: unless it already owns one.*
 - `dispose()`: detach, and dispose only what the view owned.
 
 ## Steps
@@ -188,3 +189,24 @@ than something subtle. Make the assert message say which call is missing.
   which is a handful of asserts per layout pass and only in debug.
 - lib is 49 lines shorter (210 added, 259 removed) with the duplication gone.
   This was the fifth and last duplication cluster in the package.
+
+## What the rule got wrong, a month later
+
+**`controller = null` on a view that already owns its position threw that
+position away**, and the widget layer does exactly that on every update: a
+`SceneListView3d` with no controller writes null each time it rebuilds. So any
+`setState` above a list sent it back to the top. Nothing caught it for a month
+because no headless test scrolled a list and then rebuilt what was above it,
+and the gallery's inbox is rebuilt by starring a row — which a person does
+without scrolling first.
+
+It was found by phase 3 of
+[the components a screen still needs](../../flutter_scene_material3d/plans/2026_09_21_the_components_a_screen_still_needs.md),
+driving the gallery in a real window: scroll the settings list to its Save
+button, press it, and the photograph of the press shows the list back at its
+top with the button under the navigation bar. The rule now reads *null means
+the default, and a view that already holds its default keeps it*; a caller
+that stops passing a controller still gets a fresh position, which is the half
+the rule was written for. `test/scroll_test.dart` checks the new half on all
+four views, and `test/widgets_test.dart` checks it the way it was met, through
+a rebuild.

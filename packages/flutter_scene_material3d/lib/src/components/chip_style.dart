@@ -61,7 +61,9 @@ class ChipStyle3d {
     required this.labelStyle,
     required this.iconSize,
     required this.selectable,
+    required this.pressElevation,
   }) : assert(thickness >= 0.0),
+       assert(pressElevation >= 0.0),
        assert(outlineWidth >= 0.0),
        assert(height >= 0.0),
        assert(iconSize > 0.0);
@@ -78,35 +80,36 @@ class ChipStyle3d {
   factory ChipStyle3d.of(Theme3dData theme, ChipVariant3d variant) {
     final scheme = theme.colorScheme;
     const transparent = Color(0x00000000);
-    ChipStyle3d common({required Color content, bool selectable = true}) =>
-        ChipStyle3d(
-          container: transparent,
-          content: content,
-          selectedContainer: scheme.secondaryContainer,
-          selectedContent: scheme.onSecondaryContainer,
-          // A chip's container is transparent at rest, so a disabled one has
-          // nothing to dim; Material dims the outline and the label instead,
-          // exactly as it does for an outlined button.
-          disabledContainer: transparent,
-          disabledContent: scheme.disabledContent,
-          outline: scheme.outlineVariant,
-          // A selected chip has a filled container and drops its outline —
-          // the container is the signal, and an outline round it would read
-          // as a second, competing one.
-          selectedOutline: null,
-          disabledOutline: scheme.disabledContainer,
-          outlineWidth: 1.0,
-          shape: theme.shape.small,
-          thickness: theme.thickness.thin,
-          padding: const EdgeInsets3d.symmetric(
-            horizontal: 16.0,
-            vertical: 6.0,
-          ),
-          height: defaultHeight,
-          labelStyle: Typography3dToken.labelLarge,
-          iconSize: 18.0,
-          selectable: selectable,
-        );
+    ChipStyle3d common({
+      required Color content,
+      bool selectable = true,
+      double pressElevation = 1.0,
+    }) => ChipStyle3d(
+      container: transparent,
+      content: content,
+      selectedContainer: scheme.secondaryContainer,
+      selectedContent: scheme.onSecondaryContainer,
+      // A chip's container is transparent at rest, so a disabled one has
+      // nothing to dim; Material dims the outline and the label instead,
+      // exactly as it does for an outlined button.
+      disabledContainer: transparent,
+      disabledContent: scheme.disabledContent,
+      outline: scheme.outlineVariant,
+      // A selected chip has a filled container and drops its outline —
+      // the container is the signal, and an outline round it would read
+      // as a second, competing one.
+      selectedOutline: null,
+      disabledOutline: scheme.disabledContainer,
+      outlineWidth: 1.0,
+      shape: theme.shape.small,
+      thickness: theme.thickness.thin,
+      padding: const EdgeInsets3d.symmetric(horizontal: 16.0, vertical: 6.0),
+      height: defaultHeight,
+      labelStyle: Typography3dToken.labelLarge,
+      iconSize: 18.0,
+      selectable: selectable,
+      pressElevation: pressElevation,
+    );
 
     return switch (variant) {
       // An assist chip's label is `onSurface` rather than `onSurfaceVariant`,
@@ -116,7 +119,13 @@ class ChipStyle3d {
         selectable: false,
       ),
       ChipVariant3d.filter => common(content: scheme.onSurfaceVariant),
-      ChipVariant3d.input => common(content: scheme.onSurfaceVariant),
+      // Flutter's input chip is the one that does not rise under a press:
+      // `_InputChipDefaultsM3` has no press elevation where the action and
+      // filter chips' have 1dp.
+      ChipVariant3d.input => common(
+        content: scheme.onSurfaceVariant,
+        pressElevation: 0.0,
+      ),
       ChipVariant3d.suggestion => common(content: scheme.onSurfaceVariant),
     };
   }
@@ -194,6 +203,17 @@ class ChipStyle3d {
   /// cannot accidentally draw an assist chip as a filter one.
   final bool selectable;
 
+  /// How far the chip rises while it is held, in logical pixels: 1dp, or
+  /// nothing for an input chip.
+  ///
+  /// Flutter's figure, and in Flutter it is a shadow in a transparent
+  /// colour — which is to say it draws nothing. Here an elevation is a
+  /// distance, so the chip really does come toward the finger. It is not a
+  /// token substitution: `Chip3d` moves the whole chip on the node tier, so
+  /// the press costs no layout. Checked in `test/chip_test.dart` against the
+  /// `Material` inside a real pressed chip.
+  final double pressElevation;
+
   /// This style with the given fields replaced.
   ChipStyle3d copyWith({
     Color? container,
@@ -213,6 +233,7 @@ class ChipStyle3d {
     Typography3dToken? labelStyle,
     double? iconSize,
     bool? selectable,
+    double? pressElevation,
   }) => ChipStyle3d(
     container: container ?? this.container,
     content: content ?? this.content,
@@ -231,6 +252,7 @@ class ChipStyle3d {
     labelStyle: labelStyle ?? this.labelStyle,
     iconSize: iconSize ?? this.iconSize,
     selectable: selectable ?? this.selectable,
+    pressElevation: pressElevation ?? this.pressElevation,
   );
 
   /// What this style draws as, for a chip that is [selected] or not and
@@ -298,7 +320,8 @@ class ChipStyle3d {
       other.height == height &&
       other.labelStyle == labelStyle &&
       other.iconSize == iconSize &&
-      other.selectable == selectable;
+      other.selectable == selectable &&
+      other.pressElevation == pressElevation;
 
   @override
   int get hashCode => Object.hash(
@@ -316,7 +339,7 @@ class ChipStyle3d {
     thickness,
     padding,
     height,
-    Object.hash(labelStyle, iconSize, selectable),
+    Object.hash(labelStyle, iconSize, selectable, pressElevation),
   );
 
   @override
