@@ -144,7 +144,12 @@ export 'src/components/progress_indicator.dart'
     show CircularProgressIndicator3d, LinearProgressIndicator3d;
 export 'src/components/progress_indicator_style.dart'
     show ProgressIndicatorStyle3d;
+export 'src/components/radio_group.dart'
+    show RadioGroup3d, RadioGroupRegistry3d;
 export 'src/components/scaffold.dart' show Scaffold3d, Scaffold3dSlot;
+export 'src/components/segmented_button.dart'
+    show ButtonSegment3d, SegmentedButton3d;
+export 'src/components/segmented_button_style.dart' show SegmentedButtonStyle3d;
 export 'src/components/selection.dart' show Checkbox3d, Radio3d, Switch3d;
 export 'src/components/selection_list_tile.dart'
     show
@@ -164,6 +169,13 @@ export 'src/components/selection_style.dart'
         ResolvedSwitchStyle3d,
         SliderStyle3d,
         SwitchStyle3d;
+export 'src/components/tab_bar_style.dart'
+    show
+        TabBarIndicatorSize3d,
+        TabBarStyle3d,
+        TabBarVariant3d,
+        TabIndicatorAnimation3d;
+export 'src/components/tabs.dart' show Tab3d, TabBar3d, TabBarView3d;
 export 'src/components/text_style.dart' show SceneTextStyle3d;
 export 'src/components/tooltip.dart' show Tooltip3d;
 export 'src/theme/theme.dart' show SceneTheme3d, Theme3d;

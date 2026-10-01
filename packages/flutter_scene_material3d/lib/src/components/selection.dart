@@ -41,6 +41,7 @@ import 'control_in_tile.dart';
 import 'icon.dart';
 import 'ink_well.dart';
 import 'material.dart';
+import 'radio_group.dart';
 import 'selection_style.dart';
 import 'reading_direction.dart';
 
@@ -253,11 +254,21 @@ class Checkbox3d extends StatelessWidget {
 /// One option of a set, of which exactly one can be chosen.
 ///
 /// ```dart
-/// Radio3d<Delivery>(
-///   value: Delivery.standard,
+/// RadioGroup3d<Delivery>(
 ///   groupValue: _delivery,
 ///   onChanged: (value) => setState(() => _delivery = value),
-///   semanticLabel: 'Standard delivery',
+///   child: const SceneRow3d(
+///     children: <Widget>[
+///       Radio3d<Delivery>(
+///         value: Delivery.standard,
+///         semanticLabel: 'Standard delivery',
+///       ),
+///       Radio3d<Delivery>(
+///         value: Delivery.express,
+///         semanticLabel: 'Express delivery',
+///       ),
+///     ],
+///   ),
 /// )
 /// ```
 ///
@@ -270,13 +281,23 @@ class Checkbox3d extends StatelessWidget {
 ///
 /// The dot stands one [RadioStyle3d.depthStep] in front of the ring rather
 /// than resting on it, because two coplanar surfaces z-fight.
+///
+/// ## In a group, or on its own
+///
+/// Inside a [RadioGroup3d] of the same type the group's value and callback
+/// are the ones that count, and this radio's own [groupValue] and
+/// [onChanged] are ignored — Flutter's rule since `RadioGroup` arrived,
+/// where the two are deprecated. The group is also what makes the arrows
+/// move the choice. A radio with no group above it reads its own two, as it
+/// always has.
 class Radio3d<T> extends StatelessWidget {
   /// Creates a radio button.
   const Radio3d({
     super.key,
     required this.value,
-    required this.groupValue,
+    this.groupValue,
     this.onChanged,
+    this.enabled,
     this.toggleable = false,
     this.style,
     this.focusNode,
@@ -288,15 +309,23 @@ class Radio3d<T> extends StatelessWidget {
   /// What this button stands for.
   final T value;
 
-  /// Which of the group is currently chosen.
+  /// Which of the set is currently chosen, when there is no [RadioGroup3d]
+  /// above this radio.
   final T? groupValue;
 
-  /// Called with the newly chosen value, or null for a group that cannot be
-  /// changed.
+  /// Called with the newly chosen value, when there is no [RadioGroup3d]
+  /// above this radio, or null for a set that cannot be changed.
   ///
   /// Called with null when a [toggleable] button that was already chosen is
   /// pressed again, which is Flutter's own contract.
   final ValueChanged<T?>? onChanged;
+
+  /// Whether the radio responds, or null to follow whether there is anything
+  /// to call — a group above it, or an [onChanged].
+  ///
+  /// Flutter's `Radio.enabled`, and the way one option of a group is
+  /// switched off: the group's callback is there for all of them.
+  final bool? enabled;
 
   /// Whether pressing the chosen button clears the group.
   ///
@@ -319,27 +348,64 @@ class Radio3d<T> extends StatelessWidget {
   /// The direction [semanticLabel] reads in.
   final TextDirection? textDirection;
 
-  /// Whether this button is the chosen one.
+  /// Whether this button is the chosen one, by its own [groupValue].
+  ///
+  /// Inside a [RadioGroup3d] the group's value decides instead, and this
+  /// widget cannot see it without a `BuildContext`.
   bool get selected => value == groupValue;
-
-  /// Whether it responds to a pointer.
-  bool get enabled => onChanged != null;
 
   @override
   Widget build(BuildContext context) {
+    // In a labelled tile this radio is only the tile's picture: the tile is
+    // the group's member, and resolves the value it is handed.
+    final group = ControlInTile3d.isIn(context)
+        ? null
+        : RadioGroup3d.maybeOf<T>(context);
+    if (group == null) {
+      return _buildRadio(
+        context,
+        groupValue: groupValue,
+        onChanged: onChanged,
+        enabled: (enabled ?? true) && onChanged != null,
+        focusNode: focusNode,
+      );
+    }
+    final active = enabled ?? true;
+    return RadioGroupMember3d<T>(
+      group: group,
+      value: value,
+      enabled: active,
+      focusNode: focusNode,
+      builder: (context, node) => _buildRadio(
+        context,
+        groupValue: group.groupValue,
+        onChanged: group.onChanged,
+        enabled: active,
+        focusNode: node,
+      ),
+    );
+  }
+
+  Widget _buildRadio(
+    BuildContext context, {
+    required T? groupValue,
+    required ValueChanged<T?>? onChanged,
+    required bool enabled,
+    required FocusNode? focusNode,
+  }) {
     final theme = Theme3d.of(context);
     final metrics = Layout3dMetricsScope.of(context);
     final tokens = style ?? RadioStyle3d.of(theme);
+    final selected = value == groupValue;
     final resolved = tokens.resolve(
       const {},
       selected: selected,
       enabled: enabled,
     );
-    final changed = onChanged;
 
     void Function()? tap;
-    if (changed != null && (!selected || toggleable)) {
-      tap = () => changed(selected ? null : value);
+    if (enabled && onChanged != null && (!selected || toggleable)) {
+      tap = () => onChanged(selected ? null : value);
     }
 
     return _SelectionControl3d(

@@ -14,14 +14,17 @@ those honestly. The other half is a long, ordinary list of components.
 **The catalogue is here.** The token layer and the theme that carries it; the
 primitive every component is made of — `Material3d` is the surface, `InkWell3d`
 makes it interactive, `Icon3d` draws a glyph, `SceneTextStyle3d` styles a group
-of labels; Material's seven buttons over one `ButtonStyle3d`; the surfaces and
+of labels; Material's seven buttons over one `ButtonStyle3d`, and the segmented button
+(`SegmentedButton3d`); the surfaces and
 rows (`Card3d`, `ListTile3d`, `ExpansionTile3d`, `Divider3d`, `Chip3d`,
 `Badge3d`, `MaterialBanner3d`); the structure (`Scaffold3d`, `AppBar3d`,
 `SliverAppBar3d`, `BottomAppBar3d`, `NavigationBar3d`, `NavigationRail3d`,
-`Drawer3d` and `NavigationDrawer3d`); the overlays (`Dialog3d` and `AlertDialog3d`,
+`Drawer3d` and `NavigationDrawer3d`, and the tabs — `TabBar3d` and
+`TabBarView3d`, on Flutter's own `TabController`); the overlays (`Dialog3d` and `AlertDialog3d`,
 `Menu3d`, `SnackBar3d`, `Tooltip3d`, `BottomSheet3d`); the selection controls
-(`Checkbox3d`, `Radio3d`, `Switch3d`, `Slider3d`) and the rows that are one
-(`CheckboxListTile3d`, `SwitchListTile3d`, `RadioListTile3d`); the two
+(`Checkbox3d`, `Radio3d`, `Switch3d`, `Slider3d`), the rows that are one
+(`CheckboxListTile3d`, `SwitchListTile3d`, `RadioListTile3d`) and the group
+that holds a set of radios (`RadioGroup3d`); the two
 progress indicators (`LinearProgressIndicator3d`,
 `CircularProgressIndicator3d`); and the press ripple. What is *not* here
 is listed honestly at the end of this file, and text input is not planned at
@@ -597,6 +600,46 @@ minimum is at the right. None of it needs an argument. The words themselves
 are still English; translating what the catalogue invents is a separate piece
 of work.
 
+### A segmented button, and where the rounded clip went
+
+`SegmentedButton3d` is a row of options in one outline, of which one — or,
+with `multiSelectionEnabled`, several — are chosen:
+
+```dart
+SegmentedButton3d<Calendar>(
+  segments: const <ButtonSegment3d<Calendar>>[
+    ButtonSegment3d(value: Calendar.day, label: 'Day'),
+    ButtonSegment3d(value: Calendar.week, label: 'Week'),
+    ButtonSegment3d(value: Calendar.month, label: 'Month'),
+  ],
+  selected: <Calendar>{_view},
+  onSelectionChanged: (selection) => setState(() => _view = selection.single),
+)
+```
+
+A segment's label is a string and its icon an `IconData`, for the two reasons
+the rest of the catalogue gives: the string is also what the segment
+announces, and the icon's 18dp is the button's token, with no `IconTheme`
+here to carry it to a widget someone else built.
+
+**Flutter clips its segments, and this carves them.** Each segment in Flutter
+is a square `TextButton` clipped to the inside of the stadium, which is how
+the first and last fills follow the outline's curve. There is no rounded clip
+in this stack — a clip region is an intersection of planes, and so convex —
+but each segment is a `Material3d` of its own anyway, for its own wash, so the
+two end ones are drawn with the stadium's radius on their outer corners and
+square inside. The fill comes out the shape Flutter's clip leaves, cut by the
+panel's own signed distance field: the answer `SceneImage3d` found for a
+picture in a rounded card, a second time. The outline and the rules between
+segments are one transparent slab in front, which takes no press.
+
+**It lays out 48dp tall, the outline in the middle 40**, which is Flutter's
+own size and the opposite of what the buttons above do. A button's reach is
+in the hit test, and a press in its margin arrives at the button's centre —
+right for one control, wrong for three: the centre of three segments is the
+middle one. Laid out at 48, each segment's target sits inside a slot of its
+own height and is re-aimed at its own centre.
+
 ## Surfaces and rows: cards, tiles, dividers and chips
 
 Everything above is a control. This is what a screen is made of.
@@ -1040,6 +1083,48 @@ SceneRow3d(
 )
 ```
 
+### Tabs, on Flutter's own controller
+
+`TabBar3d` is Flutter's primary tab bar and `TabBar3d.secondary` its other
+one; `TabBarView3d` is the pages under either. **The controller is Flutter's
+`TabController`**, unchanged, and `DefaultTabController` hands one down
+exactly as it does in Flutter — it has no render object, so it can sit inside
+the surface or above it:
+
+```dart
+DefaultTabController(
+  length: 2,
+  child: SceneColumn3d(
+    crossAxisAlignment: CrossAxisAlignment3d.stretch,
+    children: <Widget>[
+      const TabBar3d(tabs: <Tab3d>[Tab3d(text: 'Inbox'), Tab3d(text: 'Sent')]),
+      SceneExpanded3d(child: TabBarView3d(children: <Widget>[inbox, sent])),
+    ],
+  ),
+)
+```
+
+A tab bar is 48dp — a 46dp tab and the 2dp Flutter reserves under it — and a
+tab with an icon and a label makes every tab in its bar 74. **The indicator
+slides on the node tier.** Where it rests is a fact about layout, so a private
+box lays the tabs out and then the indicator at the chosen label's width; from
+then on each tick of the controller's animation is a translation and a
+stretch, and a whole change lays out on the frame it starts and on none
+after. The primary indicator stretches toward its tab and draws in behind,
+Flutter's elastic effect transcribed; the secondary one moves straight across.
+
+The pages turn when a tab is pressed, and a swipe moves the controller with
+the finger and chooses the tab it settles on. Right to left reads them
+backwards, as Flutter's reversed axis does, and the view clips its pages to
+its own window, as Flutter's does by default. Two things to know:
+
+- **A page that is a list does not swipe.** A drag here takes hold of the
+  nearest scrolling view on its path, whatever way the finger then goes, so a
+  vertical list in a page scrolls under a sideways swipe and the pages stay
+  put. A press on a tab still turns them.
+- **The labels change colour at once**, where Flutter cross-fades them over
+  the slide — the switch's decision, for the switch's reason.
+
 ## The overlays: dialogs, menus, snack bars, tooltips and sheets
 
 Everything that goes *in front* of a screen goes through `Overlay3d`, which
@@ -1402,6 +1487,36 @@ announcement. `.text` composes that label from the title and the subtitle.
 The control goes where Flutter puts it — trailing for a checkbox and a
 switch, leading for a radio — and `controlAffinity` moves it, with `secondary`
 taking the other end.
+
+### A group of radios, and the arrows
+
+A radio is rarely alone either, and since Flutter 3.35 a set of them is
+written with a group that holds the value once:
+
+```dart
+RadioGroup3d<String>(
+  groupValue: _delivery,
+  onChanged: (value) => setState(() => _delivery = value ?? _delivery),
+  child: SceneColumn3d(
+    mainAxisSize: MainAxisSize3d.min,
+    depthAxisAlignment: CrossAxisAlignment3d.start,
+    children: <Widget>[
+      RadioListTile3d<String>.text(title: 'Standard', value: 'standard'),
+      RadioListTile3d<String>.text(title: 'Express', value: 'express'),
+    ],
+  ),
+)
+```
+
+Every `Radio3d` and `RadioListTile3d` of the group's type below it takes the
+value and the callback from the group, so their own `groupValue` and
+`onChanged` are optional — and ignored inside a group, as Flutter's are —
+and `enabled: false` switches one option off. What the group adds is the
+keyboard: **an arrow moves the choice and the focus together**, to the next
+enabled radio and round from the last to the first, through a binding on the
+plane that only answers while one of its radios has the focus. Tab still
+stops on every radio, where Flutter's group stops only on the chosen one;
+that is a traversal rule the layout package does not have yet.
 
 ### Three rectangles for one control, and why they are three
 
@@ -1868,7 +1983,7 @@ which is a drag-lane item like a sheet's handle. There is
 no **`FloatingActionButtonLocation`** — the button sits at the trailing bottom
 corner, above the navigation bar, and a screen wanting it elsewhere positions
 its own; a bottom app bar's contained button goes in the bar's own row. A `SliverAppBar3d` has no **`flexibleSpace`** and no `bottom`, so a
-tab bar under a title is not expressible yet. And a navigation bar has one
+tab bar goes at the top of the body rather than under the title. And a navigation bar has one
 **label behaviour**, always-show, where Flutter has three: the other two hide
 labels on unselected destinations, which changes a destination's height as the
 selection moves and so relayouts the bar on every tap.
@@ -1898,14 +2013,21 @@ caller some typing and
 [the next plan](plans/2026_09_21_the_components_a_screen_still_needs.md)
 built as the arrangement a ported screen gets wrong.
 
-Three the selection controls left. There is no **`RadioGroup3d`**, so `Radio3d` keeps the `value` / `groupValue` / `onChanged`
-spelling that Flutter deprecated after 3.32 in favour of a group ancestor; that
-migration is an inherited widget plus a registry, and it belongs beside a
-`FormField3d` rather than inside a leaf control. A slider has no **tick marks**
+Three the selection controls left. A **`RadioGroup3d`** does not make its
+chosen radio Tab's only stop in the group, as Flutter's does. A slider has no **tick marks**
 for its divisions and no **value indicator** above the thumb, both of which are
 ornament on the component whose design question here was the drag. And a slider takes an explicit **width** rather than
 filling its parent, because the thumb's position is written before layout
 rather than after it.
+
+Three the tabs left, and one the segmented button. A tab bar has no
+**`isScrollable`**: a scrolling bar is a horizontal scroll view that has to
+start at the right in right to left, and no scroll view here can run
+backwards yet. A tab announces no localized **"Tab 1 of 3"**, a string the
+catalogue would have to invent. A press two tabs away **slides across the page
+between**, where Flutter swaps it out of the way. And a segmented button has no
+**vertical direction**, and draws a disabled segment's stretch of outline in
+the enabled colour.
 
 One the expansion tile left. It takes no **`ExpansibleController`**, which is
 Flutter's own and postdates this package's Flutter floor of 3.29;

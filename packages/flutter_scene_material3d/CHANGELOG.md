@@ -1,5 +1,68 @@
 ## Unreleased
 
+- **A segmented button.** `SegmentedButton3d` is Flutter's: a stadium
+  outlined in `outline`, cut into equal segments by 1dp rules, the chosen ones
+  filled `secondaryContainer` with a check before their label. `selected` is a
+  `Set`, `onSelectionChanged` is handed the next one, and
+  `multiSelectionEnabled` and `emptySelectionAllowed` decide what a press may
+  do, by Flutter's own rule — `selectionAfterPressing` is that rule, readable
+  as a table. `ButtonSegment3d` takes its label as a string and its icon as
+  `IconData`; `expandedInsets` makes the button fill its width.
+  `SegmentedButtonStyle3d` is the table.
+  - **The chosen end is carved to the outline's curve.** Flutter clips square
+    segments to the inside of the stadium, and there is no rounded clip here;
+    each end segment is drawn with the stadium's radius on its outer corners
+    instead, which is the same shape in the panel's own signed distance field.
+    Right to left rounds the first segment on its right.
+  - **It lays out 48dp tall, as Flutter's does**, with the outline in the
+    middle 40. Every other control here grows its reach in the hit test, and
+    a press in that margin arrives at the control's centre — which for three
+    segments is the middle one. Inside a 48dp slot, each segment's own target
+    is re-aimed at its own centre.
+  - A disabled segment's stretch of outline is not drawn in the disabled
+    colour, as Flutter's is, and there is no vertical direction.
+
+- **Tabs.** `TabBar3d` and `TabBar3d.secondary` are Flutter's two bars, `Tab3d`
+  its tab, and `TabBarView3d` the pages under them. **The controller is
+  Flutter's own `TabController`**, and `DefaultTabController` works unchanged
+  — neither has a render object in it, so a ported screen keeps the one it
+  has. `TabBarStyle3d` is the table.
+  - **The indicator slides on the node tier.** It is laid out at the chosen
+    tab's width and moved and stretched between tabs a frame at a time, so a
+    change lays out on the frame it starts and on none after it; the primary
+    one stretches toward where it is going, transcribed from Flutter's elastic
+    indicator.
+  - The pages turn when a tab is pressed, and a swipe moves the controller as
+    it goes and chooses the tab it settles on. In right to left the pages run
+    from the right, as Flutter's do. The view clips its pages to its own
+    window, as Flutter's does by default.
+  - **A page that is a list takes a sideways swipe for itself**: a drag here
+    grabs the nearest scrolling view on its path whatever way the finger
+    moves. Such a page turns only from its tab.
+  - **Each tab announces itself with Flutter's `tab` role, and the bar
+    publishes nothing.** Flutter checks that a `tabBar` node's children are
+    tabs, and a `Semantics3d` has no children in that tree, so a bar node
+    stopped the frame building with semantics on. A `RadioGroup3d` publishes
+    no `radioGroup` node for the same reason.
+  - Not here: `isScrollable`, which needs a horizontal scroll view that starts
+    at the right in right to left; and the localized "Tab 1 of 3" a Flutter
+    tab announces.
+
+- **A radio group, and the arrows that move it.** `RadioGroup3d` is Flutter's
+  `RadioGroup`: it holds `groupValue` and `onChanged` once, and every
+  `Radio3d` and `RadioListTile3d` of its type below takes them from there. An
+  arrow moves the choice and the focus together to the next enabled radio,
+  and round from the last to the first.
+  - **`Radio3d` and `RadioListTile3d` no longer require `groupValue` and
+    `onChanged`**, which a group supplies — and inside one, ignores — and take
+    Flutter's `enabled`, which is how one option of a group is switched off.
+    Code that passes both is unchanged.
+  - **`Radio3d.enabled` is a constructor argument now, and no longer a getter
+    answering whether `onChanged` was given.** A `bool?`, as Flutter's is.
+  - Tab still stops on every radio, where Flutter's group makes only the
+    chosen one a stop: that is a traversal policy the layout package's
+    `Focus3dTraversal` cannot express yet.
+
 - **A press anywhere on a control is a press on it.** Every button, chip,
   list tile and labelled tile, and every navigation bar and rail destination,
   used to answer a press on its content and swallow one on its padding: the

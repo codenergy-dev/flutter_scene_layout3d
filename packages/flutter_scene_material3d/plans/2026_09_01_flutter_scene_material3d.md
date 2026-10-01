@@ -1,7 +1,7 @@
 ---
 status: completed
 created_at: 2026-09-01T19:15:00Z
-updated_at: 2026-09-21T16:00:54Z
+updated_at: 2026-10-01T23:30:00Z
 commit: 52a2ca7b6a176cf70b5bef6b6b92ff7e7cbf82bd
 ---
 
@@ -1794,7 +1794,10 @@ reader will look for and not find:
 - **`RadioGroup3d`.** See the finding above: `Radio3d` keeps the spelling
   Flutter deprecated, because the replacement is an inherited widget and a
   registry, and the place that work belongs is beside a `FormField3d` rather
-  than inside a leaf control.
+  than inside a leaf control. *Since done, by phase 5 of
+  [the components a screen still needs](2026_09_21_the_components_a_screen_still_needs.md),
+  without a `FormField3d`:* the group is the inherited widget and the
+  registry, and what it needed the registry for was the arrow keys.
 - **A slider's tick marks and its value indicator.** Divisions *work* — the
   value snaps and the thumb draws at the step it snapped to — but the marks
   along the track and the label above the thumb are not drawn. Both are

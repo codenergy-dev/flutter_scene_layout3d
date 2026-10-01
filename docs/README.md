@@ -143,7 +143,7 @@ Two entry points:
   the index of the seventeen plans between a finished catalogue and an
   application people use — **twelve closed, five open**, with the whole motion
   lane among the closed and the colour generator with it, and the catalogue
-  batch now under way. It is a map rather
+  batch five phases of seven in. It is a map rather
   than a work item: each row becomes a plan of its own when it is picked up.
   [An application that does not wire its own rays](../packages/flutter_scene_layout3d/plans/2026_09_11_an_application_that_does_not_wire_its_own_rays.md)
   is the first of them, and it led for the reason the map gave: it is the item
@@ -334,6 +334,22 @@ Two entry points:
   elevation, and its first photograph a drawer whose destinations sat inside
   the slab — a list centres its items in depth. All three are in
   [traps.md](traps.md) or the plan.
+  Phase 5 — one choice over many options — added `SegmentedButton3d`,
+  `TabBar3d` and `TabBarView3d` on Flutter's own `TabController`, and
+  `RadioGroup3d` with the arrows that move it, and needed one change here,
+  [a label wholly outside its window](../packages/flutter_scene_layout3d/plans/2026_10_01_a_label_wholly_outside_its_window.md):
+  a photograph of a tab change half way showed the outgoing page's labels
+  floating beside the panel while its cards were cut at the edge, and a
+  label wholly outside its clip now hides itself. The rounded clip the map expected the tab bar to meet was the segmented
+  button's, and the picture's answer reached it: the end segments are carved,
+  not clipped. The segmented button is the first control whose reach is in
+  its layout, because a reach that arrives at the centre picks the middle
+  segment. And the photograph lane found a frame that would not build with
+  semantics on: Flutter checks a `tabBar` node's children, and a
+  `Semantics3d` has none, so the bar wears no role here. The phase also found
+  that a drag takes the nearest scroll view whatever its axis — a tab view of
+  lists does not swipe — which is in [traps.md](traps.md) and is the layout
+  package's to change.
 - **The motion tokens** are
   [the tenth](../packages/flutter_scene_material3d/plans/2026_09_17_the_motion_tokens.md),
   the first plan in the Material package since its own ten phases, and the

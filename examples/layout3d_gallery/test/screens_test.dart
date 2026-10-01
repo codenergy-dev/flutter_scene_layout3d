@@ -79,7 +79,9 @@ void main() {
     // day the settings tab became a list of its own — it had to, because the
     // theme picker is one row more than the panel holds.
     expect(find3d.bySemanticsLabel('Ada Lovelace'), findsNothing);
-    expect(find3d.bySubtype<ListView3d>(), findsOne);
+    // And the settings are on pages: a page view, holding a list per page
+    // that has been reached.
+    expect(find3d.bySubtype<PageView3d>(), findsOne);
   });
 
   testWidgets('every control on the settings screen stands on the face of '
@@ -95,28 +97,45 @@ void main() {
     await tester.tap3d(find3d.bySemanticsLabel('Settings'));
     await tester.pump();
 
-    // The swatches are in this list because they are the newest interactive
-    // control on the screen and the smallest: a 40dp disc with a 48dp reach,
-    // which is exactly the shape the catalogue has got wrong before.
-    for (final label in <String>[
-      'Notifications',
+    void standsAndAnswers(List<String> labels) {
+      for (final label in labels) {
+        final control = find3d.bySemanticsLabel(label);
+        expect(
+          find3d.ancestor(
+            of: control,
+            matching: find3d.bySubtype<DecoratedBox3d>(),
+          ),
+          findsAny,
+          reason: '"$label" is on no surface at all',
+        );
+        expect(control, standsOnItsPanel3d);
+        expect(control, isReachable3d);
+      }
+    }
+
+    standsAndAnswers(<String>['Notifications', 'Volume']);
+    // The tabs are on the body itself, as a navigation bar's destinations
+    // are on the bar: no card under them, but a press reaches them.
+    for (final tab in <String>['General', 'Display']) {
+      expect(find3d.bySemanticsLabel(tab), isReachable3d);
+    }
+    // The second tab's controls, once its page has been turned to. The
+    // swatches are here because they are the smallest interactive control
+    // on the screen — a 40dp disc with a 48dp reach, the shape the catalogue
+    // has got wrong before — and the segments and the radio rows because
+    // they are the newest.
+    await tester.tap3d(find3d.bySemanticsLabel('Display'));
+    await tester.pumpAndSettle();
+    standsAndAnswers(<String>[
+      'Light theme',
       'Dark theme',
-      'Volume',
       'Violet theme',
       'Teal theme',
-    ]) {
-      final control = find3d.bySemanticsLabel(label);
-      expect(
-        find3d.ancestor(
-          of: control,
-          matching: find3d.bySubtype<DecoratedBox3d>(),
-        ),
-        findsAny,
-        reason: '"$label" is on no surface at all',
-      );
-      expect(control, standsOnItsPanel3d);
-      expect(control, isReachable3d);
-    }
+      'Newest',
+      'Oldest',
+      // 'Sender' is the next row, under the navigation bar: below the fold of
+      // a panel this size, and the lane asks of what a press can reach.
+    ]);
     // And the same question of every label on the screen at once.
     expect(find3d.bySubtype<Text3d>(), standsOnItsPanel3d);
   });
@@ -243,7 +262,7 @@ void main() {
   });
 
   testWidgets('the picker re-themes the scene from one colour, and the '
-      'switch changes its brightness', (tester) async {
+      'segmented button changes its brightness', (tester) async {
     // The headless half of what the gallery is for. Whether a generated
     // scheme *looks* like a scheme is a question only the window answers —
     // this asks the one the layout can: that pressing a swatch reaches the
@@ -279,6 +298,8 @@ void main() {
 
     await tester.tap3d(find3d.bySemanticsLabel('Settings'));
     await tester.pump();
+    await tester.tap3d(find3d.bySemanticsLabel('Display'));
+    await tester.pumpAndSettle();
     expect(
       onScreen().primary,
       ColorScheme3d.fromSeed(seedColor: GalleryTheme3d.defaultSeed).primary,
@@ -306,6 +327,42 @@ void main() {
         brightness: Brightness.dark,
       ).primary,
     );
+  });
+
+  group('phase 5 of the components a screen still needs', () {
+    /// How far down the inbox the card announcing [name] is.
+    double down(WidgetTester tester, String name) => tester
+        .layout3d<Layout3d>(find3d.bySemanticsLabel(name))
+        .drawnOffsetInSurface
+        .y;
+
+    testWidgets('a tab turns the settings to their second page, and a radio '
+        'row there sorts the inbox', (tester) async {
+      await pumpScreen(tester, const MaterialScreen());
+      expect(
+        down(tester, 'Ada Lovelace'),
+        lessThan(down(tester, 'Edsger Dijkstra')),
+      );
+
+      await tester.tap3d(find3d.bySemanticsLabel('Settings'));
+      await tester.pump();
+      // Built, perhaps — a page view lays out the page beside the one it
+      // shows — but off to the side of the window, where nothing reaches it.
+      expect(find3d.bySemanticsLabel('Oldest'), isNot(isReachable3d));
+      await tester.tap3d(find3d.bySemanticsLabel('Display'));
+      await tester.pumpAndSettle();
+      expect(find3d.bySemanticsLabel('Oldest'), isReachable3d);
+
+      await tester.tap3d(find3d.bySemanticsLabel('Oldest'));
+      await tester.pumpAndSettle();
+      await tester.tap3d(find3d.bySemanticsLabel('Inbox').first);
+      await tester.pumpAndSettle();
+      // Oldest first: the last message is at the top now.
+      expect(
+        down(tester, 'Edsger Dijkstra'),
+        lessThan(down(tester, 'Ada Lovelace')),
+      );
+    });
   });
 
   group('phase 4 of the components a screen still needs', () {

@@ -1138,6 +1138,16 @@ SizedBox3d(
   their scene node hidden, which also puts them out of reach of a ray. Exact
   for whole boxes, useless for a box that is half in, and free.
 
+**A label is on the second tier and not the first.** A glyph's material reads
+no clip planes, so a `Text3d` or a `RichText3d` half out of a window draws
+whole. What it does do is hide itself once its clip excludes all of it,
+whenever it is laid out or moved — so a label on a box that is half across a
+window, a page of a page view in the middle of a turn, is not drawn a page's
+width outside the panel while the cards around it are cut cleanly. It shows
+itself again only if it was the one that hid itself. And note what supplies
+the window: **a scroll view does not clip on its own**; wrap it in a
+`ClipBox3d` for its edges to cut anything.
+
 **A clip only cuts anything once it has been published to the boxes under
 it**, and that is not automatic. A box packs its plane block while it paints,
 at the end of its own `performLayout`, and a `ClipBox3d` takes its size *from

@@ -2,7 +2,7 @@ import 'dart:async' show Timer;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show SynchronousFuture;
-import 'package:flutter/material.dart' show Icons;
+import 'package:flutter/material.dart' show DefaultTabController, Icons;
 import 'package:flutter/widgets.dart';
 // Both libraries, because a flight builder returns a `Layout3d` rather than a
 // `Widget`: an overlay entry inserted from inside a route transition has no
@@ -133,6 +133,27 @@ class _MaterialScreenState extends State<MaterialScreen> {
   // The settings.
   bool _notify = true;
   double _volume = 0.65;
+
+  /// The order the inbox is read in, chosen on the settings screen's second
+  /// tab or from the sort sheet in the overflow menu — one state, two ways
+  /// to set it.
+  String _sortBy = 'Newest';
+
+  static const List<String> _sorts = <String>['Newest', 'Oldest', 'Sender'];
+
+  /// The messages' indices, in the order [_sortBy] reads them.
+  List<int> get _inboxOrder {
+    final order = List<int>.generate(_messages.length, (index) => index);
+    switch (_sortBy) {
+      case 'Oldest':
+        return order.reversed.toList();
+      case 'Sender':
+        return order
+          ..sort((a, b) => _messages[a].$1.compareTo(_messages[b].$1));
+      default:
+        return order;
+    }
+  }
 
   /// The pretend save under way, or null when there is none: a second and a
   /// bit of a spinner in the button, the way an application waiting on a
@@ -388,7 +409,7 @@ class _MaterialScreenState extends State<MaterialScreen> {
         child: SceneColumn3d(
           mainAxisSize: MainAxisSize3d.min,
           children: <Widget>[
-            for (final by in const <String>['Newest', 'Oldest', 'Sender'])
+            for (final by in _sorts)
               ListTile3d.text(
                 title: by,
                 onTap: () =>
@@ -398,7 +419,9 @@ class _MaterialScreenState extends State<MaterialScreen> {
         ),
       ),
     );
-    if (picked != null && context.mounted) _say(context, 'Sorted by $picked');
+    if (picked == null || !context.mounted) return;
+    setState(() => _sortBy = picked);
+    _say(context, 'Sorted by $picked');
   }
 
   void _say(BuildContext context, String message) {
@@ -478,7 +501,7 @@ class _MaterialScreenState extends State<MaterialScreen> {
           child: SceneListView3d(
             spacing: _dp(context, 8),
             children: <Widget>[
-              for (var index = 0; index < _messages.length; index++)
+              for (final index in _inboxOrder)
                 ScenePadding3d(
                   key: ValueKey<int>(index),
                   padding: _insets(
@@ -586,185 +609,287 @@ class _MaterialScreenState extends State<MaterialScreen> {
     );
   }
 
-  Widget _settings(BuildContext context) {
-    final palette = GalleryTheme3d.of(context);
-    return ScenePadding3d(
-      padding: _insets(context, const EdgeInsets3d.all(12)),
-      // **A list rather than a column, and the theme picker is why.** These
-      // controls used to fit this panel exactly, with nothing to spare, so
-      // adding one row of swatches overflowed the body by 64dp — which the
-      // layout reported as an error rather than drawing, because a box that
-      // overflows looks like a box that fits right up until its content is
-      // standing through the front of a panel. A settings screen with one
-      // more row than fits is an ordinary screen; this is the ordinary answer.
-      child: SceneListView3d(
-        crossAxisAlignment: CrossAxisAlignment3d.stretch,
-        spacing: _dp(context, 8),
-        children: <Widget>[
-          // A banner while notifications are off, which is what one is for: a
-          // message that stays until someone acts on it. Flat, with its rule,
-          // because that is what Flutter's draws.
-          if (!_notify)
-            MaterialBanner3d.text(
-              key: const ValueKey<String>('banner'),
-              content: 'Notifications are off. New mail will not be announced.',
-              leading: const Icon3d(Icons.notifications_off),
-              actions: <Widget>[
-                TextButton3d(
-                  semanticLabel: 'Turn on',
-                  onPressed: () => setState(() => _notify = true),
-                  child: const SceneText3d('Turn on'),
-                ),
-              ],
-            ),
-          FilledCard3d(
-            key: const ValueKey<String>('preferences'),
-            child: SceneColumn3d(
-              crossAxisAlignment: CrossAxisAlignment3d.stretch,
-              // Everything in a card sits on the card's **front face**, and
-              // this is the line that puts it there. A flex centres its
-              // children on the depth axis by default, in the depth of its
-              // deepest child — so a 1dp divider beside a 2dp tile ends up
-              // half a millimetre *inside* the card, where the card's own
-              // face is drawn in front of it and it simply is not there. See
-              // `docs/traps.md`, *Depth ordering*.
-              depthAxisAlignment: CrossAxisAlignment3d.start,
-              mainAxisSize: MainAxisSize3d.min,
-              children: <Widget>[
-                // The whole row is the switch, not only the 52dp track at its
-                // end: a press on the words flips it, and a screen reader
-                // hears one control rather than a row and a switch.
-                SwitchListTile3d.text(
-                  title: 'Notifications',
-                  value: _notify,
-                  onChanged: (value) => setState(() => _notify = value),
-                ),
-                const Divider3d(),
-                // The brightness of the whole scene, thrown from inside it.
-                // Both surfaces re-theme: the screen this switch is on, and
-                // the table beside it.
-                SwitchListTile3d.text(
-                  title: 'Dark theme',
-                  value: palette.brightness == Brightness.dark,
-                  onChanged: (value) => palette.onBrightnessChanged(
-                    value ? Brightness.dark : Brightness.light,
-                  ),
-                ),
-                const Divider3d(),
-                // And the colour the whole scheme is generated from.
-                ScenePadding3d(
-                  padding: _insets(
-                    context,
-                    const EdgeInsets3d.symmetric(horizontal: 8, vertical: 8),
-                  ),
-                  child: SceneRow3d(
-                    mainAxisAlignment: MainAxisAlignment3d.spaceEvenly,
-                    children: <Widget>[
-                      for (final (seed, name) in GalleryTheme3d.seeds)
-                        _swatch(context, seed, name),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+  /// The settings, on two tabs.
+  ///
+  /// The tabs are Flutter's own `DefaultTabController` handing a
+  /// `TabController` to a `TabBar3d` and a `TabBarView3d` — a press on a tab
+  /// slides the indicator on the node tier and turns the pages under it.
+  /// **A sideways swipe does not turn them here**, and that is a finding
+  /// rather than an omission: both pages are lists, and a drag takes hold of
+  /// the nearest scrolling view whatever way the finger goes. See
+  /// `TabBarView3d`.
+  Widget _settings(BuildContext context) => DefaultTabController(
+    length: 2,
+    child: SceneColumn3d(
+      crossAxisAlignment: CrossAxisAlignment3d.stretch,
+      children: <Widget>[
+        const TabBar3d(
+          tabs: <Tab3d>[
+            Tab3d(text: 'General'),
+            Tab3d(text: 'Display'),
+          ],
+        ),
+        SceneExpanded3d(
+          child: TabBarView3d(
+            children: <Widget>[_general(context), _display(context)],
           ),
-          OutlinedCard3d(
-            key: const ValueKey<String>('volume'),
-            child: ScenePadding3d(
-              // The four edges and not the six faces. `EdgeInsets3d.all` insets
-              // the front as well, and a card's depth is only its thickness,
-              // so a front inset of 12dp put the label and the slider 12dp
-              // *behind* the card's face, where the face hid them both. See
-              // `docs/traps.md`, *A padded box has six faces*.
+        ),
+      ],
+    ),
+  );
+
+  /// A page of the settings: a padded list, for the reason the first one
+  /// was a list — a settings screen with one more row than fits is an
+  /// ordinary screen.
+  Widget _page(BuildContext context, List<Widget> children) => ScenePadding3d(
+    padding: _insets(context, const EdgeInsets3d.symmetric(horizontal: 12)),
+    child: SceneListView3d(
+      crossAxisAlignment: CrossAxisAlignment3d.stretch,
+      spacing: _dp(context, 8),
+      children: <Widget>[
+        // Room under the tab bar, as the old page had above its first card.
+        SceneSizedBox3d(height: _dp(context, 4)),
+        ...children,
+        SceneSizedBox3d(height: _dp(context, 4)),
+      ],
+    ),
+  );
+
+  Widget _general(BuildContext context) {
+    final palette = GalleryTheme3d.of(context);
+    return _page(context, <Widget>[
+      // A banner while notifications are off, which is what one is for: a
+      // message that stays until someone acts on it. Flat, with its rule,
+      // because that is what Flutter's draws.
+      if (!_notify)
+        MaterialBanner3d.text(
+          key: const ValueKey<String>('banner'),
+          content: 'Notifications are off. New mail will not be announced.',
+          leading: const Icon3d(Icons.notifications_off),
+          actions: <Widget>[
+            TextButton3d(
+              semanticLabel: 'Turn on',
+              onPressed: () => setState(() => _notify = true),
+              child: const SceneText3d('Turn on'),
+            ),
+          ],
+        ),
+      FilledCard3d(
+        key: const ValueKey<String>('preferences'),
+        // The whole row is the switch, not only the 52dp track at its end: a
+        // press on the words flips it, and a screen reader hears one control
+        // rather than a row and a switch.
+        child: SwitchListTile3d.text(
+          title: 'Notifications',
+          value: _notify,
+          onChanged: (value) => setState(() => _notify = value),
+        ),
+      ),
+      OutlinedCard3d(
+        key: const ValueKey<String>('volume'),
+        child: ScenePadding3d(
+          // The four edges and not the six faces. `EdgeInsets3d.all` insets
+          // the front as well, and a card's depth is only its thickness, so a
+          // front inset of 12dp put the label and the slider 12dp *behind*
+          // the card's face, where the face hid them both. See
+          // `docs/traps.md`, *A padded box has six faces*.
+          padding: _insets(
+            context,
+            const EdgeInsets3d.symmetric(horizontal: 12, vertical: 12),
+          ),
+          child: SceneColumn3d(
+            crossAxisAlignment: CrossAxisAlignment3d.stretch,
+            depthAxisAlignment: CrossAxisAlignment3d.start,
+            mainAxisSize: MainAxisSize3d.min,
+            spacing: _dp(context, 4),
+            children: <Widget>[
+              const SceneText3d('Volume'),
+              SceneAlign3d(
+                alignment: Alignment3d.frontCenter,
+                child: Slider3d(
+                  value: _volume,
+                  width: 200,
+                  semanticLabel: 'Volume',
+                  onChanged: (value) => setState(() => _volume = value),
+                ),
+              ),
+              // A bar that fills is a scale and not a width, so following a
+              // drag lays nothing out: every frame of it is one matrix.
+              LinearProgressIndicator3d(
+                value: _volume,
+                semanticsLabel: 'Volume level',
+              ),
+            ],
+          ),
+        ),
+      ),
+      SceneRow3d(
+        key: const ValueKey<String>('actions'),
+        mainAxisAlignment: MainAxisAlignment3d.spaceEvenly,
+        children: <Widget>[
+          TextButton3d(
+            onPressed: () {
+              setState(() {
+                _notify = true;
+                _volume = 0.65;
+                _sortBy = 'Newest';
+              });
+              // The theme is not this screen's state, so resetting it is a
+              // call up rather than a `setState` here.
+              palette
+                ..onSeedChanged(GalleryTheme3d.defaultSeed)
+                ..onBrightnessChanged(Brightness.light);
+            },
+            child: const SceneText3d('Reset'),
+          ),
+          FilledButton3d(
+            onPressed: () => _save(context),
+            semanticLabel: 'Save',
+            // The spinner Flutter applications put in a button: small, thin,
+            // and in the button's own content colour. Its arc is a gradient on
+            // a ring's border, turned on the node tier.
+            child: _saving == null
+                ? const SceneText3d('Save')
+                : SceneSizedBox3d(
+                    width: _dp(context, 20),
+                    height: _dp(context, 20),
+                    child: CircularProgressIndicator3d(
+                      strokeWidth: 2,
+                      color: Theme3d.of(context).colorScheme.onPrimary,
+                      semanticsLabel: 'Saving',
+                    ),
+                  ),
+          ),
+        ],
+      ),
+      // A tile that opens. Its reveal is the one animation in the catalogue
+      // that lays out on every frame — the rows under it really do move — and
+      // it builds nothing while it runs.
+      ExpansionTile3d.text(
+        key: const ValueKey<String>('about'),
+        title: 'About',
+        subtitle: 'What this is drawn with',
+        children: <Widget>[
+          ListTile3d.text(
+            title: 'flutter_scene_material3d',
+            subtitle: 'Material 3, as geometry',
+          ),
+          ListTile3d.text(
+            title: 'flutter_scene_layout3d',
+            subtitle: 'Box layout in three dimensions',
+          ),
+        ],
+      ),
+    ]);
+  }
+
+  Widget _display(BuildContext context) {
+    final palette = GalleryTheme3d.of(context);
+    final theme = Theme3d.of(context);
+    final heading = theme.textStyle(
+      Typography3dToken.titleSmall,
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    return _page(context, <Widget>[
+      FilledCard3d(
+        key: const ValueKey<String>('theme'),
+        child: SceneColumn3d(
+          crossAxisAlignment: CrossAxisAlignment3d.stretch,
+          // Everything in a card sits on the card's **front face**, and this
+          // is the line that puts it there. A flex centres its children on
+          // the depth axis by default, in the depth of its deepest child — so
+          // a 1dp divider beside a 2dp tile ends up half a millimetre *inside*
+          // the card, where the card's own face is drawn in front of it and it
+          // simply is not there. See `docs/traps.md`, *Depth ordering*.
+          depthAxisAlignment: CrossAxisAlignment3d.start,
+          mainAxisSize: MainAxisSize3d.min,
+          children: <Widget>[
+            // The brightness of the whole scene, thrown from inside it, as a
+            // choice between two rather than a switch: both surfaces
+            // re-theme, the screen this is on and the table beside it. The
+            // fill on the chosen end is carved to the outline's curve in the
+            // panel's own shader, because there is no rounded clip to cut it.
+            ScenePadding3d(
               padding: _insets(
                 context,
-                const EdgeInsets3d.symmetric(horizontal: 12, vertical: 12),
+                const EdgeInsets3d.symmetric(vertical: 8),
               ),
+              child: SegmentedButton3d<Brightness>(
+                expandedInsets: const EdgeInsets3d.symmetric(horizontal: 16),
+                segments: const <ButtonSegment3d<Brightness>>[
+                  ButtonSegment3d<Brightness>(
+                    value: Brightness.light,
+                    label: 'Light',
+                    icon: Icons.light_mode,
+                    semanticLabel: 'Light theme',
+                  ),
+                  ButtonSegment3d<Brightness>(
+                    value: Brightness.dark,
+                    label: 'Dark',
+                    icon: Icons.dark_mode,
+                    semanticLabel: 'Dark theme',
+                  ),
+                ],
+                selected: <Brightness>{palette.brightness},
+                onSelectionChanged: (selection) =>
+                    palette.onBrightnessChanged(selection.single),
+              ),
+            ),
+            const Divider3d(),
+            // And the colour the whole scheme is generated from.
+            ScenePadding3d(
+              padding: _insets(
+                context,
+                const EdgeInsets3d.symmetric(horizontal: 8, vertical: 8),
+              ),
+              child: SceneRow3d(
+                mainAxisAlignment: MainAxisAlignment3d.spaceEvenly,
+                children: <Widget>[
+                  for (final (seed, name) in GalleryTheme3d.seeds)
+                    _swatch(context, seed, name),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+      OutlinedCard3d(
+        key: const ValueKey<String>('order'),
+        child: SceneColumn3d(
+          crossAxisAlignment: CrossAxisAlignment3d.stretch,
+          depthAxisAlignment: CrossAxisAlignment3d.start,
+          mainAxisSize: MainAxisSize3d.min,
+          children: <Widget>[
+            ScenePadding3d(
+              padding: _insets(
+                context,
+                const EdgeInsets3d.only(left: 16, top: 12, right: 16),
+              ),
+              child: SceneText3d('Sort the inbox by', style: heading),
+            ),
+            // One group, three rows: the group holds the choice, every row
+            // takes it from there, and an arrow key moves the choice and the
+            // focus together from row to row. The sort sheet in the overflow
+            // menu writes the same state.
+            RadioGroup3d<String>(
+              groupValue: _sortBy,
+              onChanged: (value) {
+                if (value != null) setState(() => _sortBy = value);
+              },
               child: SceneColumn3d(
                 crossAxisAlignment: CrossAxisAlignment3d.stretch,
                 depthAxisAlignment: CrossAxisAlignment3d.start,
                 mainAxisSize: MainAxisSize3d.min,
-                spacing: _dp(context, 4),
                 children: <Widget>[
-                  const SceneText3d('Volume'),
-                  SceneAlign3d(
-                    alignment: Alignment3d.frontCenter,
-                    child: Slider3d(
-                      value: _volume,
-                      width: 200,
-                      semanticLabel: 'Volume',
-                      onChanged: (value) => setState(() => _volume = value),
-                    ),
-                  ),
-                  // A bar that fills is a scale and not a width, so following
-                  // a drag lays nothing out: every frame of it is one matrix.
-                  LinearProgressIndicator3d(
-                    value: _volume,
-                    semanticsLabel: 'Volume level',
-                  ),
+                  for (final by in _sorts)
+                    RadioListTile3d<String>.text(title: by, value: by),
                 ],
               ),
             ),
-          ),
-          SceneRow3d(
-            key: const ValueKey<String>('actions'),
-            mainAxisAlignment: MainAxisAlignment3d.spaceEvenly,
-            children: <Widget>[
-              TextButton3d(
-                onPressed: () {
-                  setState(() {
-                    _notify = true;
-                    _volume = 0.65;
-                  });
-                  // The theme is not this screen's state, so resetting it is
-                  // a call up rather than a `setState` here.
-                  palette
-                    ..onSeedChanged(GalleryTheme3d.defaultSeed)
-                    ..onBrightnessChanged(Brightness.light);
-                },
-                child: const SceneText3d('Reset'),
-              ),
-              FilledButton3d(
-                onPressed: () => _save(context),
-                semanticLabel: 'Save',
-                // The spinner Flutter applications put in a button: small,
-                // thin, and in the button's own content colour. Its arc is a
-                // gradient on a ring's border, turned on the node tier.
-                child: _saving == null
-                    ? const SceneText3d('Save')
-                    : SceneSizedBox3d(
-                        width: _dp(context, 20),
-                        height: _dp(context, 20),
-                        child: CircularProgressIndicator3d(
-                          strokeWidth: 2,
-                          color: Theme3d.of(context).colorScheme.onPrimary,
-                          semanticsLabel: 'Saving',
-                        ),
-                      ),
-              ),
-            ],
-          ),
-          // A tile that opens. Its reveal is the one animation in the catalogue
-          // that lays out on every frame — the rows under it really do move —
-          // and it builds nothing while it runs.
-          ExpansionTile3d.text(
-            key: const ValueKey<String>('about'),
-            title: 'About',
-            subtitle: 'What this is drawn with',
-            children: <Widget>[
-              ListTile3d.text(
-                title: 'flutter_scene_material3d',
-                subtitle: 'Material 3, as geometry',
-              ),
-              ListTile3d.text(
-                title: 'flutter_scene_layout3d',
-                subtitle: 'Box layout in three dimensions',
-              ),
-            ],
-          ),
-        ],
+          ],
+        ),
       ),
-    );
+    ]);
   }
 }
 

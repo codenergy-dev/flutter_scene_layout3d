@@ -578,6 +578,7 @@ class RichText3d extends Layout3d {
       Size3d(_painter.width * scale, _painter.height * scale, _depth),
     );
     _updateSurface();
+    refreshClipRegion();
   }
 
   /// Republishes the opacity in force, which is what actually fades this
@@ -821,6 +822,27 @@ class RichText3d extends Layout3d {
   /// A label answers a ray on its own account, exactly as a [Text3d] does.
   @override
   bool hitTestSelf(Offset3d position) => true;
+
+  /// Whether this paragraph hid its own node because its clip excludes all
+  /// of it.
+  bool _hiddenByClip = false;
+
+  /// Hides this paragraph when its clip excludes all of it, and shows it
+  /// again when it does not — `Text3d.refreshClipRegion`'s rule, for the same
+  /// reason: its quad reads no clip planes.
+  @override
+  void refreshClipRegion() {
+    if (!hasSize) return;
+    final outside = clipRegion.excludes(Offset3d.zero, size);
+    if (outside == _hiddenByClip) return;
+    if (outside) {
+      if (!node.visible) return;
+      node.visible = false;
+    } else {
+      node.visible = true;
+    }
+    _hiddenByClip = outside;
+  }
 
   @override
   void dispose() {

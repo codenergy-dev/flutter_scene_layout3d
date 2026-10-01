@@ -13,7 +13,7 @@
 // So these press each control a few logical pixels inside each edge of its
 // own face — the panel it draws — and expect the press to count.
 
-import 'package:flutter/material.dart' show Icons;
+import 'package:flutter/material.dart' show DefaultTabController, Icons;
 import 'package:flutter/widgets.dart' show Widget;
 import 'package:flutter_scene_layout3d/widgets.dart';
 import 'package:flutter_scene_material3d/flutter_scene_material3d.dart';
@@ -173,6 +173,44 @@ void main() {
       ),
       centred: true,
       face: (surface) => _labelled(surface, 'Advanced'),
+    ),
+    'a segment': (
+      build: (pressed) => SegmentedButton3d<int>(
+        segments: const <ButtonSegment3d<int>>[
+          ButtonSegment3d<int>(value: 0, label: 'Day'),
+          ButtonSegment3d<int>(value: 1, label: 'Week'),
+        ],
+        selected: const <int>{1},
+        onSelectionChanged: (_) => pressed(),
+      ),
+      centred: true,
+      face: (surface) => _labelled(surface, 'Day'),
+    ),
+    'a tab': (
+      build: (pressed) => DefaultTabController(
+        length: 2,
+        initialIndex: 1,
+        child: SceneSizedBox3d(
+          width: 3,
+          child: SceneColumn3d(
+            mainAxisSize: MainAxisSize3d.min,
+            crossAxisAlignment: CrossAxisAlignment3d.stretch,
+            children: <Widget>[
+              TabBar3d(
+                tabs: const <Tab3d>[
+                  Tab3d(text: 'Day'),
+                  Tab3d(text: 'Week'),
+                ],
+                onTap: (index) {
+                  if (index == 0) pressed();
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+      centred: true,
+      face: (surface) => _labelled(surface, 'Day'),
     ),
   };
 

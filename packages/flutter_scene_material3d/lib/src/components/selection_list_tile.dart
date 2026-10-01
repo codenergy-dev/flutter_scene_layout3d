@@ -10,6 +10,7 @@ import 'package:flutter_scene_layout3d/widgets.dart' show SceneText3d;
 
 import 'control_in_tile.dart';
 import 'list_tile.dart';
+import 'radio_group.dart';
 import 'reading_direction.dart';
 import 'selection.dart';
 import 'selection_style.dart';
@@ -411,13 +412,31 @@ class SwitchListTile3d extends _SelectionListTile3d {
 /// A list tile that is one option of a set: the whole row chooses it.
 ///
 /// ```dart
-/// RadioListTile3d<Delivery>.text(
-///   title: 'Standard delivery',
-///   value: Delivery.standard,
+/// RadioGroup3d<Delivery>(
 ///   groupValue: _delivery,
-///   onChanged: (value) => setState(() => _delivery = value!),
+///   onChanged: (value) => setState(() => _delivery = value),
+///   child: SceneColumn3d(
+///     mainAxisSize: MainAxisSize3d.min,
+///     depthAxisAlignment: CrossAxisAlignment3d.start,
+///     children: <Widget>[
+///       RadioListTile3d<Delivery>.text(
+///         title: 'Standard delivery',
+///         value: Delivery.standard,
+///       ),
+///       RadioListTile3d<Delivery>.text(
+///         title: 'Express delivery',
+///         value: Delivery.express,
+///       ),
+///     ],
+///   ),
 /// )
 /// ```
+///
+/// Inside a [RadioGroup3d] of the same type the group's value and callback
+/// are the ones that count, as they are for [Radio3d], and the **row** is the
+/// group's member: an arrow moves the choice and the focus from row to row.
+/// Without a group, [groupValue] and [onChanged] are read as they always
+/// were.
 ///
 /// The row publishes `checked` and `inMutuallyExclusiveGroup`, as [Radio3d]
 /// does. The radio goes at the **leading** edge by default, which is
@@ -432,8 +451,8 @@ class RadioListTile3d<T> extends _SelectionListTile3d {
   const RadioListTile3d({
     super.key,
     required this.value,
-    required this.groupValue,
-    required this.onChanged,
+    this.groupValue,
+    this.onChanged,
     this.toggleable = false,
     this.radioStyle,
     super.title,
@@ -451,7 +470,7 @@ class RadioListTile3d<T> extends _SelectionListTile3d {
     super.contentPadding,
     super.semanticLabel,
     super.textDirection,
-  });
+  }) : _group = null;
 
   /// Creates a radio tile out of strings, which are also what it announces.
   RadioListTile3d.text({
@@ -459,8 +478,8 @@ class RadioListTile3d<T> extends _SelectionListTile3d {
     required String title,
     String? subtitle,
     required this.value,
-    required this.groupValue,
-    required this.onChanged,
+    this.groupValue,
+    this.onChanged,
     this.toggleable = false,
     this.radioStyle,
     super.secondary,
@@ -476,20 +495,53 @@ class RadioListTile3d<T> extends _SelectionListTile3d {
     super.contentPadding,
     String? semanticLabel,
     super.textDirection,
-  }) : super(
+  }) : _group = null,
+       super(
          title: SceneText3d(title),
          subtitle: subtitle == null ? null : SceneText3d(subtitle),
          semanticLabel: semanticLabel ?? _composed(title, subtitle),
        );
 
+  /// This tile as a member of [group], with the node the group moves the
+  /// focus to.
+  RadioListTile3d._inGroup(
+    RadioListTile3d<T> tile,
+    RadioGroupRegistry3d<T> group,
+    FocusNode node,
+  ) : value = tile.value,
+      groupValue = group.groupValue,
+      onChanged = group.onChanged,
+      toggleable = tile.toggleable,
+      radioStyle = tile.radioStyle,
+      _group = group,
+      super(
+        title: tile.title,
+        subtitle: tile.subtitle,
+        secondary: tile.secondary,
+        isThreeLine: tile.isThreeLine,
+        dense: tile.dense,
+        selected: tile.selected,
+        enabled: tile.enabled,
+        controlAffinity: tile.controlAffinity,
+        focusNode: node,
+        autofocus: tile.autofocus,
+        tileColor: tile.tileColor,
+        selectedColor: tile.selectedColor,
+        contentPadding: tile.contentPadding,
+        semanticLabel: tile.semanticLabel,
+        textDirection: tile.textDirection,
+      );
+
   /// What this option stands for.
   final T value;
 
-  /// Which of the set is currently chosen.
+  /// Which of the set is currently chosen, when there is no [RadioGroup3d]
+  /// above this tile.
   final T? groupValue;
 
-  /// Called with the newly chosen value, or null for a set that cannot be
-  /// changed. Called with null when a [toggleable] chosen row is pressed.
+  /// Called with the newly chosen value, when there is no [RadioGroup3d]
+  /// above this tile, or null for a set that cannot be changed. Called with
+  /// null when a [toggleable] chosen row is pressed.
   final ValueChanged<T?>? onChanged;
 
   /// Whether pressing the chosen row clears the set.
@@ -498,7 +550,13 @@ class RadioListTile3d<T> extends _SelectionListTile3d {
   /// The radio's tokens, or null for the theme's.
   final RadioStyle3d? radioStyle;
 
-  /// Whether this row is the chosen one.
+  /// The group this tile has already been placed in, or null when it has
+  /// not looked for one yet.
+  final RadioGroupRegistry3d<T>? _group;
+
+  /// Whether this row is the chosen one, by its own [groupValue].
+  ///
+  /// Inside a [RadioGroup3d] the group's value decides instead.
   bool get checked => value == groupValue;
 
   @override
@@ -518,6 +576,23 @@ class RadioListTile3d<T> extends _SelectionListTile3d {
         changed(null);
       }
     };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_group != null) return super.build(context);
+    // Inside a group, the group's value and callback are the ones that
+    // count, and the tile is the member: the radio in it is only drawn.
+    final group = RadioGroup3d.maybeOf<T>(context);
+    if (group == null) return super.build(context);
+    return RadioGroupMember3d<T>(
+      group: group,
+      value: value,
+      enabled: enabled ?? true,
+      focusNode: focusNode,
+      builder: (context, node) =>
+          RadioListTile3d<T>._inGroup(this, group, node),
+    );
   }
 
   @override

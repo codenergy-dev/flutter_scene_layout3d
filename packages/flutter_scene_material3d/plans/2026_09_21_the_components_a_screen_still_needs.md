@@ -1,8 +1,8 @@
 ---
 status: in progress
-reason: phases 1 to 4 have landed — the alert dialog and the labelled tiles, the safe area and type that grows, the switch's thumb, the chip's lift and both progress indicators, and the badge, the banner, the bottom app bar, the drawer, the expansion tile and the snack bar's second line; phases 5 to 7 are open, and phase 2's safe area has no lane that draws it
+reason: phases 1 to 5 have landed — the last the segmented button, the tabs and the radio group; phases 6 and 7 are open, and phase 2's safe area has no lane that draws it
 created_at: 2026-09-21T15:46:07Z
-updated_at: 2026-10-01T12:00:00Z
+updated_at: 2026-10-01T22:55:00Z
 commit: 763e3dff41a1c75ac35997cf9244e101bb7250bf
 ---
 
@@ -39,7 +39,7 @@ written by hand here today.
 | 2 | the safe area, and type that grows | `Scaffold3d` consuming `MediaQuery3d.padding`; a control that grows with its label — **landed** |
 | 3 | the node tier, with a clock | `LinearProgressIndicator3d`, `CircularProgressIndicator3d`, the switch's growing thumb, the chip's press lift — **landed** |
 | 4 | nothing, but more of it | `Badge3d`, `MaterialBanner3d`, `BottomAppBar3d`, `NavigationDrawer3d`, `ExpansionTile3d`, a snack bar's second line — **landed** |
-| 5 | one choice over many options | `SegmentedButton3d`, `TabBar3d` and `TabBarView3d`, `RadioGroup3d` |
+| 5 | one choice over many options | `SegmentedButton3d`, `TabBar3d` and `TabBarView3d`, `RadioGroup3d` — **landed** |
 | 6 | a scroll view that runs backwards | `reverse` in the layout package, `Carousel3d`, `Scrollbar3d`, `RefreshIndicator3d` |
 | 7 | a second arena, or a design answer | `RangeSlider3d`, `DataTable3d`, `Stepper3d`, the slider's ticks and value indicator, a tooltip on long press, a draggable sheet |
 
@@ -906,16 +906,308 @@ dartdoc no longer has to apologise for a test that did not exist.
 - Nobody has run the gallery in a window on this phase; the photographs are
   the lane that looked.
 
-## Phases 5 to 7
+## Phase 5: one choice over many options
+
+*Written when the phase was picked up, against `9e78206`.*
+
+Three components and one shape between them: a set of options of which the
+screen holds one — or, for a segmented button, a few — and a row that shows
+which. **Every figure is Flutter's**, read off `flutter/lib/src/material` and
+`flutter/lib/src/widgets` at 3.47.1, and each style's dartdoc says which grade
+it is, as phase 4's do. The table says this phase needs nothing underneath it;
+that is checked below rather than assumed, for the reason phase 4 gave.
+
+### `SegmentedButton3d`, and where the rounded clip actually is
+
+A stadium outlined in `outline`, cut into equal segments by 1dp rules, the
+chosen ones filled `secondaryContainer` with a check in front of their label.
+`ButtonSegment3d` carries a value, a label **string** — for
+`NavigationDestination3d`'s reason — an optional icon, a tooltip and an
+`enabled` flag; `selected` is a `Set<T>` and `onSelectionChanged` gets the
+next one, with Flutter's `multiSelectionEnabled` and `emptySelectionAllowed`
+deciding what a press may do, transcribed from `_handleOnPressed`.
+
+**This is where the rounded clip is, and the map put it on the tab bar.**
+Flutter draws every segment as a *square* `TextButton` and clips it to the
+inner path of the stadium, so the first and last fills follow the outline's
+curve. There is no rounded clip here. The picture's answer reaches it anyway:
+a segment is a `Material3d` of its own — it needs one for its wash — so the
+end segments are carved with the stadium's radius on their **outer** corners
+and square on the inner ones, which is the clip expressed in the panel's own
+signed distance field. Start and end follow the reading direction, so in
+right to left the first segment is rounded on its right.
+
+The outline and its rules are one transparent slab **in front** of the
+segments, ignoring the pointer — Flutter paints the border after its
+children, and a fill drawn to the stadium's own edge is then covered by the
+outline's band exactly where Flutter's clip would have stopped it.
+
+**The reach is in the layout, as Flutter's is**, and that is new in the
+catalogue. Every other control here is laid out at its visible size and
+answers a finger 48dp tall through a `TapTarget3d` outside it, and a press in
+that margin arrives at the control's centre. For a button of three segments
+the centre is the *middle* segment, so a press 4dp above the first would pick
+the second. Flutter's `SegmentedButton` lays itself out 48dp tall with the
+outline in the middle 40 — `tapTargetVerticalPadding` — and so does this: each
+segment's target is inside a 48dp slot, and is re-aimed at its own centre.
+
+Equal widths are Flutter's arithmetic: every segment as wide as the widest,
+which is a row of flexible children inside an intrinsic width, unless
+`expandedInsets` asks the button to fill its width.
+
+### `TabBar3d`, `Tab3d` and `TabBarView3d`
+
+**The controller is Flutter's own `TabController`**, and `DefaultTabController`
+works unchanged. Neither has a render object in it — a `ChangeNotifier`
+around an `AnimationController`, and an inherited widget that hands one down
+— so nothing about a plane stands in the way, and a ported screen keeps the
+controller it already has. Phase 4 refused `ExpansibleController` because it
+postdates this package's Flutter floor; `TabController` does not.
+
+The bar is Flutter's primary and secondary variants: 46dp tabs plus the 2dp
+Flutter reserves under them, `titleSmall` labels, `primary` or `onSurface`
+for the chosen one and `onSurfaceVariant` for the rest, a 1dp
+`outlineVariant` rule across the foot, and an indicator in `primary` — 3dp
+and as wide as the label with its top corners rounded, or 2dp and as wide as
+the tab. A tab with an icon and a label is 72dp, and the others in its bar
+are padded to match.
+
+**The indicator slides on the node tier.** Its position and width are facts
+about layout — where each tab ended up, how wide each label measured — so a
+private box laid out after the row reads the tabs' boxes and writes a
+translation and a stretch, from its own `performLayout` and then from the
+controller's animation on every tick: `docs/traps.md`'s answer for a bar that
+fills its parent, applied to a bar that moves. The primary indicator stretches
+the way Flutter's elastic one does, transcribed from `_applyElasticEffect`;
+the secondary one is linear. It is laid out at the chosen tab's width, so at
+rest it is exact and only its 3dp corners stretch in flight, the price
+`Switch3d`'s thumb pays.
+
+**The labels change colour at once**, where Flutter cross-fades them over the
+slide — the same decision the switch made: a colour is a token, and fading
+one is a rebuild a frame.
+
+`TabBarView3d` is a `ScenePageView3d` and Flutter's synchronisation: a press
+on a tab animates the pages with the controller's duration on `Curves.ease`,
+and a swipe writes the controller's `offset` as it goes and its `index` when
+it settles. **Right to left reads the pages backwards** — page one at the far
+end of the view — which is what Flutter's reversed axis amounts to for a view
+whose length is known.
+
+What it does not do, each in its dartdoc: **`isScrollable`**, which is a
+horizontal scroll view that has to start at the right in right to left and so
+belongs to phase 6 with `reverse`; the tab's localized "Tab 1 of 3", which
+the language item owns; and Flutter's swap of the page between two
+non-adjacent tabs, which is a nicety over a straight slide.
+
+### `RadioGroup3d`
+
+Flutter's `RadioGroup`, which since 3.35 is how a set of radios is written:
+the group holds `groupValue` and `onChanged`, and every `Radio3d` and
+`RadioListTile3d` of the same type below it takes them from there. **Their own
+`groupValue` and `onChanged` become optional**, as Flutter's are deprecated —
+inside a group the group wins, as `_effectiveRegistry` decides in Flutter —
+and both gain Flutter's `enabled`, which is how one option in a group is
+switched off.
+
+The keys are the point of it. **An arrow moves the choice and the focus
+together**, to the next enabled radio in tree order and round the end — left
+and up are previous, right and down next, whatever the reading direction,
+because that is Flutter's map. It is a `SceneShortcuts3d` around the group,
+for the reason `docs/traps.md` gives about bindings for a surface, with an
+action that is enabled only while a radio of the group holds the focus, so
+an arrow on anything else in the group goes on up the walk. Space is already
+the radio's own activation.
+
+Flutter's group also makes only the chosen radio a Tab stop. **That needs
+`Focus3dTraversal` to skip a box, and it cannot**; Tab stops on every radio
+here, and the dartdoc says so.
+
+### Tests
+
+- Each style against Flutter's figures, read off a laid-out widget where one
+  exists, in a `phase_5_defaults_test.dart`: the segmented button's 48dp
+  height and equal segments, its colours on the `Material` each segment
+  builds; the tab bar's 48dp and 74dp heights, the label colours and the
+  indicator's thickness and width at rest.
+- The segmented button: one fill on the chosen segment, the outer corners
+  carved and the inner ones square in both directions, the outline in front
+  and ignoring the pointer, single and multiple selection, an empty selection
+  refused or allowed, a press 4dp above a segment choosing *that* segment,
+  disabled colours, and what it announces.
+- The tab bar: a press animating the controller, the indicator at rest under
+  the chosen label and part way between two in flight, **nothing laid out
+  between the frames a change starts and ends, and nothing built**, the
+  elastic stretch, right to left, the 72dp tab, and the announcements.
+- The view: a press on a tab turning the page, a swipe moving the
+  controller's offset and settling its index, and right to left.
+- The group: a radio and a tile taking their value from it, an arrow moving
+  the choice and the focus and wrapping, a disabled radio skipped, and an
+  arrow outside the group's radios going on up the walk.
+- `the_whole_face_test.dart` grows a segment and a tab.
+
+### The gallery
+
+The settings screen gets the three of them. Tabs across its top — the
+controls on one page and the appearance on the other — the dark theme as a
+segmented choice between light and dark, and a group of three radio rows
+choosing the order the inbox is sorted in, which the sort sheet in the
+overflow menu now sets too.
+
+## What phase 5 found
+
+All three shipped. The table said this phase needed nothing underneath it,
+and that held for the components — a private box for the tab bar and a
+private scroll position for its pages — and **not for what a page view
+showed**: one change to the layout package, planned as
+[a label wholly outside its window](../../flutter_scene_layout3d/plans/2026_10_01_a_label_wholly_outside_its_window.md).
+The Material suite is **852**, up from 799; the layout suite **1318**, up
+from 1311; the gallery **13**, up from 12; and the photograph lane takes two
+more frames, the settings' first tab and a tab change half way. Nine findings, and two of them were found by the window and
+nothing else.
+
+### 1. The rounded clip was the segmented button's, and the picture's answer reached it
+
+The map put the clip that does not exist on the tab bar. The tab bar never
+meets it: its indicator is a slab of its own with its own top corners, and
+nothing in it is cut by anything else. The segmented button is where it was —
+Flutter draws square segments and clips them to the inside of the stadium —
+and the answer a picture on a panel found reached it without a change: a
+segment needs a `Material3d` of its own for its wash anyway, so the end ones
+carry the stadium's radius on their outer corners and the fill comes out the
+shape Flutter's clip leaves. The photograph shows the chosen end following the
+outline's curve.
+
+### 2. A reach that arrives at the centre picks the middle segment
+
+Every control in the catalogue is laid out at its visible size and answers a
+finger in a 48dp reach, and a press in the margin is re-aimed at the
+control's centre. For a control of three choices the centre is the middle
+one. The segmented button lays out 48dp tall, as Flutter's does, with each
+segment's target inside a slot of that height — the first control here whose
+reach is in its layout. The test that presses 4dp above the first segment
+fails with the slot at 40dp, which was checked. `docs/traps.md` has it under
+*Pointers*.
+
+### 3. Flutter's controller needed nothing
+
+`TabController` and `DefaultTabController` are used as they are. The plan
+reasoned that neither has a render object and so nothing about a plane stood
+in their way, and that is all it took; a `DefaultTabController` sits above
+the gallery's settings inside the surface.
+
+### 4. A tab bar cannot wear its role here, and only the window could say so
+
+The first build had the bar publish Flutter's `tabBar` role and the radio
+group its `radioGroup`, as Flutter's do, and every headless test passed. The photograph lane ran the gallery with semantics on and the
+frame would not build: **"a TabBar cannot be empty"**. Flutter checks that a
+tab bar's semantics children are tabs, and a `Semantics3d` has no children in
+that tree — each one is a node on its own scene node, which is
+`docs/traps.md`'s *Semantics* section from another side. No headless test
+reaches it, not `pumpComponent` and not the screen harness's `pumpSurface3d`
+with `ensureSemantics()`: both were tried. The bar publishes nothing now, the
+group likewise — a `radioGroup` node passes the check only because it is
+empty, which is the same absence — and the tabs keep `tab`, which asks
+nothing of its parent. This is the third time a frame that would not build
+with semantics on was found by running the gallery.
+
+### 5. A page half across its window drew its labels outside the panel
+
+The photograph of a tab change half way showed the page leaving the window
+with its cards cut cleanly at the edge and its labels — "Notifications",
+"Volume", "Reset", "About" — floating in the room beside the screen. A
+panel is cut at a clip plane by its shader and a glyph reads none, which
+`docs/traps.md` already said; a list hides an item once the item is wholly
+outside, and the item here is a page. So a label could be drawn up to a
+page's width outside the window for every frame of every turn. The change is
+in the layout package, because it is a fact about labels and windows rather
+than about tabs: a `Text3d` or a `RichText3d` wholly outside its clip hides
+itself, from the `refreshClipRegion` that `place` already calls down a moved
+subtree, testing where its letters are rather than its box, because the
+second photograph still had "Volume" outside — a stretched label whose box
+was half in. And `TabBarView3d` clips its pages to its own window now, as
+Flutter's does by default: a scroll view here does not clip on its own,
+which the first layout test found by leaving a bare page view's label
+visible.
+
+### 6. A drag takes the nearest scroll view, whatever its axis
+
+A page of a `TabBarView3d` that is a list does not swipe: a drag grabs the
+innermost `Scrollable3d` on its path and moves it along that view's own axis,
+where Flutter's recognizers compete by direction. The gallery's two settings
+pages are both lists, so they turn only from their tabs. It is a change to
+`Layout3dPointer` and not this phase's; the dartdoc, the README and
+`docs/traps.md` say so.
+
+### 7. A page view of known length can be read backwards
+
+The plan said right to left reads the pages backwards, and the arithmetic was
+a renumbering: page one laid out last, the view opened at its far end. That
+needs the view to open on a page it has not measured yet, and a private
+scroll position does it by moving the offset when the window first gets an
+extent — the sliver viewport lays the pass out again when the metrics move
+the offset, so the first frame is already on the right page. **Phase 6 still
+needs `reverse`**: a scrollable tab bar and a carousel are scroll views whose
+content is not a set of equal pages.
+
+### 8. The indicator is laid out by its parent, at its resting width
+
+A positioned child of a `Stack3d` was the first arrangement, and it was
+wrong before it ran: a box whose constraints have not changed is not laid
+out again, and the indicator's width depends on the row beside it rather than
+on anything in its constraints. So the bar is a private box of its own that
+lays the row out, then hands the indicator **tight** constraints at the
+chosen tab's width — the parent decides, which is the protocol's own answer.
+The plan said a change lays out on the frame it starts and the frame it
+ends; it lays out on the first only. The end notifies, and the index it
+names is the one already laid out. The bar rebuilds on both, for its labels.
+
+### 9. `Radio3d.enabled` changed shape
+
+It was a getter answering whether `onChanged` was given; it is Flutter's
+`bool?` constructor argument now, which is how one option of a group is
+switched off. The changelog says so, because a caller reading it gets a
+different answer.
+
+### And two things seen that are not this phase's
+
+The tab bar's rule runs the body's full width, and with the panel turned it
+hangs past the scaffold's backing at one side. It is not the rule: the body
+slot stands steps in front of the backing, and anything edge to edge in the
+body does the same — the inbox's gradient header shows it too, inset by its
+padding. A thin full-width line is just the first thing that makes it easy to
+see.
+
+And mid-turn, the volume card's progress bar left a short stroke of its fill
+outside the window while its track was cut. The fill is a full-length bar
+scaled on the node tier, and a clip plane is expressed in the box's layout
+frame, which the node tier is outside of — the same thing `docs/traps.md`
+says about a depth clip and an elevation. A slider's fill would do the same.
+
+### What phase 5 did not do
+
+- **`isScrollable`**, which needs `reverse`; the tab's localized **"Tab 1
+  of 3"**; and Flutter's **swap** of the page between two tabs a press jumps
+  across. Each is in the dartdoc with its reason.
+- **Tab stops on every radio** in a group, where Flutter's stops on the
+  chosen one: `Focus3dTraversal` cannot skip a focusable box.
+- **No vertical segmented button**, and a disabled segment's stretch of
+  outline is drawn in the enabled colour.
+- **No render probe** asks a question of the carved segment, the indicator
+  or a culled label; all three are photographed and asserted headlessly.
+- **A label straddling a window's edge still draws whole**, which needs the
+  glyph material to read clip planes.
+- Nobody has run the gallery in a window and *used* the tabs; the photographs
+  are the lane that looked.
+
+## Phases 6 and 7
 
 Written when each is picked up. What the map already knows about each, so
 that writing it is an afternoon:
 
 - **Phase 1's second finding moves `scrollable`** for `AlertDialog3d` out of
-  phase 7 and into the next phase that touches a dialog. Phase 4 did not.
-- **Phase 5**'s `TabBar3d` meets the rounded clip that does not exist — an
-  indicator inside a rounded bar — and should check whether the picture's
-  answer, carving it in the panel's own signed distance field, reaches it.
+  phase 7 and into the next phase that touches a dialog. Phase 4 did not, and
+  neither did phase 5.
 - **Phase 6** needs a plan in the layout package first: no scroll view here
   has `reverse`, and Flutter starts a horizontal list at the right in right to
   left by reversing its axis. `Scrollbar3d` also owes a design answer — what a

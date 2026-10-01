@@ -483,6 +483,7 @@ class Text3d extends Layout3d {
       Size3d(layout.width * scale, layout.height * scale, _depth),
     );
     _render(layout, scale);
+    refreshClipRegion();
   }
 
   /// Republishes the opacity in force, which is what actually fades this
@@ -511,6 +512,67 @@ class Text3d extends Layout3d {
         logicalPixelsPerUnit: metrics.logicalPixelsPerUnit,
         opacity: inheritedOpacity,
       ),
+    );
+  }
+
+  /// Whether this label hid its own node because its clip excludes all of it.
+  bool _hiddenByClip = false;
+
+  /// Hides this label when its clip excludes all of it, and shows it again
+  /// when it does not.
+  ///
+  /// A panel is cut at a clip plane by its shader; a glyph's material reads no
+  /// planes, so a label half out of a window draws whole. That much is the
+  /// cheap tier's known edge. What this closes is the case where the label is
+  /// *wholly* out and still drawn because the box it belongs to is not — a
+  /// page of a page view half across its window carries every label on it a
+  /// page's width outside the panel, where the panels around them are already
+  /// cut away. [Layout3d.place] republishes the clip down whatever it moved,
+  /// so this runs on every frame of a scroll without anything laying out.
+  ///
+  /// Only a node this label hid is shown again, for the reason [ClipBox3d]
+  /// restores only what it culled: a list hides its items, and a label that
+  /// is a list's item is not this method's to show.
+  ///
+  /// The test is against the **ink**, not the box. A label in a column that
+  /// stretches its children is as wide as the column, and its glyphs sit at
+  /// the start of that width: a box half in can be a label whose every letter
+  /// is out. The lines already know where alignment put them, so the ink is
+  /// the span from the leftmost line's start to the rightmost line's end.
+  @override
+  void refreshClipRegion() {
+    if (!hasSize) return;
+    final (origin, ink) = _inkExtent();
+    final outside = clipRegion.excludes(origin, ink);
+    if (outside == _hiddenByClip) return;
+    if (outside) {
+      if (!node.visible) return;
+      node.visible = false;
+    } else {
+      node.visible = true;
+    }
+    _hiddenByClip = outside;
+  }
+
+  /// Where this label's glyphs are, as an origin and a size in its own frame.
+  ///
+  /// The box's extent along y and z, and along x the span the lines cover —
+  /// from the cached layout, so nothing is measured to answer it. An empty
+  /// label answers its box.
+  (Offset3d, Size3d) _inkExtent() {
+    final layout = _layoutFor(constraints);
+    var left = double.infinity;
+    var right = double.negativeInfinity;
+    for (final line in layout.lines) {
+      if (line.width <= 0.0) continue;
+      left = math.min(left, line.left);
+      right = math.max(right, line.left + line.width);
+    }
+    if (right <= left) return (Offset3d.zero, size);
+    final scale = logicalPixelScale;
+    return (
+      Offset3d(left * scale, 0.0, 0.0),
+      Size3d((right - left) * scale, size.height, size.depth),
     );
   }
 

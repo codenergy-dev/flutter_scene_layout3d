@@ -162,9 +162,9 @@ class ExpansionTileStyle3d {
 ///    same trade.
 ///  * **A label straddling the reveal's edge draws whole** for the frames it
 ///    straddles. The panel shader cuts at a clip plane and the glyph shader
-///    does not, so a half-revealed row has its panel cut and its text culled
-///    only once it is wholly outside. A scrolling list here does the same at
-///    its edge.
+///    does not, so a half-revealed row has its panel cut and each of its
+///    labels drawn until that label is wholly outside. A scrolling list here
+///    does the same at its edge.
 ///  * **It takes no `ExpansibleController`.** That class postdates this
 ///    package's Flutter floor; [initiallyExpanded] and [onExpansionChanged]
 ///    are the API until the floor moves.

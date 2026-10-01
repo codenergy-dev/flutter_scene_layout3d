@@ -3,6 +3,7 @@
 
 import 'dart:ui' show Color;
 
+import 'package:flutter/painting.dart' show TextStyle;
 import 'package:flutter_scene/scene.dart' show Node;
 import 'package:flutter_scene_layout3d/flutter_scene_layout3d.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -176,6 +177,140 @@ void main() {
         constraints: Constraints3d.tight(const Size3d(4, 4, 0)),
       );
       expect(box.clipRegion.planes, hasLength(4));
+    });
+  });
+
+  group('a label wholly outside its clip', () {
+    // A panel is cut at a clip plane by its shader; a glyph reads no planes.
+    // So a page half across a page view used to carry every label on it a
+    // page's width outside the window, drawn, while the panels around them
+    // were cut away — which is what a tab bar's pages showed on every turn.
+
+    const style = TextStyle(fontSize: 20);
+
+    /// Two pages two units wide in a window two units wide, each with a label
+    /// at either end. The window is a [ClipBox3d], because a scroll view here
+    /// does not clip on its own: a `Scaffold3d`'s body is one, and a
+    /// `TabBarView3d` puts one around its pages as Flutter's clips its own.
+    ({PageView3d view, List<Text3d> labels, Layout3dSurface surface}) pages() {
+      final labels = <Text3d>[
+        Text3d('L0', style: style, name: 'L0'),
+        Text3d('R0', style: style, name: 'R0'),
+        Text3d('L1', style: style, name: 'L1'),
+        Text3d('R1', style: style, name: 'R1'),
+      ];
+      final view = PageView3d(
+        children: <Layout3d>[
+          Row3d(
+            mainAxisAlignment: MainAxisAlignment3d.spaceBetween,
+            children: <Layout3d>[labels[0], labels[1]],
+          ),
+          Row3d(
+            mainAxisAlignment: MainAxisAlignment3d.spaceBetween,
+            children: <Layout3d>[labels[2], labels[3]],
+          ),
+        ],
+      );
+      final surface = laidOut(
+        SizedBox3d(
+          width: 2,
+          height: 1,
+          depth: 0,
+          child: ClipBox3d(child: view),
+        ),
+        origin: Alignment3d.topLeft,
+      );
+      return (view: view, labels: labels, surface: surface);
+    }
+
+    test('at rest, the page in the window shows its labels', () {
+      final p = pages();
+      expect(p.labels[0].node.visible, isTrue);
+      expect(p.labels[1].node.visible, isTrue);
+    });
+
+    test('half a page across, the labels wholly outside draw nothing', () {
+      final p = pages();
+      p.view.controller.jumpTo(1.0);
+      p.surface.flush();
+      // The first page runs from -1 to 1: its left label is gone, its right
+      // one is in. The second runs from 1 to 3, the other way round.
+      expect(p.labels[0].node.visible, isFalse, reason: 'L0');
+      expect(p.labels[1].node.visible, isTrue, reason: 'R0');
+      expect(p.labels[2].node.visible, isTrue, reason: 'L1');
+      expect(p.labels[3].node.visible, isFalse, reason: 'R1');
+      // And the pages themselves are both still drawn: the label is culled,
+      // not the box it belongs to.
+      expect(p.labels[0].parent!.node.visible, isTrue);
+    });
+
+    test('and they come back when the page does', () {
+      final p = pages();
+      p.view.controller.jumpTo(1.0);
+      p.surface.flush();
+      p.view.controller.jumpTo(0.0);
+      p.surface.flush();
+      expect(p.labels[0].node.visible, isTrue);
+      expect(p.labels[1].node.visible, isTrue);
+    });
+
+    test('a label half in is drawn whole, as before', () {
+      final p = pages();
+      final width = p.labels[1].size.width;
+      // The right label of the first page straddles the window's left edge.
+      p.view.controller.jumpTo(2.0 - width / 2);
+      p.surface.flush();
+      expect(p.labels[1].node.visible, isTrue);
+    });
+
+    test('nothing is laid out to do it', () {
+      final p = pages();
+      final before = p.labels.map((label) => label.size).toList();
+      p.view.controller.jumpTo(1.0);
+      expect(p.labels.every((label) => !label.needsLayout), isTrue);
+      p.surface.flush();
+      expect(p.labels.map((label) => label.size).toList(), before);
+    });
+
+    test('a label stretched across its page is tested by its ink', () {
+      // A column that stretches makes a label as wide as the page, and its
+      // letters sit at the start of that width: the box is half in while
+      // every letter is out. That is what the gallery's "Volume" did.
+      final label = Text3d('Volume', style: style, name: 'Volume');
+      final view = PageView3d(
+        children: <Layout3d>[
+          Column3d(
+            crossAxisAlignment: CrossAxisAlignment3d.stretch,
+            children: <Layout3d>[label],
+          ),
+          Column3d(children: <Layout3d>[Text3d('x', style: style)]),
+        ],
+      );
+      final surface = laidOut(
+        SizedBox3d(
+          width: 2,
+          height: 1,
+          depth: 0,
+          child: ClipBox3d(child: view),
+        ),
+        origin: Alignment3d.topLeft,
+      );
+      expect(label.size.width, closeTo(2.0, 1e-9));
+      view.controller.jumpTo(1.5);
+      surface.flush();
+      // The box runs from -1.5 to 0.5, so half of it is in; the six letters
+      // end well before -1.
+      expect(label.node.visible, isFalse);
+    });
+
+    test('a label hidden by someone else is not shown by its clip', () {
+      final p = pages();
+      p.labels[1].node.visible = false;
+      p.view.controller.jumpTo(1.0);
+      p.surface.flush();
+      p.view.controller.jumpTo(0.0);
+      p.surface.flush();
+      expect(p.labels[1].node.visible, isFalse);
     });
   });
 

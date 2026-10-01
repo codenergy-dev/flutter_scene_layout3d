@@ -7,7 +7,7 @@
 // the test runner keep them honest. Nothing below is called: compiling is the
 // assertion.
 
-import 'package:flutter/material.dart' show Icons;
+import 'package:flutter/material.dart' show DefaultTabController, Icons;
 import 'package:flutter/widgets.dart';
 import 'package:flutter_scene/scene.dart';
 import 'package:flutter_scene_layout3d/widgets.dart';
@@ -596,3 +596,49 @@ void main() {
     expect(FirstScreen.new, isNotNull);
   });
 }
+
+// ------------------------------------------------------- Phase 5: one choice
+// over many options.
+
+enum Calendar { day, week, month }
+
+Widget calendarPicker(Calendar view, void Function(Calendar) setView) =>
+    SegmentedButton3d<Calendar>(
+      segments: const <ButtonSegment3d<Calendar>>[
+        ButtonSegment3d(value: Calendar.day, label: 'Day'),
+        ButtonSegment3d(value: Calendar.week, label: 'Week'),
+        ButtonSegment3d(value: Calendar.month, label: 'Month'),
+      ],
+      selected: <Calendar>{view},
+      onSelectionChanged: (selection) => setView(selection.single),
+    );
+
+Widget mailboxTabs(Widget inbox, Widget sent) => DefaultTabController(
+  length: 2,
+  child: SceneColumn3d(
+    crossAxisAlignment: CrossAxisAlignment3d.stretch,
+    children: <Widget>[
+      const TabBar3d(
+        tabs: <Tab3d>[
+          Tab3d(text: 'Inbox'),
+          Tab3d(text: 'Sent'),
+        ],
+      ),
+      SceneExpanded3d(child: TabBarView3d(children: <Widget>[inbox, sent])),
+    ],
+  ),
+);
+
+Widget deliveryGroup(String delivery, ValueChanged<String> setDelivery) =>
+    RadioGroup3d<String>(
+      groupValue: delivery,
+      onChanged: (value) => setDelivery(value ?? delivery),
+      child: SceneColumn3d(
+        mainAxisSize: MainAxisSize3d.min,
+        depthAxisAlignment: CrossAxisAlignment3d.start,
+        children: <Widget>[
+          RadioListTile3d<String>.text(title: 'Standard', value: 'standard'),
+          RadioListTile3d<String>.text(title: 'Express', value: 'express'),
+        ],
+      ),
+    );

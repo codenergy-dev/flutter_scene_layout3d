@@ -1,5 +1,18 @@
 ## Unreleased
 
+- **A label wholly outside its window draws nothing.** `Text3d` and
+  `RichText3d` hide their node when their clip leaves none of them, and show
+  it again when it does — from `refreshClipRegion`, which `place` already
+  calls down whatever a scroll moved, so nothing is laid out to do it. A
+  panel was always cut at a window's edge by its shader; a glyph reads no
+  clip planes, so a label on a box half across a window was drawn wherever it
+  was. A page of a page view is such a box, and the Material catalogue's tab
+  view carried a page's worth of labels outside its panel on every turn. A
+  label half in is still drawn whole, and a label hidden by anything else —
+  a list hiding its item — is left hidden. A `Text3d` is tested by where its
+  letters are rather than by its box, which a stretching column makes as wide
+  as itself.
+
 - **A list with no controller keeps its place when something above it
   rebuilds.** It used to jump back to the top. A widget writes its controller
   on every update, and with none that is null — which the ownership rule read

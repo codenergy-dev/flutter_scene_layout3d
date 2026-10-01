@@ -154,6 +154,21 @@ void main() {
 
     await tester.tap3d(find3d.bySemanticsLabel('Settings'));
     await pumpFrames(tester, 40);
+    // Phase 5: the settings are on two tabs now, under a primary tab bar.
+    final settings = await photographAgain(tester, name: 'gallery_settings');
+    keep(settings);
+    expectAFrame(settings);
+
+    // The picker is on the second tab, with the segmented choice between
+    // light and dark — its chosen end carved to the outline's curve — and the
+    // radio rows that sort the inbox. One frame part way through the turn,
+    // where the indicator is stretched between the two labels on the node
+    // tier and the pages are half across.
+    await tester.tap3d(find3d.bySemanticsLabel('Display'));
+    keep(
+      await photographAgain(tester, name: 'gallery_tabs_turning', frames: 2),
+    );
+    await pumpFrames(tester, 40);
     final picker = await photographAgain(tester, name: 'gallery_picker');
     keep(picker);
     expectAFrame(picker);
@@ -172,6 +187,8 @@ void main() {
     //
     // A banner, which the settings show while notifications are off: flat,
     // with its rule, because that is what Flutter's draws.
+    await tester.tap3d(find3d.bySemanticsLabel('General'));
+    await pumpFrames(tester, 40);
     await tester.tap3d(find3d.bySemanticsLabel('Notifications'));
     await pumpFrames(tester, 40);
     final banner = await photographAgain(tester, name: 'gallery_banner');

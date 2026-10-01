@@ -197,6 +197,12 @@ matrix has to be written by a box once it has a size — from its own
 `performLayout`, and from its setters after that — which is the same answer
 `MotionTransition3d` gives an arrival stated as a fraction of its content.
 `LinearProgressIndicator3d` holds its span as two fractions for that reason.
+**A bar that moves between two laid-out places** is the same answer once more:
+`TabBar3d` lays its indicator out at rest under the chosen label, at that
+label's width, and every frame between two tabs is a translation and a stretch
+written from the controller's animation — the parent hands the indicator tight
+constraints at the resting width, so a frame that changes nothing about where
+it rests skips its layout.
 
 **A size that changes is a scale about the centre.** A node transform pivots
 on the origin corner, so a thumb that grows in place is `T(c) · S · T(−c)`
@@ -1222,6 +1228,15 @@ remains a reservation of space and `glyphDepth` is the figure that draws.
   itself. Only the hit test that *captures* a path is affected, so a drag
   begun in the margin reports real positions from its second event onward
   and its first one jumps.
+- **And the centre of a control made of parts is one of its parts.** A
+  target around a whole `SegmentedButton3d` would send a press 4dp above its
+  first segment to the middle one. When the parts are separate choices the
+  reach has to be per part, and a part's reach is cut off by any box around it
+  no bigger than the part — so the parts sit in slots as tall as the reach,
+  which is Flutter's own arithmetic: its segmented button lays out 48dp tall
+  with the outline in the middle 40, and so does this one. Lay a multi-part
+  control out at its reach, or press it in a margin and watch the wrong part
+  answer.
 - **A target has to sit outside every box whose extent it is growing.** This
   is the rule that makes the reach usable, and it is the one that cost the
   time. A `TapTarget3d` reaches beyond its own extent and **its parent does
@@ -1302,6 +1317,15 @@ remains a reservation of space and `glyphDepth` is the figure that draws.
   toward the viewer than the card drawn in front of it, win the ray, and take a
   drop that visibly belonged to the other one. The drag machinery cannot fix
   this and does not try: **keep drop targets thin relative to the step.**
+- **A drag takes hold of the nearest scrolling view on its path, whatever
+  way the finger then goes.** Flutter lets a vertical list and a horizontal
+  page view compete for a pointer by axis, through their drag recognizers; a
+  drag here grabs the innermost `Scrollable3d` it hit and moves it along that
+  view's own axis. So a page of a `TabBarView3d` that is itself a list scrolls
+  under a sideways swipe and the pages do not turn. A page view whose pages
+  are not scroll views swipes as Flutter's does; one whose pages are lists
+  turns from its tabs. Choosing a view by the direction of the first movement
+  is a change to `Layout3dPointer`, and not yet made.
 - **A picked-up card is only as far in front as its layer's lift.**
   `Draggable3d` corrects the feedback's position on the *plane* so it covers
   the box the drag started on, and deliberately leaves depth to
@@ -1453,7 +1477,11 @@ remains a reservation of space and `glyphDepth` is the figure that draws.
   `box.padding.resolve(box.textDirection).left`.
 - **A horizontal scroll view does not start at the right.** Flutter reverses a
   horizontal `ListView`'s axis in right to left; no view here has `reverse`,
-  so a carousel's first item stays at the left in every language.
+  so a carousel's first item stays at the left in every language. A view
+  whose length is known can be read backwards instead — `TabBarView3d` lays
+  its pages out last to first in right to left and opens at the far end,
+  which is what the reversed axis amounts to — but that is a renumbering of
+  one view's items, not a direction the scroll view knows.
 
 ## Semantics
 
@@ -1496,6 +1524,17 @@ shader carves the radius out instead.
 Clipping has three tiers: whole-node culling (free, exact for boxes entirely
 outside), clip planes packed into a material (`toPlaneBlock`, for a child that
 is *half* in — only the shipped panel shader reads them so far), and nothing.
+**A label is on the first tier and not the second**: `Text3d` and
+`RichText3d` hide themselves once their clip excludes all of them, on every
+`place` that moves them, and a label half in draws whole. A `Text3d` asks
+about its *letters*, not its box — a stretching column makes a label as wide
+as the column, with its glyphs at the start. Before they did, a
+page of a page view half across its window carried every label on it up to a
+page's width outside the panel, with the cards around them cut cleanly — see
+[a label wholly outside its window](../packages/flutter_scene_layout3d/plans/2026_10_01_a_label_wholly_outside_its_window.md).
+**And a scroll view does not clip on its own**: the window is a `ClipBox3d`
+around it — a `Scaffold3d`'s body is one, and a `TabBarView3d` puts one round
+its pages — so a bare list or page view in front of nothing cuts nothing.
 The seam is `Layout3d.clipRegion` → `Decoration3dPaintRequest.clip` →
 `toPlaneBlock()`, and it is live: a row half under a pinned
 `SliverPersistentHeader3d`, or half out of a scrolling window, is genuinely
